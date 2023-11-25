@@ -1,0 +1,172 @@
+body {
+    background: linear-gradient(-45deg, rgba(0,216,255,1) 0%, rgb(186, 38, 255) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    padding: 2rem;
+    box-sizing: border-box;
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+header, footer {
+    text-align: center;
+    width: 100%;
+}
+
+h1 {
+    font-size: 2rem;
+    color: white;
+}
+
+main {
+    background: white;
+    border-radius: 20px;
+    padding: 2rem;
+    box-sizing: border-box;
+    box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.1);
+    max-width: 600px;
+    width: 100%;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+button#create-task {
+    background: linear-gradient(-45deg, rgba(0,216,255,1) 0%, rgb(186, 38, 255) 100%);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 0;
+    cursor: pointer;
+    text-shadow: 0px 2px 2px rgba(0, 0, 0, 0.15);
+    box-shadow: 0px 10px 10px rgba(0, 0, 0, 0.1);
+    font-size: 1.2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 25%;
+    transition: transform 0.2s;
+}
+
+button#create-task:hover {
+    transform: scale(1.05);
+}
+
+footer {
+    width: 100%;
+    text-align: center;
+    margin-top: 2rem;
+}
+
+input#task-input {
+    height: 100%;
+    padding: 0 20px;
+    font-size: 1.2rem;
+    box-sizing: border-box;
+    box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+    width: 70%;
+    border: none;
+    border-radius: 50px;
+}
+
+.create-task {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: column;
+    break-inside: avoid;
+    align-items: stretch;
+    max-width: 600px;
+    width: 100%;
+    /* Add space beneath the create-task div */
+    margin-bottom: 30px;
+}
+
+.create-task div {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* Add some space between rows */
+    margin-bottom: 20px;
+}
+
+.create-task label {
+    padding-right: 5px;
+}
+
+.create-task > div:first-child {
+    height: 50px;
+}
+
+.create-task > div:last-child {
+    margin-left: 10px;
+    justify-content: left;
+}
+
+input#task-input, button#create-task {
+    height: 100%;
+}
+
+#start-time-input, #end-time-input {
+    margin-right: 10px; /* Added space between inputs */
+}
+
+/* Add CSS for the task checkbox */
+.task {
+    display: flex;
+    align-items: center;
+    /* left-aligned text */
+    justify-content: flex-start;
+    /* to account for the 10px padding on both sides */
+    width: calc(100% - 20px);
+    margin: 10px;
+    margin-top: 0px;
+    padding: 10px;
+    border: 1px solid #dddddd;
+    border-radius: 50px;
+    box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.task input[type="checkbox"] {
+    border: 1px solid #dddddd;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    /* add some space between the checkbox and task name */
+    margin-right: 20px;
+}
+
+.taskChecked {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.schedule {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 1.5rem;
+}
+
+#schedule-area {
+    width: 100%;
+    padding: 0;
+    list-style-type: none;
+    border: 1px solid #ddd;
+    padding: 1rem;
+    margin-bottom: 0.2rem;
+    text-align: center;
+    border-radius: 5px;
+}
+
+#schedule-area .time-blocks {
+    height: 50px;
+    border: 1px dashed #ddd;
+    margin-top: 0.2rem;
+    border-radius: 5px;
+}
