@@ -259,24 +259,26 @@
             }
 
             function renderEditTask(task, index) {
-                return `<form id="edit-task-${index}" class="mb-4 p-6 rounded border border-gray-700 bg-gray-800 mx-2 text-left">
+                return `<form id="edit-task-${index}" class="mb-4 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
                     <div class="mb-4">
                         <input type="text" name="description" value="${task.description}" class="bg-gray-700 p-2 rounded w-full" required>
                     </div>
-                    <div class="flex space-x-2 mb-4">
-                        <label class="flex items-center">
+                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
+                        <label class="flex items-center w-full sm:w-auto">
                             <span class="text-gray-400">Start Time</span>
-                            <input type="time" name="start-time" value="${task.startTime}" class="bg-gray-700 p-2 rounded w-[10rem]" required>
+                            <input type="time" name="start-time" value="${task.startTime}" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
                         </label>
-                        <label class="flex items-center">
+                        <label class="flex items-center w-full sm:w-auto">
                             <span class="mr-2 text-gray-400">Duration</span>
-                            <div class="flex space-x-2">
-                                <input type="number" name="duration-hours" value="${Math.floor(task.duration / 60)}" min="0" class="bg-gray-700 p-2 rounded w-16">
-                                <input type="number" name="duration-minutes" value="${task.duration % 60}" min="0" max="59" class="bg-gray-700 p-2 rounded w-16">
+                            <div class="flex space-x-2 w-full sm:w-auto">
+                                <input type="number" name="duration-hours" value="${Math.floor(task.duration / 60)}" min="0" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
+                                <input type="number" name="duration-minutes" value="${task.duration % 60}" min="0" max="59" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
                             </div>
                         </label>
-                        <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-1/2 font-semibold">Edit</button>
-                        <button type="button" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded w-1/2 font-semibold btn-edit-cancel" data-task-index="${index}">Cancel</button>
+                        <div class="flex space-x-2">
+                            <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full sm:w-auto font-semibold">Edit</button>
+                            <button type="button" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded w-full sm:w-auto font-semibold btn-edit-cancel" data-task-index="${index}">Cancel</button>
+                        </div>
                     </div>
                 </form>`;
             }
@@ -465,26 +467,26 @@
     </script>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
-    <div class="container mx-auto px-4 lg:px-16 max-w-3xl text-center my-6">
-        <h1 class="text-5xl font-bold mb-6 text-yellow-500">Fortu-do 💪🏾</h1>
-        <h2 class="text-xl italic mb-4 text-gray-400">A Daily Time-Blocking To-Do App. For Cristell <span class="not-italic pl-1">💜</span></h2>
-        <form id="task-form" class="mb-8 p-6 rounded border border-gray-700 bg-gray-800 mx-2 text-left">
+    <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-6">
+        <h1 class="lg:text-5xl text-4xl font-bold mb-6 text-yellow-500">Fortu-do 💪🏾</h1>
+        <h2 class="lg:text-lg italic mb-4 text-gray-400">A Daily Time-Blocking To-Do App. For Cristell <span class="not-italic pl-1">💜</span></h2>
+        <form id="task-form" class="mb-8 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
             <div class="mb-4">
                 <input type="text" name="description" placeholder="Describe your task..." class="bg-gray-700 p-2 rounded w-full" required>
             </div>
-            <div class="flex space-x-2 mb-4">
-                <label class="flex items-center">
+            <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
+                <label class="flex items-center w-full sm:w-auto">
                     <span class="text-gray-400">Start Time</span>
-                    <input type="time" name="start-time" placeholder="Start Time" class="bg-gray-700 p-2 rounded w-[10rem]" required>
+                    <input type="time" name="start-time" placeholder="Start Time" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
                 </label>
-                <label class="flex items-center">
+                <label class="flex items-center w-full sm:w-auto">
                     <span class="mr-2 text-gray-400">Duration</span>
-                    <div class="flex space-x-2">
-                        <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded w-16">
-                        <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded w-16">
+                    <div class="flex space-x-2 w-full sm:w-auto">
+                        <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
+                        <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
                     </div>
                 </label>
-                <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full font-semibold">Add</button>
+                <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full sm:w-full font-semibold">Add</button>
             </div>
         </form>
         <div id="task-list" class="text-left">
