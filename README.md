@@ -1,3 +1,17 @@
+# fortudo: a daily time-blocking to-do app
+
+## firebase hosting
+
+```bash
+λ nvm install --lts
+λ nvm use --lts
+λ npm install -g firebase-tools
+λ firebase login
+λ firebase init  # one-time setup
+λ firebase deploy  # can also enable github actions to deploy
+```
+
+## repo tasks
 - [x] switch css to tailwind
 - [x] order tasks by time
 - [x] disable checkboxes on all but the first task
