@@ -319,8 +319,8 @@
                 }).join('');
 
                 document.querySelectorAll('.checkbox').forEach((checkbox, index) => {
+                    if (checkbox.getAttribute('disabled') !== null) { return; }
                     checkbox.addEventListener('click', () => {
-                        console.log(index);
                         completeTask(index);
                     });
                 });
@@ -495,7 +495,7 @@
         <!-- <div id="info-panel" class="bg-gray-800 rounded p-6 border border-gray-700 my-4 text-left"> -->
         <div id="info-panel" class="py-6">
             <div class="flex justify-between">
-                <div id="current-datetime" class="pl-10">
+                <div id="current-datetime" class="pl-10 pr-4">
                     <div id="current-time" class="text-left text-2xl font-semibold"></div>
                     <div id="current-date" class="text-left font-semibold"></div>
                 </div>
