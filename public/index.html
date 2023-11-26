@@ -24,7 +24,7 @@
 
             let tasks = [
                 // TEMP: hardcoded tasks for quick start on reload
-                /**/
+                /*
                 {
                     description: "journal",
                     startTime: "09:30",
@@ -43,7 +43,7 @@
                     editing: false,
                     confirmingDelete: false
                 },
-                /**/
+                */
             ];
             let availableHours = { start: '09:00', end: '17:00' };
             let firstIncompleteTaskFound = false;
@@ -193,7 +193,7 @@
                 task.status = "completed";
 
                 const currentTime = convertTo24HourTime(document.getElementById('current-time').textContent);
-                if (task.endTime < currentTime && window.confirm(`Way to finish 💪🏾 Do you want to bump your schedule to reflect finishing this task at ${convertTo12HourTime(currentTime)}, if needed?`)) {
+                if (task.endTime < currentTime && window.confirm(`Way to finish 💪🏾 Do you want to bump your schedule to reflect finishing this task at ${convertTo12HourTime(currentTime)}, in case it ran late?`)) {
                     task.duration = calculateMinutes(currentTime) - calculateMinutes(task.startTime);
                     task.endTime = calculateEndTime(task.startTime, task.duration);
 
