@@ -1,0 +1,35 @@
+{
+  "name": "fortudo",
+  "version": "1.0.0",
+  "description": "A daily time-blocking to-do app",
+  "main": "app.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iconix/fortudo.git"
+  },
+  "keywords": [
+    "to-do",
+    "time-blocking",
+    "daily",
+    "webapp"
+  ],
+  "author": "iconix",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/iconix/fortudo/issues"
+  },
+  "homepage": "https://github.com/iconix/fortudo#readme",
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@babel/preset-env": "^7.26.9",
+    "@testing-library/dom": "^10.4.0",
+    "@types/jest": "^29.5.14",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

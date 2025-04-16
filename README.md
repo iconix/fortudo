@@ -11,6 +11,20 @@
 λ firebase deploy  # can also enable github actions to deploy
 ```
 
+## app tests
+
+set up environment:
+```bash
+λ nvm install --lts
+λ nvm use --lts
+λ npm install --save-dev jest @babel/core @babel/preset-env babel-jest @testing-library/dom jest-environment-jsdom
+```
+
+run tests:
+```bash
+λ npm test
+```
+
 ## repo tasks
 - [x] switch css to tailwind
 - [x] order tasks by time
@@ -23,7 +37,7 @@
 - [x] what should happen when the day rolls over? for mvp, can just provide a manual "clear all" button
 - [x] local storage for mvp
 - [ ] fix responsiveness on iphone
-- [ ] host mvp on firebase
+- [x] host mvp on firebase
 - [ ] add checkbox to “make a habit” → then we can have a second list that gets injected daily
 
 - [x] on check, cross out task and enable next checkbox
