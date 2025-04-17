@@ -1,7 +1,10 @@
 // initialize `fortudo` namespace immediately for testing purposes
 // all functionality will be attached by the DOMContentLoaded event handler
 // @ts-ignore - creating a custom namespace on window for testing
-window.fortudo = {};
+window.fortudo = {
+    // state - need to take care to maintain reference to this same array for tests
+    tasks: []
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     const taskForm = /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
@@ -30,11 +33,16 @@ document.addEventListener('DOMContentLoaded', () => {
      * @property {boolean} confirmingDelete - whether delete is being confirmed
      */
 
+    // Use the tasks array from the global fortudo object
+    // This ensures it's the same array reference used by tests
     /** @type {Task[]} */
-    let tasks = [
-        // TEMP: hardcoded tasks for quick start on reload
-        /*
-        {
+    // @ts-ignore - accessing our custom namespace
+    const tasks = window.fortudo.tasks;
+
+    // TEMP: initialize with any predefined tasks if needed
+    /*
+    if (tasks.length === 0) {
+        tasks.push({
             description: "journal",
             startTime: "09:30",
             endTime: "10:00",
@@ -51,9 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
             status: "incomplete",
             editing: false,
             confirmingDelete: false
-        },
-        */
-    ];
+        });
+    }
+    */
 
     ///** @type {{start: string, end: string}} */
     // let availableHours = { start: '09:00', end: '17:00' };
@@ -150,10 +158,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return calculate24HourTimeFromMinutes(endMinutes);
     }
 
-    // TODO: def unit test
+    /**
+     * Auto-reschedule tasks to avoid overlap
+     *
+     * Handles task conflicts by moving overlapping tasks later in time.
+     * When a new or updated task overlaps with existing tasks, this function:
+     * 1. Identifies all overlapping tasks
+     * 2. Moves each overlapping task to start after the new task ends
+     * 3. Recursively checks if the moved task now overlaps with other tasks
+     * 4. Optionally asks for user confirmation before rescheduling
+     *
+     * The function creates a cascading effect where each affected task
+     * may trigger further rescheduling of subsequent tasks.
+     *
+     * Returns a boolean indicating whether the rescheduling was successful or canceled by the user.
+     *
+     * @param {Task} newTask - The new task to add or update
+     * @param {string} trigger - The trigger for the reschedule (e.g., "Adding" or "Updating")
+     * @param {boolean} askToConfirm - Whether to ask for confirmation
+     * @returns {boolean} - Whether the reschedule was successful
+     */
     function autoReschedule(newTask, trigger = 'Adding', askToConfirm = false) {
         // TODO: should probably allow for tasks that cannot be rescheduled (e.g., a meeting) and handle conflict resolution gracefully
         let rescheduleOK = true;
+        let nextStartTime = newTask.endTime;
         tasks.forEach((existingTask, index) => {
             // skip currently being edited task
             if (existingTask.editing) return;
@@ -164,8 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                existingTask.startTime = newTask.endTime;
-                existingTask.endTime = calculate24HourTimeFromMinutes(calculateMinutes(existingTask.startTime) + existingTask.duration);
+                existingTask.startTime = nextStartTime;
+                existingTask.endTime = calculateEndTime(existingTask.startTime, existingTask.duration);
+                nextStartTime = existingTask.endTime;
 
                 // reschedule any other tasks this might affect
                 existingTask.editing = true;
@@ -174,6 +203,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         return rescheduleOK;
+
+        /*
+        const overlappingTasks = tasks.filter(task =>
+            task !== newTask &&
+            !task.editing && // skip tasks already being processed to prevent infinite recursion
+            tasksOverlap(newTask, task)
+        );
+
+        if (overlappingTasks.length > 0 && askToConfirm) {
+            if (!window.confirm(`${trigger} this task will cause overlap in your schedule. Do you want to continue with auto-rescheduling?`)) {
+                rescheduleOK = false;
+                newTask.editing = false;
+                return rescheduleOK;
+            }
+        }
+
+        // sort by start time to maintain their relative order
+        overlappingTasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+
+        // schedule each overlapping task to start after the previous one
+        let nextStartTime = newTask.endTime;
+        for (const task of overlappingTasks) {
+            task.startTime = nextStartTime;
+            task.endTime = calculateEndTime(task.startTime, task.duration);
+            nextStartTime = task.endTime;
+
+            // recursively reschedule any tasks affected by this change
+            task.editing = true;
+            autoReschedule(task, trigger, false);
+            task.editing = false;
+        }
+        */
     }
 
     /**
@@ -254,6 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tasks.push(task);
         tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+
         renderTasks();
         // renderFreeTime();
         updateLocalStorage();
@@ -273,6 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tasks[index] = { ...task, editing: false };
         tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+
         renderTasks();
         updateLocalStorage();
     }
@@ -294,8 +357,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const currentTime = convertTo24HourTime(currentTimeElement.textContent);
         if (task.endTime < currentTime && window.confirm(`Task completed! 🎉💪🏾 Do you want to update your schedule to show you finished at ${convertTo12HourTime(currentTime)}? This helps keep your timeline accurate.`)) {
-            task.duration = calculateMinutes(currentTime) - calculateMinutes(task.startTime);
-            task.endTime = calculateEndTime(task.startTime, task.duration);
+            task.endTime = currentTime;
+            task.duration = calculateMinutes(task.endTime) - calculateMinutes(task.startTime);
 
             task.editing = true;
             autoReschedule(task);
@@ -330,7 +393,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function deleteAllTasks() {
         if (tasks.length > 0 && window.confirm("Are you sure you want to delete all tasks?")) {
-            tasks = [];
+            // @ts-ignore - accessing our custom namespace
+            window.fortudo.tasks = [];
             renderTasks();
             updateLocalStorage();
         }
@@ -696,7 +760,8 @@ document.addEventListener('DOMContentLoaded', () => {
     /** @type {Task[]|null} */
     const storedTasks = tasksString ? JSON.parse(tasksString) : null;
     if (storedTasks && storedTasks.length > 0) {
-        tasks = storedTasks;
+        // @ts-ignore - accessing our custom namespace
+        window.fortudo.tasks = storedTasks;
     }
     renderTasks();
     // renderFreeTime();

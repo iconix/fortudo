@@ -30,6 +30,8 @@
  * @property {function(number, Object): void} updateTask
  * @property {function(number): void} completeTask
  * @property {function(number, boolean): void} deleteTask
+ * @property {function(): void} renderTasks
+ * @property {function(): void} updateLocalStorage
  * @property {Array<Object>} tasks
  */
 
@@ -312,8 +314,8 @@ describe('Task Management Functions', () => {
 // 3. AUTO RESCHEDULING TESTS
 describe('Auto-rescheduling Tests', () => {
   test('handles cascading rescheduling of multiple tasks', () => {
-    // Reset tasks
-    fortudo.tasks = [];
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
 
     // Add sequential tasks
     const task1 = {
@@ -385,8 +387,8 @@ describe('Auto-rescheduling Tests', () => {
   });
 
   test('offers rescheduling when tasks are completed late', () => {
-    // Reset tasks
-    fortudo.tasks = [];
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
 
     // Add sequential tasks
     const task1 = {
@@ -442,6 +444,266 @@ describe('Auto-rescheduling Tests', () => {
     // Restore original completeTask function
     fortudo.completeTask = originalCompleteTask;
   });
+
+  test('preserves task order and cascades rescheduling through subsequent tasks after late completion', () => {
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
+
+    // Setup window.confirm mock to always return true for any confirmation dialogs
+    // This is essential because addTask and autoReschedule ask for confirmation
+    window.confirm = jest.fn().mockReturnValue(true);
+
+    // Only mock DOM-dependent functions to avoid side effects during testing
+    const originalRenderTasks = fortudo.renderTasks;
+    const originalUpdateLocalStorage = fortudo.updateLocalStorage;
+
+    fortudo.renderTasks = jest.fn();
+    fortudo.updateLocalStorage = jest.fn();
+
+    // Initial tasks
+    const taskA = {
+        description: 'Task A',
+        startTime: '09:00',
+        endTime: '09:30',
+        duration: 30,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    const taskB = {
+        description: 'Task B',
+        startTime: '10:00',
+        endTime: '11:00',
+        duration: 60,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    const taskC = {
+        description: 'Task C',
+        startTime: '13:00',
+        endTime: '13:15',
+        duration: 15,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    fortudo.addTask(taskA); // This should add taskA without rescheduling
+    fortudo.addTask(taskB); // This should add taskB without rescheduling (they don't overlap)
+    fortudo.addTask(taskC); // This should add taskC without rescheduling (they don't overlap)
+
+    // Verify initial task positions
+    expect(fortudo.tasks[0].description).toBe('Task A');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('09:30');
+
+    expect(fortudo.tasks[1].description).toBe('Task B');
+    expect(fortudo.tasks[1].startTime).toBe('10:00');
+    expect(fortudo.tasks[1].endTime).toBe('11:00');
+
+    expect(fortudo.tasks[2].description).toBe('Task C');
+    expect(fortudo.tasks[2].startTime).toBe('13:00');
+    expect(fortudo.tasks[2].endTime).toBe('13:15');
+
+    // Create Task D that will conflict with Task A
+    const taskD = {
+        description: 'Task D',
+        startTime: '09:00',
+        endTime: '10:00',
+        duration: 60,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    // This should trigger the real autoReschedule that will move the conflicting tasks
+    fortudo.addTask(taskD);
+
+    // Verify tasks have been rescheduled correctly after adding Task D
+    // Tasks should be sorted by startTime, so after rescheduling:
+    // - Task D: 9am-10am (index 0)
+    // - Task A: 10am-10:30am (index 1)
+    // - Task B: 10:30am-11:30am (index 2)
+    // - Task C: 13:00-13:15 (index 3) - should not be affected by Task D yet
+
+    // Verify tasks are in expected state after all additions and autoRescheduling
+    expect(fortudo.tasks.length).toBe(4);
+
+    expect(fortudo.tasks[0].description).toBe('Task D');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('10:00');
+
+    expect(fortudo.tasks[1].description).toBe('Task A');
+    expect(fortudo.tasks[1].startTime).toBe('10:00');
+    expect(fortudo.tasks[1].endTime).toBe('10:30');
+
+    expect(fortudo.tasks[2].description).toBe('Task B');
+    expect(fortudo.tasks[2].startTime).toBe('10:30');
+    expect(fortudo.tasks[2].endTime).toBe('11:30');
+
+    expect(fortudo.tasks[3].description).toBe('Task C');
+    expect(fortudo.tasks[3].startTime).toBe('13:00');
+    expect(fortudo.tasks[3].endTime).toBe('13:15');
+
+    // Now simulate completing Task D at 1:00pm (later than scheduled)
+
+    // 1. First, we need to add the current-time element with 1:00pm
+    let currentTime = '1:00 PM';
+    const timeElement = document.getElementById('current-time');
+    if (timeElement) {
+        timeElement.textContent = currentTime;
+    } else {
+        const div = document.createElement('div');
+        div.id = 'current-time';
+        div.textContent = currentTime;
+        document.body.appendChild(div);
+    }
+
+    // 2. Complete Task D (index 0)
+    // This should trigger another reschedule due to the late completion
+    fortudo.completeTask(0);
+
+    // 3. Verify tasks have been rescheduled correctly after late completion
+    // Expected results:
+    // - Task D: 9am-1:00pm (completed, end time adjusted - index 0)
+    // - Task A: 1:00pm-1:30pm (moved later - index 1)
+    // - Task B: 1:30pm-2:30pm (moved later - index 2)
+    // - Task C: 2:30pm-2:45pm (moved later, not overlapping Task D but maintaining order - index 3)
+
+    expect(fortudo.tasks[0].description).toBe('Task D');
+    expect(fortudo.tasks[0].status).toBe('completed');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('13:00');     // End time should be adjusted to actual completion time
+    expect(fortudo.tasks[0].duration).toBe(240);        // Duration should now be 4 hours
+
+    expect(fortudo.tasks[1].description).toBe('Task A');
+    expect(fortudo.tasks[1].startTime).toBe('13:00');
+    expect(fortudo.tasks[1].endTime).toBe('13:30');
+
+    expect(fortudo.tasks[2].description).toBe('Task B');
+    expect(fortudo.tasks[2].startTime).toBe('13:30');
+    expect(fortudo.tasks[2].endTime).toBe('14:30');
+
+    expect(fortudo.tasks[3].description).toBe('Task C');
+    expect(fortudo.tasks[3].startTime).toBe('14:30');
+    expect(fortudo.tasks[3].endTime).toBe('14:45');
+
+    // Restore original functions
+    fortudo.renderTasks = originalRenderTasks;
+    fortudo.updateLocalStorage = originalUpdateLocalStorage;
+  });
+
+  test('only reschedules affected tasks when a task is completed late', () => {
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
+
+    // Setup window.confirm mock to always return true for any confirmation dialogs
+    window.confirm = jest.fn().mockReturnValue(true);
+
+    // Mock DOM-dependent functions to avoid side effects during testing
+    const originalRenderTasks = fortudo.renderTasks;
+    const originalUpdateLocalStorage = fortudo.updateLocalStorage;
+
+    fortudo.renderTasks = jest.fn();
+    fortudo.updateLocalStorage = jest.fn();
+
+    // Initial tasks with specified schedule:
+    // Task A: 09:00-10:00
+    // Task B: 11:00-11:30
+    // Task C: 13:00-14:00
+    const taskA = {
+        description: 'Task A',
+        startTime: '09:00',
+        endTime: '10:00',
+        duration: 60,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    const taskB = {
+        description: 'Task B',
+        startTime: '11:00',
+        endTime: '11:30',
+        duration: 30,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    const taskC = {
+        description: 'Task C',
+        startTime: '13:00',
+        endTime: '14:00',
+        duration: 60,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false
+    };
+
+    // Add tasks to the system
+    fortudo.addTask(taskA);
+    fortudo.addTask(taskB);
+    fortudo.addTask(taskC);
+
+    // Verify initial task positions
+    expect(fortudo.tasks[0].description).toBe('Task A');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('10:00');
+
+    expect(fortudo.tasks[1].description).toBe('Task B');
+    expect(fortudo.tasks[1].startTime).toBe('11:00');
+    expect(fortudo.tasks[1].endTime).toBe('11:30');
+
+    expect(fortudo.tasks[2].description).toBe('Task C');
+    expect(fortudo.tasks[2].startTime).toBe('13:00');
+    expect(fortudo.tasks[2].endTime).toBe('14:00');
+
+    // Simulate current time of 12:30 PM (for late completion of Task A)
+    const currentTime = '12:30 PM';
+    const timeElement = document.getElementById('current-time');
+    if (timeElement) {
+        timeElement.textContent = currentTime;
+    } else {
+        const div = document.createElement('div');
+        div.id = 'current-time';
+        div.textContent = currentTime;
+        document.body.appendChild(div);
+    }
+
+    // Complete Task A (index 0) at 12:30 PM (later than scheduled)
+    // This should trigger rescheduling of Task B but not Task C
+    fortudo.completeTask(0);
+
+    // Verify tasks have been rescheduled correctly after late completion
+    // Expected results:
+    // - Task A: 9am-12:30pm (completed, end time adjusted - index 0)
+    // - Task B: 12:30pm-1:00pm (moved later - index 1)
+    // - Task C: 1:00pm-2:00pm (unchanged - index 2)
+
+    expect(fortudo.tasks[0].description).toBe('Task A');
+    expect(fortudo.tasks[0].status).toBe('completed');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('12:30');     // End time should be adjusted to actual completion time
+    expect(fortudo.tasks[0].duration).toBe(210);        // Duration should now be 3.5 hours (210 minutes)
+
+    expect(fortudo.tasks[1].description).toBe('Task B');
+    expect(fortudo.tasks[1].startTime).toBe('12:30');   // Rescheduled to start after Task A completion
+    expect(fortudo.tasks[1].endTime).toBe('13:00');     // Still 30 minutes duration
+    expect(fortudo.tasks[1].duration).toBe(30);         // Duration unchanged
+
+    expect(fortudo.tasks[2].description).toBe('Task C');
+    expect(fortudo.tasks[2].startTime).toBe('13:00');   // Remains unchanged
+    expect(fortudo.tasks[2].endTime).toBe('14:00');     // Remains unchanged
+    expect(fortudo.tasks[2].duration).toBe(60);         // Duration unchanged
+
+    // Restore original functions
+    fortudo.renderTasks = originalRenderTasks;
+    fortudo.updateLocalStorage = originalUpdateLocalStorage;
+  });
 });
 
 // Add Edge Case Tests
@@ -464,8 +726,8 @@ describe('Edge Case Tests', () => {
   });
 
   test('skips tasks being edited during rescheduling', () => {
-    // Reset tasks
-    fortudo.tasks = [];
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
 
     // Add sequential tasks with the middle task being edited
     const task1 = {
@@ -526,8 +788,8 @@ describe('Edge Case Tests', () => {
   });
 
   test('cancels deletion when clicking away from confirm icon', () => {
-    // Reset tasks
-    fortudo.tasks = [];
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
 
     // Add a task with confirmingDelete set to true
     const task = {
@@ -611,8 +873,8 @@ describe('DOM Interaction', () => {
   });
 
   test('completing a task enables the next task checkbox', () => {
-    // Reset tasks
-    fortudo.tasks = [];
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
 
     // Add sequential tasks
     const task1 = {
@@ -668,8 +930,10 @@ describe('DOM Interaction', () => {
   });
 
   test('clicking outside an editing task cancels the edit', () => {
+    // Clear tasks while maintaining the reference
+    fortudo.tasks.length = 0;
+
     // Set up a task in edit mode
-    fortudo.tasks = [];
     const task = {
       id: 1,
       description: 'Test Task',
@@ -728,7 +992,7 @@ describe('Storage Functionality', () => {
 // 6. INTEGRATION TESTS
 describe('Integration Tests', () => {
   test('task workflow: add, update, complete, delete', () => {
-    // This test will be a placeholder until we refactor app.js
+    // FIXME: This test will be a placeholder until we refactor app.js
     // to make its functions more accessible for testing
 
     // Once refactored, this test will simulate a complete user workflow
