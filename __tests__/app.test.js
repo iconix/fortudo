@@ -704,6 +704,103 @@ describe('Auto-rescheduling Tests', () => {
     fortudo.renderTasks = originalRenderTasks;
     fortudo.updateLocalStorage = originalUpdateLocalStorage;
   });
+
+  test('reschedules subsequent tasks when a task duration is increased', () => {
+    // Clear tasks
+    fortudo.tasks.length = 0;
+
+    // Add sequential tasks
+    const task1 = {
+      description: 'Task 1',
+      startTime: '09:00',
+      endTime: '10:00',
+      duration: 60,
+      status: 'incomplete',
+      editing: false,
+      confirmingDelete: false
+    };
+
+    const task2 = {
+      description: 'Task 2',
+      startTime: '10:00',
+      endTime: '11:00',
+      duration: 60,
+      status: 'incomplete',
+      editing: false,
+      confirmingDelete: false
+    };
+
+    // Add tasks
+    fortudo.addTask(task1);
+    fortudo.addTask(task2);
+
+    // Mock confirm to return true
+    window.confirm = jest.fn().mockReturnValue(true);
+
+    // Update task1 as being edited with longer duration
+
+    // NOTE: having task1 in the `tasks` array set as editing while
+    // having updatedTask1 as not editing is how the app works today
+    // - unclear if this is necessary but just trying to match app behavior
+
+    task1.editing = true;
+
+    const updatedTask1 = {
+      ...task1,
+      endTime: '10:30',
+      duration: 90,
+      editing: false
+    };
+
+    fortudo.updateTask(0, updatedTask1);
+
+    // Verify task2 was pushed back
+    expect(fortudo.tasks[1].startTime).toBe('10:30');
+    expect(fortudo.tasks[1].endTime).toBe('11:30');
+  });
+
+  test('does not reschedule completed tasks', () => {
+    // Clear tasks
+    fortudo.tasks.length = 0;
+
+    // Add a completed task
+    const completedTask = {
+      description: 'Completed Task',
+      startTime: '09:00',
+      endTime: '10:00',
+      duration: 60,
+      status: 'completed', // Task is already completed
+      editing: false,
+      confirmingDelete: false
+    };
+
+    // Add an incomplete task with potential overlap
+    const newTask = {
+      description: 'New Task',
+      startTime: '09:30',
+      endTime: '10:30',
+      duration: 60,
+      status: 'incomplete',
+      editing: false,
+      confirmingDelete: false
+    };
+
+    fortudo.addTask(completedTask);
+
+    // Mock confirm to return true
+    window.confirm = jest.fn().mockReturnValue(true);
+
+    fortudo.addTask(newTask);
+
+    // Verify completed task remains unchanged
+    expect(fortudo.tasks[0].description).toBe('Completed Task');
+    expect(fortudo.tasks[0].startTime).toBe('09:00');
+    expect(fortudo.tasks[0].endTime).toBe('10:00');
+
+    // Verify new task remains as is, since it's ok to overlap with completed tasks
+    expect(fortudo.tasks[1].startTime).toBe('09:30');
+    expect(fortudo.tasks[1].endTime).toBe('10:30');
+  });
 });
 
 // Add Edge Case Tests

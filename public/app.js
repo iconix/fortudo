@@ -181,40 +181,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function autoReschedule(newTask, trigger = 'Adding', askToConfirm = false) {
         // TODO: should probably allow for tasks that cannot be rescheduled (e.g., a meeting) and handle conflict resolution gracefully
         let rescheduleOK = true;
-        let nextStartTime = newTask.endTime;
-        tasks.forEach((existingTask, index) => {
-            // skip currently being edited task
-            if (existingTask.editing) return;
 
-            if (tasksOverlap(newTask, existingTask)) {
-                if (askToConfirm && !window.confirm(`${trigger} this task will cause overlap in your schedule. Do you want to continue with auto-rescheduling?`)) {
-                    rescheduleOK = false;
-                    return;
-                }
-
-                existingTask.startTime = nextStartTime;
-                existingTask.endTime = calculateEndTime(existingTask.startTime, existingTask.duration);
-                nextStartTime = existingTask.endTime;
-
-                // reschedule any other tasks this might affect
-                existingTask.editing = true;
-                autoReschedule(existingTask, trigger, false);
-                existingTask.editing = false;
-            }
-        });
-        return rescheduleOK;
-
-        /*
+        // get overlapping tasks, excluding those being edited or completed
         const overlappingTasks = tasks.filter(task =>
             task !== newTask &&
-            !task.editing && // skip tasks already being processed to prevent infinite recursion
+            !task.editing &&
+            task.status !== 'completed' &&
             tasksOverlap(newTask, task)
         );
 
         if (overlappingTasks.length > 0 && askToConfirm) {
             if (!window.confirm(`${trigger} this task will cause overlap in your schedule. Do you want to continue with auto-rescheduling?`)) {
                 rescheduleOK = false;
-                newTask.editing = false;
                 return rescheduleOK;
             }
         }
@@ -234,7 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
             autoReschedule(task, trigger, false);
             task.editing = false;
         }
-        */
+
+        return rescheduleOK;
     }
 
     /**
@@ -314,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         tasks.push(task);
+        // sort tasks by start time to maintain correct order
         tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
         renderTasks();
@@ -334,6 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         tasks[index] = { ...task, editing: false };
+        // sort tasks by start time to maintain correct order
         tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
         renderTasks();
