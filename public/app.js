@@ -289,9 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function getSuggestedStartTime() {
         if (tasks.length === 0) {
-            // No tasks, use current time rounded up to closest 15 minutes
+            // No tasks, use current time rounded up to closest 5 minutes
             const now = new Date();
-            const minutes = Math.ceil(now.getMinutes() / 15) * 15;
+            const minutes = Math.ceil(now.getMinutes() / 5) * 5;
             now.setMinutes(minutes, 0, 0);
             // Get current time in HH:MM format
             return now.toTimeString().substring(0, 5);

@@ -1091,7 +1091,7 @@ describe('DOM Interaction', () => {
     });
 
     describe('Start Time Field Population', () => {
-      test('when task list is empty, start time is set to current time, rounded up to the nearest 15 minutes', () => {
+      test('when task list is empty, start time is set to current time, rounded up to the nearest 5 minutes', () => {
         // Clear tasks and trigger updateStartTimeField
         fortudo.tasks.length = 0;
 
@@ -1111,7 +1111,7 @@ describe('DOM Interaction', () => {
         const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
 
         // Expected format: HH:MM
-        const expected = '10:15'; // 10:09 rounded up to nearest 15 min
+        const expected = '10:10'; // 10:09 rounded up to nearest 5 min
 
         // Verify the start time input has been set to the current time
         expect(startTimeInput.value).toBe(expected);
@@ -1281,7 +1281,7 @@ describe('DOM Interaction', () => {
 
         // Verify that the start time changed
         expect(time1Value).toBe('10:00');
-        expect(time2Value).toBe('10:15');
+        expect(time2Value).toBe('10:05');
 
         // Restore the original Date
         global.Date = originalDate;
@@ -1347,8 +1347,8 @@ describe('DOM Interaction', () => {
 
         // Create mock dates
         const time1 = new Date(2023, 0, 1, 10, 0); // 10:00 AM
-        const time2 = new Date(2023, 0, 1, 10, 15); // 10:15 AM
-        const time3 = new Date(2023, 0, 1, 10, 30); // 10:30 AM
+        const time2 = new Date(2023, 0, 1, 10, 5); // 10:05 AM
+        const time3 = new Date(2023, 0, 1, 10, 10); // 10:10 AM
 
         try {
           // Step 1: Set initial time (10:00 AM)
@@ -1366,7 +1366,7 @@ describe('DOM Interaction', () => {
           descriptionInput.value = 'Test Description';
           durationInput.value = '30';
 
-          // Step 2: Change time (10:15 AM)
+          // Step 2: Change time (10:05 AM)
           // @ts-ignore - Mocking Date constructor for testing
           global.Date = function() { return time2; };
 
@@ -1374,9 +1374,9 @@ describe('DOM Interaction', () => {
           fortudo.renderDateTime();
 
           // Verify time updated when form is filled
-          expect(startTimeInput.value).toBe('10:15');
+          expect(startTimeInput.value).toBe('10:05');
 
-          // Step 3: Change time again (10:30 AM)
+          // Step 3: Change time again (10:10 AM)
           // @ts-ignore - Mocking Date constructor for testing
           global.Date = function() { return time3; };
 
@@ -1384,7 +1384,7 @@ describe('DOM Interaction', () => {
           fortudo.renderDateTime();
 
           // Verify that start time continues to update
-          expect(startTimeInput.value).toBe('10:30');
+          expect(startTimeInput.value).toBe('10:10');
         } finally {
           // Always restore original Date
           global.Date = originalDate;
