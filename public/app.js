@@ -282,6 +282,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Get the suggested start time for a new task
+     * Uses the end time of the latest task if any exist,
+     * otherwise uses the current time
+     * @returns {string} - Suggested start time in 24-hour format (HH:MM)
+     */
+    function getSuggestedStartTime() {
+        if (tasks.length === 0) {
+            // No tasks, use current time
+            const now = new Date();
+            // Get current time in HH:MM format
+            return now.toTimeString().substring(0, 5);
+        }
+
+        // Find task with latest end time
+        // Sort by end time in descending order
+        const sortedTasks = [...tasks].sort((a, b) => {
+            const endA = calculateMinutes(a.endTime);
+            const endB = calculateMinutes(b.endTime);
+            return endB - endA; // descending order
+        });
+
+        // Return the end time of the latest task
+        return sortedTasks[0].endTime;
+    }
+
+    /**
+     * Update the start time input field with a suggested time
+     * @param {Date|null} startTime - the start time to set, or null to use suggested time
+     */
+    function updateStartTimeField(startTime = null) {
+        if (!taskForm) return;
+
+        const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
+        if (startTimeInput) {
+            startTimeInput.value = startTime ? startTime.toTimeString().substring(0, 5) : getSuggestedStartTime();
+        }
+    }
+
+    /**
      * Add a new task
      * @param {Task} task - The task to add
      */
@@ -405,6 +444,15 @@ document.addEventListener('DOMContentLoaded', () => {
             dateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         } else {
             console.error('Date element not found. Date rendering will not work.');
+        }
+
+        // Update the start time if it's based on current time (no tasks exist)
+        if (tasks.length === 0 && taskForm) {
+            // Only update if the form is not actively being filled out (check if description is empty)
+            const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
+            if (descriptionInput && !descriptionInput.value) {
+                updateStartTimeField(now);
+            }
         }
     }
 
@@ -682,6 +730,24 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         addTask(task);
         taskForm.reset();
+
+        // After adding a task and resetting the form, update the start time field
+        updateStartTimeField();
+
+        // Focus on the description input field to start a new task entry
+        const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
+        if (descriptionInput) {
+            descriptionInput.focus();
+        }
+    });
+
+    // Add focus event to the form to update start time when user clicks in the form
+    taskForm.addEventListener('focusin', () => {
+        // Only update if start time is empty
+        const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
+        if (startTimeInput && !startTimeInput.value) {
+            updateStartTimeField();
+        }
     });
 
     const deleteAllButton = /** @type {HTMLButtonElement|null} */(document.getElementById('delete-all'));
@@ -715,6 +781,8 @@ document.addEventListener('DOMContentLoaded', () => {
         convertTo24HourTime: convertTo24HourTime,
         convertTo12HourTime: convertTo12HourTime,
         calculateEndTime: calculateEndTime,
+        getSuggestedStartTime: getSuggestedStartTime,
+        updateStartTimeField: updateStartTimeField,
 
         // task management functions
         tasksOverlap: tasksOverlap,
@@ -729,6 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteAllTasks: deleteAllTasks,
         updateLocalStorage: updateLocalStorage,
         renderDateTime: renderDateTime,
+        renderTasks: renderTasks,
     };
 
     // =======================
@@ -746,6 +815,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     renderTasks();
     // renderFreeTime();
+
+    // Initialize the start time field when the page loads
+    updateStartTimeField();
 
     setInterval(renderDateTime, 1000);
 });
