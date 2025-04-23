@@ -289,8 +289,10 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function getSuggestedStartTime() {
         if (tasks.length === 0) {
-            // No tasks, use current time
+            // No tasks, use current time rounded up to closest 15 minutes
             const now = new Date();
+            const minutes = Math.ceil(now.getMinutes() / 15) * 15;
+            now.setMinutes(minutes, 0, 0);
             // Get current time in HH:MM format
             return now.toTimeString().substring(0, 5);
         }
@@ -309,14 +311,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * Update the start time input field with a suggested time
-     * @param {Date|null} startTime - the start time to set, or null to use suggested time
      */
-    function updateStartTimeField(startTime = null) {
+    function updateStartTimeField() {
         if (!taskForm) return;
 
         const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
         if (startTimeInput) {
-            startTimeInput.value = startTime ? startTime.toTimeString().substring(0, 5) : getSuggestedStartTime();
+            startTimeInput.value = getSuggestedStartTime();
         }
     }
 
@@ -448,11 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Update the start time if it's based on current time (no tasks exist)
         if (tasks.length === 0 && taskForm) {
-            // Only update if the form is not actively being filled out (check if description is empty)
-            const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
-            if (descriptionInput && !descriptionInput.value) {
-                updateStartTimeField(now);
-            }
+            updateStartTimeField();
         }
     }
 
