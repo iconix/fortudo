@@ -437,6 +437,13 @@ document.addEventListener('DOMContentLoaded', () => {
             tasks = [];
             renderTasks();
             updateLocalStorage();
+
+            // after deleting all tasks, update the start time field
+            const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm?.querySelector('input[name="start-time"]'));
+            if (startTimeInput) {
+                startTimeInput.value = '';
+                updateStartTimeField();
+            }
         }
     }
 
