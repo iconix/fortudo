@@ -33,8 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
      * @property {boolean} confirmingDelete - whether delete is being confirmed
      */
 
-    // Use the tasks array from the global fortudo object
-    // This ensures it's the same array reference used by tests
+    // use the tasks array from the global fortudo object
+    // this ensures it's the same array reference used by tests
     /** @type {Task[]} */
     // @ts-ignore - accessing our custom namespace
     const tasks = window.fortudo.tasks;
@@ -114,6 +114,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     }
 
+    /**
+     * Convert a 12-hour time string to 24-hour format
+     * @param {string} time12Hour - Time in 12-hour format (HH:MM AM/PM)
+     * @returns {string} - Time in 24-hour format (HH:MM)
+     */
     function convertTo24HourTime(time12Hour) {
         let hours = parseInt(time12Hour.split(':')[0]);
         let minutes = time12Hour.split(':')[1].split(' ')[0];
@@ -130,6 +135,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${hours.toString().padStart(2, '0')}:${minutes}`;
     }
 
+    /**
+     * Convert a 24-hour time string to 12-hour format
+     * @param {string} time24Hour - Time in 24-hour format (HH:MM)
+     * @returns {string} - Time in 12-hour format (HH:MM AM/PM)
+     */
     function convertTo12HourTime(time24Hour) {
         let hours = parseInt(time24Hour.split(':')[0]);
         let minutes = time24Hour.split(':')[1];
@@ -243,41 +253,41 @@ document.addEventListener('DOMContentLoaded', () => {
      * @returns {boolean} - Whether tasks overlap
      */
     function tasksOverlap(task1, task2) {
-        // Convert times to minutes past midnight
+        // convert times to minutes past midnight
         const start1 = calculateMinutes(task1.startTime);
         const end1 = calculateMinutes(task1.endTime);
         const start2 = calculateMinutes(task2.startTime);
         const end2 = calculateMinutes(task2.endTime);
 
-        // Check if tasks cross midnight
+        // check if tasks cross midnight
         const task1CrossesMidnight = end1 < start1;
         const task2CrossesMidnight = end2 < start2;
 
-        // Handle midnight crossing by normalizing the time ranges
+        // handle midnight crossing by normalizing the time ranges
 
         if (task1CrossesMidnight && !task2CrossesMidnight) {
-            // Task1 crosses midnight, task2 doesn't
-            // Overlap occurs if either:
-            // 1. Task2 starts before task1 ends on the next day (start2 < end1)
-            // 2. Task2 starts after or at the same time task1 starts on the first day (start2 >= start1)
+            // task1 crosses midnight, task2 doesn't
+            // overlap occurs if either:
+            // 1. task2 starts before task1 ends on the next day (start2 < end1)
+            // 2. task2 starts after or at the same time task1 starts on the first day (start2 >= start1)
             return start2 < end1 || start2 >= start1;
         }
 
         if (!task1CrossesMidnight && task2CrossesMidnight) {
-            // Task2 crosses midnight, task1 doesn't
-            // Overlap occurs if either:
-            // 1. Task1 starts before task2 ends on the next day (start1 < end2)
-            // 2. Task1 starts after or at the same time task2 starts on the first day (start1 >= start2)
+            // task2 crosses midnight, task1 doesn't
+            // overlap occurs if either:
+            // 1. task1 starts before task2 ends on the next day (start1 < end2)
+            // 2. task1 starts after or at the same time task2 starts on the first day (start1 >= start2)
             return start1 < end2 || start1 >= start2;
         }
 
         if (task1CrossesMidnight && task2CrossesMidnight) {
-            // Both tasks cross midnight
-            // They must at least overlap at the midnight point (00:00)
+            // both tasks cross midnight
+            // they must at least overlap at the midnight point (00:00)
             return true;
         }
 
-        // Neither task crosses midnight - standard interval overlap check
+        // neither task crosses midnight - standard interval overlap check
         return start1 < end2 && start2 < end1;
     }
 
@@ -289,23 +299,23 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function getSuggestedStartTime() {
         if (tasks.length === 0) {
-            // No tasks, use current time rounded up to closest 5 minutes
+            // no tasks, use current time rounded up to closest 5 minutes
             const now = new Date();
             const minutes = Math.ceil(now.getMinutes() / 5) * 5;
             now.setMinutes(minutes, 0, 0);
-            // Get current time in HH:MM format
+            // get current time in HH:MM format
             return now.toTimeString().substring(0, 5);
         }
 
-        // Find task with latest end time
-        // Sort by end time in descending order
+        // find task with latest end time
+        // sort by end time in descending order
         const sortedTasks = [...tasks].sort((a, b) => {
             const endA = calculateMinutes(a.endTime);
             const endB = calculateMinutes(b.endTime);
             return endB - endA; // descending order
         });
 
-        // Return the end time of the latest task
+        // return the end time of the latest task
         return sortedTasks[0].endTime;
     }
 
@@ -390,6 +400,11 @@ document.addEventListener('DOMContentLoaded', () => {
         updateLocalStorage();
     }
 
+    /**
+     * Delete a task
+     * @param {number} index - Task index
+     * @param {boolean} confirmed - Whether the delete was confirmed
+     */
     function deleteTask(index, confirmed = false) {
         if (confirmed) {
             tasks.splice(index, 1);
@@ -402,16 +417,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * Edit a task
+     * @param {number} index - Task index
+     */
     function editTask(index) {
         tasks[index].editing = true;
         renderTasks();
     }
 
+    /**
+     * Cancel edit of a task
+     * @param {number} index - Task index
+     */
     function cancelEdit(index) {
         tasks[index].editing = false;
         renderTasks();
     }
 
+    /**
+     * Delete all tasks
+     */
     function deleteAllTasks() {
         if (tasks.length > 0 && window.confirm("Are you sure you want to delete all tasks?")) {
             // @ts-ignore - accessing our custom namespace
@@ -421,6 +447,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * Update local storage with tasks
+     */
     function updateLocalStorage() {
         localStorage.setItem('tasks', JSON.stringify(tasks));
     }
@@ -447,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Date element not found. Date rendering will not work.');
         }
 
-        // Update the start time if it's based on current time (no tasks exist)
+        // update the start time if it's based on current time (no tasks exist)
         if (tasks.length === 0 && taskForm) {
             updateStartTimeField();
         }
@@ -496,6 +525,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </form>`;
     }
 
+    /**
+     * Render a task in view mode
+     * @param {Task} task - The task to render
+     * @param {number} index - The index of the task
+     * @returns {string} - HTML for the task
+     */
     function renderViewTask(task, index) {
         const isDisabled = firstIncompleteTaskFound || task.status === 'completed';
         if (!firstIncompleteTaskFound && task.status !== 'completed') firstIncompleteTaskFound = true;
@@ -728,19 +763,19 @@ document.addEventListener('DOMContentLoaded', () => {
         addTask(task);
         taskForm.reset();
 
-        // After adding a task and resetting the form, update the start time field
+        // after adding a task and resetting the form, update the start time field
         updateStartTimeField();
 
-        // Focus on the description input field to start a new task entry
+        // focus on the description input field to start a new task entry
         const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
         if (descriptionInput) {
             descriptionInput.focus();
         }
     });
 
-    // Add focus event to the form to update start time when user clicks in the form
+    // add focus event to the form to update start time when user clicks in the form
     taskForm.addEventListener('focusin', () => {
-        // Only update if start time is empty
+        // only update if start time is empty
         const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
         if (startTimeInput && !startTimeInput.value) {
             updateStartTimeField();
@@ -813,10 +848,10 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTasks();
     // renderFreeTime();
 
-    // Initialize the start time field when the page loads
+    // initialize the start time field when the page loads
     updateStartTimeField();
 
-    // Set focus on the description input field when the page loads
+    // set focus on the description input field when the page loads
     const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
     if (descriptionInput) {
         descriptionInput.focus();
