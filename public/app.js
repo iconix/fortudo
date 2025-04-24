@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // this ensures it's the same array reference used by tests
     /** @type {Task[]} */
     // @ts-ignore - accessing our custom namespace
-    const tasks = window.fortudo.tasks;
+    let tasks = window.fortudo.tasks;
 
     // TEMP: initialize with any predefined tasks if needed
     /*
@@ -307,16 +307,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return now.toTimeString().substring(0, 5);
         }
 
-        // find task with latest end time
-        // sort by end time in descending order
-        const sortedTasks = [...tasks].sort((a, b) => {
-            const endA = calculateMinutes(a.endTime);
-            const endB = calculateMinutes(b.endTime);
-            return endB - endA; // descending order
-        });
-
-        // return the end time of the latest task
-        return sortedTasks[0].endTime;
+        // return the end time of the latest task (assumes tasks are already sorted)
+        return tasks[tasks.length - 1].endTime;
     }
 
     /**
@@ -326,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!taskForm) return;
 
         const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
-        if (startTimeInput) {
+        if (startTimeInput && !startTimeInput.value) {
             startTimeInput.value = getSuggestedStartTime();
         }
     }
@@ -474,11 +466,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         } else {
             console.error('Date element not found. Date rendering will not work.');
-        }
-
-        // update the start time if it's based on current time (no tasks exist)
-        if (tasks.length === 0 && taskForm) {
-            updateStartTimeField();
         }
     }
 
@@ -773,15 +760,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // add focus event to the form to update start time when user clicks in the form
-    taskForm.addEventListener('focusin', () => {
-        // only update if start time is empty
-        const startTimeInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="start-time"]'));
-        if (startTimeInput && !startTimeInput.value) {
-            updateStartTimeField();
-        }
-    });
-
     const deleteAllButton = /** @type {HTMLButtonElement|null} */(document.getElementById('delete-all'));
     if (deleteAllButton) {
         deleteAllButton.addEventListener('click', deleteAllTasks);
@@ -844,6 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (storedTasks && storedTasks.length > 0) {
         // @ts-ignore - accessing our custom namespace
         window.fortudo.tasks = storedTasks;
+        tasks = storedTasks;
     }
     renderTasks();
     // renderFreeTime();

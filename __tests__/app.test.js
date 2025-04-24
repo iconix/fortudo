@@ -1095,13 +1095,11 @@ describe('DOM Interaction', () => {
         // Clear tasks and trigger updateStartTimeField
         fortudo.tasks.length = 0;
 
-        // Create a fixed "now" time for testing
+        // Mock a fixed "now" time for testing
         const now = new Date(2023, 0, 1, 10, 9); // 10:09 AM
-
-        // Mock Date constructor
-        const originalDate = global.Date;
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = function() { return now; };
+        const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => {
+          return now;
+        });
 
         // Call the function that updates the start time field
         fortudo.updateStartTimeField();
@@ -1117,7 +1115,7 @@ describe('DOM Interaction', () => {
         expect(startTimeInput.value).toBe(expected);
 
         // Restore the original Date
-        global.Date = originalDate;
+        dateSpy.mockRestore();
       });
 
       test('when tasks exist, start time is set to end time of latest task', () => {
@@ -1176,15 +1174,13 @@ describe('DOM Interaction', () => {
         const descriptionInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="description"]'));
 
         // Set a manual start time and add some description text
-        startTimeInput.value = '14:45';
+        startTimeInput.value = '14:42';
         descriptionInput.value = 'My Task';
 
-        // Simulate focusing in the form (which would trigger updateStartTimeField)
-        const focusEvent = new Event('focusin');
-        form.dispatchEvent(focusEvent);
+        fortudo.updateStartTimeField();
 
         // Verify that the manual start time is preserved
-        expect(startTimeInput.value).toBe('14:45');
+        expect(startTimeInput.value).toBe('14:42');
       });
 
       test('after adding a task, start time is updated for the next task', () => {
@@ -1204,18 +1200,8 @@ describe('DOM Interaction', () => {
         durationHoursInput.value = '1';
         durationMinutesInput.value = '30'; // Total duration: 90 min
 
-        // Mock the updateStartTimeField function to track if it's called
-        const originalUpdateStartTimeField = fortudo.updateStartTimeField;
-        fortudo.updateStartTimeField = jest.fn().mockImplementation(() => {
-          // Call the original to maintain functionality
-          originalUpdateStartTimeField();
-        });
-
-        // Mock the reset function to track if it's called
-        const originalReset = form.reset;
-        form.reset = jest.fn().mockImplementation(() => {
-          // Don't actually reset so we can check values
-        });
+        // Create a spy for the form reset method
+        const resetSpy = jest.spyOn(HTMLFormElement.prototype, 'reset');
 
         // Mock focus function on description input
         descriptionInput.focus = jest.fn();
@@ -1229,7 +1215,7 @@ describe('DOM Interaction', () => {
         expect(fortudo.tasks.length).toBe(1);
 
         // Verify form.reset was called
-        expect(form.reset).toHaveBeenCalled();
+        expect(resetSpy).toHaveBeenCalled();
 
         // Verify focus was set to description field
         expect(descriptionInput.focus).toHaveBeenCalled();
@@ -1239,156 +1225,7 @@ describe('DOM Interaction', () => {
         expect(startTimeInput.value).toBe('10:30');
 
         // Restore original functions
-        fortudo.updateStartTimeField = originalUpdateStartTimeField;
-        form.reset = originalReset;
-      });
-
-      test('start time updates with clock when form is empty and no tasks exist', () => {
-        // Clear tasks
-        fortudo.tasks.length = 0;
-
-        // Reset form
-        const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-        form.reset();
-
-        // Create two different times for testing
-        const time1 = new Date(2023, 0, 1, 10, 0); // 10:00 AM
-        const time2 = new Date(2023, 0, 1, 10, 1); // 10:01 AM
-
-        // Mock Date to return the first time
-        const originalDate = global.Date;
-        const mockDate1 = function() { return time1; };
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = mockDate1;
-
-        // Call renderDateTime to update the time
-        fortudo.renderDateTime();
-
-        // Get the start time input after first update
-        const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-        const time1Value = startTimeInput.value;
-
-        // Mock Date to return the second time
-        const mockDate2 = function() { return time2; };
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = mockDate2;
-
-        // Call renderDateTime again to simulate time passing
-        fortudo.renderDateTime();
-
-        // Get the updated start time
-        const time2Value = startTimeInput.value;
-
-        // Verify that the start time changed
-        expect(time1Value).toBe('10:00');
-        expect(time2Value).toBe('10:05');
-
-        // Restore the original Date
-        global.Date = originalDate;
-      });
-
-      test('start time stops updating when description field is filled', () => {
-        // Clear tasks
-        fortudo.tasks.length = 0;
-
-        // Reset and prepare the form
-        const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-        form.reset();
-
-        const descriptionInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="description"]'));
-        const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-
-        // Store original Date constructor
-        const originalDate = global.Date;
-
-        // Set initial time and update
-        const time1 = new Date(2023, 0, 1, 10, 0); // 10:00 AM
-
-        // Mock Date to return our first time
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = function() { return time1; };
-
-        // First render with empty form
-        fortudo.renderDateTime();
-        const initialTime = startTimeInput.value;
-
-        // Fill in description
-        descriptionInput.value = 'Test Description';
-
-        // Change time
-        const time2 = new Date(2023, 0, 1, 10, 5); // 10:05 AM
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = function() { return time2; };
-
-        // Render again
-        fortudo.renderDateTime();
-
-        // Verify that start time did not update
-        expect(startTimeInput.value).toBe(initialTime);
-
-        // Restore original Date
-        global.Date = originalDate;
-      });
-
-      test('start time keeps updating while filling out the task form', () => {
-        // Clear tasks
-        fortudo.tasks.length = 0;
-
-        // Reset and prepare the form
-        const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-        form.reset();
-
-        const descriptionInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="description"]'));
-        const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-        const durationInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="duration-minutes"]'));
-
-        // Store original Date constructor
-        const originalDate = global.Date;
-
-        // Create mock dates
-        const time1 = new Date(2023, 0, 1, 10, 0); // 10:00 AM
-        const time2 = new Date(2023, 0, 1, 10, 5); // 10:05 AM
-        const time3 = new Date(2023, 0, 1, 10, 10); // 10:10 AM
-
-        try {
-          // Step 1: Set initial time (10:00 AM)
-          // @ts-ignore - Mocking Date constructor for testing
-          global.Date = function() { return time1; };
-
-          // Initial render
-          fortudo.renderDateTime();
-          const initialTime = startTimeInput.value;
-
-          // Verify initial time was set
-          expect(initialTime).toBe('10:00');
-
-          // Fill in description and duration
-          descriptionInput.value = 'Test Description';
-          durationInput.value = '30';
-
-          // Step 2: Change time (10:05 AM)
-          // @ts-ignore - Mocking Date constructor for testing
-          global.Date = function() { return time2; };
-
-          // Render with description and duration filled
-          fortudo.renderDateTime();
-
-          // Verify time updated when form is filled
-          expect(startTimeInput.value).toBe('10:05');
-
-          // Step 3: Change time again (10:10 AM)
-          // @ts-ignore - Mocking Date constructor for testing
-          global.Date = function() { return time3; };
-
-          // Render again
-          fortudo.renderDateTime();
-
-          // Verify that start time continues to update
-          expect(startTimeInput.value).toBe('10:10');
-        } finally {
-          // Always restore original Date
-          global.Date = originalDate;
-        }
+        resetSpy.mockRestore();
       });
 
       test('start time does not update when tasks exist', () => {
@@ -1417,9 +1254,9 @@ describe('DOM Interaction', () => {
 
         // Mock a new time
         const newTime = new Date(2023, 0, 1, 12, 0); // 12:00 PM
-        const originalDate = global.Date;
-        // @ts-ignore - Mocking Date constructor for testing
-        global.Date = function() { return newTime; };
+        const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => {
+          return newTime;
+        });
 
         // Render time again
         fortudo.renderDateTime();
@@ -1429,7 +1266,7 @@ describe('DOM Interaction', () => {
         expect(startTimeInput.value).toBe('10:00');
 
         // Restore original Date
-        global.Date = originalDate;
+        dateSpy.mockRestore();
       });
     });
 
@@ -1471,16 +1308,6 @@ describe('DOM Interaction', () => {
         // Mock focus method
         descriptionInput.focus = jest.fn();
 
-        // Mock form reset to prevent it from clearing our mocked functions
-        const originalReset = form.reset;
-        form.reset = jest.fn().mockImplementation(() => {
-          // Clear form values but preserve our mock functions
-          startTimeInput.value = '';
-          durationHoursInput.value = '';
-          durationMinutesInput.value = '';
-          // We'll set description value separately for the second submission
-        });
-
         // Mock confirm dialog (in case of task overlaps)
         window.confirm = jest.fn().mockReturnValue(true);
 
@@ -1513,9 +1340,6 @@ describe('DOM Interaction', () => {
 
         // Verify focus was called twice (once per submission)
         expect(descriptionInput.focus).toHaveBeenCalledTimes(2);
-
-        // Restore original reset function
-        form.reset = originalReset;
       });
     });
   });
