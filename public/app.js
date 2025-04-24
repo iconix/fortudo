@@ -816,5 +816,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the start time field when the page loads
     updateStartTimeField();
 
+    // Set focus on the description input field when the page loads
+    const descriptionInput = /** @type {HTMLInputElement|null} */(taskForm.querySelector('input[name="description"]'));
+    if (descriptionInput) {
+        descriptionInput.focus();
+    }
+
     setInterval(renderDateTime, 1000);
 });
