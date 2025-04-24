@@ -434,6 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tasks.length > 0 && window.confirm("Are you sure you want to delete all tasks?")) {
             // @ts-ignore - accessing our custom namespace
             window.fortudo.tasks = [];
+            tasks = [];
             renderTasks();
             updateLocalStorage();
         }
