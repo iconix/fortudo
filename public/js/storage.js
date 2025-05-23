@@ -11,8 +11,8 @@ export function loadTasks() {
       return JSON.parse(tasksString);
     } catch (error) {
       console.error("Error parsing tasks from localStorage:", error);
-      return []; // Return an empty array if parsing fails
+      return [];
     }
   }
-  return []; // Return an empty array if no tasks are found
+  return [];
 }

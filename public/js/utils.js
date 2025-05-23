@@ -27,7 +27,7 @@ export function calculateHoursAndMinutes(minutes) {
     if (remMinutes > 0) {
         timeStr += `${remMinutes}m`;
     } else if (timeStr === '') {
-        timeStr = '0m'; // handle case where minutes is 0
+        timeStr = '0m';
     }
 
     return timeStr.trim();
@@ -153,10 +153,9 @@ export function tasksOverlap(task1, task2) {
  * @returns {string} - Current time in 24-hour format (HH:MM)
  */
 export function getCurrentTimeRounded(date = new Date()) {
-    const now = date; // Use the provided or new date
+    const now = date;
     const minutes = Math.ceil(now.getMinutes() / 5) * 5;
 
-    // Create a new date object to avoid modifying the original 'now'
     const roundedDate = new Date(now.getTime());
 
     // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
@@ -170,7 +169,6 @@ export function getCurrentTimeRounded(date = new Date()) {
         roundedDate.setMinutes(minutes);
     }
 
-    // Get time in HH:MM format
     return roundedDate.toTimeString().substring(0, 5);
 }
 
