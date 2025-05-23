@@ -87,30 +87,39 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
     // Ensure the task that changed is not considered for being shifted by itself in this run
     // and is also not considered 'editing' in the context of schedulable tasks.
     const originalEditingState = taskThatChanged.editing;
-    taskThatChanged.editing = false; // Temporarily set to false to allow it to be a stable point for logic
+    taskThatChanged.editing = false; // Temporarily set to false for logic
 
-    const followingSchedulableTasks = allCurrentTasks
-        .filter(t =>
-            t !== taskThatChanged &&
-            t.status !== 'completed' &&
-            !t.editing && // Exclude other tasks that might be in an editing state
-            calculateMinutes(t.startTime) >= calculateMinutes(taskThatChanged.startTime)
-        )
-        .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+    // Identify tasks that overlap with taskThatChanged and need to be shifted.
+    // These are schedulable tasks whose current startTime is before taskThatChanged.endTime
+    // AND they actually overlap taskThatChanged.
+    const tasksToShift = allCurrentTasks.filter(t =>
+        t !== taskThatChanged &&
+        t.status !== 'completed' &&
+        !t.editing &&
+        tasksOverlap(t, taskThatChanged) // Ensure they actually overlap
+    ).sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime)); // Process in their current start order
 
-    let effectiveLastEndTime = taskThatChanged.endTime;
+    let currentCascadeEndTime = taskThatChanged.endTime;
 
-    for (const taskToShift of followingSchedulableTasks) {
-        if (calculateMinutes(taskToShift.startTime) < calculateMinutes(effectiveLastEndTime)) {
-            taskToShift.startTime = effectiveLastEndTime;
-            taskToShift.endTime = calculateEndTime(taskToShift.startTime, taskToShift.duration);
-            // Recursive call to handle cascading reschedules
-            performReschedule(taskToShift, allCurrentTasks);
+    for (const task of tasksToShift) {
+        // If the task (which we know overlaps taskThatChanged) starts before the current cascade end time,
+        // it means it needs to be shifted.
+        if (calculateMinutes(task.startTime) < calculateMinutes(currentCascadeEndTime)) {
+            task.startTime = currentCascadeEndTime;
+            task.endTime = calculateEndTime(task.startTime, task.duration);
+            // This task has been shifted, so it becomes the new point for the cascade.
+            currentCascadeEndTime = task.endTime; 
+            // Recursively reschedule based on this shifted task, as it might affect others.
+            performReschedule(task, allCurrentTasks); 
         }
-        effectiveLastEndTime = taskToShift.endTime;
+        // If a task in tasksToShift already starts at/after currentCascadeEndTime,
+        // it means a previous shift (or taskThatChanged itself) already pushed the cascade
+        // beyond this task's original start. The recursive calls should handle this.
+        // No, if it's in tasksToShift, it means it overlapped the *original* taskThatChanged.
+        // It *must* be shifted if its current startTime < currentCascadeEndTime.
     }
-    // Restore original editing state if it was changed
-    taskThatChanged.editing = originalEditingState;
+
+    taskThatChanged.editing = originalEditingState; // Restore original state
 }
 
 
@@ -164,8 +173,9 @@ export function addTask({ description, startTime, duration }) {
     }
 
     tasks.push(newTask);
-    performReschedule(newTask, tasks);
-    sortTasks(tasks);
+    sortTasks(tasks); // Sort to place newTask correctly
+    performReschedule(newTask, tasks); // Reschedule based on newTask's impact
+    sortTasks(tasks); // Final sort to ensure canonical order after potential shifts
     saveTasks(tasks);
     return { success: true, task: newTask };
 }
@@ -186,8 +196,9 @@ export function confirmAddTaskAndReschedule({ description, startTime, duration }
         confirmingDelete: false,
     };
     tasks.push(newTask);
-    performReschedule(newTask, tasks);
-    sortTasks(tasks);
+    sortTasks(tasks); // Sort first
+    performReschedule(newTask, tasks); // Then reschedule
+    sortTasks(tasks); // Final sort
     saveTasks(tasks);
     return { success: true, task: newTask };
 }

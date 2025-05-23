@@ -23,32 +23,8 @@
  */
 
 
-/**
- * Sets up mock localStorage for testing.
- * @returns {Object} Mock localStorage object
- */
-function setupMockLocalStorage() {
-  let store = {};
-  const localStorageMock = {
-    getItem: jest.fn(key => store[key] || null),
-    setItem: jest.fn((key, value) => {
-      store[key] = String(value);
-    }),
-    clear: jest.fn(() => {
-      store = {};
-    }),
-    removeItem: jest.fn(key => {
-      delete store[key];
-    })
-  };
-
-  Object.defineProperty(window, 'localStorage', {
-    value: localStorageMock,
-    writable: true
-  });
-
-  return localStorageMock;
-}
+// The old setupMockLocalStorage function was removed.
+// The new one (defined later in the file, around line 124 in previous listings) will be used.
 
 /**
  * Sets up the DOM for testing fortudo
@@ -101,8 +77,183 @@ async function setupIntegrationTestEnvironment() {
   await new Promise(resolve => setTimeout(resolve, 0)); // Ensures microtask queue is flushed.
 }
 
+// Definitions for localStorage mocks and helpers
+let mockLocalStorageStore = {};
+
+const localStorageMock = {
+    getItem: jest.fn(key => mockLocalStorageStore[key] || null),
+    setItem: jest.fn((key, value) => {
+        mockLocalStorageStore[key] = String(value);
+    }),
+    clear: jest.fn(() => {
+        mockLocalStorageStore = {};
+    }),
+    removeItem: jest.fn(key => {
+        delete mockLocalStorageStore[key];
+    }),
+    get length() {
+        return Object.keys(mockLocalStorageStore).length;
+    },
+    key: jest.fn(index => Object.keys(mockLocalStorageStore)[index] || null)
+};
+
+function setupMockLocalStorage() {
+  Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock,
+    writable: true,
+    configurable: true,
+  });
+  localStorageMock.clear(); 
+}
+
+function clearLocalStorage() {
+    localStorageMock.clear();
+}
+
+function saveTasksToLocalStorage(tasks) {
+    localStorageMock.setItem('tasks', JSON.stringify(tasks));
+}
+
+function getTaskDataFromLocalStorage() {
+    const tasksJson = localStorageMock.getItem('tasks');
+    return tasksJson ? JSON.parse(tasksJson) : [];
+}
+
+// DOM Interaction Helpers (minimal viable set, can be expanded)
+async function addTaskDOM(description, startTime, durationHours = '0', durationMinutes = '30') {
+    const descInput = document.getElementById('task-description');
+    const startTimeInput = document.getElementById('task-start-time');
+    const durationHoursSelect = document.getElementById('task-duration-hours');
+    const durationMinutesSelect = document.getElementById('task-duration-minutes');
+    const form = document.getElementById('task-form');
+
+    if (descInput) descInput.value = description;
+    if (startTimeInput) startTimeInput.value = startTime;
+    if (durationHoursSelect) durationHoursSelect.value = durationHours;
+    if (durationMinutesSelect) durationMinutesSelect.value = durationMinutes;
+    if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    
+    await new Promise(resolve => setTimeout(resolve, 0)); // Allow DOM updates
+}
+
+function getRenderedTasksDOM() {
+    const taskItems = document.querySelectorAll('#task-list li');
+    return Array.from(taskItems).map(li => {
+        const descriptionElem = li.querySelector('.task-description');
+        const timeElem = li.querySelector('.task-time');
+        let startTime12 = null;
+        let endTime12 = null;
+        if (timeElem && timeElem.textContent) {
+            const timeMatch = timeElem.textContent.match(/(\d{1,2}:\d{2} (?:AM|PM)) - (\d{1,2}:\d{2} (?:AM|PM))/);
+            if (timeMatch) {
+                startTime12 = timeMatch[1];
+                endTime12 = timeMatch[2];
+            }
+        }
+        const checkbox = li.querySelector('input[type="checkbox"]');
+        return {
+            description: descriptionElem ? descriptionElem.textContent.trim() : '',
+            startTime12: startTime12,
+            endTime12: endTime12,
+            isCompleted: checkbox ? checkbox.checked : false,
+            isEditing: !!li.querySelector('form[id^="edit-task-"]'),
+        };
+    });
+}
+
+async function updateTaskDOM(taskIndex, data) {
+    const editButtons = document.querySelectorAll('#task-list .btn-edit');
+    if (taskIndex < 0 || taskIndex >= editButtons.length) throw new Error(`Edit button for task index ${taskIndex} not found or out of bounds.`);
+    editButtons[taskIndex].click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const editForm = document.getElementById(`edit-task-${taskIndex}`);
+    if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
+
+    if (data.description !== undefined) editForm.querySelector('input[name="description"]').value = data.description;
+    if (data.startTime !== undefined) editForm.querySelector('input[name="start-time"]').value = data.startTime;
+    if (data.durationHours !== undefined) editForm.querySelector('select[name="duration-hours"]').value = data.durationHours;
+    if (data.durationMinutes !== undefined) editForm.querySelector('select[name="duration-minutes"]').value = data.durationMinutes;
+    
+    const saveButton = editForm.querySelector('.btn-save');
+    if (!saveButton) throw new Error(`Save button for edit form ${taskIndex} not found.`);
+    saveButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function setCurrentTimeInDOM(time12h) { 
+    const currentTimeDiv = document.getElementById('current-time');
+    if (currentTimeDiv) currentTimeDiv.textContent = time12h;
+}
+
+async function clickCompleteCheckbox(taskIndex) {
+    const checkboxes = document.querySelectorAll('#task-list li input[type="checkbox"]');
+    if (taskIndex < 0 || taskIndex >= checkboxes.length) throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
+    const checkbox = checkboxes[taskIndex];
+    checkbox.checked = !checkbox.checked; 
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function clickDeleteAllButton() {
+    const button = document.getElementById('delete-all');
+    if (!button) throw new Error(`Delete All button not found.`);
+    button.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function getEditFormForTask(index) {
+    return document.getElementById(`edit-task-${index}`);
+}
+
+function getTaskFormElement() {
+    return document.getElementById('task-form');
+}
+
+async function clickSaveButtonOnEditForm(taskIndex) {
+    const editForm = getEditFormForTask(taskIndex);
+    if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
+    const saveButton = editForm.querySelector('.btn-save');
+    if (!saveButton) throw new Error(`Save button for task ${taskIndex} not found.`);
+    saveButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function clickCancelButtonOnEditForm(taskIndex) {
+    const editForm = getEditFormForTask(taskIndex);
+    if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
+    const cancelButton = editForm.querySelector('.btn-cancel');
+    if (!cancelButton) throw new Error(`Cancel button for task ${taskIndex} not found.`);
+    cancelButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function clickEditButtonForTask(taskIndex) {
+    const taskItems = document.querySelectorAll('#task-list li');
+    if (taskIndex < 0 || taskIndex >= taskItems.length) throw new Error(`Task item for index ${taskIndex} not found.`);
+    const taskItem = taskItems[taskIndex];
+    const editButton = taskItem.querySelector('.btn-edit');
+    if (!editButton) throw new Error(`Edit button for task ${taskIndex} not found.`);
+    editButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
 module.exports = {
   setupIntegrationTestEnvironment,
-  setupMockLocalStorage,
-  setupDOM
+  setupMockLocalStorage, // This function is defined above
+  setupDOM,
+  clearLocalStorage, // This function is defined above
+  saveTasksToLocalStorage, // This function is defined above
+  getTaskDataFromLocalStorage, // This function is defined above
+  addTaskDOM,
+  getRenderedTasksDOM,
+  updateTaskDOM,
+  setCurrentTimeInDOM,
+  clickCompleteCheckbox,
+  clickDeleteAllButton,
+  getEditFormForTask,
+  getTaskFormElement,
+  clickSaveButtonOnEditForm,
+  clickCancelButtonOnEditForm,
+  clickEditButtonForTask,
 };

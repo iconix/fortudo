@@ -150,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (askConfirmation(result.reason || "Are you sure you want to delete all tasks?")) {
                     result = deleteAllTasks(true);
                 } else {
+                    console.log('Delete All Denied. Tasks before render: ' + JSON.stringify(getTasks())); // DEBUG
                     renderTasks(getTasks(), taskEventCallbacks); // Re-render to clear any confirmation states
                     return; // Exit, as user cancelled
                 }
