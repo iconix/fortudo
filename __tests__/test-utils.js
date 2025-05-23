@@ -84,9 +84,9 @@ function setupDOM() {
 /**
  * Sets up the testing environment (DOM, localStorage, global mocks) and
  * dynamically imports and initializes the main application module `public/js/app.js`.
- * @returns {Promise<FortudoTestingInterface>} A promise that resolves to the `window.fortudo` testing interface.
+ * @returns {Promise<void>} A promise that resolves when the environment is set up and app.js is initialized.
  */
-async function setupFortudoForTesting() {
+async function setupIntegrationTestEnvironment() {
   setupDOM();
   setupMockLocalStorage();
 
@@ -105,16 +105,12 @@ async function setupFortudoForTesting() {
   // though ideally, app.js setup for window.fortudo is synchronous after imports.
   await new Promise(resolve => setTimeout(resolve, 0)); // Ensures microtask queue is flushed.
 
-  // @ts-ignore - Accessing the global window.fortudo set up by app.js
-  if (!window.fortudo) {
-    throw new Error('window.fortudo was not initialized by app.js. Ensure app.js exposes it for testing.');
-  }
-  // @ts-ignore
-  return window.fortudo;
+  // This function no longer checks for or returns window.fortudo.
+  // The app.js module, when imported, will execute and set up its event listeners.
 }
 
 module.exports = {
-  setupFortudoForTesting,
+  setupIntegrationTestEnvironment, // Renamed function
   setupMockLocalStorage,
   setupDOM
   // isFortudoReady is no longer needed or exported
