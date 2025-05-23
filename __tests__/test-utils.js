@@ -9,10 +9,6 @@
  * @property {boolean} confirmingDelete - Whether delete is being confirmed
  */
 
-// No need to import JSDOM as it's already configured by Jest
-
-// The old mockESModules function is removed as Jest now handles ES module imports
-// and test files will import directly from '../public/js/utils.js' or other modules.
 
 /**
  * @typedef {Object} FortudoTestingInterface - This is what `public/js/app.js` should expose on `window.fortudo` for tests.
@@ -23,14 +19,10 @@
  */
 
 
-// The old setupMockLocalStorage function was removed.
-// The new one (defined later in the file, around line 124 in previous listings) will be used.
-
 /**
  * Sets up the DOM for testing fortudo
  */
 function setupDOM() {
-  // Set up DOM elements that fortudo needs
   document.body.innerHTML = `
     <div id="task-list"></div>
     <form id="task-form">
@@ -300,11 +292,11 @@ async function clickEditButtonForTask(taskIndex) {
 
 module.exports = {
   setupIntegrationTestEnvironment,
-  setupMockLocalStorage, // This function is defined above
+  setupMockLocalStorage,
   setupDOM,
-  clearLocalStorage, // This function is defined above
-  saveTasksToLocalStorage, // This function is defined above
-  getTaskDataFromLocalStorage, // This function is defined above
+  clearLocalStorage,
+  saveTasksToLocalStorage,
+  getTaskDataFromLocalStorage,
   addTaskDOM,
   getRenderedTasksDOM,
   updateTaskDOM,

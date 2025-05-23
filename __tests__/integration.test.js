@@ -22,7 +22,6 @@ import {
     setCurrentTimeInDOM
 } from './test-utils.js';
 
-// Import setTasks to fix task manager state
 import { setTasks } from '../public/js/task-manager.js';
 
 // Mock storage.js to spy on saveTasks
@@ -32,7 +31,6 @@ jest.mock('../public/js/storage.js', () => ({
 }));
 import { saveTasks as mockSaveTasksInternal, loadTasks as mockLoadTasksInternal } from '../public/js/storage.js';
 
-// Cast to mock function for linter/TS
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockLoadTasks = jest.mocked(mockLoadTasksInternal);
 
@@ -43,14 +41,14 @@ describe('User Confirmation Flows', () => {
 
     beforeEach(async () => {
         // Reset DOM and app state
-        document.body.innerHTML = ''; // Clear previous DOM content
-        clearLocalStorage(); // Make sure localStorage is clean for each test scenario
+        document.body.innerHTML = '';
+        clearLocalStorage();
 
         // Clear mocks
         jest.clearAllMocks();
         mockLoadTasks.mockReturnValue([]); // Default to loading no tasks
 
-        // IMPORTANT: Reset task manager state to ensure no contamination between tests
+        // Reset task manager state to ensure no contamination between tests
         setTasks([]);
 
         // Ensure clean spy state - restore any existing spies first
@@ -65,7 +63,6 @@ describe('User Confirmation Flows', () => {
     });
 
     afterEach(() => {
-        // Restore original implementations
         if (alertSpy) {
             alertSpy.mockRestore();
             alertSpy = undefined;
@@ -94,7 +91,7 @@ describe('User Confirmation Flows', () => {
             // Set up the integration test environment (this will call loadTasks)
             await setupIntegrationTestEnvironment();
 
-            // IMPORTANT: After the environment is set up, we need to manually ensure
+            // After the environment is set up, we need to manually ensure
             // the task manager state has the initial task, since the mock might not
             // have been called at the right time during app initialization
             setTasks([initialTask]);
