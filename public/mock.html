@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortu-do with Unscheduled Tasks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v6.0.0-beta2/css/all.css">
+    <style>
+        .task-card {
+            transition: all 0.2s ease;
+        }
+        .task-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .drag-handle {
+            cursor: grab;
+        }
+        .glassmorphism {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        @keyframes pulse-green {
+            0%, 100% { color: rgb(34, 197, 94); }
+            50% { color: rgb(16, 185, 129); }
+        }
+        .pulse-animation {
+            animation: pulse-green 2s infinite;
+        }
+        .priority-badge {
+            position: relative;
+            overflow: hidden;
+        }
+        .priority-badge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2));
+            transform: translateX(-100%);
+            transition: transform 0.5s ease;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-gray-900 to-gray-800 text-gray-200 font-sans min-h-screen">
+    <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-6 relative">
+        <!-- App Header with subtle glow effect -->
+        <div class="mb-8 relative">
+            <h1 class="lg:text-5xl text-4xl font-bold text-yellow-500 mb-4 relative">
+                Fortu-do 💪🏾
+                <div class="absolute -inset-1 bg-gradient-to-r from-yellow-500 to-purple-500 opacity-10 blur-lg rounded-full -z-10"></div>
+            </h1>
+            <h2 class="lg:text-lg italic text-gray-400">A Daily Time-Blocking To-Do App. For Cristell<span class="not-italic pl-1 animate-pulse">💜</span></h2>
+        </div>
+
+        <!-- Enhanced Task Form with subtle shadows and better spacing -->
+        <form id="task-form" class="mb-8 p-5 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 mx-2 text-left space-y-4 shadow-lg">
+            <div class="mb-4">
+                <input type="text" name="description" placeholder="Describe your task..." class="bg-gray-700 p-3 rounded-lg w-full focus:ring-2 focus:ring-yellow-500 focus:outline-none transition-all" required>
+            </div>
+
+            <div class="flex flex-col mb-4">
+                <div class="flex items-center mb-3 p-2 rounded hover:bg-gray-700 transition-colors">
+                    <input id="scheduled" type="radio" name="task-type" value="scheduled" class="mr-3 h-4 w-4 text-yellow-500 focus:ring-yellow-500" checked>
+                    <label for="scheduled" class="text-gray-300 flex items-center">
+                        <i class="far fa-calendar-check mr-2 text-yellow-500"></i>Scheduled Task
+                    </label>
+                </div>
+
+                <div class="flex items-center p-2 rounded hover:bg-gray-700 transition-colors">
+                    <input id="unscheduled" type="radio" name="task-type" value="unscheduled" class="mr-3 h-4 w-4 text-purple-400 focus:ring-purple-400">
+                    <label for="unscheduled" class="text-gray-300 flex items-center">
+                        <i class="far fa-list mr-2 text-purple-400"></i>Unscheduled Task
+                    </label>
+                </div>
+            </div>
+
+            <!-- Time inputs with better spacing and alignment -->
+            <div id="time-inputs" class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 mb-4">
+                <label class="flex items-center w-full sm:w-auto">
+                    <span class="text-gray-400 mr-2"><i class="far fa-clock text-yellow-500 mr-1"></i>Start Time</span>
+                    <input type="time" name="start-time" class="bg-gray-700 p-2 rounded-lg w-full lg:w-[10rem] focus:ring-2 focus:ring-yellow-500 focus:outline-none transition-all">
+                </label>
+                <label class="flex items-center w-full sm:w-auto">
+                    <span class="mr-2 text-gray-400"><i class="far fa-hourglass text-yellow-500 mr-1"></i>Duration</span>
+                    <div class="flex space-x-2 w-full sm:w-auto">
+                        <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded-lg w-full lg:w-[4rem] focus:ring-2 focus:ring-yellow-500 focus:outline-none transition-all">
+                        <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded-lg w-full lg:w-[4rem] focus:ring-2 focus:ring-yellow-500 focus:outline-none transition-all">
+                    </div>
+                </label>
+            </div>
+
+            <!-- Priority for unscheduled tasks with color indicators -->
+            <div id="priority-input" class="mb-4 hidden">
+                <label class="flex flex-col space-y-2">
+                    <span class="text-gray-400 flex items-center">
+                        <i class="far fa-signal text-purple-400 mr-2"></i>Priority
+                    </span>
+                    <div class="flex space-x-2">
+                        <label class="flex-1">
+                            <input type="radio" name="priority" value="high" class="hidden peer">
+                            <div class="text-center p-2 rounded-lg border border-red-500 bg-gray-700 bg-opacity-30 peer-checked:bg-red-500 peer-checked:bg-opacity-20 peer-checked:border-red-400 cursor-pointer transition-all">
+                                <i class="far fa-exclamation-circle mb-1 text-red-400"></i>
+                                <div class="text-sm">High</div>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="priority" value="medium" class="hidden peer" checked>
+                            <div class="text-center p-2 rounded-lg border border-yellow-500 bg-gray-700 bg-opacity-30 peer-checked:bg-yellow-500 peer-checked:bg-opacity-20 peer-checked:border-yellow-400 cursor-pointer transition-all">
+                                <i class="far fa-equals mb-1 text-yellow-400"></i>
+                                <div class="text-sm">Medium</div>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="priority" value="low" class="hidden peer">
+                            <div class="text-center p-2 rounded-lg border border-green-500 bg-gray-700 bg-opacity-30 peer-checked:bg-green-500 peer-checked:bg-opacity-20 peer-checked:border-green-400 cursor-pointer transition-all">
+                                <i class="far fa-minus mb-1 text-green-400"></i>
+                                <div class="text-sm">Low</div>
+                            </div>
+                        </label>
+                    </div>
+                </label>
+
+                <!-- Estimated Duration for unscheduled tasks -->
+                <div class="mt-4">
+                    <label class="flex items-center">
+                        <span class="mr-2 text-gray-400"><i class="far fa-hourglass text-purple-400 mr-1"></i>Estimated Duration</span>
+                        <div class="flex space-x-2">
+                            <input type="number" name="est-duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded-lg w-[4rem] focus:ring-2 focus:ring-purple-400 focus:outline-none transition-all">
+                            <input type="number" name="est-duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded-lg w-[4rem] focus:ring-2 focus:ring-purple-400 focus:outline-none transition-all">
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit" class="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 px-6 py-3 rounded-lg w-full font-semibold transition-all duration-300 shadow-lg flex items-center justify-center">
+                <i class="far fa-plus mr-2"></i>Add Task
+            </button>
+        </form>
+
+        <!-- Scheduled Tasks List with improved card styling -->
+        <div id="task-list" class="text-left mb-8">
+            <h3 class="text-xl font-bold mb-4 text-yellow-500 pl-2 flex items-center">
+                <i class="far fa-calendar-day mr-2"></i>Today's Schedule
+            </h3>
+            <div id="scheduled-task-list" class="space-y-2">
+                <!-- Example active scheduled task with subtle glow -->
+                <div class="flex items-center justify-between p-3 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md">
+                    <div class="flex items-center space-x-4">
+                        <label class="checkbox">
+                            <i class="far fa-square text-gray-500 cursor-pointer text-xl"></i>
+                        </label>
+                        <div>
+                            <div class="text-green-500 pulse-animation font-medium">Journal</div>
+                            <div class="text-green-400 text-sm">9:30 AM - 10:00 AM (30 m)</div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors">
+                            <i class="far fa-pen"></i>
+                        </button>
+                        <button class="text-red-500 p-2 hover:bg-gray-700 rounded-lg transition-colors">
+                            <i class="far fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Example scheduled task (disabled) -->
+                <div class="flex items-center justify-between p-3 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-40 shadow-md">
+                    <div class="flex items-center space-x-4">
+                        <label class="checkbox disabled">
+                            <i class="far fa-square text-gray-500 opacity-60 text-xl"></i>
+                        </label>
+                        <div class="opacity-60">
+                            <div class="font-medium">Meditation</div>
+                            <div class="text-sm">10:00 AM - 10:15 AM (15 m)</div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="text-gray-500 p-2 rounded-lg" disabled>
+                            <i class="far fa-pen"></i>
+                        </button>
+                        <button class="text-gray-500 p-2 rounded-lg" disabled>
+                            <i class="far fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unscheduled Tasks Section with modern card layout -->
+        <div id="unscheduled-tasks" class="text-left mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-purple-400 pl-2 flex items-center">
+                    <i class="far fa-clipboard-list mr-2"></i>Unscheduled Tasks
+                </h3>
+                <button id="schedule-selected" class="bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow flex items-center">
+                    <i class="far fa-calendar-plus mr-2"></i>Schedule Selected
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+                <!-- High priority task with enhanced styling -->
+                <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 border-red-500 p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true">
+                    <div class="flex items-start space-x-3">
+                        <input type="checkbox" class="mt-1 h-5 w-5 rounded border-gray-600 text-red-500 focus:ring-red-500">
+                        <div>
+                            <div class="font-medium text-white">Finish project proposal</div>
+                            <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2">
+                                <span class="priority-badge inline-flex items-center bg-red-500 bg-opacity-20 text-red-400 px-2 py-1 rounded-full text-xs">
+                                    <i class="far fa-arrow-up mr-1"></i>High Priority
+                                </span>
+                                <span class="inline-flex items-center text-gray-400">
+                                    <i class="far fa-hourglass mr-1"></i>Est: 1 h 30 m
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Schedule this task">
+                            <i class="far fa-calendar-plus"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Edit task">
+                            <i class="far fa-pen"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-red-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Delete task">
+                            <i class="far fa-trash-can"></i>
+                        </button>
+                        <span class="text-gray-600 drag-handle p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Drag to reorder">
+                            <i class="fas fa-grip-lines"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Medium priority task with enhanced styling -->
+                <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 border-yellow-500 p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true">
+                    <div class="flex items-start space-x-3">
+                        <input type="checkbox" class="mt-1 h-5 w-5 rounded border-gray-600 text-yellow-500 focus:ring-yellow-500">
+                        <div>
+                            <div class="font-medium text-white">Reply to emails</div>
+                            <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2">
+                                <span class="priority-badge inline-flex items-center bg-yellow-500 bg-opacity-20 text-yellow-400 px-2 py-1 rounded-full text-xs">
+                                    <i class="far fa-equals mr-1"></i>Medium Priority
+                                </span>
+                                <span class="inline-flex items-center text-gray-400">
+                                    <i class="far fa-hourglass mr-1"></i>Est: 45 m
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Schedule this task">
+                            <i class="far fa-calendar-plus"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Edit task">
+                            <i class="far fa-pen"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-red-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Delete task">
+                            <i class="far fa-trash-can"></i>
+                        </button>
+                        <span class="text-gray-600 drag-handle p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Drag to reorder">
+                            <i class="fas fa-grip-lines"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Low priority task with enhanced styling -->
+                <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 border-green-500 p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true">
+                    <div class="flex items-start space-x-3">
+                        <input type="checkbox" class="mt-1 h-5 w-5 rounded border-gray-600 text-green-500 focus:ring-green-500">
+                        <div>
+                            <div class="font-medium text-white">Review weekly notes</div>
+                            <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2">
+                                <span class="priority-badge inline-flex items-center bg-green-500 bg-opacity-20 text-green-400 px-2 py-1 rounded-full text-xs">
+                                    <i class="far fa-arrow-down mr-1"></i>Low Priority
+                                </span>
+                                <span class="inline-flex items-center text-gray-400">
+                                    <i class="far fa-hourglass mr-1"></i>Est: 20 m
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Schedule this task">
+                            <i class="far fa-calendar-plus"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Edit task">
+                            <i class="far fa-pen"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-red-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Delete task">
+                            <i class="far fa-trash-can"></i>
+                        </button>
+                        <span class="text-gray-600 drag-handle p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Drag to reorder">
+                            <i class="fas fa-grip-lines"></i>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panel with glassmorphism effect -->
+        <div id="info-panel" class="py-6 px-4 glassmorphism rounded-lg mt-8 shadow-lg">
+            <div class="flex justify-between items-center">
+                <div id="current-datetime" class="pl-4">
+                    <div id="current-time" class="text-left text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-500">3:45 PM</div>
+                    <div id="current-date" class="text-left text-gray-300">Monday, April 21, 2025</div>
+                </div>
+                <div class="text-right pt-2 pr-2">
+                    <button id="delete-all" class="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 px-4 py-2 rounded-lg text-center font-medium transition-all duration-300 shadow flex items-center">
+                        <i class="far fa-trash-can mr-2"></i>Clear Tasks
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer with improved styling -->
+        <footer class="text-sm italic pt-8 pb-6 text-gray-400">© 2023-2025 R-F Incorporated.</footer>
+    </div>
+
+    <!-- Improved Schedule Modal with glassmorphism -->
+    <div id="schedule-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-gray-800 bg-opacity-90 p-6 rounded-lg max-w-md w-full border border-gray-700 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-yellow-500">Schedule Task</h3>
+                <button class="text-gray-400 hover:text-gray-200 p-1">
+                    <i class="far fa-times text-xl"></i>
+                </button>
+            </div>
+            <p class="mb-6 text-gray-300">Schedule "<span class="text-white font-medium">Finish project proposal</span>" for today:</p>
+
+            <form class="space-y-6">
+                <div class="space-y-4">
+                    <label class="flex flex-col space-y-2">
+                        <span class="text-gray-400 flex items-center">
+                            <i class="far fa-clock text-yellow-500 mr-2"></i>Start Time
+                        </span>
+                        <input type="time" name="modal-start-time" class="bg-gray-700 p-3 rounded-lg w-full focus:ring-2 focus:ring-yellow-500 focus:outline-none transition-all">
+                    </label>
+
+                    <div class="pt-2">
+                        <div class="text-gray-400 mb-2 flex items-center">
+                            <i class="far fa-info-circle text-blue-400 mr-2"></i>Task Duration: <span class="ml-2 text-white">1 h 30 m</span>
+                        </div>
+                        <div class="text-sm text-gray-500">Task will be scheduled from selected start time for its estimated duration.</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" class="bg-gray-700 hover:bg-gray-600 px-5 py-2 rounded-lg transition-colors">Cancel</button>
+                    <button type="submit" class="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 px-5 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center">
+                        <i class="far fa-calendar-check mr-2"></i>Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task management JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Toggle radio buttons for scheduled/unscheduled tasks
+            const scheduledRadio = document.getElementById('scheduled');
+            const unscheduledRadio = document.getElementById('unscheduled');
+            const timeInputs = document.getElementById('time-inputs');
+            const priorityInput = document.getElementById('priority-input');
+
+            scheduledRadio.addEventListener('change', () => {
+                timeInputs.classList.remove('hidden');
+                priorityInput.classList.add('hidden');
+            });
+
+            unscheduledRadio.addEventListener('change', () => {
+                timeInputs.classList.add('hidden');
+                priorityInput.classList.remove('hidden');
+            });
+
+            // Show modal when schedule buttons are clicked
+            const scheduleButtons = document.querySelectorAll('.fa-calendar-plus');
+            const scheduleModal = document.getElementById('schedule-modal');
+            const closeModalButtons = scheduleModal.querySelectorAll('button');
+
+            scheduleButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    // Prevent event from propagating up to parent elements
+                    e.stopPropagation();
+                    scheduleModal.classList.remove('hidden');
+                });
+            });
+
+            // Hide modal when any button in modal is clicked
+            closeModalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    scheduleModal.classList.add('hidden');
+                });
+            });
+
+            // Update date and time in real time
+            function updateDateTime() {
+                const now = new Date();
+                document.getElementById('current-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('current-date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            }
+
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+
+            // Example implementation of task drag functionality
+            let dragSrcEl = null;
+
+            document.querySelectorAll('.task-card').forEach(item => {
+                item.addEventListener('dragstart', function(e) {
+                    this.style.opacity = '0.4';
+                    dragSrcEl = this;
+
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', this.innerHTML);
+                });
+
+                item.addEventListener('dragend', function(e) {
+                    this.style.opacity = '1';
+                });
+
+                item.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    return false;
+                });
+
+                item.addEventListener('dragenter', function(e) {
+                    this.classList.add('bg-gray-700');
+                });
+
+                item.addEventListener('dragleave', function(e) {
+                    this.classList.remove('bg-gray-700');
+                });
+
+                item.addEventListener('drop', function(e) {
+                    e.stopPropagation();
+                    this.classList.remove('bg-gray-700');
+
+                    if (dragSrcEl !== this) {
+                        dragSrcEl.innerHTML = this.innerHTML;
+                        this.innerHTML = e.dataTransfer.getData('text/html');
+                    }
+
+                    return false;
+                });
+            });
+        });
+    </script>
+</body>
+</html>
