@@ -316,21 +316,23 @@ export function cancelEdit(index) {
 /**
  * Delete all tasks.
  * @param {boolean} confirmed - Whether the delete all was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean}}
+ * @returns {{success: boolean, requiresConfirmation?: boolean, message?: string}}
  */
 export function deleteAllTasks(confirmed = false) {
-    if (!confirmed && tasks.length > 0) { // Only require confirmation if there are tasks
-        return { success: false, requiresConfirmation: true };
+    if (tasks.length === 0) {
+        // No tasks to delete, operation is trivially successful, no confirmation needed.
+        return { success: true, requiresConfirmation: false, message: "No tasks to delete." };
     }
 
-    if (!confirmed) { // If not confirmed, don't proceed
-        return { success: false, requiresConfirmation: true };
+    // If there are tasks, then confirmation logic applies.
+    if (!confirmed) {
+        return { success: false, requiresConfirmation: true, message: "Confirmation required to delete all tasks." };
     }
 
-    // If we get here, confirmed is true
+    // Confirmed and tasks exist
     tasks.length = 0; // Clear the array
-    saveTasks(tasks); // Always save when confirmed
-    return { success: true };
+    saveTasks(tasks);
+    return { success: true, requiresConfirmation: false, message: "All tasks deleted." };
 }
 
 /**

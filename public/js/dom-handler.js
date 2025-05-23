@@ -7,33 +7,14 @@ import {
 } from './utils.js';
 
 // --- DOM Element References ---
-// Convert static references to functions that get elements when needed
-export function getTaskForm() {
-    return /** @type {HTMLFormElement | null} */ (document.getElementById('task-form'));
-}
+// Elements used for attaching initial event listeners or frequent access will be fetched by functions.
+// export const taskForm = document.getElementById('task-form'); // Deferred to functions
+export const taskListElement = document.getElementById('task-list');
+export const currentTimeElement = document.getElementById('current-time');
+export const currentDateElement = document.getElementById('current-date');
+// export const deleteAllButton = document.getElementById('delete-all'); // Deferred to functions
+// export const taskDescriptionInput = taskForm ? taskForm.querySelector('input[name="description"]') : null; // Deferred
 
-export function getTaskListElement() {
-    return document.getElementById('task-list');
-}
-
-export function getCurrentTimeElement() {
-    return document.getElementById('current-time');
-}
-
-export function getCurrentDateElement() {
-    return document.getElementById('current-date');
-}
-
-export function getDeleteAllButton() {
-    return document.getElementById('delete-all');
-}
-
-export function getTaskDescriptionInput() {
-    const form = getTaskForm();
-    return form ? form.querySelector('input[name="description"]') : null;
-}
-
-// Add other static elements if needed, e.g., specific input fields if app.js needs to clear them.
 
 // --- Rendering Functions ---
 
@@ -42,14 +23,11 @@ export function getTaskDescriptionInput() {
  */
 export function renderDateTime() {
     const now = new Date();
-    const timeElement = getCurrentTimeElement();
-    const dateElement = getCurrentDateElement();
-
-    if (timeElement) {
-        timeElement.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (currentTimeElement) {
+        currentTimeElement.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    if (dateElement) {
-        dateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    if (currentDateElement) {
+        currentDateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     }
 }
 
@@ -100,6 +78,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
             <label for="task-checkbox-${index}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
                 <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i>
             </label>
+            {/* The actual checkbox is hidden and controlled by label clicks for better styling */}
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
             <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : (isCompleted ? '' : 'opacity-60') }">
                 <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${task.description}</div>
@@ -128,7 +107,6 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
  * @param {(index: number) => void} eventCallbacks.onCancelEdit - Callback for cancelling task edit.
  */
 export function renderTasks(tasksToRender, eventCallbacks) {
-    const taskListElement = getTaskListElement();
     if (!taskListElement) {
         console.error('Task list element not found. Tasks will not be rendered.');
         return;
@@ -147,7 +125,7 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     // Attach event listeners to dynamically created elements
     tasksToRender.forEach((task, index) => {
         const viewTaskElement = taskListElement.querySelector(`#view-task-${index}`);
-        const editTaskForm = /** @type {HTMLFormElement | null} */ (taskListElement.querySelector(`#edit-task-${index}`));
+        const editTaskForm = taskListElement.querySelector(`#edit-task-${index}`);
 
         if (task.editing && editTaskForm) {
             editTaskForm.addEventListener('submit', (e) => {
@@ -183,9 +161,9 @@ export function renderTasks(tasksToRender, eventCallbacks) {
  * @param {string} suggestedTime - The suggested start time in HH:MM format.
  */
 export function updateStartTimeField(suggestedTime) {
-    const taskForm = getTaskForm();
-    if (!taskForm) return;
-    const startTimeInput = /** @type {HTMLInputElement | null} */ (taskForm.querySelector('input[name="start-time"]'));
+    const form = document.getElementById('task-form');
+    if (!form) return;
+    const startTimeInput = /** @type {HTMLInputElement|null} */(form.querySelector('input[name="start-time"]'));
     if (startTimeInput && !startTimeInput.value) { // Only update if it's currently empty
         startTimeInput.value = suggestedTime;
     }
@@ -197,23 +175,23 @@ export function updateStartTimeField(suggestedTime) {
  * @param {(formData: FormData) => void} appCallbacks.onTaskFormSubmit - Handles main task form submission.
  * @param {() => void} appCallbacks.onDeleteAllTasks - Handles delete all button click.
  * @param {(event: Event) => void} appCallbacks.onGlobalClick - Handles clicks on the document.
+ * @param {HTMLFormElement | null} taskFormElement - The main task form element.
+ * @param {HTMLButtonElement | null} deleteAllButtonElement - The delete all button element.
  */
-export function initializePageEventListeners(appCallbacks) {
-    const taskForm = getTaskForm();
-    if (taskForm) {
-        taskForm.addEventListener('submit', (e) => {
+export function initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement) {
+    if (taskFormElement) {
+        taskFormElement.addEventListener('submit', (e) => {
             e.preventDefault();
-            appCallbacks.onTaskFormSubmit(new FormData(taskForm));
+            appCallbacks.onTaskFormSubmit(new FormData(taskFormElement));
         });
     } else {
-        console.error("Task form not found for event listener setup.");
+        console.error("dom-handler: initializePageEventListeners received null taskFormElement.");
     }
 
-    const deleteAllButton = getDeleteAllButton();
-    if (deleteAllButton) {
-        deleteAllButton.addEventListener('click', appCallbacks.onDeleteAllTasks);
+    if (deleteAllButtonElement) {
+        deleteAllButtonElement.addEventListener('click', appCallbacks.onDeleteAllTasks);
     } else {
-        console.error("Delete all button not found for event listener setup.");
+        console.error("dom-handler: initializePageEventListeners received null deleteAllButtonElement.");
     }
 
     document.addEventListener('click', appCallbacks.onGlobalClick);
@@ -224,15 +202,16 @@ export function initializePageEventListeners(appCallbacks) {
  * @returns {HTMLFormElement | null}
  */
 export function getTaskFormElement() {
-    return getTaskForm();
+    return /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
 }
 
 /**
  * Focuses on the main task description input field.
  */
 export function focusTaskDescriptionInput() {
-    const descriptionInput = getTaskDescriptionInput();
-    if (descriptionInput instanceof HTMLInputElement) {
+    const form = document.getElementById('task-form');
+    const descriptionInput = form ? form.querySelector('input[name="description"]') : null;
+    if (descriptionInput instanceof HTMLInputElement) { // Type guard
         descriptionInput.focus();
     }
 }

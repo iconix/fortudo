@@ -148,25 +148,29 @@ export function tasksOverlap(task1, task2) {
 }
 
 /**
- * Gets current time rounded up to closest 5 minutes
+ * Gets current time rounded up to closest 5 minutes.
+ * @param {Date} [date=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {string} - Current time in 24-hour format (HH:MM)
  */
-export function getCurrentTimeRounded() {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
+export function getCurrentTimeRounded(date = new Date()) {
+    const now = date; // Use the provided or new date
+    const minutes = Math.ceil(now.getMinutes() / 5) * 5;
 
-    // Round up to nearest 5 minutes
-    const roundedMinutes = Math.ceil(minutes / 5) * 5;
+    // Create a new date object to avoid modifying the original 'now'
+    const roundedDate = new Date(now.getTime()); 
 
-    // Handle rollover to next hour
-    if (roundedMinutes >= 60) {
-        // If we're rolling over to next hour, use 00 minutes
-        return `${(hours + 1).toString().padStart(2, '0')}:00`;
+    // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
+    roundedDate.setSeconds(0, 0);
+
+    if (minutes === 60) {
+        roundedDate.setHours(roundedDate.getHours() + 1);
+        roundedDate.setMinutes(0);
     } else {
-        // Otherwise use the rounded minutes
-        return `${hours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`;
+        roundedDate.setMinutes(minutes);
     }
+
+    // Get time in HH:MM format
+    return roundedDate.toTimeString().substring(0, 5);
 }
 
 /**

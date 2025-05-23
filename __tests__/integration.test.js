@@ -10,44 +10,20 @@ const { setupIntegrationTestEnvironment } = require('./test-utils');
 import { saveTasks } from '../public/js/storage.js';
 import { calculateHoursAndMinutes, convertTo12HourTime } from '../public/js/utils.js'; // For assertions
 
-const mockSaveTasks = jest.fn();
-jest.mock('../public/js/storage.js', () => ({
-    saveTasks: (...args) => mockSaveTasks(...args)
-}));
+jest.mock('../public/js/storage.js'); // Mock storage to check saveTasks calls
 
 // Helper function to fill and submit the main task form
 async function addTaskDOM(description, startTime, durationHours, durationMinutes) {
     const form = document.getElementById('task-form');
-    if (!form) throw new Error('Task form not found');
-
     const descriptionInput = form.querySelector('input[name="description"]');
     const startTimeInput = form.querySelector('input[name="start-time"]');
     const durationHoursInput = form.querySelector('input[name="duration-hours"]');
     const durationMinutesInput = form.querySelector('input[name="duration-minutes"]');
 
-    if (!descriptionInput || !startTimeInput || !durationHoursInput || !durationMinutesInput) {
-        throw new Error('Required form inputs not found');
-    }
-
-    // Ensure inputs are HTMLInputElement instances
-    if (!(descriptionInput instanceof HTMLInputElement) ||
-        !(startTimeInput instanceof HTMLInputElement) ||
-        !(durationHoursInput instanceof HTMLInputElement) ||
-        !(durationMinutesInput instanceof HTMLInputElement)) {
-        throw new Error('Form inputs must be HTMLInputElement instances');
-    }
-
     descriptionInput.value = description;
     startTimeInput.value = startTime;
     durationHoursInput.value = durationHours.toString();
     durationMinutesInput.value = durationMinutes.toString();
-
-    // Ensure the form has the required classes and attributes
-    form.classList.add('task-form');
-    descriptionInput.classList.add('task-description');
-    startTimeInput.classList.add('task-start-time');
-    durationHoursInput.classList.add('task-duration-hours');
-    durationMinutesInput.classList.add('task-duration-minutes');
 
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     // Wait for microtasks (e.g., promises in event handlers) to resolve
@@ -58,16 +34,14 @@ async function addTaskDOM(description, startTime, durationHours, durationMinutes
 function getRenderedTasksDOM() {
     const taskElements = document.querySelectorAll('#task-list > div[id^="view-task-"]');
     return Array.from(taskElements).map(taskElement => {
-        const descriptionEl = taskElement.querySelector('.task-description');
-        const timeEl = taskElement.querySelector('.task-time');
-        const checkbox = taskElement.querySelector('.checkbox');
-        const editButton = taskElement.querySelector('.btn-edit');
-        const deleteButton = taskElement.querySelector('.btn-delete');
-
+        const descriptionEl = taskElement.querySelector('div > div:nth-child(1)');
+        const timeEl = taskElement.querySelector('div > div:nth-child(2)');
+        
         const description = descriptionEl ? descriptionEl.textContent : '';
-        const timeText = timeEl ? timeEl.textContent || '' : ''; // e.g., "9:00 AM – 10:00 AM (1h)"
+        const timeText = timeEl ? timeEl.textContent : ''; // e.g., "9:00 AM – 10:00 AM (1h)"
 
         // Extract start, end, and duration from timeText
+        // This is a bit fragile and depends on the exact format from convertTo12HourTime and calculateHoursAndMinutes
         let startTime12 = '', endTime12 = '', durationText = '';
         const match = timeText.match(/(.*) – (.*) \((.*)\)/);
         if (match) {
@@ -76,17 +50,14 @@ function getRenderedTasksDOM() {
             durationText = match[3];
         }
 
-        // Check if checkbox is an HTMLInputElement
-        const isCompleted = checkbox instanceof HTMLInputElement ? checkbox.checked : false;
-
         return {
             description,
             startTime12, // In 12-hour format as rendered
             endTime12,   // In 12-hour format as rendered
             durationText,
-            isCompleted,
-            isEditing: taskElement.querySelector('.edit-task-form') !== null,
-            isConfirmingDelete: deleteButton ? deleteButton.classList.contains('confirming') : false,
+            isCompleted: taskElement.querySelector('.line-through') !== null,
+            isEditing: false, // This helper won't see edit forms directly unless enhanced
+            isConfirmingDelete: taskElement.querySelector('.fa-check-circle') !== null,
         };
     });
 }
@@ -106,30 +77,11 @@ async function updateTaskDOM(index, newDescription, newStartTime, newDurationHou
     const durationHoursInput = editForm.querySelector('input[name="duration-hours"]');
     const durationMinutesInput = editForm.querySelector('input[name="duration-minutes"]');
 
-    if (!descriptionInput || !startTimeInput || !durationHoursInput || !durationMinutesInput) {
-        throw new Error('Required edit form inputs not found');
-    }
-
-    // Ensure inputs are HTMLInputElement instances
-    if (!(descriptionInput instanceof HTMLInputElement) ||
-        !(startTimeInput instanceof HTMLInputElement) ||
-        !(durationHoursInput instanceof HTMLInputElement) ||
-        !(durationMinutesInput instanceof HTMLInputElement)) {
-        throw new Error('Form inputs must be HTMLInputElement instances');
-    }
-
-    // Ensure the form has the required classes and attributes
-    editForm.classList.add('edit-task-form');
-    descriptionInput.classList.add('task-description');
-    startTimeInput.classList.add('task-start-time');
-    durationHoursInput.classList.add('task-duration-hours');
-    durationMinutesInput.classList.add('task-duration-minutes');
-
     descriptionInput.value = newDescription;
     startTimeInput.value = newStartTime;
     durationHoursInput.value = newDurationHours.toString();
     durationMinutesInput.value = newDurationMinutes.toString();
-
+    
     editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await new Promise(resolve => setTimeout(resolve, 0));
 }
@@ -143,24 +95,28 @@ describe('Integration Tests via DOM Interaction', () => {
 
     afterEach(() => {
         jest.clearAllMocks();
-        mockSaveTasks.mockReset();
+        saveTasks.mockClear();
         // localStorage is typically cleared by setupMockLocalStorage in setupIntegrationTestEnvironment
+        // if it's called in beforeEach. If setupIntegrationTestEnvironment is in beforeAll,
+        // then manual clearing might be needed here or specific task removal via DOM.
     });
 
     describe('Auto-rescheduling Tests', () => {
         test('handles cascading rescheduling of multiple tasks when updating a task', async () => {
             window.confirm = jest.fn().mockReturnValue(true); // Auto-confirm any overlap dialogs
 
-            await addTaskDOM('First Task', '09:00', 1, 0);  // 09:00 - 10:00
-            await addTaskDOM('Second Task', '10:00', 1, 0); // 10:00 - 11:00
-            await addTaskDOM('Third Task', '11:00', 1, 0);  // 11:00 - 12:00
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3);
+            // Initial setup: Add 3 tasks
+            await addTaskDOM('First Task', '09:00', 1, 0);  // Task 0: 09:00 - 10:00 -> saveTasks #1
+            await addTaskDOM('Second Task', '10:00', 1, 0); // Task 1: 10:00 - 11:00 -> saveTasks #2
+            await addTaskDOM('Third Task', '11:00', 1, 0);  // Task 2: 11:00 - 12:00 -> saveTasks #3
+            expect(saveTasks).toHaveBeenCalledTimes(3);
+            saveTasks.mockClear();
 
-            // Update the first task to overlap with the second, causing a cascade
+            // Update the first task (index 0) to overlap with the second, causing a cascade
             // Original: First Task 09:00 - 10:00 (60min)
             // Update:   First Task 09:00 - 10:30 (90min)
-            await updateTaskDOM(0, 'First Task Updated', '09:00', 1, 30);
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3 + 1); // 1 more for the update
+            await updateTaskDOM(0, 'First Task Updated', '09:00', 1, 30); // -> saveTasks #1 (for this step)
+            expect(saveTasks).toHaveBeenCalledTimes(1);
 
             const renderedTasks = getRenderedTasksDOM();
             expect(renderedTasks.length).toBe(3);
@@ -182,17 +138,20 @@ describe('Integration Tests via DOM Interaction', () => {
             expect(renderedTasks[2].startTime12).toBe(convertTo12HourTime('11:30'));
             expect(renderedTasks[2].endTime12).toBe(convertTo12HourTime('12:30'));
             expect(renderedTasks[2].durationText).toBe(calculateHoursAndMinutes(60));
-
+            
             expect(window.confirm).toHaveBeenCalled(); // Overlap confirmation by app.js
         });
 
         test('preserves task order and cascades rescheduling through subsequent tasks after late completion', async () => {
-            window.confirm = jest.fn().mockReturnValue(true);
+    // Setup window.confirm mock to always return true for any confirmation dialogs
+    // This is essential because addTask and autoReschedule ask for confirmation
+    window.confirm = jest.fn().mockReturnValue(true);
 
-            await addTaskDOM('Task A', '09:00', 0, 30); // 09:00 - 09:30
-            await addTaskDOM('Task B', '10:00', 1, 0);  // 10:00 - 11:00
-            await addTaskDOM('Task C', '13:00', 0, 15); // 13:00 - 13:15
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3);
+            await addTaskDOM('Task A', '09:00', 0, 30); // Task 0 -> saveTasks #1
+            await addTaskDOM('Task B', '10:00', 1, 0);  // Task 1 -> saveTasks #2
+            await addTaskDOM('Task C', '13:00', 0, 15); // Task 2 -> saveTasks #3
+            expect(saveTasks).toHaveBeenCalledTimes(3);
+            saveTasks.mockClear(); // Clear counts for the next distinct operation sequence
 
             let tasks = getRenderedTasksDOM();
             expect(tasks[0].description).toBe('Task A');
@@ -203,8 +162,9 @@ describe('Integration Tests via DOM Interaction', () => {
             expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:00'));
 
             // Add Task D that conflicts with Task A and B (if A wasn't there)
-            await addTaskDOM('Task D', '09:00', 1, 0); // 09:00 - 10:00
-            expect(mockSaveTasks).toHaveBeenCalledTimes(4);
+            await addTaskDOM('Task D', '09:00', 1, 0); // Task 3 (becomes index 0 after sort) -> saveTasks #1 (for this sequence)
+            expect(saveTasks).toHaveBeenCalledTimes(1);
+            saveTasks.mockClear();
 
             tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(4);
@@ -220,19 +180,20 @@ describe('Integration Tests via DOM Interaction', () => {
             expect(tasks[2].description).toBe('Task B');
             expect(tasks[2].startTime12).toBe(convertTo12HourTime('10:30'));
             expect(tasks[2].endTime12).toBe(convertTo12HourTime('11:30'));
-
+            
             expect(tasks[3].description).toBe('Task C'); // Should be unaffected by initial add of D
             expect(tasks[3].startTime12).toBe(convertTo12HourTime('13:00'));
 
+
             // Simulate completing Task D (index 0) late at 1:00 PM (13:00)
             const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
             timeElement.textContent = '1:00 PM'; // Set current time for completion
 
-            const taskDCheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskDCheckbox) throw new Error('Task D checkbox not found');
+            const taskDCheckbox = document.querySelector('#view-task-0 .checkbox'); // Task D is at index 0
             taskDCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0)); // allow async operations to settle
+            await new Promise(resolve => setTimeout(resolve, 0)); 
+            expect(saveTasks).toHaveBeenCalledTimes(1); // Late completion of Task D causes a save
+            saveTasks.mockClear();
 
             // Expected: D (09:00-13:00, completed), A (13:00-13:30), B (13:30-14:30), C (14:30-14:45)
             tasks = getRenderedTasksDOM();
@@ -258,21 +219,22 @@ describe('Integration Tests via DOM Interaction', () => {
         test('only reschedules affected tasks when a task is completed late', async () => {
             window.confirm = jest.fn().mockReturnValue(true);
 
-            await addTaskDOM('Task A', '09:00', 1, 0);  // 09:00 - 10:00
-            await addTaskDOM('Task B', '11:00', 0, 30); // 11:00 - 11:30
-            await addTaskDOM('Task C', '13:00', 1, 0);  // 13:00 - 14:00
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3);
+            await addTaskDOM('Task A', '09:00', 1, 0);  // saveTasks #1
+            await addTaskDOM('Task B', '11:00', 0, 30); // saveTasks #2
+            await addTaskDOM('Task C', '13:00', 1, 0);  // saveTasks #3
+            expect(saveTasks).toHaveBeenCalledTimes(3);
+            saveTasks.mockClear();
 
             // Simulate current time of 12:30 PM for late completion of Task A
             const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
             timeElement.textContent = '12:30 PM';
 
             // Complete Task A (index 0)
             const taskACheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskACheckbox) throw new Error('Task A checkbox not found');
             taskACheckbox.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise(resolve => setTimeout(resolve, 0));
+            expect(saveTasks).toHaveBeenCalledTimes(1); // Late completion of Task A causes a save
+            // saveTasks.mockClear(); // Not clearing as we are done with this test's main actions.
 
             const tasks = getRenderedTasksDOM();
             // Expected: A (09:00-12:30, completed), B (12:30-13:00), C (13:00-14:00, unchanged initially by A's completion, but then pushed by B)
@@ -280,7 +242,7 @@ describe('Integration Tests via DOM Interaction', () => {
             // A: 09:00 - 12:30 (duration 3h 30m = 210m)
             // B: 12:30 - 13:00 (duration 30m)
             // C: 13:00 - 14:00 (duration 60m) -> this is fine if B ends at 13:00
-
+            
             expect(tasks[0].description).toBe('Task A');
             expect(tasks[0].isCompleted).toBe(true);
             expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
@@ -290,23 +252,25 @@ describe('Integration Tests via DOM Interaction', () => {
             expect(tasks[1].description).toBe('Task B');
             expect(tasks[1].startTime12).toBe(convertTo12HourTime('12:30'));
             expect(tasks[1].endTime12).toBe(convertTo12HourTime('13:00'));
-
+            
             expect(tasks[2].description).toBe('Task C');
             // Task C's start time should remain 13:00 if Task B now ends at 13:00
-            expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:00'));
+            expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:00')); 
             expect(tasks[2].endTime12).toBe(convertTo12HourTime('14:00'));
         });
 
         test('reschedules subsequent tasks when a task duration is increased', async () => {
             window.confirm = jest.fn().mockReturnValue(true); // For overlap confirmation
 
-            await addTaskDOM('Task 1', '09:00', 1, 0); // 09:00 - 10:00
-            await addTaskDOM('Task 2', '10:00', 1, 0); // 10:00 - 11:00
-            expect(mockSaveTasks).toHaveBeenCalledTimes(2);
+            await addTaskDOM('Task 1', '09:00', 1, 0); // saveTasks #1
+            await addTaskDOM('Task 2', '10:00', 1, 0); // saveTasks #2
+            expect(saveTasks).toHaveBeenCalledTimes(2);
+            saveTasks.mockClear();
 
             // Update Task 1 to be 09:00 - 10:30 (90 min)
             await updateTaskDOM(0, 'Task 1 Updated', '09:00', 1, 30);
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3);
+            expect(saveTasks).toHaveBeenCalledTimes(1); // 1 for this update operation
+            // saveTasks.mockClear();
 
             const tasks = getRenderedTasksDOM();
             expect(tasks[0].description).toBe('Task 1 Updated');
@@ -324,7 +288,7 @@ describe('Integration Tests via DOM Interaction', () => {
 
             // 1. Add a new task
             await addTaskDOM('Task Workflow Test', '09:00', 1, 0);
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(saveTasks).toHaveBeenCalledTimes(1);
             let tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(1);
             expect(tasks[0].description).toBe('Task Workflow Test');
@@ -332,44 +296,56 @@ describe('Integration Tests via DOM Interaction', () => {
 
             // 2. Update the task
             await updateTaskDOM(0, 'Updated Task', '09:30', 1, 0); // 09:30 - 10:30
-            expect(mockSaveTasks).toHaveBeenCalledTimes(2);
+            expect(saveTasks).toHaveBeenCalledTimes(2);
             tasks = getRenderedTasksDOM();
             expect(tasks[0].description).toBe('Updated Task');
             expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:30'));
 
             // 3. Complete the task
             const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
             timeElement.textContent = '10:15 AM'; // Current time for completion
 
             const taskCheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskCheckbox) throw new Error('Task checkbox not found');
             taskCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise(resolve => setTimeout(resolve, 0));
-            expect(mockSaveTasks).toHaveBeenCalledTimes(3);
-
+            expect(saveTasks).toHaveBeenCalledTimes(3);
+            
             tasks = getRenderedTasksDOM();
             expect(tasks[0].isCompleted).toBe(true);
             // Check if end time was adjusted (original end 10:30, completed 10:15)
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:15'));
+            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:15')); 
 
             // 4. Delete the task
             let deleteButton = document.querySelector('#view-task-0 .btn-delete');
-            if (!deleteButton) throw new Error('Delete button not found');
+            // First click (to confirm) - for completed tasks, it might be disabled or behave differently.
+            // Let's assume for now it's not disabled by the 'complete' state for deletion itself.
+            // The original app.js disables delete for completed. dom-handler.js also does.
+            // So, this part of the test needs to acknowledge that.
+            // If delete is disabled for completed tasks, we can't test this step this way.
+            // Let's assume for the sake of this test, we make it incomplete again to test delete.
+            // This is a bit artificial but tests the delete flow.
+            // OR, we test delete on an incomplete task. Let's try that.
+
+            // Re-add a task for deletion test
+            await addTaskDOM('To Delete', '14:00', 0, 30);
+            expect(saveTasks).toHaveBeenCalledTimes(4); // 3 previous + 1 new
+            tasks = getRenderedTasksDOM();
+            const deleteIndex = tasks.findIndex(t => t.description === 'To Delete'); // find its actual index
+
+            deleteButton = document.querySelector(`#view-task-${deleteIndex} .btn-delete`);
             deleteButton.dispatchEvent(new Event('click', { bubbles: true })); // First click
             await new Promise(resolve => setTimeout(resolve, 0));
-
+            
             tasks = getRenderedTasksDOM();
-            expect(tasks[0].isConfirmingDelete).toBe(true); // Check confirm state in DOM
-
-            deleteButton = document.querySelector(`#view-task-0 .btn-delete`);
-            if (!deleteButton) throw new Error('Delete button not found after confirmation');
+            expect(tasks[deleteIndex].isConfirmingDelete).toBe(true); // Check confirm state in DOM
+            
+            deleteButton = document.querySelector(`#view-task-${deleteIndex} .btn-delete`); // Re-query for potentially changed button
             deleteButton.dispatchEvent(new Event('click', { bubbles: true })); // Second click
             await new Promise(resolve => setTimeout(resolve, 0));
-            expect(mockSaveTasks).toHaveBeenCalledTimes(5);
+            expect(saveTasks).toHaveBeenCalledTimes(5);
 
             tasks = getRenderedTasksDOM();
-            expect(tasks.find(t => t.description === 'Task Workflow Test')).toBeUndefined();
+            expect(tasks.find(t => t.description === 'To Delete')).toBeUndefined();
         });
     });
 
@@ -379,17 +355,18 @@ describe('Integration Tests via DOM Interaction', () => {
 
             await addTaskDOM('Completed Task', '09:00', 1, 0); // 09:00 - 10:00
             // Manually mark as completed for this test setup
+            await new Promise(resolve => setTimeout(resolve, 0)); // Ensure DOM is updated after add
             const taskCheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskCheckbox) throw new Error('Task checkbox not found');
+            expect(taskCheckbox).not.toBeNull(); // Verify checkbox is found
             taskCheckbox.dispatchEvent(new Event('click', { bubbles: true })); // Simulate click to complete
             await new Promise(resolve => setTimeout(resolve, 0)); // Wait for re-render and save
-
+            
             let tasks = getRenderedTasksDOM();
             expect(tasks[0].isCompleted).toBe(true);
-            const saveCountBeforeNewTask = mockSaveTasks.mock.calls.length;
+            const saveCountBeforeNewTask = saveTasks.mock.calls.length;
 
             await addTaskDOM('New Task', '09:30', 1, 0); // 09:30 - 10:30 (overlaps completed)
-            expect(mockSaveTasks).toHaveBeenCalledTimes(saveCountBeforeNewTask + 1);
+            expect(saveTasks).toHaveBeenCalledTimes(saveCountBeforeNewTask + 1);
 
             tasks = getRenderedTasksDOM();
             expect(tasks[0].description).toBe('Completed Task');
@@ -406,19 +383,20 @@ describe('Integration Tests via DOM Interaction', () => {
             await addTaskDOM('Task 1', '09:00', 1, 0); // 09:00 - 10:00
             await addTaskDOM('Task 2 (Editing)', '10:00', 1, 0); // 10:00 - 11:00
             await addTaskDOM('Task 3', '11:00', 1, 0); // 11:00 - 12:00
-
+            await new Promise(resolve => setTimeout(resolve, 0)); // Ensure DOM is updated after all adds
+            
             // Manually trigger edit mode for Task 2 (index 1) via DOM
             const editButtonTask2 = document.querySelector('#view-task-1 .btn-edit');
-            if (!editButtonTask2) throw new Error('Edit button for Task 2 not found');
+            expect(editButtonTask2).not.toBeNull(); // Verify edit button is found
             editButtonTask2.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise(resolve => setTimeout(resolve, 0)); // allow edit form to render
 
-            const saveCountBeforeUpdate = mockSaveTasks.mock.calls.length;
+            const saveCountBeforeUpdate = saveTasks.mock.calls.length;
 
             // Update Task 1 to overlap with Task 2 (which is editing)
             // Task 1 new duration: 1h 30m (09:00 - 10:30)
             await updateTaskDOM(0, 'Task 1 Updated', '09:00', 1, 30);
-            expect(mockSaveTasks).toHaveBeenCalledTimes(saveCountBeforeUpdate + 1);
+            expect(saveTasks).toHaveBeenCalledTimes(saveCountBeforeUpdate + 1);
 
             const tasks = getRenderedTasksDOM();
             expect(tasks[0].description).toBe('Task 1 Updated');
@@ -428,18 +406,12 @@ describe('Integration Tests via DOM Interaction', () => {
             // Its visual representation will be an edit form, so getRenderedTasksDOM won't find it as a "view" task.
             // We need to check the DOM for the edit form of task 2.
             const task2EditForm = document.getElementById('edit-task-1');
-            if (!task2EditForm) throw new Error('Task 2 edit form not found');
+            expect(task2EditForm).not.toBeNull();
+            expect(task2EditForm.querySelector('input[name="start-time"]').value).toBe('10:00');
 
-            const startTimeInput = task2EditForm.querySelector('input[name="start-time"]');
-            if (!startTimeInput || !(startTimeInput instanceof HTMLInputElement)) {
-                throw new Error('Task 2 start time input not found or not an input element');
-            }
-            expect(startTimeInput.value).toBe('10:00');
 
             // Task 3 should be pushed by Task 1 (Updated)
-            const task3 = tasks.find(t => t.description === 'Task 3');
-            if (!task3) throw new Error('Task 3 not found in rendered tasks');
-            expect(task3.startTime12).toBe(convertTo12HourTime('10:30'));
+            expect(tasks.find(t => t.description === 'Task 3').startTime12).toBe(convertTo12HourTime('10:30'));
         });
     });
 });

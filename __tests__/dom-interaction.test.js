@@ -26,19 +26,19 @@ describe('DOM Handler Interaction Tests', () => {
     let confirmSpy;
 
     beforeEach(() => {
-        // Set up complete HTML structure with all required classes and attributes
+        // Set up basic HTML structure
         document.body.innerHTML = `
             <div id="current-time"></div>
             <div id="current-date"></div>
             <form id="task-form">
-                <input name="description" type="text" required />
-                <input name="start-time" type="time" required />
-                <input name="duration-hours" type="number" min="0" value="0" />
-                <input name="duration-minutes" type="number" min="0" max="59" value="0" />
+                <input name="description" />
+                <input name="start-time" type="time" />
+                <input name="duration-hours" type="number" />
+                <input name="duration-minutes" type="number" />
                 <button type="submit">Add Task</button>
             </form>
             <div id="task-list"></div>
-            <button id="delete-all" class="btn-delete-all">Delete All</button>
+            <button id="delete-all">Delete All</button>
         `;
 
         // Mock callbacks
@@ -55,11 +55,11 @@ describe('DOM Handler Interaction Tests', () => {
             onSaveTaskEdit: jest.fn(),
             onCancelEdit: jest.fn(),
         };
-
+        
         alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
         confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
-        // Initialize event listeners with mock callbacks
+        // Initialize static event listeners with mock app callbacks
         initializePageEventListeners(mockAppCallbacks);
     });
 
@@ -72,53 +72,35 @@ describe('DOM Handler Interaction Tests', () => {
         test('updates time and date elements correctly', () => {
             const fixedDate = new Date(2023, 0, 1, 10, 0); // Jan 1, 2023, 10:00:00
             const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
-
-            try {
-                renderDateTime();
-
-                const timeElement = document.getElementById('current-time');
-                const dateElement = document.getElementById('current-date');
-
-                // Assert elements exist before using them
-                expect(timeElement).not.toBeNull();
-                expect(dateElement).not.toBeNull();
-
-                if (timeElement && dateElement) {
-                    expect(timeElement.textContent).toBe(fixedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                    expect(dateElement.textContent).toBe(fixedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
-                }
-            } finally {
-                dateSpy.mockRestore();
-            }
+            
+            renderDateTime();
+            
+            const timeElement = document.getElementById('current-time');
+            const dateElement = document.getElementById('current-date');
+            
+            expect(timeElement.textContent).toBe(fixedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            expect(dateElement.textContent).toBe(fixedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
+            
+            dateSpy.mockRestore();
         });
     });
 
     describe('updateStartTimeField', () => {
         test('sets start time input if empty', () => {
             const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
-            expect(startTimeInput).not.toBeNull();
-            expect(startTimeInput instanceof HTMLInputElement).toBe(true);
-
-            if (startTimeInput instanceof HTMLInputElement) {
-                startTimeInput.value = ''; // Ensure it's empty
-                updateStartTimeField('10:30');
-                expect(startTimeInput.value).toBe('10:30');
-            }
+            startTimeInput.value = ''; // Ensure it's empty
+            updateStartTimeField('10:30');
+            expect(startTimeInput.value).toBe('10:30');
         });
 
         test('does not overwrite existing start time input', () => {
             const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
-            expect(startTimeInput).not.toBeNull();
-            expect(startTimeInput instanceof HTMLInputElement).toBe(true);
-
-            if (startTimeInput instanceof HTMLInputElement) {
-                startTimeInput.value = '09:00';
-                updateStartTimeField('10:30');
-                expect(startTimeInput.value).toBe('09:00');
-            }
+            startTimeInput.value = '09:00';
+            updateStartTimeField('10:30');
+            expect(startTimeInput.value).toBe('09:00');
         });
     });
-
+    
     describe('showAlert and askConfirmation', () => {
         test('showAlert calls window.alert', () => {
             showAlert('Test Alert');
@@ -142,152 +124,88 @@ describe('DOM Handler Interaction Tests', () => {
             { description: 'Task 3', startTime: '11:30', endTime: '12:00', duration: 30, status: 'incomplete', editing: true, confirmingDelete: false },
         ];
 
-        beforeEach(() => {
-            // Ensure task list is empty before each test
-            const taskList = document.getElementById('task-list');
-            expect(taskList).not.toBeNull();
-            if (taskList) {
-                taskList.innerHTML = '';
-            }
-        });
-
         test('renders tasks correctly (view and edit modes)', () => {
             renderTasks(sampleTasks, mockTaskEventCallbacks);
             const taskListElement = document.getElementById('task-list');
-            expect(taskListElement).not.toBeNull();
+            expect(taskListElement.children.length).toBe(sampleTasks.length);
+            
+            // Check Task 1 (view mode)
+            const task1Element = taskListElement.querySelector('#view-task-0');
+            expect(task1Element).not.toBeNull();
+            expect(task1Element.textContent).toContain('Task 1');
+            expect(task1Element.textContent).toContain(convertTo12HourTime('09:00'));
+            
+            // Check Task 2 (view mode, completed)
+            const task2Element = taskListElement.querySelector('#view-task-1');
+            expect(task2Element).not.toBeNull();
+            expect(task2Element.textContent).toContain('Task 2');
+            expect(task2Element.querySelector('.line-through')).not.toBeNull();
+            expect(task2Element.querySelector('.checkbox i').classList.contains('fa-check-square')).toBe(true);
 
-            if (taskListElement) {
-                // Check that tasks were rendered
-                expect(taskListElement.children.length).toBe(sampleTasks.length);
 
-                // Check Task 1 (view mode)
-                const task1Element = taskListElement.querySelector('#view-task-0');
-                expect(task1Element).not.toBeNull();
-                if (task1Element) {
-                    expect(task1Element.textContent).toContain('Task 1');
-                    expect(task1Element.textContent).toContain(convertTo12HourTime('09:00'));
-                }
-
-                // Check Task 2 (view mode, completed)
-                const task2Element = taskListElement.querySelector('#view-task-1');
-                expect(task2Element).not.toBeNull();
-                if (task2Element) {
-                    expect(task2Element.textContent).toContain('Task 2');
-                    const lineThrough = task2Element.querySelector('.line-through');
-                    expect(lineThrough).not.toBeNull();
-                    const checkbox = task2Element.querySelector('.checkbox i');
-                    expect(checkbox).not.toBeNull();
-                    if (checkbox) {
-                        expect(checkbox.classList.contains('fa-check-square')).toBe(true);
-                    }
-                }
-
-                // Check Task 3 (edit mode)
-                const task3Form = taskListElement.querySelector('#edit-task-2');
-                expect(task3Form).not.toBeNull();
-                if (task3Form) {
-                    const descriptionInput = task3Form.querySelector('input[name="description"]');
-                    expect(descriptionInput).not.toBeNull();
-                    if (descriptionInput instanceof HTMLInputElement) {
-                        expect(descriptionInput.value).toBe('Task 3');
-                    }
-                }
-            }
+            // Check Task 3 (edit mode)
+            const task3Form = taskListElement.querySelector('#edit-task-2');
+            expect(task3Form).not.toBeNull();
+            expect(task3Form.querySelector('input[name="description"]').value).toBe('Task 3');
         });
 
         test('attaches event listeners for view mode tasks', () => {
             renderTasks([sampleTasks[0]], mockTaskEventCallbacks); // Only Task 1 (view mode)
-
+            
             const task1Element = document.getElementById('view-task-0');
-            expect(task1Element).not.toBeNull();
+            task1Element.querySelector('.checkbox').dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith(0);
 
-            if (task1Element) {
-                // Test checkbox click
-                const checkbox = task1Element.querySelector('.checkbox');
-                expect(checkbox).not.toBeNull();
-                if (checkbox) {
-                    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
-                    expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith(0);
-                }
-
-                // Test edit button click
-                const editButton = task1Element.querySelector('.btn-edit');
-                expect(editButton).not.toBeNull();
-                if (editButton) {
-                    editButton.dispatchEvent(new Event('click', { bubbles: true }));
-                    expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith(0);
-                }
-
-                // Test delete button click
-                const deleteButton = task1Element.querySelector('.btn-delete');
-                expect(deleteButton).not.toBeNull();
-                if (deleteButton) {
-                    deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-                    expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(0);
-                }
-            }
+            task1Element.querySelector('.btn-edit').dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith(0);
+            
+            task1Element.querySelector('.btn-delete').dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(0);
         });
-
+        
         test('attaches event listeners for edit mode tasks', () => {
-            renderTasks([sampleTasks[2]], mockTaskEventCallbacks); // Only Task 3 (edit mode)
+            // When rendering only sampleTasks[2], its index within the map function of renderTasks will be 0.
+            renderTasks([sampleTasks[2]], mockTaskEventCallbacks); 
+            const task3Form = document.getElementById('edit-task-0'); // Corrected ID
 
-            const task3Form = document.getElementById('edit-task-2');
-            expect(task3Form).not.toBeNull();
+            expect(task3Form).not.toBeNull(); 
 
-            if (task3Form) {
-                // Test form submission
-                task3Form.dispatchEvent(new Event('submit', { bubbles: true }));
-                expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(2, expect.any(FormData));
-
-                // Test cancel button click
-                const cancelButton = task3Form.querySelector('.btn-edit-cancel');
-                expect(cancelButton).not.toBeNull();
-                if (cancelButton) {
-                    cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
-                    expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith(2);
-                }
-            }
+            task3Form.dispatchEvent(new Event('submit'));
+            // The callback should be invoked with the index relative to the array passed to renderTasks, which is 0.
+            expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(0, expect.any(FormData)); 
+            
+            const cancelButton = task3Form.querySelector('.btn-edit-cancel');
+            expect(cancelButton).not.toBeNull();
+            cancelButton.dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith(0); // Corrected index
         });
     });
 
     describe('initializePageEventListeners', () => {
         test('task form submission calls onTaskFormSubmit', () => {
             const taskFormElement = getTaskFormElement();
-            expect(taskFormElement).not.toBeNull();
-
-            if (taskFormElement) {
-                taskFormElement.dispatchEvent(new Event('submit', { bubbles: true }));
-                expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(expect.any(FormData));
-            }
+            taskFormElement.dispatchEvent(new Event('submit'));
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(expect.any(FormData));
         });
 
         test('delete all button click calls onDeleteAllTasks', () => {
             const deleteAllBtn = document.getElementById('delete-all');
-            expect(deleteAllBtn).not.toBeNull();
-
-            if (deleteAllBtn) {
-                deleteAllBtn.dispatchEvent(new Event('click', { bubbles: true }));
-                expect(mockAppCallbacks.onDeleteAllTasks).toHaveBeenCalled();
-            }
+            deleteAllBtn.dispatchEvent(new Event('click'));
+            expect(mockAppCallbacks.onDeleteAllTasks).toHaveBeenCalled();
         });
 
         test('global click calls onGlobalClick', () => {
-            document.dispatchEvent(new Event('click', { bubbles: true }));
+            document.dispatchEvent(new Event('click'));
             expect(mockAppCallbacks.onGlobalClick).toHaveBeenCalled();
         });
     });
-
+    
     describe('focusTaskDescriptionInput', () => {
         test('focuses on the task description input', () => {
             const descriptionInput = document.querySelector('#task-form input[name="description"]');
-            expect(descriptionInput).not.toBeNull();
-            expect(descriptionInput instanceof HTMLInputElement).toBe(true);
-
-            if (descriptionInput instanceof HTMLInputElement) {
-                descriptionInput.focus = jest.fn(); // Mock focus
-                focusTaskDescriptionInput();
-                expect(descriptionInput.focus).toHaveBeenCalled();
-            }
+            descriptionInput.focus = jest.fn(); // Mock focus
+            focusTaskDescriptionInput();
+            expect(descriptionInput.focus).toHaveBeenCalled();
         });
     });
 });

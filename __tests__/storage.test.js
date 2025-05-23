@@ -5,14 +5,25 @@
 // This file contains tests for localStorage operations in fortudo
 
 import { saveTasks, loadTasks } from '../public/js/storage.js';
-import { setupMockLocalStorage } from './test-utils.js';
 
 // Mock localStorage
 let mockLocalStorage;
 
 beforeEach(() => {
-  // Use the utility function to set up mock localStorage
-  mockLocalStorage = setupMockLocalStorage();
+  mockLocalStorage = {
+    getItem: jest.spyOn(window.localStorage, 'getItem'),
+    setItem: jest.spyOn(window.localStorage, 'setItem'),
+    clear: jest.spyOn(window.localStorage, 'clear')
+  };
+  // Reset window.localStorage.clear mock implementation for each test
+  mockLocalStorage.clear.mockImplementation(() => {
+    // Simulate clearing by setting tasks to null
+    mockLocalStorage.setItem('tasks', null);
+  });
+  // Clear all localStorage mocks before each test to ensure a clean state
+  mockLocalStorage.getItem.mockReset();
+  mockLocalStorage.setItem.mockReset();
+  mockLocalStorage.clear.mockReset();
 });
 
 // Clear mocks after each test

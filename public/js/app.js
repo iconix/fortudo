@@ -164,7 +164,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Initialize Page
-    initializePageEventListeners(appCallbacks);
+    const taskFormElement = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+    const deleteAllButtonElement = /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all'));
+
+    if (!taskFormElement) {
+        console.error("CRITICAL: app.js could not find #task-form element.");
+    }
+    if (!deleteAllButtonElement) {
+        console.error("CRITICAL: app.js could not find #delete-all button.");
+    }
+
+    initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement);
     renderTasks(getTasks(), taskEventCallbacks);
     updateStartTimeField(getSuggestedStartTime());
     renderDateTime(); // Initial render for date/time

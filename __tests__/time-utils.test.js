@@ -3,19 +3,20 @@
  */
 
 // This file contains tests for time utility functions in fortudo
+// This file contains tests for time utility functions in fortudo
 // These are pure functions that don't interact with state or DOM
 
 import {
-  calculateMinutes,
-  calculateHoursAndMinutes,
-  calculate24HourTimeFromMinutes,
-  convertTo24HourTime,
-  convertTo12HourTime,
-  calculateEndTime,
-  tasksOverlap,
-  getCurrentTimeRounded,
-  getFormattedDate,
-  getFormattedTime
+    calculateMinutes,
+    calculateHoursAndMinutes,
+    calculate24HourTimeFromMinutes,
+    convertTo24HourTime,
+    convertTo12HourTime,
+    calculateEndTime,
+    tasksOverlap,
+    getCurrentTimeRounded,
+    getFormattedDate,
+    getFormattedTime
 } from '../public/js/utils.js';
 
 describe('Time Utility Functions', () => {
@@ -82,74 +83,75 @@ describe('Time Utility Functions', () => {
     expect(calculateEndTime('23:45', 30)).toBe('00:15'); // crosses midnight
   });
 
-  describe('Midnight Crossing Time Handling', () => {
+  describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
     test('handles times that cross midnight correctly', () => {
-      // Test task overlap detection with times crossing midnight
       const lateNightTask = { startTime: '23:00', endTime: '00:30' };
       const earlyMorningTask = { startTime: '00:15', endTime: '01:00' };
       expect(tasksOverlap(lateNightTask, earlyMorningTask)).toBe(true);
 
-      // Additional edge case: tasks that "touch" at midnight
       const eveningTask = { startTime: '22:00', endTime: '00:00' };
       const morningTask = { startTime: '00:00', endTime: '02:00' };
       expect(tasksOverlap(eveningTask, morningTask)).toBe(false);
     });
 
     test('handles complex midnight-crossing task overlaps correctly', () => {
-      // Test case 1: Both tasks cross midnight
-      const longEveningTask = { startTime: '20:00', endTime: '02:00' }; // crosses midnight
-      const midnightTask = { startTime: '23:30', endTime: '00:30' };    // also crosses midnight
+      const longEveningTask = { startTime: '20:00', endTime: '02:00' }; 
+      const midnightTask = { startTime: '23:30', endTime: '00:30' };    
       expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
 
-      // Test case 2: First task spans multiple days, second is contained within
-      const multiDayTask = { startTime: '22:00', endTime: '08:00' };  // spans night
-      const morningTask = { startTime: '07:00', endTime: '08:30' };   // morning only
+      const multiDayTask = { startTime: '22:00', endTime: '08:00' };  
+      const morningTask = { startTime: '07:00', endTime: '08:30' };   
       expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
 
-      // Test case 3: Tasks on different days shouldn't overlap
-      const mondayTask = { startTime: '23:00', endTime: '00:30' };  // Monday night to Tuesday morning
-      const tuesdayEveningTask = { startTime: '20:00', endTime: '22:00' }; // Tuesday evening
-      // Note: In a real app, we'd need date information to determine this accurately,
-      // but our implementation assumes tasks are on the same day or adjacent days
+      const mondayTask = { startTime: '23:00', endTime: '00:30' };  
+      const tuesdayEveningTask = { startTime: '20:00', endTime: '22:00' }; 
       expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
     });
   });
 
-  // Tests for the new utility functions that were added
-  describe('Date and Time Formatting', () => {
+  describe('Date and Time Formatting & getCurrentTimeRounded', () => {
     let dateSpy;
 
-    beforeEach(() => {
-      // Set initial time
-      const fixedDate = new Date(2025, 0, 15, 14, 30, 0); // Jan 15, 2025, 2:30 PM
-      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
-    });
-
     afterEach(() => {
-      dateSpy.mockRestore();
+      if (dateSpy) dateSpy.mockRestore();
     });
 
     test('getCurrentTimeRounded returns exact time when already at 5-minute interval', () => {
-      expect(getCurrentTimeRounded()).toBe('14:30');
+      const fixedDate = new Date(2025, 0, 15, 14, 30, 0); // Jan 15, 2025, 2:30 PM
+      expect(getCurrentTimeRounded(fixedDate)).toBe('14:30');
     });
 
-    test('getCurrentTimeRounded rounds up to nearest 5 minutes', () => {
-      // Set time that needs rounding
+    test('getCurrentTimeRounded rounds up to nearest 5 minutes (e.g., 14:32 -> 14:35)', () => {
       const roundingDate = new Date(2025, 0, 15, 14, 32, 0); // Jan 15, 2025, 2:32 PM
-      dateSpy.mockImplementation(() => roundingDate);
-
-      // Should round up to 14:35
-      expect(getCurrentTimeRounded()).toBe('14:35');
+      expect(getCurrentTimeRounded(roundingDate)).toBe('14:35');
+    });
+    
+    test('getCurrentTimeRounded handles hour rollover (e.g. 10:58 -> 11:00)', () => {
+      const rolloverDate = new Date(2025, 0, 15, 10, 58, 0); // 10:58 AM
+      expect(getCurrentTimeRounded(rolloverDate)).toBe('11:00');
+    });
+    
+    test('getCurrentTimeRounded handles just before midnight (e.g. 23:58 -> 00:00)', () => {
+      const almostMidnight = new Date(2025, 0, 15, 23, 58, 0);
+      expect(getCurrentTimeRounded(almostMidnight)).toBe('00:00');
     });
 
     test('getFormattedDate returns date in readable format', () => {
-      // With our mock date set to Jan 15, 2025
+      const fixedDate = new Date(2025, 0, 15, 14, 30, 0);
+      // Temporarily mock new Date() for this specific test if getFormattedDate doesn't take an arg
+      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
       expect(getFormattedDate()).toBe('Wednesday, January 15');
     });
 
     test('getFormattedTime returns time in 12-hour format with AM/PM', () => {
-      // With our mock date set to 2:30 PM
+      const fixedDate = new Date(2025, 0, 15, 14, 30, 0); // 2:30 PM
+      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
       expect(getFormattedTime()).toBe('2:30 PM');
+
+      dateSpy.mockRestore();
+      const fixedDateAM = new Date(2025, 0, 15, 10, 0, 0); // 10:00 AM
+      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDateAM);
+      expect(getFormattedTime()).toBe('10:00 AM');
     });
   });
 });
