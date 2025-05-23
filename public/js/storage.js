@@ -1,1 +1,18 @@
-// localStorage operations
+// Function to save tasks to localStorage
+export function saveTasks(tasks) {
+  localStorage.setItem('tasks', JSON.stringify(tasks));
+}
+
+// Function to load tasks from localStorage
+export function loadTasks() {
+  const tasksString = localStorage.getItem('tasks');
+  if (tasksString) {
+    try {
+      return JSON.parse(tasksString);
+    } catch (error) {
+      console.error("Error parsing tasks from localStorage:", error);
+      return []; // Return an empty array if parsing fails
+    }
+  }
+  return []; // Return an empty array if no tasks are found
+}

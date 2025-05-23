@@ -7,6 +7,11 @@
 
 // Import common test setup
 const { setupFortudoForTesting } = require('./test-utils');
+// Mock storage.js specifically for saveTasks behavior in these integration tests
+// setupFortudoForTesting already mocks localStorage, but task-manager uses saveTasks.
+import { saveTasks } from '../public/js/storage.js';
+jest.mock('../public/js/storage.js');
+
 
 /** @type {import('./test-utils').Fortudo} */
 let fortudo;
@@ -19,8 +24,16 @@ beforeAll(async () => {
 // Clear mocks and reset tasks after each test
 afterEach(() => {
   jest.clearAllMocks();
-  // Clear tasks while maintaining the reference
-  fortudo.tasks.length = 0;
+  // Clear tasks by re-setting them in the task manager via the app's interface if possible,
+  // or directly if the test setup allows for it.
+  // For now, fortudo.tasks.length = 0 will clear the array that task-manager also references via getTasks()
+  // if window.fortudo.tasks is properly linked to taskManager.getTasks() in app.js.
+  if (fortudo && fortudo.tm && typeof fortudo.tm.setTasks === 'function') {
+    fortudo.tm.setTasks([]); // Prefer using the task manager's own reset mechanism
+  } else if (fortudo && fortudo.tasks) {
+     fortudo.tasks.length = 0; // Fallback if direct task manager access isn't set up on fortudo
+  }
+  saveTasks.mockClear(); // Clear saveTasks mock calls
 });
 
 describe('Auto-rescheduling Tests', () => {
@@ -61,34 +74,51 @@ describe('Auto-rescheduling Tests', () => {
     fortudo.addTask(task2);
     fortudo.addTask(task3);
 
-    // Store original function before mocking
-    const originalAutoReschedule = fortudo.autoReschedule;
+    // This test is trying to mock autoReschedule on the fortudo object.
+    // However, autoReschedule is now an internal function within task-manager.js,
+    // and app.js calls specific task manager functions like addTask, updateTask.
+    // The integration test should verify the outcome of these actions rather than mocking autoReschedule directly on fortudo.
+    // For this phase, we'll adapt it to check the side-effects (tasks reordering, saveTasks calls).
 
-    // Replace with a test-specific version that we can verify
-    // Add default parameters to match the original function signature
-    fortudo.autoReschedule = jest.fn((task, trigger = 'Adding', askToConfirm = false) => {
-      return true; // Always return true for this test
-    });
-
-    // Create an updated task that will cause a cascade
-    const updatedTask1 = {
-      ...task1,
-      endTime: '10:30',  // Extends 30 minutes into task2
-      duration: 90
-    };
-
-    // Mock confirm to always return true
+    // Mock confirm to always return true for UI interactions handled by app.js
     window.confirm = jest.fn().mockReturnValue(true);
 
-    // Directly test the autoReschedule function
-    const result = fortudo.autoReschedule(updatedTask1, 'Updating', true);
+    // Add tasks
+    fortudo.addTask(task1);
+    fortudo.addTask(task2);
+    fortudo.addTask(task3);
+    expect(saveTasks).toHaveBeenCalledTimes(3); // Once for each addTask
 
-    // Verify autoReschedule was called and returned true
-    expect(fortudo.autoReschedule).toHaveBeenCalled();
-    expect(result).toBe(true);
+    // Create an updated task that will cause a cascade
+    const updatedTask1Data = {
+      description: task1.description, // Keep description
+      startTime: task1.startTime,   // Keep original start time
+      duration: 90                  // New duration
+    };
+    // updateTask is now called from app.js, which calls taskManager.updateTask
+    // taskManager.updateTask internally calls autoReschedule.
+    fortudo.updateTask(0, updatedTask1Data); // updateTask on fortudo should map to taskManager.updateTask
 
-    // Restore original function
-    fortudo.autoReschedule = originalAutoReschedule;
+    // Verify tasks are rescheduled and saveTasks was called
+    // Task 1: 09:00 - 10:30 (duration 90)
+    // Task 2: 10:30 - 11:30 (pushed back)
+    // Task 3: 11:30 - 12:30 (pushed back)
+    const tasks = fortudo.tasks; // Assuming fortudo.tasks is linked to getTasks()
+    expect(tasks[0].description).toBe('First Task');
+    expect(tasks[0].startTime).toBe('09:00');
+    expect(tasks[0].endTime).toBe('10:30');
+    expect(tasks[0].duration).toBe(90);
+
+    expect(tasks[1].description).toBe('Second Task');
+    expect(tasks[1].startTime).toBe('10:30');
+    expect(tasks[1].endTime).toBe('11:30');
+
+    expect(tasks[2].description).toBe('Third Task');
+    expect(tasks[2].startTime).toBe('11:30');
+    expect(tasks[2].endTime).toBe('12:30');
+
+    expect(saveTasks).toHaveBeenCalledTimes(3 + 1); // 3 from addTask, 1 from updateTask
+    expect(window.confirm).toHaveBeenCalled(); // app.js calls confirm for overlap
   });
 
   test('preserves task order and cascades rescheduling through subsequent tasks after late completion', () => {
@@ -96,12 +126,8 @@ describe('Auto-rescheduling Tests', () => {
     // This is essential because addTask and autoReschedule ask for confirmation
     window.confirm = jest.fn().mockReturnValue(true);
 
-    // Only mock DOM-dependent functions to avoid side effects during testing
-    const originalRenderTasks = fortudo.renderTasks;
-    const originalUpdateLocalStorage = fortudo.updateLocalStorage;
-
-    fortudo.renderTasks = jest.fn();
-    fortudo.updateLocalStorage = jest.fn();
+    // Mocking of renderTasks and updateLocalStorage is not needed here
+    // as we are testing the logic including calls to saveTasks (which replaced updateLocalStorage)
 
     // Initial tasks
     const taskA = {
@@ -134,9 +160,11 @@ describe('Auto-rescheduling Tests', () => {
         confirmingDelete: false
     };
 
-    fortudo.addTask(taskA); // This should add taskA without rescheduling
-    fortudo.addTask(taskB); // This should add taskB without rescheduling (they don't overlap)
-    fortudo.addTask(taskC); // This should add taskC without rescheduling (they don't overlap)
+    fortudo.addTask(taskA);
+    fortudo.addTask(taskB);
+    fortudo.addTask(taskC);
+    expect(saveTasks).toHaveBeenCalledTimes(3);
+
 
     // Verify initial task positions
     expect(fortudo.tasks[0].description).toBe('Task A');
@@ -162,8 +190,9 @@ describe('Auto-rescheduling Tests', () => {
         confirmingDelete: false
     };
 
-    // This should trigger the real autoReschedule that will move the conflicting tasks
+    // This should trigger autoReschedule within taskManager, called by app.js
     fortudo.addTask(taskD);
+    expect(saveTasks).toHaveBeenCalledTimes(3 + 1); // 1 more call for taskD
 
     // Verify tasks have been rescheduled correctly after adding Task D
     // Tasks should be sorted by startTime, so after rescheduling:
@@ -234,21 +263,14 @@ describe('Auto-rescheduling Tests', () => {
     expect(fortudo.tasks[3].startTime).toBe('14:30');
     expect(fortudo.tasks[3].endTime).toBe('14:45');
 
-    // Restore original functions
-    fortudo.renderTasks = originalRenderTasks;
-    fortudo.updateLocalStorage = originalUpdateLocalStorage;
+    // No need to restore renderTasks/updateLocalStorage as they weren't mocked for this version of the test
   });
 
   test('only reschedules affected tasks when a task is completed late', () => {
     // Setup window.confirm mock to always return true for any confirmation dialogs
     window.confirm = jest.fn().mockReturnValue(true);
 
-    // Mock DOM-dependent functions to avoid side effects during testing
-    const originalRenderTasks = fortudo.renderTasks;
-    const originalUpdateLocalStorage = fortudo.updateLocalStorage;
-
-    fortudo.renderTasks = jest.fn();
-    fortudo.updateLocalStorage = jest.fn();
+    // No need to mock renderTasks or updateLocalStorage here
 
     // Initial tasks with specified schedule:
     // Task A: 09:00-10:00
@@ -288,6 +310,7 @@ describe('Auto-rescheduling Tests', () => {
     fortudo.addTask(taskA);
     fortudo.addTask(taskB);
     fortudo.addTask(taskC);
+    expect(saveTasks).toHaveBeenCalledTimes(3);
 
     // Verify initial task positions
     expect(fortudo.tasks[0].description).toBe('Task A');
@@ -340,9 +363,7 @@ describe('Auto-rescheduling Tests', () => {
     expect(fortudo.tasks[2].endTime).toBe('14:00');     // Remains unchanged
     expect(fortudo.tasks[2].duration).toBe(60);         // Duration unchanged
 
-    // Restore original functions
-    fortudo.renderTasks = originalRenderTasks;
-    fortudo.updateLocalStorage = originalUpdateLocalStorage;
+    // No need to restore renderTasks/updateLocalStorage
   });
 
   test('reschedules subsequent tasks when a task duration is increased', () => {
@@ -384,7 +405,8 @@ describe('Auto-rescheduling Tests', () => {
       editing: false
     };
 
-    fortudo.updateTask(0, updatedTask1);
+    fortudo.updateTask(0, updatedTask1); // This should call taskManager.updateTask
+    expect(saveTasks).toHaveBeenCalledTimes(2 + 1); // 2 addTask, 1 updateTask
 
     // Verify task2 was pushed back
     expect(fortudo.tasks[1].startTime).toBe('10:30');
@@ -394,12 +416,9 @@ describe('Auto-rescheduling Tests', () => {
 
 describe('Complete Task Workflow', () => {
   test('task workflow: add, update, complete, delete', () => {
-    // Mock DOM-dependent functions to avoid side effects during testing
-    const originalRenderTasks = fortudo.renderTasks;
-    const originalUpdateLocalStorage = fortudo.updateLocalStorage;
-
-    fortudo.renderTasks = jest.fn();
-    fortudo.updateLocalStorage = jest.fn();
+    // No need to mock renderTasks or updateLocalStorage here
+    // window.confirm will be used by app.js for completion confirmation if needed.
+    window.confirm = jest.fn().mockReturnValue(true); // Assume user confirms any dialogs
 
     // 1. Add a new task
     const task = {
@@ -412,6 +431,7 @@ describe('Complete Task Workflow', () => {
       confirmingDelete: false
     };
     fortudo.addTask(task);
+    expect(saveTasks).toHaveBeenCalledTimes(1);
 
     // Verify task was added
     expect(fortudo.tasks.length).toBe(1);
@@ -427,6 +447,7 @@ describe('Complete Task Workflow', () => {
       duration: 60
     };
     fortudo.updateTask(0, updatedTask);
+    expect(saveTasks).toHaveBeenCalledTimes(1 + 1);
 
     // Verify task was updated
     expect(fortudo.tasks[0].description).toBe('Updated Task');
@@ -444,20 +465,18 @@ describe('Complete Task Workflow', () => {
       document.body.appendChild(div);
     }
 
-    fortudo.completeTask(0);
+    fortudo.completeTask(0); // app.js calls taskManager.completeTask
+    expect(saveTasks).toHaveBeenCalledTimes(1 + 1 + 1);
 
     // Verify task was completed
     expect(fortudo.tasks[0].status).toBe('completed');
 
     // 4. Delete the task
-    fortudo.deleteTask(0, true);
+    fortudo.deleteTask(0, true); // app.js calls taskManager.deleteTask
+    expect(saveTasks).toHaveBeenCalledTimes(1 + 1 + 1 + 1);
 
     // Verify task was deleted
     expect(fortudo.tasks.length).toBe(0);
-
-    // Restore original functions
-    fortudo.renderTasks = originalRenderTasks;
-    fortudo.updateLocalStorage = originalUpdateLocalStorage;
   });
 });
 
@@ -490,9 +509,11 @@ describe('Edge Case Tests', () => {
     // Mock confirm to return true
     window.confirm = jest.fn().mockReturnValue(true);
 
-    fortudo.addTask(newTask);
+    fortudo.addTask(newTask); // This will call taskManager.addTask
+    expect(saveTasks).toHaveBeenCalledTimes(1 + 1);
 
-    // Verify completed task remains unchanged
+
+    // Verify completed task remains unchanged because autoReschedule in task-manager skips completed tasks.
     expect(fortudo.tasks[0].description).toBe('Completed Task');
     expect(fortudo.tasks[0].startTime).toBe('09:00');
     expect(fortudo.tasks[0].endTime).toBe('10:00');
@@ -539,22 +560,47 @@ describe('Edge Case Tests', () => {
     fortudo.addTask(task2);
     fortudo.addTask(task3);
 
-    // Mock the autoReschedule function for testing
-    const originalAutoReschedule = fortudo.autoReschedule;
+    // This test was trying to mock autoReschedule on the fortudo object.
+    // The actual autoReschedule logic is in task-manager.js and is not directly mockable from here
+    // when testing through app.js integration.
+    // The behavior is that task-manager's autoReschedule should ignore tasks that are being edited.
+    // We can test this by attempting an operation that would normally reschedule task2.
 
-    // Create a mock implementation to verify logic
-    fortudo.autoReschedule = jest.fn().mockImplementation((task, trigger = 'Adding', askToConfirm = false) => {
-      // In real implementation, this would check if task.editing and skip it
-      return task.editing === false;
-    });
+    // Add tasks
+    fortudo.addTask(task1); // saveTasks #1
+    fortudo.addTask(task2); // saveTasks #2 - task2.editing is true
+    fortudo.addTask(task3); // saveTasks #3
+    saveTasks.mockClear(); // Clear after setup
 
-    // Try to reschedule task2 (which is being edited)
-    const result = fortudo.autoReschedule(task2, 'Updating', true);
+    // Attempt to update task1 to overlap with task2.
+    // Since task2.editing is true, it should not be rescheduled.
+    // Task3, however, should be rescheduled if task1's new end time overlaps with it.
+    const updatedTask1Data = {
+        description: task1.description,
+        startTime: task1.startTime, // 09:00
+        duration: 150 // New duration: 2.5 hours, so ends at 11:30
+    };
 
-    // Verify task2 was properly skipped (autoReschedule returns false for editing tasks)
-    expect(result).toBe(false);
+    window.confirm = jest.fn().mockReturnValue(true); // For app.js confirmation
+    fortudo.updateTask(0, updatedTask1Data); // This will call app.js -> taskManager.updateTask -> autoReschedule
+    expect(saveTasks).toHaveBeenCalledTimes(1);
 
-    // Restore original function
-    fortudo.autoReschedule = originalAutoReschedule;
+
+    const tasks = fortudo.tasks;
+    expect(tasks[0].description).toBe('First Task'); // Updated Task 1
+    expect(tasks[0].endTime).toBe('11:30');
+
+    expect(tasks[1].description).toBe('Second Task'); // Task 2 (editing)
+    expect(tasks[1].startTime).toBe('10:00'); // Should remain unchanged as it's editing
+    expect(tasks[1].endTime).toBe('11:00');
+
+    expect(tasks[2].description).toBe('Third Task'); // Task 3
+    // If Task 1 (ends 11:30) overlaps Task 2 (starts 10:00, ends 11:00, but editing)
+    // and also overlaps Task 3 (orig 11:00-12:00), Task 3 should be pushed by Task 1.
+    // However, task-manager's autoReschedule currently has a simple filter `!task.editing`.
+    // If task1 overlaps task2 (editing), task2 is filtered out.
+    // Then task1 is compared with task3. If task1 (09:00-11:30) overlaps task3 (11:00-12:00), task3 is moved.
+    expect(tasks[2].startTime).toBe('11:30'); // Pushed by the new end time of Task 1
+    expect(tasks[2].endTime).toBe('12:30');
   });
 });

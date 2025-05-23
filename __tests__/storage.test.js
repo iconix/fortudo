@@ -4,320 +4,102 @@
 
 // This file contains tests for localStorage operations in fortudo
 
-// Import common test setup
-const { setupFortudoForTesting } = require('./test-utils');
+import { saveTasks, loadTasks } from '../public/js/storage.js';
 
-/** @type {import('./test-utils').Fortudo} */
-let fortudo;
+// Mock localStorage
+let mockLocalStorage;
 
-// Set up fortudo before all tests
-beforeAll(async () => {
-  fortudo = await setupFortudoForTesting();
+beforeEach(() => {
+  mockLocalStorage = {
+    getItem: jest.spyOn(window.localStorage, 'getItem'),
+    setItem: jest.spyOn(window.localStorage, 'setItem'),
+    clear: jest.spyOn(window.localStorage, 'clear')
+  };
+  // Reset window.localStorage.clear mock implementation for each test
+  mockLocalStorage.clear.mockImplementation(() => {
+    // Simulate clearing by setting tasks to null
+    mockLocalStorage.setItem('tasks', null);
+  });
+  // Clear all localStorage mocks before each test to ensure a clean state
+  mockLocalStorage.getItem.mockReset();
+  mockLocalStorage.setItem.mockReset();
+  mockLocalStorage.clear.mockReset();
 });
 
 // Clear mocks after each test
 afterEach(() => {
   jest.clearAllMocks();
-  // Clear tasks while maintaining the reference
-  fortudo.tasks.length = 0;
 });
 
 describe('Storage Functionality', () => {
-  test('tasks are saved to localStorage when added', () => {
-    // Create a sample task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
+  describe('saveTasks', () => {
+    test('should save tasks to localStorage', () => {
+      const tasks = [
+        { description: 'Test Task 1', startTime: '09:00', endTime: '10:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false },
+        { description: 'Test Task 2', startTime: '10:00', endTime: '11:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false },
+      ];
+      saveTasks(tasks);
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('tasks', JSON.stringify(tasks));
+    });
 
-    // Add the task
-    fortudo.addTask(task);
+    test('should overwrite existing tasks in localStorage', () => {
+      const oldTasks = [{ description: 'Old Task', startTime: '08:00', endTime: '09:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false }];
+      saveTasks(oldTasks); // Save initial tasks
 
-    // Check if localStorage.setItem was called
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
+      const newTasks = [{ description: 'New Task', startTime: '10:00', endTime: '11:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false }];
+      saveTasks(newTasks); // Save new tasks, overwriting old ones
 
-    // Verify the JSON structure passed to localStorage
-    // @ts-ignore - Jest mock methods
-    const setItemCalls = window.localStorage.setItem.mock.calls;
-    const lastCall = setItemCalls[setItemCalls.length - 1];
-    const savedJson = JSON.parse(lastCall[1]);
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('tasks', JSON.stringify(newTasks));
+      // Ensure setItem was called twice (once for oldTasks, once for newTasks)
+      expect(mockLocalStorage.setItem).toHaveBeenCalledTimes(2);
+    });
 
-    expect(savedJson).toHaveLength(1);
-    expect(savedJson[0].description).toBe('Test Task');
-    expect(savedJson[0].startTime).toBe('09:00');
-    expect(savedJson[0].endTime).toBe('10:00');
-    expect(savedJson[0].duration).toBe(60);
+    test('should save an empty array to localStorage', () => {
+      const tasks = [];
+      saveTasks(tasks);
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('tasks', JSON.stringify([]));
+    });
   });
 
-  test('tasks are saved to localStorage when updated', () => {
-    // Add initial task
-    const task = {
-      description: 'Initial Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+  describe('loadTasks', () => {
+    test('should load tasks from localStorage', () => {
+      const storedTasks = [
+        { description: 'Stored Task 1', startTime: '09:00', endTime: '10:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false },
+        { description: 'Stored Task 2', startTime: '10:30', endTime: '11:30', duration: 60, status: 'completed', editing: false, confirmingDelete: false },
+      ];
+      mockLocalStorage.getItem.mockReturnValue(JSON.stringify(storedTasks));
 
-    // Clear localStorage mock calls to isolate update operation
-    // @ts-ignore - Jest mock methods
-    window.localStorage.setItem.mockClear();
+      const loadedTasks = loadTasks();
+      expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
+      expect(loadedTasks).toEqual(storedTasks);
+    });
 
-    // Update the task
-    const updatedTask = {
-      description: 'Updated Task',
-      startTime: '09:30',
-      endTime: '10:30',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.updateTask(0, updatedTask);
+    test('should return an empty array if no tasks are in localStorage', () => {
+      mockLocalStorage.getItem.mockReturnValue(null);
+      const loadedTasks = loadTasks();
+      expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
+      expect(loadedTasks).toEqual([]);
+    });
 
-    // Check if localStorage.setItem was called
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
+    test('should return an empty array if localStorage contains invalid JSON', () => {
+      mockLocalStorage.getItem.mockReturnValue('invalid json');
+      // JSON.parse will throw an error, loadTasks should catch it and return []
+      // We can't directly test the catch block here without more complex mocking
+      // of JSON.parse, but we expect it to behave like 'null' or empty.
+      // For the purpose of this test, we assume it will behave like 'null' (empty array).
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const loadedTasks = loadTasks();
+      expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
+      expect(loadedTasks).toEqual([]);
+      expect(consoleErrorSpy).toHaveBeenCalled(); // Verify console.error was called
+      consoleErrorSpy.mockRestore();
+    });
 
-    // Verify the JSON structure
-    // @ts-ignore - Jest mock methods
-    const setItemCalls = window.localStorage.setItem.mock.calls;
-    const lastCall = setItemCalls[setItemCalls.length - 1];
-    const savedJson = JSON.parse(lastCall[1]);
-
-    expect(savedJson).toHaveLength(1);
-    expect(savedJson[0].description).toBe('Updated Task');
-    expect(savedJson[0].startTime).toBe('09:30');
-    expect(savedJson[0].endTime).toBe('10:30');
-  });
-
-  test('tasks are saved to localStorage when deleted', () => {
-    // Add two tasks
-    const task1 = {
-      description: 'Task 1',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    const task2 = {
-      description: 'Task 2',
-      startTime: '10:30',
-      endTime: '11:30',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task1);
-    fortudo.addTask(task2);
-
-    // Clear localStorage mock calls to isolate delete operation
-    // @ts-ignore - Jest mock methods
-    window.localStorage.setItem.mockClear();
-
-    // Delete the first task
-    fortudo.deleteTask(0, true);
-
-    // Check if localStorage.setItem was called
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
-
-    // Verify the JSON structure
-    // @ts-ignore - Jest mock methods
-    const setItemCalls = window.localStorage.setItem.mock.calls;
-    const lastCall = setItemCalls[setItemCalls.length - 1];
-    const savedJson = JSON.parse(lastCall[1]);
-
-    expect(savedJson).toHaveLength(1);
-    expect(savedJson[0].description).toBe('Task 2');
-  });
-
-  test('tasks are saved to localStorage when completed', () => {
-    // Add a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
-
-    // Clear localStorage mock calls to isolate complete operation
-    // @ts-ignore - Jest mock methods
-    window.localStorage.setItem.mockClear();
-
-    // Set up current time element (needed for completeTask)
-    const timeElement = document.getElementById('current-time');
-    if (timeElement) {
-      timeElement.textContent = '09:30 AM';
-    }
-
-    // Complete the task
-    fortudo.completeTask(0);
-
-    // Check if localStorage.setItem was called
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
-
-    // Verify the JSON structure
-    // @ts-ignore - Jest mock methods
-    const setItemCalls = window.localStorage.setItem.mock.calls;
-    const lastCall = setItemCalls[setItemCalls.length - 1];
-    const savedJson = JSON.parse(lastCall[1]);
-
-    expect(savedJson).toHaveLength(1);
-    expect(savedJson[0].description).toBe('Test Task');
-    expect(savedJson[0].status).toBe('completed');
-  });
-
-  test('tasks are saved to localStorage when all tasks are deleted', () => {
-    // Create and add tasks
-    const task1 = {
-      description: 'Task 1',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    const task2 = {
-      description: 'Task 2',
-      startTime: '10:30',
-      endTime: '11:30',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-
-    // Make sure we start with an empty array
-    fortudo.tasks.length = 0;
-
-    fortudo.addTask(task1);
-    fortudo.addTask(task2);
-
-    // Clear localStorage mock calls to isolate deleteAll operation
-    // @ts-ignore - Jest mock methods
-    window.localStorage.setItem.mockClear();
-
-    // Mock confirm to return true
-    const originalConfirm = window.confirm;
-    window.confirm = jest.fn().mockReturnValue(true);
-
-    try {
-      // Delete all tasks
-      fortudo.deleteAllTasks();
-
-      // Check if localStorage.setItem was called
-      expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
-
-      // Verify the JSON structure is an empty array
-      // @ts-ignore - Jest mock methods
-      const setItemCalls = window.localStorage.setItem.mock.calls;
-      const lastCall = setItemCalls[setItemCalls.length - 1];
-      const savedJson = JSON.parse(lastCall[1]);
-
-      expect(savedJson).toHaveLength(0);
-    } finally {
-      // Restore original confirm
-      window.confirm = originalConfirm;
-    }
-  });
-
-  test('tasks are loaded from localStorage on initialization', () => {
-    // Set up mock localStorage data
-    const storedTasks = [
-      {
-        description: 'Stored Task 1',
-        startTime: '09:00',
-        endTime: '10:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      },
-      {
-        description: 'Stored Task 2',
-        startTime: '10:30',
-        endTime: '11:30',
-        duration: 60,
-        status: 'completed',
-        editing: false,
-        confirmingDelete: false
-      }
-    ];
-
-    // Mock localStorage.getItem to return our mock data
-    window.localStorage.getItem = jest.fn().mockReturnValue(JSON.stringify(storedTasks));
-
-    // Clear existing tasks
-    fortudo.tasks.length = 0;
-
-    // Trigger DOMContentLoaded to re-initialize fortudo
-    document.dispatchEvent(new Event('DOMContentLoaded'));
-
-    // Give fortudo time to initialize
-    // In a real implementation, we would wait for fortudo to be ready
-    // But for this test, we'll just check that localStorage.getItem was called
-    expect(window.localStorage.getItem).toHaveBeenCalledWith('tasks');
-  });
-
-  test('updateLocalStorage directly writes to localStorage', () => {
-    // Clear tasks array first
-    fortudo.tasks.length = 0;
-
-    // Add tasks
-    const task1 = {
-      description: 'Task 1',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    const task2 = {
-      description: 'Task 2',
-      startTime: '10:30',
-      endTime: '11:30',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task1);
-    fortudo.addTask(task2);
-
-    // Clear localStorage mock calls
-    // @ts-ignore - Jest mock methods
-    window.localStorage.setItem.mockClear();
-
-    // Directly call updateLocalStorage
-    fortudo.updateLocalStorage();
-
-    // Check if localStorage.setItem was called
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('tasks', expect.any(String));
-
-    // Verify the JSON structure
-    // @ts-ignore - Jest mock methods
-    const setItemCalls = window.localStorage.setItem.mock.calls;
-    const lastCall = setItemCalls[setItemCalls.length - 1];
-    const savedJson = JSON.parse(lastCall[1]);
-
-    expect(savedJson).toHaveLength(2);
-    expect(savedJson[0].description).toBe('Task 1');
-    expect(savedJson[1].description).toBe('Task 2');
+     test('should return an empty array if localStorage tasks are empty string', () => {
+      mockLocalStorage.getItem.mockReturnValue('');
+      const loadedTasks = loadTasks();
+      expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
+      expect(loadedTasks).toEqual([]);
+    });
   });
 });

@@ -2,337 +2,295 @@
  * @jest-environment jsdom
  */
 
-// This file contains tests for task management operations in fortudo
-// These tests focus on task CRUD operations and validation
+// This file contains tests for task management operations in task-manager.js
+// These tests focus on task CRUD operations, validation, and internal logic like auto-rescheduling.
 
-// Import common test setup
-const { setupFortudoForTesting } = require('./test-utils');
+import {
+    getTasks,
+    setTasks,
+    addTask,
+    updateTask,
+    completeTask,
+    deleteTask,
+    editTask,
+    cancelEdit,
+    deleteAllTasks,
+    isValidTaskData,
+    getSuggestedStartTime,
+    autoReschedule // autoReschedule is also tested via addTask/updateTask
+} from '../public/js/task-manager.js';
+import { saveTasks } from '../public/js/storage.js';
+import { tasksOverlap, calculateEndTime } from '../public/js/utils.js'; // tasksOverlap is used in one test directly
 
-/** @type {import('./test-utils').Fortudo} */
-let fortudo;
+// Mock the storage module
+jest.mock('../public/js/storage.js');
 
-// Set up fortudo before all tests
-beforeAll(async () => {
-  fortudo = await setupFortudoForTesting();
-});
-
-// Clear mocks after each test
-afterEach(() => {
-  jest.clearAllMocks();
-  // Clear tasks while maintaining the reference
-  fortudo.tasks.length = 0;
-});
-
-describe('Task Management Functions', () => {
-  test('tasksOverlap correctly identifies overlapping tasks', () => {
-    // Same time period
-    const task1 = { startTime: '09:00', endTime: '10:00' };
-    const task2 = { startTime: '09:00', endTime: '10:00' };
-    expect(fortudo.tasksOverlap(task1, task2)).toBe(true);
-
-    // Partial overlap (task2 starts during task1)
-    const task3 = { startTime: '09:00', endTime: '10:00' };
-    const task4 = { startTime: '09:30', endTime: '10:30' };
-    expect(fortudo.tasksOverlap(task3, task4)).toBe(true);
-
-    // Partial overlap (task2 ends during task1)
-    const task5 = { startTime: '09:30', endTime: '10:30' };
-    const task6 = { startTime: '09:00', endTime: '10:00' };
-    expect(fortudo.tasksOverlap(task5, task6)).toBe(true);
-
-    // Task2 completely inside task1
-    const task7 = { startTime: '09:00', endTime: '11:00' };
-    const task8 = { startTime: '09:30', endTime: '10:30' };
-    expect(fortudo.tasksOverlap(task7, task8)).toBe(true);
-
-    // Task1 completely inside task2
-    const task9 = { startTime: '09:30', endTime: '10:30' };
-    const task10 = { startTime: '09:00', endTime: '11:00' };
-    expect(fortudo.tasksOverlap(task9, task10)).toBe(true);
-
-    // No overlap
-    const task11 = { startTime: '09:00', endTime: '10:00' };
-    const task12 = { startTime: '10:00', endTime: '11:00' };
-    expect(fortudo.tasksOverlap(task11, task12)).toBe(false);
-  });
-
-  test('isValidTaskForm validates form data correctly', () => {
-    // Create a mock form
-    const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-
-    // Test valid form with positive duration
-    Object.defineProperty(form, 'checkValidity', {
-      value: jest.fn().mockReturnValue(true)
+describe('Task Management Functions (task-manager.js)', () => {
+    beforeEach(() => {
+        setTasks([]); // Reset tasks before each test
+        saveTasks.mockClear(); // Clear mock usage counts
     });
-    expect(fortudo.isValidTaskForm(form, 30)).toBe(true);
-    expect(form.checkValidity).toHaveBeenCalled();
-    expect(window.alert).not.toHaveBeenCalled();
 
-    // Test invalid form
-    // @ts-ignore
-    form.checkValidity.mockReturnValue(false);
-    expect(fortudo.isValidTaskForm(form, 30)).toBe(false);
+    afterEach(() => {
+        jest.clearAllMocks();
+    });
 
-    // Test valid form with zero duration
-    // @ts-ignore
-    form.checkValidity.mockReturnValue(true);
-    expect(fortudo.isValidTaskForm(form, 0)).toBe(false);
-    expect(window.alert).toHaveBeenCalledWith('Please enter a valid duration for your task.');
-  });
+    // Test for tasksOverlap is kept as it was, but using the direct import
+    test('tasksOverlap correctly identifies overlapping tasks', () => {
+        const task1 = { startTime: '09:00', endTime: '10:00' };
+        const task2 = { startTime: '09:00', endTime: '10:00' };
+        expect(tasksOverlap(task1, task2)).toBe(true);
 
-  test('addTask adds a task to the tasks array', () => {
-    // Create a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
+        const task3 = { startTime: '09:00', endTime: '10:00' };
+        const task4 = { startTime: '09:30', endTime: '10:30' };
+        expect(tasksOverlap(task3, task4)).toBe(true);
 
-    // Add the task
-    fortudo.addTask(task);
+        const task5 = { startTime: '09:30', endTime: '10:30' };
+        const task6 = { startTime: '09:00', endTime: '10:00' };
+        expect(tasksOverlap(task5, task6)).toBe(true);
 
-    // Verify task was added
-    expect(fortudo.tasks.length).toBe(1);
-    expect(fortudo.tasks[0].description).toBe('Test Task');
-    expect(fortudo.tasks[0].startTime).toBe('09:00');
-    expect(fortudo.tasks[0].endTime).toBe('10:00');
-    expect(fortudo.tasks[0].duration).toBe(60);
-    expect(fortudo.tasks[0].status).toBe('incomplete');
-  });
+        const task7 = { startTime: '09:00', endTime: '11:00' };
+        const task8 = { startTime: '09:30', endTime: '10:30' };
+        expect(tasksOverlap(task7, task8)).toBe(true);
 
-  test('updateTask updates an existing task', () => {
-    // Create and add an initial task
-    const initialTask = {
-      description: 'Initial Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(initialTask);
+        const task9 = { startTime: '09:30', endTime: '10:30' };
+        const task10 = { startTime: '09:00', endTime: '11:00' };
+        expect(tasksOverlap(task9, task10)).toBe(true);
 
-    // Create updated task data
-    const updatedTask = {
-      description: 'Updated Task',
-      startTime: '10:00',
-      endTime: '11:30',
-      duration: 90,
-      status: 'incomplete',
-      editing: true, // This should be set to false after update
-      confirmingDelete: false
-    };
+        const task11 = { startTime: '09:00', endTime: '10:00' };
+        const task12 = { startTime: '10:00', endTime: '11:00' }; // Adjacent, not overlapping
+        expect(tasksOverlap(task11, task12)).toBe(false);
+    });
 
-    // Update the task
-    fortudo.updateTask(0, updatedTask);
+    describe('isValidTaskData', () => {
+        test('should return valid for correct data', () => {
+            expect(isValidTaskData('Test Task', 30)).toEqual({ isValid: true });
+        });
 
-    // Verify task was updated
-    expect(fortudo.tasks.length).toBe(1);
-    expect(fortudo.tasks[0].description).toBe('Updated Task');
-    expect(fortudo.tasks[0].startTime).toBe('10:00');
-    expect(fortudo.tasks[0].endTime).toBe('11:30');
-    expect(fortudo.tasks[0].duration).toBe(90);
-    expect(fortudo.tasks[0].editing).toBe(false); // Should be set to false
-  });
+        test('should return invalid if description is empty', () => {
+            expect(isValidTaskData('', 30)).toEqual({ isValid: false, reason: "Description cannot be empty." });
+            expect(isValidTaskData('   ', 30)).toEqual({ isValid: false, reason: "Description cannot be empty." });
+        });
 
-  test('completeTask marks a task as completed', () => {
-    // Create and add a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+        test('should return invalid if duration is zero or negative', () => {
+            expect(isValidTaskData('Test Task', 0)).toEqual({ isValid: false, reason: "Duration must be a positive number." });
+            expect(isValidTaskData('Test Task', -10)).toEqual({ isValid: false, reason: "Duration must be a positive number." });
+        });
+         test('should return invalid if duration is NaN', () => {
+            expect(isValidTaskData('Test Task', NaN)).toEqual({ isValid: false, reason: "Duration must be a positive number." });
+        });
+    });
 
-    // Complete the task
-    fortudo.completeTask(0);
+    describe('addTask', () => {
+        test('should add a valid task and save', () => {
+            const taskData = { description: 'New Task', startTime: '09:00', duration: 60 };
+            const result = addTask(taskData);
+            expect(result.success).toBe(true);
+            expect(result.task).toMatchObject(taskData);
+            expect(getTasks().length).toBe(1);
+            expect(getTasks()[0].description).toBe('New Task');
+            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+        });
 
-    // Verify task was marked as completed
-    expect(fortudo.tasks[0].status).toBe('completed');
-  });
+        test('should not add an invalid task', () => {
+            const taskData = { description: '', startTime: '09:00', duration: 0 };
+            const result = addTask(taskData);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBeDefined();
+            expect(getTasks().length).toBe(0);
+            expect(saveTasks).not.toHaveBeenCalled();
+        });
+    });
 
-  test('deleteTask removes a task when confirmed', () => {
-    // Create and add two tasks
-    const task1 = {
-      description: 'Task 1',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    const task2 = {
-      description: 'Task 2',
-      startTime: '10:00',
-      endTime: '11:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task1);
-    fortudo.addTask(task2);
+    describe('updateTask', () => {
+        beforeEach(() => {
+            // Add an initial task for update tests
+            addTask({ description: 'Initial Task', startTime: '09:00', duration: 60 });
+            saveTasks.mockClear(); // Clear after initial addTask
+        });
 
-    // Delete the first task with confirmation
-    fortudo.deleteTask(0, true);
+        test('should update an existing task and save', () => {
+            const updatedData = { description: 'Updated Task', startTime: '10:00', duration: 30 };
+            const result = updateTask(0, updatedData);
+            expect(result.success).toBe(true);
+            const tasks = getTasks();
+            expect(tasks[0].description).toBe('Updated Task');
+            expect(tasks[0].startTime).toBe('10:00');
+            expect(tasks[0].duration).toBe(30);
+            expect(tasks[0].editing).toBe(false);
+            expect(saveTasks).toHaveBeenCalledWith(tasks);
+        });
 
-    // Verify task was deleted
-    expect(fortudo.tasks.length).toBe(1);
-    expect(fortudo.tasks[0].description).toBe('Task 2');
-  });
+        test('should not update with invalid data', () => {
+            const updatedData = { description: '', startTime: '10:00', duration: 0 };
+            const result = updateTask(0, updatedData);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBeDefined();
+            const tasks = getTasks();
+            expect(tasks[0].description).toBe('Initial Task'); // Should not have changed
+            expect(saveTasks).not.toHaveBeenCalled();
+        });
 
-  test('deleteTask sets confirmingDelete flag when not confirmed', () => {
-    // Create and add a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+        test('should return error for invalid index', () => {
+            const result = updateTask(5, { description: 'Task', startTime: '10:00', duration: 30 });
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe("Invalid task index.");
+        });
+    });
 
-    // Call deleteTask without confirmation
-    fortudo.deleteTask(0, false);
+    describe('completeTask', () => {
+        beforeEach(() => {
+            addTask({ description: 'Test Task', startTime: '09:00', duration: 60 }); // endTime '10:00'
+            saveTasks.mockClear();
+        });
 
-    // Verify confirmingDelete flag was set
-    expect(fortudo.tasks[0].confirmingDelete).toBe(true);
-    expect(fortudo.tasks.length).toBe(1); // Task still exists
-  });
+        test('should mark a task as completed and save', () => {
+            const result = completeTask(0);
+            expect(result.success).toBe(true);
+            expect(getTasks()[0].status).toBe('completed');
+            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+        });
 
-  test('editTask sets editing flag', () => {
-    // Create and add a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+        test('should adjust endTime if completed late and save', () => {
+            const currentTime = '10:30'; // Task ends at 10:00
+            const result = completeTask(0, currentTime);
+            expect(result.success).toBe(true);
+            expect(result.requiresConfirmation).toBe(true); // Indicates UI should confirm
+            expect(result.confirmationType).toBe('COMPLETE_LATE');
+            expect(getTasks()[0].status).toBe('completed');
+            expect(getTasks()[0].endTime).toBe(currentTime);
+            expect(getTasks()[0].duration).toBe(90); // 09:00 to 10:30
+            expect(saveTasks).toHaveBeenCalledTimes(1); // autoReschedule might call it again if there were overlaps
+        });
+         test('should adjust endTime if completed early and save', () => {
+            const currentTime = '09:30'; // Task ends at 10:00, started at 09:00
+            const result = completeTask(0, currentTime);
+            expect(result.success).toBe(true);
+            expect(getTasks()[0].status).toBe('completed');
+            expect(getTasks()[0].endTime).toBe(currentTime);
+            expect(getTasks()[0].duration).toBe(30); // 09:00 to 09:30
+            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+        });
+    });
 
-    // Edit the task
-    fortudo.editTask(0);
+    describe('deleteTask', () => {
+        beforeEach(() => {
+            addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
+            addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
+            saveTasks.mockClear();
+        });
 
-    // Verify editing flag was set
-    expect(fortudo.tasks[0].editing).toBe(true);
-  });
+        test('should remove a task if confirmed and save', () => {
+            const result = deleteTask(0, true);
+            expect(result.success).toBe(true);
+            expect(getTasks().length).toBe(1);
+            expect(getTasks()[0].description).toBe('Task 2');
+            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+        });
 
-  test('cancelEdit clears editing flag', () => {
-    // Create and add a task with editing flag set
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: true,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+        test('should require confirmation if not confirmed, and set flag', () => {
+            const result = deleteTask(0, false);
+            expect(result.success).toBe(false);
+            expect(result.requiresConfirmation).toBe(true);
+            expect(getTasks().length).toBe(2); // Task still exists
+            expect(getTasks()[0].confirmingDelete).toBe(true);
+            expect(saveTasks).not.toHaveBeenCalled(); // Not saved yet
+        });
+    });
 
-    // Cancel the edit
-    fortudo.cancelEdit(0);
+    describe('editTask / cancelEdit', () => {
+        beforeEach(() => {
+            addTask({ description: 'Test Task', startTime: '09:00', duration: 60 });
+            saveTasks.mockClear();
+        });
 
-    // Verify editing flag was cleared
-    expect(fortudo.tasks[0].editing).toBe(false);
-  });
+        test('editTask should set editing flag and clear confirmingDelete', () => {
+            getTasks()[0].confirmingDelete = true; // Set it first
+            const result = editTask(0);
+            expect(result.success).toBe(true);
+            expect(getTasks()[0].editing).toBe(true);
+            expect(getTasks()[0].confirmingDelete).toBe(false);
+            expect(saveTasks).not.toHaveBeenCalled(); // UI state change only
+        });
 
-  test('deleteAllTasks removes all tasks when confirmed', () => {
-    // Create and add multiple tasks
-    const task1 = {
-      description: 'Task 1',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    const task2 = {
-      description: 'Task 2',
-      startTime: '10:00',
-      endTime: '11:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task1);
-    fortudo.addTask(task2);
+        test('cancelEdit should clear editing flag', () => {
+            getTasks()[0].editing = true; // Set it first
+            const result = cancelEdit(0);
+            expect(result.success).toBe(true);
+            expect(getTasks()[0].editing).toBe(false);
+            expect(saveTasks).not.toHaveBeenCalled(); // UI state change only
+        });
+    });
 
-    // Mock window.confirm to return true
-    window.confirm = jest.fn().mockReturnValue(true);
+    describe('deleteAllTasks', () => {
+        beforeEach(() => {
+            addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
+            addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
+            saveTasks.mockClear();
+        });
 
-    // Call deleteAllTasks
-    fortudo.deleteAllTasks();
+        test('should remove all tasks if confirmed and save', () => {
+            const result = deleteAllTasks(true);
+            expect(result.success).toBe(true);
+            expect(getTasks().length).toBe(0);
+            expect(saveTasks).toHaveBeenCalledWith([]);
+        });
 
-    // Verify all tasks were deleted
-    expect(fortudo.tasks.length).toBe(0);
-    expect(window.confirm).toHaveBeenCalled();
-  });
+        test('should require confirmation if not confirmed (and tasks exist)', () => {
+            const result = deleteAllTasks(false);
+            expect(result.success).toBe(false);
+            expect(result.requiresConfirmation).toBe(true);
+            expect(getTasks().length).toBe(2); // Tasks still exist
+            expect(saveTasks).not.toHaveBeenCalled();
+        });
 
-  test('deleteAllTasks does not remove tasks when not confirmed', () => {
-    // Create and add a task
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: false,
-      confirmingDelete: false
-    };
-    fortudo.addTask(task);
+        test('should do nothing and return success if no tasks and confirmed', () => {
+            setTasks([]); // Clear tasks
+            saveTasks.mockClear();
+            const result = deleteAllTasks(true);
+            expect(result.success).toBe(true);
+            expect(getTasks().length).toBe(0);
+            expect(saveTasks).toHaveBeenCalledWith([]); // Saves empty array
+        });
+         test('should do nothing and return success if no tasks and not confirmed', () => {
+            setTasks([]);
+            saveTasks.mockClear();
+            const result = deleteAllTasks(false); // If no tasks, no confirmation needed
+            expect(result.success).toBe(true); // Or should be {success: false, requiresConfirmation: false}? Current logic is true.
+            expect(getTasks().length).toBe(0);
+            expect(saveTasks).not.toHaveBeenCalled();
+        });
+    });
 
-    // Ensure we start with exactly one task
-    expect(fortudo.tasks.length).toBe(1);
+    describe('autoReschedule', () => {
+        test('should reschedule overlapping tasks', () => {
+            const task1 = { description: 'Task 1', startTime: '09:00', duration: 60 }; // Ends 10:00
+            const task2 = { description: 'Task 2', startTime: '09:30', duration: 60 }; // Ends 10:30 (overlaps T1)
+            const task3 = { description: 'Task 3', startTime: '09:45', duration: 30 }; // Ends 10:15 (overlaps T1 & potentially T2)
+            setTasks([
+                { ...task1, endTime: calculateEndTime(task1.startTime, task1.duration), status: 'incomplete', editing: false, confirmingDelete: false },
+                { ...task2, endTime: calculateEndTime(task2.startTime, task2.duration), status: 'incomplete', editing: false, confirmingDelete: false },
+                { ...task3, endTime: calculateEndTime(task3.startTime, task3.duration), status: 'incomplete', editing: false, confirmingDelete: false },
+            ]);
+            
+            // Simulate adding a new task that overlaps
+            const newTaskData = { description: 'New Task', startTime: '09:15', duration: 30 }; // Ends 09:45
+            addTask(newTaskData); // This will call autoReschedule internally
 
-    // Mock window.confirm to return false
-    const originalConfirm = window.confirm;
-    window.confirm = jest.fn().mockReturnValue(false);
+            const tasks = getTasks();
+            // Expected order: New Task (09:15-09:45), Task 1 (09:45-10:45), Task 2 (10:45-11:45), Task 3 (11:45-12:15)
+            expect(tasks.find(t => t.description === 'New Task').startTime).toBe('09:15');
+            expect(tasks.find(t => t.description === 'New Task').endTime).toBe('09:45');
 
-    try {
-      // Call deleteAllTasks
-      fortudo.deleteAllTasks();
+            expect(tasks.find(t => t.description === 'Task 1').startTime).toBe('09:45');
+            expect(tasks.find(t => t.description === 'Task 1').endTime).toBe('10:45');
+            
+            expect(tasks.find(t => t.description === 'Task 2').startTime).toBe('10:45');
+            expect(tasks.find(t => t.description === 'Task 2').endTime).toBe('11:45');
 
-      // Verify tasks were not deleted
-      expect(fortudo.tasks.length).toBe(1);
-      expect(window.confirm).toHaveBeenCalled();
-    } finally {
-      // Restore original confirm
-      window.confirm = originalConfirm;
-    }
-  });
-
-  test('prevents creating tasks with zero duration', () => {
-    // Create a mock form with a pre-defined checkValidity method
-    const mockForm = {
-      checkValidity: jest.fn().mockReturnValue(true)
-    };
-
-    // Use the mock form directly, with forced type coercion for test purposes
-    // @ts-ignore - Using a simplified mock instead of a full HTMLFormElement
-    const result = fortudo.isValidTaskForm(mockForm, 0);
-
-    // Verify the behavior
-    expect(result).toBe(false);
-
-    // Verify alert was called with appropriate message
-    expect(window.alert).toHaveBeenCalledWith('Please enter a valid duration for your task.');
-  });
+            expect(tasks.find(t => t.description === 'Task 3').startTime).toBe('11:45');
+            expect(tasks.find(t => t.description === 'Task 3').endTime).toBe('12:15');
+            expect(saveTasks).toHaveBeenCalled();
+        });
+    });
 });
