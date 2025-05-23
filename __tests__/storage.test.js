@@ -10,20 +10,26 @@ import { saveTasks, loadTasks } from '../public/js/storage.js';
 let mockLocalStorage;
 
 beforeEach(() => {
+  // Create a complete mock of localStorage
   mockLocalStorage = {
-    getItem: jest.spyOn(window.localStorage, 'getItem'),
-    setItem: jest.spyOn(window.localStorage, 'setItem'),
-    clear: jest.spyOn(window.localStorage, 'clear')
+    store: {},
+    getItem: jest.fn(key => mockLocalStorage.store[key] || null),
+    setItem: jest.fn((key, value) => {
+      mockLocalStorage.store[key] = value;
+    }),
+    clear: jest.fn(() => {
+      mockLocalStorage.store = {};
+    }),
+    removeItem: jest.fn(key => {
+      delete mockLocalStorage.store[key];
+    })
   };
-  // Reset window.localStorage.clear mock implementation for each test
-  mockLocalStorage.clear.mockImplementation(() => {
-    // Simulate clearing by setting tasks to null
-    mockLocalStorage.setItem('tasks', null);
+
+  // Replace the global localStorage with our mock
+  Object.defineProperty(window, 'localStorage', {
+    value: mockLocalStorage,
+    writable: true
   });
-  // Clear all localStorage mocks before each test to ensure a clean state
-  mockLocalStorage.getItem.mockReset();
-  mockLocalStorage.setItem.mockReset();
-  mockLocalStorage.clear.mockReset();
 });
 
 // Clear mocks after each test
@@ -85,7 +91,7 @@ describe('Storage Functionality', () => {
       mockLocalStorage.getItem.mockReturnValue('invalid json');
       // JSON.parse will throw an error, loadTasks should catch it and return []
       // We can't directly test the catch block here without more complex mocking
-      // of JSON.parse, but we expect it to behave like 'null' or empty.
+      // TODO: of JSON.parse, but we expect it to behave like 'null' or empty.
       // For the purpose of this test, we assume it will behave like 'null' (empty array).
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       const loadedTasks = loadTasks();

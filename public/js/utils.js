@@ -157,9 +157,10 @@ export function getCurrentTimeRounded(date = new Date()) {
     const minutes = Math.ceil(now.getMinutes() / 5) * 5;
 
     // Create a new date object to avoid modifying the original 'now'
-    const roundedDate = new Date(now.getTime()); 
+    const roundedDate = new Date(now.getTime());
 
     // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
+    // TODO: Investigate if setSeconds(0,0) is necessary or if minutes handling covers this.
     roundedDate.setSeconds(0, 0);
 
     if (minutes === 60) {

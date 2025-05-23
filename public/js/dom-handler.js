@@ -9,9 +9,9 @@ import {
 // --- DOM Element References ---
 // Elements used for attaching initial event listeners or frequent access will be fetched by functions.
 // export const taskForm = document.getElementById('task-form'); // Deferred to functions
-export const taskListElement = document.getElementById('task-list');
-export const currentTimeElement = document.getElementById('current-time');
-export const currentDateElement = document.getElementById('current-date');
+// export const taskListElement = document.getElementById('task-list'); // Now fetched dynamically
+// export const currentTimeElement = document.getElementById('current-time'); // Now fetched dynamically
+// export const currentDateElement = document.getElementById('current-date'); // Now fetched dynamically
 // export const deleteAllButton = document.getElementById('delete-all'); // Deferred to functions
 // export const taskDescriptionInput = taskForm ? taskForm.querySelector('input[name="description"]') : null; // Deferred
 
@@ -23,6 +23,9 @@ export const currentDateElement = document.getElementById('current-date');
  */
 export function renderDateTime() {
     const now = new Date();
+    const currentTimeElement = document.getElementById('current-time');
+    const currentDateElement = document.getElementById('current-date');
+
     if (currentTimeElement) {
         currentTimeElement.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
@@ -70,6 +73,10 @@ function renderEditTaskHTML(task, index) {
  * @returns {string} - HTML for the task.
  */
 function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
+    // DEBUG: Log task state during rendering
+    // console.log(`DOM_HANDLER_DEBUG: Rendering view task index ${index}: "${task.description}", confirmingDelete: ${task.confirmingDelete}, editing: ${task.editing}`);
+    // console.log(`DOM_HANDLER_DEBUG: Rendering task index ${index} ("${task.description}"). ConfirmingDelete: ${task.confirmingDelete}`);
+
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted; // Checkbox is disabled if task is completed
 
@@ -78,7 +85,6 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
             <label for="task-checkbox-${index}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
                 <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i>
             </label>
-            {/* The actual checkbox is hidden and controlled by label clicks for better styling */}
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
             <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : (isCompleted ? '' : 'opacity-60') }">
                 <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${task.description}</div>
@@ -107,6 +113,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
  * @param {(index: number) => void} eventCallbacks.onCancelEdit - Callback for cancelling task edit.
  */
 export function renderTasks(tasksToRender, eventCallbacks) {
+    const taskListElement = document.getElementById('task-list');
     if (!taskListElement) {
         console.error('Task list element not found. Tasks will not be rendered.');
         return;
@@ -127,7 +134,7 @@ export function renderTasks(tasksToRender, eventCallbacks) {
         const viewTaskElement = taskListElement.querySelector(`#view-task-${index}`);
         const editTaskForm = taskListElement.querySelector(`#edit-task-${index}`);
 
-        if (task.editing && editTaskForm) {
+        if (task.editing && editTaskForm && editTaskForm instanceof HTMLFormElement) {
             editTaskForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 eventCallbacks.onSaveTaskEdit(index, new FormData(editTaskForm));
@@ -150,7 +157,11 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 
             const deleteButton = viewTaskElement.querySelector(`.btn-delete`);
             if (deleteButton && task.status !== 'completed') { // Can't delete completed tasks from here
-                deleteButton.addEventListener('click', () => eventCallbacks.onDeleteTask(index));
+                // TODO: Consider if this stopPropagation is always desired, or if global click handler should be aware of delete button clicks.
+                deleteButton.addEventListener('click', (event) => {
+                    event.stopPropagation(); // Prevent this click from bubbling to onGlobalClick
+                    eventCallbacks.onDeleteTask(index);
+                });
             }
         }
     });

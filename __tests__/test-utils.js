@@ -15,17 +15,6 @@
 // and test files will import directly from '../public/js/utils.js' or other modules.
 
 /**
- * @typedef {Object} Task - Copied from original, ensure it aligns with actual Task structure if used.
- * @property {string} description
- * @property {string} startTime
- * @property {string} endTime
- * @property {number} duration
- * @property {string} status
- * @property {boolean} editing
- * @property {boolean} confirmingDelete
- */
-
-/**
  * @typedef {Object} FortudoTestingInterface - This is what `public/js/app.js` should expose on `window.fortudo` for tests.
  * @property {() => Array<Task>} tasks - Getter for current tasks from task-manager.
  * @property {Object} tm - Direct access to task-manager module's functions.
@@ -96,22 +85,24 @@ async function setupIntegrationTestEnvironment() {
   // Dynamically import the main app module.
   // This ensures app.js runs its DOMContentLoaded listener after DOM is set up.
   // Note: Jest needs to be configured for ES Modules.
-  // if not already, ensure "transform: {'^.+\\.jsx?$': 'babel-jest'}" or similar in jest.config.js
-  // and babelrc/babel.config.js is set up for ESM.
+  // TODO: if not already, ensure "transform: {'^.+\\.jsx?$': 'babel-jest'}" or similar in jest.config.js
+  // TODO: and babelrc/babel.config.js is set up for ESM.
   await import('../public/js/app.js');
-  
-  // public/js/app.js should now have populated window.fortudo
-  // Wait a short moment for any async operations within app.js's DOMContentLoaded if necessary,
-  // though ideally, app.js setup for window.fortudo is synchronous after imports.
-  await new Promise(resolve => setTimeout(resolve, 0)); // Ensures microtask queue is flushed.
 
-  // This function no longer checks for or returns window.fortudo.
-  // The app.js module, when imported, will execute and set up its event listeners.
+  // Since DOMContentLoaded has already fired when we import app.js, we need to manually trigger it
+  // so that app.js sets up its event listeners
+  const domContentLoadedEvent = new Event('DOMContentLoaded', {
+    bubbles: true,
+    cancelable: true
+  });
+  document.dispatchEvent(domContentLoadedEvent);
+
+  // Wait a short moment for any async operations within app.js's DOMContentLoaded if necessary,
+  await new Promise(resolve => setTimeout(resolve, 0)); // Ensures microtask queue is flushed.
 }
 
 module.exports = {
-  setupIntegrationTestEnvironment, // Renamed function
+  setupIntegrationTestEnvironment,
   setupMockLocalStorage,
   setupDOM
-  // isFortudoReady is no longer needed or exported
 };

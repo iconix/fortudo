@@ -95,16 +95,16 @@ describe('Time Utility Functions', () => {
     });
 
     test('handles complex midnight-crossing task overlaps correctly', () => {
-      const longEveningTask = { startTime: '20:00', endTime: '02:00' }; 
-      const midnightTask = { startTime: '23:30', endTime: '00:30' };    
+      const longEveningTask = { startTime: '20:00', endTime: '02:00' };
+      const midnightTask = { startTime: '23:30', endTime: '00:30' };
       expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
 
-      const multiDayTask = { startTime: '22:00', endTime: '08:00' };  
-      const morningTask = { startTime: '07:00', endTime: '08:30' };   
+      const multiDayTask = { startTime: '22:00', endTime: '08:00' };
+      const morningTask = { startTime: '07:00', endTime: '08:30' };
       expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
 
-      const mondayTask = { startTime: '23:00', endTime: '00:30' };  
-      const tuesdayEveningTask = { startTime: '20:00', endTime: '22:00' }; 
+      const mondayTask = { startTime: '23:00', endTime: '00:30' };
+      const tuesdayEveningTask = { startTime: '20:00', endTime: '22:00' };
       expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
     });
   });
@@ -125,12 +125,12 @@ describe('Time Utility Functions', () => {
       const roundingDate = new Date(2025, 0, 15, 14, 32, 0); // Jan 15, 2025, 2:32 PM
       expect(getCurrentTimeRounded(roundingDate)).toBe('14:35');
     });
-    
+
     test('getCurrentTimeRounded handles hour rollover (e.g. 10:58 -> 11:00)', () => {
       const rolloverDate = new Date(2025, 0, 15, 10, 58, 0); // 10:58 AM
       expect(getCurrentTimeRounded(rolloverDate)).toBe('11:00');
     });
-    
+
     test('getCurrentTimeRounded handles just before midnight (e.g. 23:58 -> 00:00)', () => {
       const almostMidnight = new Date(2025, 0, 15, 23, 58, 0);
       expect(getCurrentTimeRounded(almostMidnight)).toBe('00:00');
@@ -139,7 +139,8 @@ describe('Time Utility Functions', () => {
     test('getFormattedDate returns date in readable format', () => {
       const fixedDate = new Date(2025, 0, 15, 14, 30, 0);
       // Temporarily mock new Date() for this specific test if getFormattedDate doesn't take an arg
-      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
+      // TODO: Re-enable when getFormattedDate can accept a date or is refactored for testability
+      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate); // Keep mocking for now to make test pass
       expect(getFormattedDate()).toBe('Wednesday, January 15');
     });
 

@@ -19,16 +19,23 @@ import {
     getSuggestedStartTime,
     autoReschedule // autoReschedule is also tested via addTask/updateTask
 } from '../public/js/task-manager.js';
-import { saveTasks } from '../public/js/storage.js';
 import { tasksOverlap, calculateEndTime } from '../public/js/utils.js'; // tasksOverlap is used in one test directly
 
 // Mock the storage module
-jest.mock('../public/js/storage.js');
+jest.mock('../public/js/storage.js', () => ({
+    saveTasks: jest.fn()
+}));
+
+// Import the mocked saveTasks
+import { saveTasks } from '../public/js/storage.js';
+
+// Cast to mock function for TypeScript/linter
+const mockSaveTasks = jest.mocked(saveTasks);
 
 describe('Task Management Functions (task-manager.js)', () => {
     beforeEach(() => {
         setTasks([]); // Reset tasks before each test
-        saveTasks.mockClear(); // Clear mock usage counts
+        mockSaveTasks.mockClear(); // Clear mock usage counts
     });
 
     afterEach(() => {
@@ -89,7 +96,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.task).toMatchObject(taskData);
             expect(getTasks().length).toBe(1);
             expect(getTasks()[0].description).toBe('New Task');
-            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+            expect(mockSaveTasks).toHaveBeenCalledWith(getTasks());
         });
 
         test('should not add an invalid task', () => {
@@ -98,7 +105,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(false);
             expect(result.reason).toBeDefined();
             expect(getTasks().length).toBe(0);
-            expect(saveTasks).not.toHaveBeenCalled();
+            expect(mockSaveTasks).not.toHaveBeenCalled();
         });
     });
 
@@ -106,7 +113,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         beforeEach(() => {
             // Add an initial task for update tests
             addTask({ description: 'Initial Task', startTime: '09:00', duration: 60 });
-            saveTasks.mockClear(); // Clear after initial addTask
+            mockSaveTasks.mockClear(); // Clear after initial addTask
         });
 
         test('should update an existing task and save', () => {
@@ -118,7 +125,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].startTime).toBe('10:00');
             expect(tasks[0].duration).toBe(30);
             expect(tasks[0].editing).toBe(false);
-            expect(saveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
 
         test('should not update with invalid data', () => {
@@ -128,7 +135,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.reason).toBeDefined();
             const tasks = getTasks();
             expect(tasks[0].description).toBe('Initial Task'); // Should not have changed
-            expect(saveTasks).not.toHaveBeenCalled();
+            expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
         test('should return error for invalid index', () => {
@@ -141,14 +148,14 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('completeTask', () => {
         beforeEach(() => {
             addTask({ description: 'Test Task', startTime: '09:00', duration: 60 }); // endTime '10:00'
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
         });
 
         test('should mark a task as completed and save', () => {
             const result = completeTask(0);
             expect(result.success).toBe(true);
             expect(getTasks()[0].status).toBe('completed');
-            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+            expect(mockSaveTasks).toHaveBeenCalledWith(getTasks());
         });
 
         test('should adjust endTime if completed late and save', () => {
@@ -160,7 +167,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTasks()[0].status).toBe('completed');
             expect(getTasks()[0].endTime).toBe(currentTime);
             expect(getTasks()[0].duration).toBe(90); // 09:00 to 10:30
-            expect(saveTasks).toHaveBeenCalledTimes(1); // autoReschedule might call it again if there were overlaps
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1); // TODO: autoReschedule might call it again if there were overlaps
         });
          test('should adjust endTime if completed early and save', () => {
             const currentTime = '09:30'; // Task ends at 10:00, started at 09:00
@@ -169,7 +176,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTasks()[0].status).toBe('completed');
             expect(getTasks()[0].endTime).toBe(currentTime);
             expect(getTasks()[0].duration).toBe(30); // 09:00 to 09:30
-            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+            expect(mockSaveTasks).toHaveBeenCalledWith(getTasks());
         });
     });
 
@@ -177,7 +184,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         beforeEach(() => {
             addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
             addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
         });
 
         test('should remove a task if confirmed and save', () => {
@@ -185,7 +192,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             expect(getTasks().length).toBe(1);
             expect(getTasks()[0].description).toBe('Task 2');
-            expect(saveTasks).toHaveBeenCalledWith(getTasks());
+            expect(mockSaveTasks).toHaveBeenCalledWith(getTasks());
         });
 
         test('should require confirmation if not confirmed, and set flag', () => {
@@ -194,14 +201,14 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.requiresConfirmation).toBe(true);
             expect(getTasks().length).toBe(2); // Task still exists
             expect(getTasks()[0].confirmingDelete).toBe(true);
-            expect(saveTasks).not.toHaveBeenCalled(); // Not saved yet
+            expect(mockSaveTasks).not.toHaveBeenCalled(); // Not saved yet
         });
     });
 
     describe('editTask / cancelEdit', () => {
         beforeEach(() => {
             addTask({ description: 'Test Task', startTime: '09:00', duration: 60 });
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
         });
 
         test('editTask should set editing flag and clear confirmingDelete', () => {
@@ -210,7 +217,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             expect(getTasks()[0].editing).toBe(true);
             expect(getTasks()[0].confirmingDelete).toBe(false);
-            expect(saveTasks).not.toHaveBeenCalled(); // UI state change only
+            expect(mockSaveTasks).not.toHaveBeenCalled(); // UI state change only
         });
 
         test('cancelEdit should clear editing flag', () => {
@@ -218,7 +225,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = cancelEdit(0);
             expect(result.success).toBe(true);
             expect(getTasks()[0].editing).toBe(false);
-            expect(saveTasks).not.toHaveBeenCalled(); // UI state change only
+            expect(mockSaveTasks).not.toHaveBeenCalled(); // UI state change only
         });
     });
 
@@ -226,14 +233,14 @@ describe('Task Management Functions (task-manager.js)', () => {
         beforeEach(() => {
             addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
             addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
         });
 
         test('should remove all tasks if confirmed and save', () => {
             const result = deleteAllTasks(true);
             expect(result.success).toBe(true);
             expect(getTasks().length).toBe(0);
-            expect(saveTasks).toHaveBeenCalledWith([]);
+            expect(mockSaveTasks).toHaveBeenCalledWith([]);
         });
 
         test('should require confirmation if not confirmed (and tasks exist)', () => {
@@ -241,24 +248,24 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
             expect(getTasks().length).toBe(2); // Tasks still exist
-            expect(saveTasks).not.toHaveBeenCalled();
+            expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
         test('should do nothing and return success if no tasks and confirmed', () => {
             setTasks([]); // Clear tasks
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
             const result = deleteAllTasks(true);
             expect(result.success).toBe(true);
             expect(getTasks().length).toBe(0);
-            expect(saveTasks).toHaveBeenCalledWith([]); // Saves empty array
+            expect(mockSaveTasks).not.toHaveBeenCalled(); // No need to save when no tasks to delete
         });
          test('should do nothing and return success if no tasks and not confirmed', () => {
             setTasks([]);
-            saveTasks.mockClear();
+            mockSaveTasks.mockClear();
             const result = deleteAllTasks(false); // If no tasks, no confirmation needed
             expect(result.success).toBe(true); // Or should be {success: false, requiresConfirmation: false}? Current logic is true.
             expect(getTasks().length).toBe(0);
-            expect(saveTasks).not.toHaveBeenCalled();
+            expect(mockSaveTasks).not.toHaveBeenCalled();
         });
     });
 
@@ -272,25 +279,41 @@ describe('Task Management Functions (task-manager.js)', () => {
                 { ...task2, endTime: calculateEndTime(task2.startTime, task2.duration), status: 'incomplete', editing: false, confirmingDelete: false },
                 { ...task3, endTime: calculateEndTime(task3.startTime, task3.duration), status: 'incomplete', editing: false, confirmingDelete: false },
             ]);
-            
+
             // Simulate adding a new task that overlaps
             const newTaskData = { description: 'New Task', startTime: '09:15', duration: 30 }; // Ends 09:45
             addTask(newTaskData); // This will call autoReschedule internally
 
             const tasks = getTasks();
             // Expected order: New Task (09:15-09:45), Task 1 (09:45-10:45), Task 2 (10:45-11:45), Task 3 (11:45-12:15)
-            expect(tasks.find(t => t.description === 'New Task').startTime).toBe('09:15');
-            expect(tasks.find(t => t.description === 'New Task').endTime).toBe('09:45');
+            const newTask = tasks.find(t => t.description === 'New Task');
+            expect(newTask).toBeDefined();
+            if (newTask) {
+                expect(newTask.startTime).toBe('09:15');
+                expect(newTask.endTime).toBe('09:45');
+            }
 
-            expect(tasks.find(t => t.description === 'Task 1').startTime).toBe('09:45');
-            expect(tasks.find(t => t.description === 'Task 1').endTime).toBe('10:45');
-            
-            expect(tasks.find(t => t.description === 'Task 2').startTime).toBe('10:45');
-            expect(tasks.find(t => t.description === 'Task 2').endTime).toBe('11:45');
+            const task1AfterReschedule = tasks.find(t => t.description === 'Task 1');
+            expect(task1AfterReschedule).toBeDefined();
+            if (task1AfterReschedule) {
+                expect(task1AfterReschedule.startTime).toBe('09:45');
+                expect(task1AfterReschedule.endTime).toBe('10:45');
+            }
 
-            expect(tasks.find(t => t.description === 'Task 3').startTime).toBe('11:45');
-            expect(tasks.find(t => t.description === 'Task 3').endTime).toBe('12:15');
-            expect(saveTasks).toHaveBeenCalled();
+            const task2AfterReschedule = tasks.find(t => t.description === 'Task 2');
+            expect(task2AfterReschedule).toBeDefined();
+            if (task2AfterReschedule) {
+                expect(task2AfterReschedule.startTime).toBe('10:45');
+                expect(task2AfterReschedule.endTime).toBe('11:45');
+            }
+
+            const task3AfterReschedule = tasks.find(t => t.description === 'Task 3');
+            expect(task3AfterReschedule).toBeDefined();
+            if (task3AfterReschedule) {
+                expect(task3AfterReschedule.startTime).toBe('11:45');
+                expect(task3AfterReschedule.endTime).toBe('12:15');
+            }
+            expect(mockSaveTasks).toHaveBeenCalled();
         });
     });
 });

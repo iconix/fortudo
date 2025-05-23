@@ -146,7 +146,7 @@ export function addTask({ description, startTime, duration }) {
     );
 
     if (initialOverlappingTasks.length > 0) {
-        // In a future step, dom-handler would use this to ask for confirmation.
+        // TODO: In a future step, dom-handler would use this to ask for confirmation.
         // For now, we proceed as if confirmed, or could return requiresConfirmation.
         // Let's indicate confirmation would be needed.
         // The actual rescheduling will happen if the operation is confirmed by the caller.
@@ -191,17 +191,68 @@ export function updateTask(index, { description, startTime, duration }) {
     };
     taskWithUpdates.endTime = calculateEndTime(taskWithUpdates.startTime, taskWithUpdates.duration);
 
+    // Preserve ALL tasks' editing states before auto-rescheduling using stable identifiers
+    const editingStatesMap = new Map();
+    tasks.forEach(task => {
+        const taskId = `${task.description}|${task.startTime}`;
+        editingStatesMap.set(taskId, task.editing);
+    });
 
     const originalEditingState = existingTask.editing; // Preserve user's editing state
     existingTask.editing = true; // Mark as programmatically changing for autoReschedule
+
     autoReschedule(taskWithUpdates, 'Updating');
-    existingTask.editing = originalEditingState;
 
+    // Restore ALL tasks' editing states after auto-rescheduling using original identifiers
+    tasks.forEach(task => {
+        const taskId = `${task.description}|${task.startTime}`;
+        // Try the current taskId first
+        if (editingStatesMap.has(taskId)) {
+            task.editing = editingStatesMap.get(taskId);
+        } else {
+            // If the task was rescheduled, try to find it by description only
+            for (const [storedId, editingState] of editingStatesMap.entries()) {
+                const [storedDescription] = storedId.split('|');
+                if (storedDescription === task.description) {
+                    task.editing = editingState;
+                    break;
+                }
+            }
+        }
+    });
 
-    tasks[index] = { ...taskWithUpdates, editing: false }; // Ensure user editing is off after programmatic update
+    // Update the specific task that was edited, preserving its non-editing state
+    const updatedTaskIndex = tasks.findIndex(task =>
+        task.description === taskWithUpdates.description &&
+        task.startTime === taskWithUpdates.startTime &&
+        task.duration === taskWithUpdates.duration
+    );
+
+    if (updatedTaskIndex !== -1) {
+        // Update the task fields without replacing the entire object
+        tasks[updatedTaskIndex].description = taskWithUpdates.description;
+        tasks[updatedTaskIndex].startTime = taskWithUpdates.startTime;
+        tasks[updatedTaskIndex].duration = taskWithUpdates.duration;
+        tasks[updatedTaskIndex].endTime = taskWithUpdates.endTime;
+        tasks[updatedTaskIndex].editing = false; // The task being updated should not be in edit mode after update
+    } else {
+        // Fallback: replace by original index if we can't find the updated task
+        // TODO: This fallback might not be ideal if the task's position significantly changed due to sorting after rescheduling.
+        // Consider if finding by a unique ID (if tasks had one) would be more robust.
+        tasks[index] = { ...taskWithUpdates, editing: false };
+    }
+
     tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
     saveTasks(tasks);
-    return { success: true, task: tasks[index] };
+
+    // Return the updated task after sorting
+    const finalUpdatedTask = tasks.find(task =>
+        task.description === taskWithUpdates.description &&
+        task.startTime === taskWithUpdates.startTime &&
+        task.duration === taskWithUpdates.duration
+    );
+
+    return { success: true, task: finalUpdatedTask || tasks[index] };
 }
 
 /**
@@ -228,7 +279,7 @@ export function completeTask(index, currentTime24Hour) {
             // We return info so dom-handler can confirm.
             // For now, let's assume we want to provide this info back.
             // The actual update will be a separate call or based on confirmation.
-            // For this phase, let's simplify: if currentTime is provided, we use it.
+            // TODO: For this phase, let's simplify: if currentTime is provided, we use it.
             const oldEndTime = task.endTime;
             task.endTime = currentTime24Hour;
             task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes); // ensure duration is not negative
@@ -244,7 +295,7 @@ export function completeTask(index, currentTime24Hour) {
         } else if (currentTimeMinutes < taskEndTimeMinutes && currentTimeMinutes >= taskStartTimeMinutes) {
             // Task finished early.
             // Similar to above, this could be a confirmation.
-            // For now, just update.
+            // TODO: For now, just update.
             task.endTime = currentTime24Hour;
             task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
             // No reschedule needed if finished early, as it frees up time.
@@ -262,22 +313,36 @@ export function completeTask(index, currentTime24Hour) {
  * Delete a task.
  * @param {number} index - Task index.
  * @param {boolean} confirmed - Whether the delete was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string}}
+ * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string}}
  */
 export function deleteTask(index, confirmed = false) {
     if (index < 0 || index >= tasks.length) {
          return { success: false, reason: "Invalid task index." };
     }
+
     if (!confirmed) {
-        tasks[index].confirmingDelete = true; // UI reads this
-        // No saveTasks here, it's a UI state.
-        return { success: false, requiresConfirmation: true };
+        // --- Begin Original Logic for setting confirmation ---
+        if (tasks[index]) { // Check if task exists before modifying
+            tasks[index].confirmingDelete = true;
+        } else {
+            // Should not happen if index is valid, but as a safeguard
+            // TODO: Consider logging this unexpected state.
+            return { success: false, reason: "Task not found at index for confirmation."};
+        }
+        // No saveTasks here, it's a UI state that app.js should handle by re-rendering.
+        return { success: false, requiresConfirmation: true, reason: "Confirmation required to delete task." };
+        // --- End Original Logic for setting confirmation ---
     }
 
+    // --- Begin Original Logic for actual deletion ---
     tasks.splice(index, 1);
-    tasks.forEach(t => t.confirmingDelete = false); // Clear any other pending confirmations
+    // After a successful deletion, it's good practice to clear any other confirmingDelete flags
+    // that might have been set (e.g., if user clicked delete on another task then confirmed this one).
+    tasks.forEach(t => t.confirmingDelete = false);
     saveTasks(tasks);
-    return { success: true };
+    return { success: true, message: "Task deleted successfully." };
+    // --- End Original Logic for actual deletion ---
+    // TODO: Consider if autoReschedule is needed for tasks that were after the deleted one, if time gaps are not desired.
 }
 
 /**
@@ -294,6 +359,8 @@ export function editTask(index) {
         task.confirmingDelete = false; // Clear delete confirmation when editing
     });
     // No saveTasks() here as this is a UI state, not persistent data change.
+    // TODO: If editing state needed to be persisted (e.g., across page loads before saving),
+    // then saveTasks() would be called here.
     return { success: true, task: tasks[index] };
 }
 
@@ -316,23 +383,22 @@ export function cancelEdit(index) {
 /**
  * Delete all tasks.
  * @param {boolean} confirmed - Whether the delete all was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean, message?: string}}
+ * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string}}
  */
 export function deleteAllTasks(confirmed = false) {
     if (tasks.length === 0) {
-        // No tasks to delete, operation is trivially successful, no confirmation needed.
-        return { success: true, requiresConfirmation: false, message: "No tasks to delete." };
+        // If there are no tasks, the operation is vacuously successful.
+        // No confirmation is needed, and no save operation is required.
+        return { success: true, message: "No tasks to delete." };
     }
-
-    // If there are tasks, then confirmation logic applies.
     if (!confirmed) {
-        return { success: false, requiresConfirmation: true, message: "Confirmation required to delete all tasks." };
+        // For consistency, use 'reason' if the operation isn't a success yet.
+        // TODO: Consider if a specific `confirmingDeleteAll` flag should be set on a global state/app level
+        // rather than just returning requiresConfirmation. This could help UI manage this state.
+        return { success: false, requiresConfirmation: true, reason: "Confirmation required to delete all tasks." };
     }
-
-    // Confirmed and tasks exist
-    tasks.length = 0; // Clear the array
-    saveTasks(tasks);
-    return { success: true, requiresConfirmation: false, message: "All tasks deleted." };
+    setTasks([]); // Clears tasks and saves (which calls saveTasks)
+    return { success: true, message: "All tasks deleted." }; // Success can have a message
 }
 
 /**
@@ -349,6 +415,7 @@ export function resetAllConfirmingDeleteFlags() {
     });
     // This is a UI state change, typically doesn't need saving unless this state itself was persisted.
     // Given 'confirmingDelete' is transient, no saveTasks() here.
+    // TODO: If this state were to be saved (e.g. for recovery after refresh), saveTasks() would be needed.
     return changed;
 }
 
