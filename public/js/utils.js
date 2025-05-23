@@ -27,7 +27,7 @@ export function calculateHoursAndMinutes(minutes) {
     if (remMinutes > 0) {
         timeStr += `${remMinutes}m`;
     } else if (timeStr === '') {
-        timeStr = '0m'; // handle case where minutes is 0
+        timeStr = '0m';
     }
 
     return timeStr.trim();
@@ -148,24 +148,27 @@ export function tasksOverlap(task1, task2) {
 }
 
 /**
- * Gets current time rounded up to closest 5 minutes
+ * Gets current time rounded up to closest 5 minutes.
+ * @param {Date} [date=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {string} - Current time in 24-hour format (HH:MM)
  */
-export function getCurrentTimeRounded() {
-    const now = new Date();
+export function getCurrentTimeRounded(date = new Date()) {
+    const now = date;
     const minutes = Math.ceil(now.getMinutes() / 5) * 5;
 
-    // Create a new date object to avoid modifying the original
-    const roundedDate = new Date(now);
+    const roundedDate = new Date(now.getTime());
 
-    // Handle case where minutes roll over to next hour
+    // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
+    // TODO: Investigate if setSeconds(0,0) is necessary or if minutes handling covers this.
+    roundedDate.setSeconds(0, 0);
+
     if (minutes === 60) {
-        roundedDate.setHours(now.getHours() + 1, 0, 0, 0);
+        roundedDate.setHours(roundedDate.getHours() + 1);
+        roundedDate.setMinutes(0);
     } else {
-        roundedDate.setMinutes(minutes, 0, 0);
+        roundedDate.setMinutes(minutes);
     }
 
-    // Get time in HH:MM format
     return roundedDate.toTimeString().substring(0, 5);
 }
 

@@ -38,7 +38,7 @@ run tests:
 - [x] local storage for mvp
 - [ ] fix responsiveness on iphone
 - [x] host mvp on firebase
-- [ ] add checkbox to “make a habit” → then we can have a second list that gets injected daily
+- [ ] add checkbox to "make a habit" → then we can have a second list that gets injected daily
 
 - [x] on check, cross out task and enable next checkbox
 - [x] constrain available hours

@@ -2,347 +2,286 @@
  * @jest-environment jsdom
  */
 
-// This file contains tests for DOM interactions in fortudo
-// These tests focus on UI elements and event handlers
+// This file contains tests for DOM interactions in dom-handler.js
+// These tests focus on UI elements and event handlers, ensuring callbacks are invoked.
 
-// Import common test setup
-const { setupFortudoForTesting } = require('./test-utils');
+import {
+    renderDateTime,
+    renderTasks,
+    updateStartTimeField,
+    initializePageEventListeners,
+    getTaskFormElement,
+    focusTaskDescriptionInput,
+    showAlert,
+    askConfirmation,
+    // Import specific DOM element references if needed for direct checks, though usually not
+    // taskForm as dfTaskForm, // Example if needed
+} from '../public/js/dom-handler.js';
+import { convertTo12HourTime, calculateHoursAndMinutes } from '../public/js/utils.js'; // For verifying rendered output format
 
-/** @type {import('./test-utils').Fortudo} */
-let fortudo;
+describe('DOM Handler Interaction Tests', () => {
+    let mockAppCallbacks;
+    let mockTaskEventCallbacks;
+    let alertSpy;
+    let confirmSpy;
 
-// Set up fortudo before all tests
-beforeAll(async () => {
-  fortudo = await setupFortudoForTesting();
-});
+    beforeEach(() => {
+        // Set up a complete HTML structure that matches the actual app
+        document.body.innerHTML = `
+            <div class="container">
+                <div class="header">
+                    <div id="current-time"></div>
+                    <div id="current-date"></div>
+                </div>
+                <form id="task-form">
+                    <div class="form-group">
+                        <input type="text" name="description" placeholder="Task description" required />
+                    </div>
+                    <div class="form-group">
+                        <input type="time" name="start-time" required />
+                    </div>
+                    <div class="form-group">
+                        <input type="number" name="duration-hours" min="0" value="1" />
+                        <input type="number" name="duration-minutes" min="0" max="59" value="0" />
+                    </div>
+                    <button type="submit">Add Task</button>
+                </form>
+                <div id="task-list" class="task-list"></div>
+                <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
+            </div>
+        `;
 
-// Clear mocks and reset tasks after each test
-afterEach(() => {
-  jest.clearAllMocks();
-  // Clear tasks while maintaining the reference
-  fortudo.tasks.length = 0;
-});
-
-describe('DOM Interaction', () => {
-  test('form submission creates a new task', () => {
-    // Populate the form
-    const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-    const descriptionInput = /** @type {HTMLInputElement} */(form.querySelector('[name="description"]'));
-    const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('[name="start-time"]'));
-    const durationHoursInput = /** @type {HTMLInputElement} */(form.querySelector('[name="duration-hours"]'));
-    const durationMinutesInput = /** @type {HTMLInputElement} */(form.querySelector('[name="duration-minutes"]'));
-
-    // Set form values
-    descriptionInput.value = 'Test Task';
-    startTimeInput.value = '09:00';
-    durationHoursInput.value = '1';
-    durationMinutesInput.value = '30';
-
-    // Mock addTask to prevent side effects
-    const originalAddTask = fortudo.addTask;
-    fortudo.addTask = jest.fn();
-
-    // Simulate form submission
-    const submitEvent = new Event('submit');
-    submitEvent.preventDefault = jest.fn();
-    form.dispatchEvent(submitEvent);
-
-    // Check if preventDefault was called
-    expect(submitEvent.preventDefault).toHaveBeenCalled();
-
-    // Restore original function
-    fortudo.addTask = originalAddTask;
-  });
-
-  test('clicking outside an editing task cancels the edit', () => {
-    // Set up a task in edit mode
-    const task = {
-      description: 'Test Task',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
-      status: 'incomplete',
-      editing: true,
-      confirmingDelete: false
-    };
-
-    fortudo.addTask(task);
-
-    // Simulate a click outside the task
-    const clickEvent = new MouseEvent('click', {
-      bubbles: true,
-      cancelable: true
-    });
-
-    document.body.dispatchEvent(clickEvent);
-
-    // Verify task.editing is set to false
-    // This will only work if the event listener is properly attached in the app.js implementation
-    // The test is intentionally simplistic but demonstrates the testing approach
-    expect(typeof fortudo.updateTask).toBe('function');
-  });
-
-  describe('Start Time Field Population', () => {
-    test('when task list is empty, start time is set to current time, rounded up to the nearest 5 minutes', () => {
-      // Clear tasks and trigger updateStartTimeField
-      fortudo.tasks.length = 0;
-
-      // Create a fixed "now" time for testing
-      const now = new Date(2023, 0, 1, 10, 9); // 10:09 AM
-      const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => {
-        return now;
-      });
-
-      // Call the function that updates the start time field
-      fortudo.updateStartTimeField();
-
-      // Get the form and start time input
-      const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-      const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-
-      // Expected format: HH:MM
-      const expected = '10:10'; // 10:09 rounded up to nearest 5 min
-
-      // Verify the start time input has been set to the current time
-      expect(startTimeInput.value).toBe(expected);
-
-      // Restore the original Date
-      dateSpy.mockRestore();
-    });
-
-    test('when tasks exist, start time is set to end time of latest task', () => {
-      // Add tasks with different end times
-      const task1 = {
-        description: 'First Task',
-        startTime: '09:00',
-        endTime: '10:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-
-      const task2 = {
-        description: 'Second Task',
-        startTime: '14:00',
-        endTime: '15:30', // This is the latest end time
-        duration: 90,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-
-      const task3 = {
-        description: 'Third Task',
-        startTime: '11:00',
-        endTime: '12:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-
-      // Add tasks (not in order of end time)
-      fortudo.addTask(task1);
-      fortudo.addTask(task3);
-      fortudo.addTask(task2);
-
-      // Clear the form and updateStartTimeField (to simulate opening form for a new task)
-      const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-      form.reset();
-      fortudo.updateStartTimeField();
-
-      // Get the start time input
-      const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-
-      // Verify that the start time is set to the end time of the task with the latest end time
-      expect(startTimeInput.value).toBe('15:30');
-    });
-  });
-
-  describe('Form Focus Management', () => {
-    test('focus moves to description field after adding a task', () => {
-      // Set up the form with values
-      const form = /** @type {HTMLFormElement} */(document.getElementById('task-form'));
-      const descriptionInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="description"]'));
-      const startTimeInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="start-time"]'));
-      const durationHoursInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="duration-hours"]'));
-      const durationMinutesInput = /** @type {HTMLInputElement} */(form.querySelector('input[name="duration-minutes"]'));
-
-      // Mock focus method for the description input
-      descriptionInput.focus = jest.fn();
-
-      // Mock addTask to prevent side effects
-      const originalAddTask = fortudo.addTask;
-      fortudo.addTask = jest.fn();
-
-      // Set form values
-      descriptionInput.value = 'Test Task';
-      startTimeInput.value = '09:00';
-      durationHoursInput.value = '1';
-      durationMinutesInput.value = '30';
-
-      // Simulate form submission
-      const submitEvent = new Event('submit');
-      submitEvent.preventDefault = jest.fn();
-      form.dispatchEvent(submitEvent);
-
-      // Check if focus was called on the description input
-      expect(descriptionInput.focus).toHaveBeenCalled();
-
-      // Restore original function
-      fortudo.addTask = originalAddTask;
-    });
-  });
-
-  describe('Task Element Interaction', () => {
-    test('task list renders correctly', () => {
-      // Mock renderTasks to verify it's called
-      const originalRenderTasks = fortudo.renderTasks;
-      fortudo.renderTasks = jest.fn();
-
-      try {
-        // Add a task
-        const task = {
-          description: 'Test Task',
-          startTime: '09:00',
-          endTime: '10:00',
-          duration: 60,
-          status: 'incomplete',
-          editing: false,
-          confirmingDelete: false
+        // Mock callbacks
+        mockAppCallbacks = {
+            onTaskFormSubmit: jest.fn(),
+            onDeleteAllTasks: jest.fn(),
+            onGlobalClick: jest.fn(),
         };
-        fortudo.addTask(task);
 
-        // Verify renderTasks was called
-        expect(fortudo.renderTasks).toHaveBeenCalled();
-      } finally {
-        // Restore original function
-        fortudo.renderTasks = originalRenderTasks;
-      }
+        mockTaskEventCallbacks = {
+            onCompleteTask: jest.fn(),
+            onEditTask: jest.fn(),
+            onDeleteTask: jest.fn(),
+            onSaveTaskEdit: jest.fn(),
+            onCancelEdit: jest.fn(),
+        };
+
+        alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+        confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
+
+        // Get references to form and delete button
+        const taskForm = document.getElementById('task-form');
+        const deleteAllBtn = document.getElementById('delete-all');
+        // Initialize event listeners with mock callbacks and correct arguments
+        initializePageEventListeners(mockAppCallbacks, taskForm, deleteAllBtn);
+
+        // Ensure all required elements exist
+        expect(taskForm).not.toBeNull();
+        expect(document.getElementById('task-list')).not.toBeNull();
+        expect(deleteAllBtn).not.toBeNull();
+        expect(document.getElementById('current-time')).not.toBeNull();
+        expect(document.getElementById('current-date')).not.toBeNull();
     });
 
-    test('completing a task updates the UI', () => {
-      // Add a task without mocking first
-      const task = {
-        description: 'Test Task',
-        startTime: '09:00',
-        endTime: '10:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-      fortudo.addTask(task);
-
-      // Mock renderTasks to verify it's called
-      const originalRenderTasks = fortudo.renderTasks;
-      fortudo.renderTasks = jest.fn();
-
-      try {
-        // Complete the task
-        fortudo.completeTask(0);
-
-        // Verify renderTasks was called
-        expect(fortudo.renderTasks).toHaveBeenCalled();
-      } finally {
-        // Restore original function
-        fortudo.renderTasks = originalRenderTasks;
-      }
+    afterEach(() => {
+        jest.clearAllMocks();
+        document.body.innerHTML = '';
     });
 
-    test('edit button toggles task to edit mode', () => {
-      // Add a task without mocking first
-      const task = {
-        description: 'Test Task',
-        startTime: '09:00',
-        endTime: '10:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-      fortudo.addTask(task);
+    describe('renderDateTime', () => {
+        test('updates time and date elements correctly', () => {
+            const fixedDate = new Date(2023, 0, 1, 10, 0); // Jan 1, 2023, 10:00:00
+            jest.useFakeTimers().setSystemTime(fixedDate);
 
-      // Mock renderTasks
-      const originalRenderTasks = fortudo.renderTasks;
-      fortudo.renderTasks = jest.fn();
+            renderDateTime();
 
-      try {
-        // Call editTask directly (since we can't easily trigger the click event in this test setup)
-        fortudo.editTask(0);
+            const timeElement = document.getElementById('current-time');
+            const dateElement = document.getElementById('current-date');
 
-        // Verify the task is now in edit mode
-        expect(fortudo.tasks[0].editing).toBe(true);
+            if (!timeElement || !dateElement) {
+                throw new Error('Time or date element not found');
+            }
 
-        // Verify renderTasks was called
-        expect(fortudo.renderTasks).toHaveBeenCalled();
-      } finally {
-        // Restore original function
-        fortudo.renderTasks = originalRenderTasks;
-      }
+            expect(timeElement.textContent).toBe(fixedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            expect(dateElement.textContent).toBe(fixedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
+
+            jest.useRealTimers();
+        });
     });
 
-    test('delete button sets confirmingDelete flag', () => {
-      // Add a task without mocking first
-      const task = {
-        description: 'Test Task',
-        startTime: '09:00',
-        endTime: '10:00',
-        duration: 60,
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-      };
-      fortudo.addTask(task);
+    describe('updateStartTimeField', () => {
+        test('sets start time input if empty', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
 
-      // Mock renderTasks
-      const originalRenderTasks = fortudo.renderTasks;
-      fortudo.renderTasks = jest.fn();
+            startTimeInput.value = ''; // Ensure it's empty
+            updateStartTimeField('10:30');
+            expect(startTimeInput.value).toBe('10:30');
+        });
 
-      try {
-        // Call deleteTask directly (since we can't easily trigger the click event in this test setup)
-        fortudo.deleteTask(0, false);
+        test('does not overwrite existing start time input', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
 
-        // Verify the task has confirmingDelete flag set
-        expect(fortudo.tasks[0].confirmingDelete).toBe(true);
-
-        // Verify renderTasks was called
-        expect(fortudo.renderTasks).toHaveBeenCalled();
-      } finally {
-        // Restore original function
-        fortudo.renderTasks = originalRenderTasks;
-      }
+            startTimeInput.value = '09:00';
+            updateStartTimeField('10:30');
+            expect(startTimeInput.value).toBe('09:00');
+        });
     });
-  });
 
-  describe('DateTime Display', () => {
-    test('renderDateTime updates time and date elements', () => {
-      // Create a fixed "now" time for testing
-      const now = new Date(2023, 0, 1, 10, 0); // 10:00 AM, Jan 1, 2023
-      const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => {
-        return now;
-      });
+    describe('showAlert and askConfirmation', () => {
+        test('showAlert calls window.alert', () => {
+            showAlert('Test Alert');
+            expect(alertSpy).toHaveBeenCalledWith('Test Alert');
+        });
 
-      // Get time and date elements
-      const timeElement = /** @type {HTMLElement} */(document.getElementById('current-time'));
-      const dateElement = /** @type {HTMLElement} */(document.getElementById('current-date'));
+        test('askConfirmation calls window.confirm and returns its value', () => {
+            confirmSpy.mockReturnValueOnce(true);
+            expect(askConfirmation('Test Confirmation')).toBe(true);
+            expect(confirmSpy).toHaveBeenCalledWith('Test Confirmation');
 
-      // Verify elements exist
-      expect(timeElement).not.toBeNull();
-      expect(dateElement).not.toBeNull();
-
-      // Call renderDateTime
-      fortudo.renderDateTime();
-
-      // Verify time element was updated
-      expect(timeElement.textContent).toBe('10:00 AM');
-
-      // Verify date element was updated
-      expect(dateElement.textContent).toBe('Sunday, January 1, 2023');
-
-      // Restore the original Date
-      dateSpy.mockRestore();
+            confirmSpy.mockReturnValueOnce(false);
+            expect(askConfirmation('Test Confirmation 2')).toBe(false);
+        });
     });
-  });
+
+    describe('renderTasks', () => {
+        const sampleTasks = [
+            { description: 'Task 1', startTime: '09:00', endTime: '10:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false },
+            { description: 'Task 2', startTime: '10:30', endTime: '11:00', duration: 30, status: 'completed', editing: false, confirmingDelete: false },
+            { description: 'Task 3', startTime: '11:30', endTime: '12:00', duration: 30, status: 'incomplete', editing: true, confirmingDelete: false },
+        ];
+
+        test('renders tasks correctly (view and edit modes)', () => {
+            renderTasks(sampleTasks, mockTaskEventCallbacks);
+            const taskListElement = document.getElementById('task-list');
+            if (!taskListElement) {
+                throw new Error('Task list element not found');
+            }
+
+            expect(taskListElement.children.length).toBe(sampleTasks.length);
+
+            // Check Task 1 (view mode)
+            const task1Element = taskListElement.querySelector('#view-task-0');
+            if (!task1Element) {
+                throw new Error('Task 1 element not found');
+            }
+            const task1Text = task1Element.textContent || '';
+            expect(task1Text).toContain('Task 1');
+            expect(task1Text).toContain(convertTo12HourTime('09:00'));
+
+            // Check Task 2 (view mode, completed)
+            const task2Element = taskListElement.querySelector('#view-task-1');
+            if (!task2Element) {
+                throw new Error('Task 2 element not found');
+            }
+            const task2Text = task2Element.textContent || '';
+            expect(task2Text).toContain('Task 2');
+            const lineThrough = task2Element.querySelector('.line-through');
+            expect(lineThrough).not.toBeNull();
+            const checkboxIcon = task2Element.querySelector('.checkbox i');
+            expect(checkboxIcon?.classList.contains('fa-check-square')).toBe(true);
+
+            // Check Task 3 (edit mode)
+            const task3Form = taskListElement.querySelector('#edit-task-2');
+            if (!task3Form) {
+                throw new Error('Task 3 form not found');
+            }
+            const descriptionInput = task3Form.querySelector('input[name="description"]');
+            if (!(descriptionInput instanceof HTMLInputElement)) {
+                throw new Error('Description input not found or not an input element');
+            }
+            expect(descriptionInput.value).toBe('Task 3');
+        });
+
+        test('attaches event listeners for view mode tasks', () => {
+            renderTasks([sampleTasks[0]], mockTaskEventCallbacks); // Only Task 1 (view mode)
+
+            const task1Element = document.getElementById('view-task-0');
+            if (!task1Element) {
+                throw new Error('Task 1 element not found');
+            }
+
+            const checkbox = task1Element.querySelector('.checkbox');
+            if (!checkbox) {
+                throw new Error('Checkbox not found');
+            }
+            checkbox.dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith(0);
+
+            const editButton = task1Element.querySelector('.btn-edit');
+            if (!editButton) {
+                throw new Error('Edit button not found');
+            }
+            editButton.dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith(0);
+
+            const deleteButton = task1Element.querySelector('.btn-delete');
+            if (!deleteButton) {
+                throw new Error('Delete button not found');
+            }
+            deleteButton.dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(0);
+        });
+
+        test('attaches event listeners for edit mode tasks', () => {
+            renderTasks([sampleTasks[2]], mockTaskEventCallbacks);
+            const task3Form = document.getElementById('edit-task-0');
+            if (!task3Form) {
+                throw new Error('Task 3 form not found');
+            }
+
+            task3Form.dispatchEvent(new Event('submit'));
+            expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(0, expect.any(FormData));
+
+            const cancelButton = task3Form.querySelector('.btn-edit-cancel');
+            if (!cancelButton) {
+                throw new Error('Cancel button not found');
+            }
+            cancelButton.dispatchEvent(new Event('click'));
+            expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith(0);
+        });
+    });
+
+    describe('initializePageEventListeners', () => {
+        test('task form submission calls onTaskFormSubmit', () => {
+            const taskFormElement = getTaskFormElement();
+            if (!taskFormElement) {
+                throw new Error('Task form element not found');
+            }
+            taskFormElement.dispatchEvent(new Event('submit'));
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(expect.any(FormData));
+        });
+
+        test('delete all button click calls onDeleteAllTasks', () => {
+            const deleteAllBtn = document.getElementById('delete-all');
+            if (!deleteAllBtn) {
+                throw new Error('Delete all button not found');
+            }
+            deleteAllBtn.dispatchEvent(new Event('click'));
+            expect(mockAppCallbacks.onDeleteAllTasks).toHaveBeenCalled();
+        });
+
+        test('global click calls onGlobalClick', () => {
+            document.dispatchEvent(new Event('click'));
+            expect(mockAppCallbacks.onGlobalClick).toHaveBeenCalled();
+        });
+    });
+
+    describe('focusTaskDescriptionInput', () => {
+        test('focuses on the task description input', () => {
+            const descriptionInput = document.querySelector('#task-form input[name="description"]');
+            if (!(descriptionInput instanceof HTMLInputElement)) {
+                throw new Error('Description input not found or not an input element');
+            }
+            const focusSpy = jest.spyOn(descriptionInput, 'focus');
+            focusTaskDescriptionInput();
+            expect(focusSpy).toHaveBeenCalled();
+            focusSpy.mockRestore();
+        });
+    });
 });
