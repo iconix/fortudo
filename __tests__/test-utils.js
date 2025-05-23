@@ -55,8 +55,9 @@ async function setupIntegrationTestEnvironment() {
   setupDOM();
   setupMockLocalStorage();
 
-  window.alert = jest.fn();
-  window.confirm = jest.fn().mockReturnValue(true);
+  // Remove the default confirm mock since individual tests need to control this
+  // window.alert = jest.fn();
+  // window.confirm = jest.fn().mockReturnValue(true);
 
   // Dynamically import the main app module.
   // This ensures app.js runs its DOMContentLoaded listener after DOM is set up.
@@ -103,7 +104,7 @@ function setupMockLocalStorage() {
     writable: true,
     configurable: true,
   });
-  localStorageMock.clear(); 
+  localStorageMock.clear();
 }
 
 function clearLocalStorage() {
@@ -121,42 +122,85 @@ function getTaskDataFromLocalStorage() {
 
 // DOM Interaction Helpers (minimal viable set, can be expanded)
 async function addTaskDOM(description, startTime, durationHours = '0', durationMinutes = '30') {
-    const descInput = document.getElementById('task-description');
-    const startTimeInput = document.getElementById('task-start-time');
-    const durationHoursSelect = document.getElementById('task-duration-hours');
-    const durationMinutesSelect = document.getElementById('task-duration-minutes');
     const form = document.getElementById('task-form');
+    if (!form) throw new Error('Task form not found');
 
-    if (descInput) descInput.value = description;
-    if (startTimeInput) startTimeInput.value = startTime;
-    if (durationHoursSelect) durationHoursSelect.value = durationHours;
-    if (durationMinutesSelect) durationMinutesSelect.value = durationMinutes;
-    if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    
+    // Use querySelector with name attributes instead of getElementById
+    const descInput = form.querySelector('input[name="description"]');
+    const startTimeInput = form.querySelector('input[name="start-time"]');
+    const durationHoursInput = form.querySelector('input[name="duration-hours"]');
+    const durationMinutesInput = form.querySelector('input[name="duration-minutes"]');
+
+    if (descInput && descInput instanceof HTMLInputElement) descInput.value = description;
+    if (startTimeInput && startTimeInput instanceof HTMLInputElement) startTimeInput.value = startTime;
+    if (durationHoursInput && durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = durationHours;
+    if (durationMinutesInput && durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = durationMinutes;
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await new Promise(resolve => setTimeout(resolve, 0)); // Allow DOM updates
 }
 
 function getRenderedTasksDOM() {
-    const taskItems = document.querySelectorAll('#task-list li');
-    return Array.from(taskItems).map(li => {
-        const descriptionElem = li.querySelector('.task-description');
-        const timeElem = li.querySelector('.task-time');
+    // The actual app renders tasks as div elements with id="view-task-{index}" and form elements with id="edit-task-{index}"
+    const taskItems = document.querySelectorAll('#task-list > div, #task-list > form');
+    return Array.from(taskItems).map((item, index) => {
+        // Check if this is an edit form
+        if (item.tagName === 'FORM' && item.id.startsWith('edit-task-')) {
+            const descInput = item.querySelector('input[name="description"]');
+            return {
+                description: descInput && descInput instanceof HTMLInputElement ? descInput.value : '',
+                startTime12: null, // Edit forms don't show formatted time
+                endTime12: null,
+                isCompleted: false,
+                isEditing: true,
+            };
+        }
+
+        // This is a view task div
+        // The structure is: div#view-task-X > div.flex.items-center.space-x-4 > div (third child containing text) > div (description), div (time)
+        const contentContainer = item.querySelector('.flex.items-center.space-x-4');
+        if (!contentContainer) {
+            return {
+                description: '',
+                startTime12: null,
+                endTime12: null,
+                isCompleted: false,
+                isEditing: false,
+            };
+        }
+
+        // Find the text container (third child after label and input)
+        const textContainer = contentContainer.children[2]; // label, input, text div
+        const checkbox = item.querySelector('input[type="checkbox"]');
+
+        let description = '';
         let startTime12 = null;
         let endTime12 = null;
-        if (timeElem && timeElem.textContent) {
-            const timeMatch = timeElem.textContent.match(/(\d{1,2}:\d{2} (?:AM|PM)) - (\d{1,2}:\d{2} (?:AM|PM))/);
-            if (timeMatch) {
-                startTime12 = timeMatch[1];
-                endTime12 = timeMatch[2];
+
+        if (textContainer && textContainer.children.length >= 2) {
+            const descDiv = textContainer.children[0];
+            const timeDiv = textContainer.children[1];
+
+            if (descDiv && descDiv.textContent) {
+                description = descDiv.textContent.trim();
+            }
+
+            if (timeDiv && timeDiv.textContent) {
+                // Extract time from format like "9:00 AM – 10:00 AM (1 h)"
+                const timeMatch = timeDiv.textContent.match(/(\d{1,2}:\d{2} (?:AM|PM))\s*[–-]\s*(\d{1,2}:\d{2} (?:AM|PM))/);
+                if (timeMatch) {
+                    startTime12 = timeMatch[1];
+                    endTime12 = timeMatch[2];
+                }
             }
         }
-        const checkbox = li.querySelector('input[type="checkbox"]');
+
         return {
-            description: descriptionElem ? descriptionElem.textContent.trim() : '',
+            description: description,
             startTime12: startTime12,
             endTime12: endTime12,
-            isCompleted: checkbox ? checkbox.checked : false,
-            isEditing: !!li.querySelector('form[id^="edit-task-"]'),
+            isCompleted: checkbox && checkbox instanceof HTMLInputElement ? checkbox.checked : false,
+            isEditing: false,
         };
     });
 }
@@ -164,41 +208,57 @@ function getRenderedTasksDOM() {
 async function updateTaskDOM(taskIndex, data) {
     const editButtons = document.querySelectorAll('#task-list .btn-edit');
     if (taskIndex < 0 || taskIndex >= editButtons.length) throw new Error(`Edit button for task index ${taskIndex} not found or out of bounds.`);
-    editButtons[taskIndex].click();
+    const editButton = editButtons[taskIndex];
+    if (editButton instanceof HTMLElement) editButton.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
     const editForm = document.getElementById(`edit-task-${taskIndex}`);
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
 
-    if (data.description !== undefined) editForm.querySelector('input[name="description"]').value = data.description;
-    if (data.startTime !== undefined) editForm.querySelector('input[name="start-time"]').value = data.startTime;
-    if (data.durationHours !== undefined) editForm.querySelector('select[name="duration-hours"]').value = data.durationHours;
-    if (data.durationMinutes !== undefined) editForm.querySelector('select[name="duration-minutes"]').value = data.durationMinutes;
-    
-    const saveButton = editForm.querySelector('.btn-save');
+    if (data.description !== undefined) {
+        const descInput = editForm.querySelector('input[name="description"]');
+        if (descInput && descInput instanceof HTMLInputElement) descInput.value = data.description;
+    }
+    if (data.startTime !== undefined) {
+        const startTimeInput = editForm.querySelector('input[name="start-time"]');
+        if (startTimeInput && startTimeInput instanceof HTMLInputElement) startTimeInput.value = data.startTime;
+    }
+    if (data.durationHours !== undefined) {
+        // The actual app uses input[type="number"] not select elements
+        const durationHoursInput = editForm.querySelector('input[name="duration-hours"]');
+        if (durationHoursInput && durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = data.durationHours;
+    }
+    if (data.durationMinutes !== undefined) {
+        // The actual app uses input[type="number"] not select elements
+        const durationMinutesInput = editForm.querySelector('input[name="duration-minutes"]');
+        if (durationMinutesInput && durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = data.durationMinutes;
+    }
+
+    // Look for the correct save button class name
+    const saveButton = editForm.querySelector('.btn-save-edit') || editForm.querySelector('button[type="submit"]');
     if (!saveButton) throw new Error(`Save button for edit form ${taskIndex} not found.`);
-    saveButton.click();
+    if (saveButton instanceof HTMLElement) saveButton.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
-function setCurrentTimeInDOM(time12h) { 
+function setCurrentTimeInDOM(time12h) {
     const currentTimeDiv = document.getElementById('current-time');
     if (currentTimeDiv) currentTimeDiv.textContent = time12h;
 }
 
 async function clickCompleteCheckbox(taskIndex) {
-    const checkboxes = document.querySelectorAll('#task-list li input[type="checkbox"]');
-    if (taskIndex < 0 || taskIndex >= checkboxes.length) throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
-    const checkbox = checkboxes[taskIndex];
-    checkbox.checked = !checkbox.checked; 
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    // The actual app uses label elements with .checkbox class that trigger completion
+    const checkboxLabels = document.querySelectorAll('#task-list .checkbox');
+    if (taskIndex < 0 || taskIndex >= checkboxLabels.length) throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
+    const checkboxLabel = checkboxLabels[taskIndex];
+    if (checkboxLabel instanceof HTMLElement) checkboxLabel.click(); // Click the label, not the hidden checkbox
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
 async function clickDeleteAllButton() {
     const button = document.getElementById('delete-all');
     if (!button) throw new Error(`Delete All button not found.`);
-    button.click();
+    if (button instanceof HTMLElement) button.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
@@ -215,7 +275,7 @@ async function clickSaveButtonOnEditForm(taskIndex) {
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
     const saveButton = editForm.querySelector('.btn-save');
     if (!saveButton) throw new Error(`Save button for task ${taskIndex} not found.`);
-    saveButton.click();
+    if (saveButton instanceof HTMLElement) saveButton.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
@@ -224,7 +284,7 @@ async function clickCancelButtonOnEditForm(taskIndex) {
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
     const cancelButton = editForm.querySelector('.btn-cancel');
     if (!cancelButton) throw new Error(`Cancel button for task ${taskIndex} not found.`);
-    cancelButton.click();
+    if (cancelButton instanceof HTMLElement) cancelButton.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
@@ -234,7 +294,7 @@ async function clickEditButtonForTask(taskIndex) {
     const taskItem = taskItems[taskIndex];
     const editButton = taskItem.querySelector('.btn-edit');
     if (!editButton) throw new Error(`Edit button for task ${taskIndex} not found.`);
-    editButton.click();
+    if (editButton instanceof HTMLElement) editButton.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 }
 
