@@ -322,15 +322,14 @@ export function deleteAllTasks(confirmed = false) {
     if (!confirmed && tasks.length > 0) { // Only require confirmation if there are tasks
         return { success: false, requiresConfirmation: true };
     }
-    if (tasks.length === 0 && confirmed) { // If no tasks, and confirmed, it's still a success.
-        return { success: true };
-    }
-    if (tasks.length > 0 && !confirmed) { // If tasks exist but not confirmed (edge case after first check)
+
+    if (!confirmed) { // If not confirmed, don't proceed
         return { success: false, requiresConfirmation: true };
     }
 
+    // If we get here, confirmed is true
     tasks.length = 0; // Clear the array
-    saveTasks(tasks);
+    saveTasks(tasks); // Always save when confirmed
     return { success: true };
 }
 

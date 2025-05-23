@@ -153,20 +153,20 @@ export function tasksOverlap(task1, task2) {
  */
 export function getCurrentTimeRounded() {
     const now = new Date();
-    const minutes = Math.ceil(now.getMinutes() / 5) * 5;
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
 
-    // Create a new date object to avoid modifying the original
-    const roundedDate = new Date(now);
+    // Round up to nearest 5 minutes
+    const roundedMinutes = Math.ceil(minutes / 5) * 5;
 
-    // Handle case where minutes roll over to next hour
-    if (minutes === 60) {
-        roundedDate.setHours(now.getHours() + 1, 0, 0, 0);
+    // Handle rollover to next hour
+    if (roundedMinutes >= 60) {
+        // If we're rolling over to next hour, use 00 minutes
+        return `${(hours + 1).toString().padStart(2, '0')}:00`;
     } else {
-        roundedDate.setMinutes(minutes, 0, 0);
+        // Otherwise use the rounded minutes
+        return `${hours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`;
     }
-
-    // Get time in HH:MM format
-    return roundedDate.toTimeString().substring(0, 5);
 }
 
 /**

@@ -15,17 +15,6 @@
 // and test files will import directly from '../public/js/utils.js' or other modules.
 
 /**
- * @typedef {Object} Task - Copied from original, ensure it aligns with actual Task structure if used.
- * @property {string} description
- * @property {string} startTime
- * @property {string} endTime
- * @property {number} duration
- * @property {string} status
- * @property {boolean} editing
- * @property {boolean} confirmingDelete
- */
-
-/**
  * @typedef {Object} FortudoTestingInterface - This is what `public/js/app.js` should expose on `window.fortudo` for tests.
  * @property {() => Array<Task>} tasks - Getter for current tasks from task-manager.
  * @property {Object} tm - Direct access to task-manager module's functions.
@@ -67,18 +56,44 @@ function setupMockLocalStorage() {
 function setupDOM() {
   // Set up DOM elements that fortudo needs
   document.body.innerHTML = `
-    <div id="task-list"></div>
-    <form id="task-form">
-      <input type="text" name="description" required>
-      <input type="time" name="start-time" required>
-      <input type="number" name="duration-hours" min="0">
-      <input type="number" name="duration-minutes" min="0" max="59">
-      <button type="submit">Add</button>
+    <div id="task-list" class="task-list"></div>
+    <form id="task-form" class="task-form">
+      <input type="text" name="description" class="task-description" required>
+      <input type="time" name="start-time" class="task-start-time" required>
+      <input type="number" name="duration-hours" class="task-duration-hours" min="0" value="0">
+      <input type="number" name="duration-minutes" class="task-duration-minutes" min="0" max="59" value="0">
+      <button type="submit" class="add-task-btn">Add</button>
     </form>
-    <div id="current-time"></div>
-    <div id="current-date"></div>
-    <button id="delete-all">Clear Tasks</button>
+    <div id="current-time" class="current-time"></div>
+    <div id="current-date" class="current-date"></div>
+    <button id="delete-all" class="delete-all-btn">Clear Tasks</button>
   `;
+
+  // Add required event listeners
+  const taskForm = document.getElementById('task-form');
+  const deleteAllBtn = document.getElementById('delete-all');
+  const taskList = document.getElementById('task-list');
+
+  if (taskForm) {
+    taskForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      // The actual handler will be added by app.js
+    });
+  }
+
+  if (deleteAllBtn) {
+    deleteAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      // The actual handler will be added by app.js
+    });
+  }
+
+  if (taskList) {
+    // Add event delegation for task list
+    taskList.addEventListener('click', (e) => {
+      // The actual handlers will be added by app.js
+    });
+  }
 }
 
 /**
@@ -99,7 +114,7 @@ async function setupIntegrationTestEnvironment() {
   // if not already, ensure "transform: {'^.+\\.jsx?$': 'babel-jest'}" or similar in jest.config.js
   // and babelrc/babel.config.js is set up for ESM.
   await import('../public/js/app.js');
-  
+
   // public/js/app.js should now have populated window.fortudo
   // Wait a short moment for any async operations within app.js's DOMContentLoaded if necessary,
   // though ideally, app.js setup for window.fortudo is synchronous after imports.
