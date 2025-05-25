@@ -2,6 +2,7 @@ import {
     calculateMinutes, // Needed for parsing duration in edit form submit if handled here
     calculateHoursAndMinutes,
     convertTo12HourTime,
+    logger
     // getFormattedDate, // renderDateTime can use Date().toLocaleDateString directly
     // getFormattedTime, // renderDateTime can use Date().toLocaleTimeString directly
 } from './utils.js';
@@ -111,7 +112,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
 export function renderTasks(tasksToRender, eventCallbacks) {
     const taskListElement = document.getElementById('task-list');
     if (!taskListElement) {
-        console.error('Task list element not found. Tasks will not be rendered.');
+        logger.error('Task list element not found. Tasks will not be rendered.');
         return;
     }
 
@@ -151,7 +152,9 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 
             const deleteButton = viewTaskElement.querySelector(`.btn-delete`);
             if (deleteButton && task.status !== 'completed') {
-                // TODO: Consider if this stopPropagation is always desired, or if global click handler should be aware of delete button clicks.
+                // Prevent delete button clicks from bubbling to global click handlers.
+                // This ensures that global handlers (like those that reset editing/confirmation states)
+                // don't interfere with the delete confirmation workflow.
                 deleteButton.addEventListener('click', (event) => {
                     event.stopPropagation();
                     eventCallbacks.onDeleteTask(index);
@@ -190,13 +193,13 @@ export function initializePageEventListeners(appCallbacks, taskFormElement, dele
             appCallbacks.onTaskFormSubmit(new FormData(taskFormElement));
         });
     } else {
-        console.error("dom-handler: initializePageEventListeners received null taskFormElement.");
+        logger.error("dom-handler: initializePageEventListeners received null taskFormElement.");
     }
 
     if (deleteAllButtonElement) {
         deleteAllButtonElement.addEventListener('click', appCallbacks.onDeleteAllTasks);
     } else {
-        console.error("dom-handler: initializePageEventListeners received null deleteAllButtonElement.");
+        logger.error("dom-handler: initializePageEventListeners received null deleteAllButtonElement.");
     }
 
     document.addEventListener('click', appCallbacks.onGlobalClick);

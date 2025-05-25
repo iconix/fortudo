@@ -28,7 +28,7 @@ import {
     focusTaskDescriptionInput
 } from './dom-handler.js';
 import { loadTasks } from './storage.js';
-import { calculateMinutes, convertTo24HourTime, convertTo12HourTime } from './utils.js';
+import { calculateMinutes, convertTo24HourTime, convertTo12HourTime, logger } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const loadedTasks = loadTasks();
@@ -86,9 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (updateResult.requiresConfirmation && updateResult.confirmationType === 'RESCHEDULE_UPDATE') {
                 if (askConfirmation(updateResult.reason || "Reschedule tasks?")) {
-                    const confirmResult = confirmUpdateTaskAndReschedule(updateResult.taskIndex, updateResult.updatedData);
-                    if (!confirmResult.success && confirmResult.reason) {
-                        showAlert(confirmResult.reason);
+                    if (updateResult.taskIndex !== undefined && updateResult.updatedData) {
+                        const confirmResult = confirmUpdateTaskAndReschedule(updateResult.taskIndex, updateResult.updatedData);
+                        if (!confirmResult.success) {
+                            showAlert("Failed to update task and reschedule.");
+                        }
                     }
                 } else {
                     showAlert("Task update cancelled to avoid rescheduling.");
@@ -124,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (addResult.requiresConfirmation && addResult.confirmationType === 'RESCHEDULE_ADD') {
                 if (askConfirmation(addResult.reason || "Reschedule tasks?")) {
                     const confirmResult = confirmAddTaskAndReschedule(addResult.taskData);
-                    if (!confirmResult.success && confirmResult.reason) {
-                        showAlert(confirmResult.reason);
+                    if (!confirmResult.success) {
+                        showAlert("Failed to add task and reschedule.");
                     }
                 } else {
                     showAlert("Task not added to avoid rescheduling.");
@@ -189,8 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const clickedOnCheckbox = target.closest('.checkbox');
 
             if (!clickedInsideEditForm && !clickedOnEditButton && !clickedOnCheckbox && !isClickOnTaskViewDeleteButton) {
-                // TODO: Consider if resetAllEditingFlags should also save the state if editing was a persisted attribute.
-                // Currently, task-manager.js indicates editing is a transient UI state.
                 if (resetAllEditingFlags()) needsRender = true;
             }
 
@@ -204,10 +204,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteAllButtonElement = /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all'));
 
     if (!taskFormElement) {
-        console.error("CRITICAL: app.js could not find #task-form element.");
+        logger.error("CRITICAL: app.js could not find #task-form element.");
     }
     if (!deleteAllButtonElement) {
-        console.error("CRITICAL: app.js could not find #delete-all button.");
+        logger.error("CRITICAL: app.js could not find #delete-all button.");
     }
 
     initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement);

@@ -1,3 +1,5 @@
+import { logger } from './utils.js';
+
 // Function to save tasks to localStorage
 export function saveTasks(tasks) {
   localStorage.setItem('tasks', JSON.stringify(tasks));
@@ -10,7 +12,7 @@ export function loadTasks() {
     try {
       return JSON.parse(tasksString);
     } catch (error) {
-      console.error("Error parsing tasks from localStorage:", error);
+      logger.error("Error parsing tasks from localStorage:", error);
       return [];
     }
   }

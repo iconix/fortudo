@@ -5,6 +5,7 @@
 // This file contains tests for localStorage operations in fortudo
 
 import { saveTasks, loadTasks } from '../public/js/storage.js';
+import { logger } from '../public/js/utils.js';
 
 // Mock localStorage
 let mockLocalStorage;
@@ -91,14 +92,14 @@ describe('Storage Functionality', () => {
       mockLocalStorage.getItem.mockReturnValue('invalid json');
       // JSON.parse will throw an error, loadTasks should catch it and return []
       // We can't directly test the catch block here without more complex mocking
-      // TODO: of JSON.parse, but we expect it to behave like 'null' or empty.
+      // of JSON.parse, but we expect it to behave like 'null' or empty.
       // For the purpose of this test, we assume it will behave like 'null' (empty array).
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
       const loadedTasks = loadTasks();
       expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
       expect(loadedTasks).toEqual([]);
-      expect(consoleErrorSpy).toHaveBeenCalled(); // Verify console.error was called
-      consoleErrorSpy.mockRestore();
+      expect(loggerErrorSpy).toHaveBeenCalled(); // Verify logger.error was called
+      loggerErrorSpy.mockRestore();
     });
 
      test('should return an empty array if localStorage tasks are empty string', () => {

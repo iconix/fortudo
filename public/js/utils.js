@@ -159,7 +159,6 @@ export function getCurrentTimeRounded(date = new Date()) {
     const roundedDate = new Date(now.getTime());
 
     // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
-    // TODO: Investigate if setSeconds(0,0) is necessary or if minutes handling covers this.
     roundedDate.setSeconds(0, 0);
 
     if (minutes === 60) {
@@ -174,10 +173,10 @@ export function getCurrentTimeRounded(date = new Date()) {
 
 /**
  * Format a date as a readable string (e.g., "Monday, January 1")
+ * @param {Date} [date=new Date()] - Optional date object to format. Defaults to `new Date()`.
  * @returns {string} - Formatted date string
  */
-export function getFormattedDate() {
-    const date = new Date();
+export function getFormattedDate(date = new Date()) {
     return date.toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
@@ -197,3 +196,21 @@ export function getFormattedTime() {
         hour12: true
     });
 }
+
+/**
+ * Simple logger utility for consistent logging across the application
+ */
+export const logger = {
+    error: (message, ...args) => {
+        console.error(`[FORTUDO ERROR] ${message}`, ...args);
+    },
+    warn: (message, ...args) => {
+        console.warn(`[FORTUDO WARN] ${message}`, ...args);
+    },
+    info: (message, ...args) => {
+        console.info(`[FORTUDO INFO] ${message}`, ...args);
+    },
+    debug: (message, ...args) => {
+        console.debug(`[FORTUDO DEBUG] ${message}`, ...args);
+    }
+};

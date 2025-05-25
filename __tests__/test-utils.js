@@ -47,19 +47,11 @@ async function setupIntegrationTestEnvironment() {
   setupDOM();
   setupMockLocalStorage();
 
-  // Remove the default confirm mock since individual tests need to control this
-  // window.alert = jest.fn();
-  // window.confirm = jest.fn().mockReturnValue(true);
-
   // Dynamically import the main app module.
-  // This ensures app.js runs its DOMContentLoaded listener after DOM is set up.
-  // Note: Jest needs to be configured for ES Modules.
-  // TODO: if not already, ensure "transform: {'^.+\\.jsx?$': 'babel-jest'}" or similar in jest.config.js
-  // TODO: and babelrc/babel.config.js is set up for ESM.
   await import('../public/js/app.js');
 
-  // Since DOMContentLoaded has already fired when we import app.js, we need to manually trigger it
-  // so that app.js sets up its event listeners
+  // Manually trigger DOMContentLoaded since it fired before our DOM setup.
+  // This ensures app.js sets up its event listeners with our test DOM.
   const domContentLoadedEvent = new Event('DOMContentLoaded', {
     bubbles: true,
     cancelable: true

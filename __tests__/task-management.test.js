@@ -20,7 +20,11 @@ import {
     performReschedule,
     confirmAddTaskAndReschedule,
     confirmUpdateTaskAndReschedule,
-    confirmCompleteLate
+    confirmCompleteLate,
+    resetAllConfirmingDeleteFlags,
+    resetAllEditingFlags,
+    getSuggestedStartTime,
+    getIsDeleteAllPendingConfirmation
 } from '../public/js/task-manager.js';
 import { tasksOverlap, calculateEndTime } from '../public/js/utils.js'; // tasksOverlap is used in one test directly
 
@@ -644,13 +648,14 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should remove all tasks if deleteAllTasks(true) is called after deleteAllTasks(false)', () => {
             deleteAllTasks(false); // Set pending confirmation
+            expect(getIsDeleteAllPendingConfirmation()).toBe(true);
             mockSaveTasks.mockClear();
             const result = deleteAllTasks(true);
             expect(result.success).toBe(true);
             expect(getTasks().length).toBe(0);
             expect(mockSaveTasks).toHaveBeenCalledWith([]);
-            // Check internal flag (if accessible or through behavior)
-            // For now, assume isDeleteAllPendingConfirmation is reset by successful true call.
+            // Check that the flag is reset after successful deletion
+            expect(getIsDeleteAllPendingConfirmation()).toBe(false);
         });
 
         test('should remove all tasks if deleteAllTasks(true) is called directly', () => {
@@ -668,7 +673,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.reason).toBe("Are you sure you want to delete all tasks?");
             expect(getTasks().length).toBe(2); // Tasks still exist
             expect(mockSaveTasks).not.toHaveBeenCalled();
-            // TODO: Test isDeleteAllPendingConfirmation flag if it were exposed or testable via side-effects
+            // Check that the isDeleteAllPendingConfirmation flag is set
+            expect(getIsDeleteAllPendingConfirmation()).toBe(true);
         });
 
         test('should return success if no tasks to delete (even if confirmed=false)', () => {

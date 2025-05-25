@@ -4,7 +4,8 @@ import {
     tasksOverlap,
     convertTo24HourTime,
     // convertTo12HourTime, // Not directly used by task logic, more for rendering
-    getCurrentTimeRounded
+    getCurrentTimeRounded,
+    logger
 } from './utils.js';
 import { saveTasks } from './storage.js';
 
@@ -34,6 +35,14 @@ let isDeleteAllPendingConfirmation = false;
  */
 export function getTasks() {
     return tasks;
+}
+
+/**
+ * Get the current state of delete all pending confirmation.
+ * @returns {boolean} Whether delete all is pending confirmation.
+ */
+export function getIsDeleteAllPendingConfirmation() {
+    return isDeleteAllPendingConfirmation;
 }
 
 /**
@@ -108,9 +117,9 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
             task.startTime = currentCascadeEndTime;
             task.endTime = calculateEndTime(task.startTime, task.duration);
             // This task has been shifted, so it becomes the new point for the cascade.
-            currentCascadeEndTime = task.endTime; 
+            currentCascadeEndTime = task.endTime;
             // Recursively reschedule based on this shifted task, as it might affect others.
-            performReschedule(task, allCurrentTasks); 
+            performReschedule(task, allCurrentTasks);
         }
         // If a task in tasksToShift already starts at/after currentCascadeEndTime,
         // it means a previous shift (or taskThatChanged itself) already pushed the cascade
@@ -378,7 +387,8 @@ export function deleteTask(index, confirmed = false) {
         if (tasks[index]) {
             tasks[index].confirmingDelete = true;
         } else {
-            // TODO: Consider logging this unexpected state.
+            // Log this unexpected state where task is not found at index
+            logger.error(`Task not found at index ${index} for delete confirmation. Tasks length: ${tasks.length}`);
             return { success: false, reason: "Task not found at index for confirmation."};
         }
         return { success: false, requiresConfirmation: true, reason: "Confirmation required to delete task." };
@@ -389,8 +399,6 @@ export function deleteTask(index, confirmed = false) {
     sortTasks(tasks); // Deletion might change order if sorted by something other than index
     saveTasks(tasks);
     return { success: true, message: "Task deleted successfully." };
-    // TODO: Consider if performReschedule is needed for tasks that were after the deleted one, if time gaps are not desired.
-    // For now, deleting a task does not trigger rescheduling of subsequent tasks.
 }
 
 // Removed old autoReschedule function.

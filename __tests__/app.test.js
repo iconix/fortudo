@@ -696,7 +696,7 @@ describe('App.js Callback Functions', () => {
                 document.dispatchEvent(domContentLoadedEvent);
                 await new Promise(resolve => setTimeout(resolve, 10));
 
-                expect(consoleSpy).toHaveBeenCalledWith("CRITICAL: app.js could not find #task-form element.");
+                expect(consoleSpy).toHaveBeenCalledWith("[FORTUDO ERROR] CRITICAL: app.js could not find #task-form element.");
                 consoleSpy.mockRestore();
             });
 
@@ -729,7 +729,7 @@ describe('App.js Callback Functions', () => {
                 document.dispatchEvent(domContentLoadedEvent);
                 await new Promise(resolve => setTimeout(resolve, 10));
 
-                expect(consoleSpy).toHaveBeenCalledWith("CRITICAL: app.js could not find #delete-all button.");
+                expect(consoleSpy).toHaveBeenCalledWith("[FORTUDO ERROR] CRITICAL: app.js could not find #delete-all button.");
                 consoleSpy.mockRestore();
             });
         });

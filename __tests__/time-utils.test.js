@@ -138,10 +138,8 @@ describe('Time Utility Functions', () => {
 
     test('getFormattedDate returns date in readable format', () => {
       const fixedDate = new Date(2025, 0, 15, 14, 30, 0);
-      // Temporarily mock new Date() for this specific test if getFormattedDate doesn't take an arg
-      // TODO: Re-enable when getFormattedDate can accept a date or is refactored for testability
-      dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate); // Keep mocking for now to make test pass
-      expect(getFormattedDate()).toBe('Wednesday, January 15');
+      // Now we can pass the date directly instead of mocking
+      expect(getFormattedDate(fixedDate)).toBe('Wednesday, January 15');
     });
 
     test('getFormattedTime returns time in 12-hour format with AM/PM', () => {
