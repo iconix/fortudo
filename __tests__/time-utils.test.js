@@ -138,7 +138,6 @@ describe('Time Utility Functions', () => {
 
     test('getFormattedDate returns date in readable format', () => {
       const fixedDate = new Date(2025, 0, 15, 14, 30, 0);
-      // Now we can pass the date directly instead of mocking
       expect(getFormattedDate(fixedDate)).toBe('Wednesday, January 15');
     });
 

@@ -2,8 +2,6 @@ import {
     calculateMinutes,
     calculateEndTime,
     tasksOverlap,
-    convertTo24HourTime,
-    // convertTo12HourTime, // Not directly used by task logic, more for rendering
     getCurrentTimeRounded,
     logger
 } from './utils.js';
@@ -82,7 +80,7 @@ export function checkOverlap(taskToCompare, existingTasks) {
     return existingTasks.filter(task =>
         task !== taskToCompare &&
         task.status !== 'completed' &&
-        !task.editing && // Important: do not consider tasks currently being edited by the user as fixed for rescheduling
+        !task.editing && // do not consider tasks currently being edited by the user as fixed for rescheduling
         tasksOverlap(taskToCompare, task)
     );
 }
@@ -93,42 +91,30 @@ export function checkOverlap(taskToCompare, existingTasks) {
  * @param {Task[]} allCurrentTasks - All tasks in the system.
  */
 export function performReschedule(taskThatChanged, allCurrentTasks) {
-    // Ensure the task that changed is not considered for being shifted by itself in this run
-    // and is also not considered 'editing' in the context of schedulable tasks.
     const originalEditingState = taskThatChanged.editing;
-    taskThatChanged.editing = false; // Temporarily set to false for logic
+    taskThatChanged.editing = false;
 
-    // Identify tasks that overlap with taskThatChanged and need to be shifted.
-    // These are schedulable tasks whose current startTime is before taskThatChanged.endTime
-    // AND they actually overlap taskThatChanged.
+    // Identify tasks that overlap with taskThatChanged and need to be shifted
     const tasksToShift = allCurrentTasks.filter(t =>
         t !== taskThatChanged &&
         t.status !== 'completed' &&
         !t.editing &&
-        tasksOverlap(t, taskThatChanged) // Ensure they actually overlap
-    ).sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime)); // Process in their current start order
+        tasksOverlap(t, taskThatChanged)
+    ).sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
     let currentCascadeEndTime = taskThatChanged.endTime;
 
     for (const task of tasksToShift) {
-        // If the task (which we know overlaps taskThatChanged) starts before the current cascade end time,
-        // it means it needs to be shifted.
+        // If task starts before cascade end time, shift it and update cascade point
         if (calculateMinutes(task.startTime) < calculateMinutes(currentCascadeEndTime)) {
             task.startTime = currentCascadeEndTime;
             task.endTime = calculateEndTime(task.startTime, task.duration);
-            // This task has been shifted, so it becomes the new point for the cascade.
             currentCascadeEndTime = task.endTime;
-            // Recursively reschedule based on this shifted task, as it might affect others.
             performReschedule(task, allCurrentTasks);
         }
-        // If a task in tasksToShift already starts at/after currentCascadeEndTime,
-        // it means a previous shift (or taskThatChanged itself) already pushed the cascade
-        // beyond this task's original start. The recursive calls should handle this.
-        // No, if it's in tasksToShift, it means it overlapped the *original* taskThatChanged.
-        // It *must* be shifted if its current startTime < currentCascadeEndTime.
     }
 
-    taskThatChanged.editing = originalEditingState; // Restore original state
+    taskThatChanged.editing = originalEditingState;
 }
 
 
@@ -235,7 +221,7 @@ export function updateTask(index, { description, startTime, duration }) {
 
     // Create a temporary task object to check for overlaps without modifying the original yet
     const taskWithUpdates = {
-        ...existingTask, // Maintain original non-updated properties like status
+        ...existingTask,
         description: newDescription,
         startTime: startTime !== undefined ? startTime : existingTask.startTime,
         duration: newDuration,
@@ -387,7 +373,6 @@ export function deleteTask(index, confirmed = false) {
         if (tasks[index]) {
             tasks[index].confirmingDelete = true;
         } else {
-            // Log this unexpected state where task is not found at index
             logger.error(`Task not found at index ${index} for delete confirmation. Tasks length: ${tasks.length}`);
             return { success: false, reason: "Task not found at index for confirmation."};
         }
@@ -400,8 +385,6 @@ export function deleteTask(index, confirmed = false) {
     saveTasks(tasks);
     return { success: true, message: "Task deleted successfully." };
 }
-
-// Removed old autoReschedule function.
 
 /**
  * Mark a task for editing state.
