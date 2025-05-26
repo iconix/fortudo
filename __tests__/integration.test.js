@@ -388,7 +388,6 @@ describe('User Confirmation Flows', () => {
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
             expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
-            expect(alertSpy).toHaveBeenCalledWith("All tasks deleted.");
         });
 
         test('User denies delete all: tasks remain unchanged', async () => {
@@ -404,7 +403,6 @@ describe('User Confirmation Flows', () => {
             expect(tasks[0].description).toBe('Task 1');
 
             expect(mockSaveTasks).not.toHaveBeenCalled(); // No save because action was cancelled
-            expect(alertSpy).not.toHaveBeenCalledWith("All tasks deleted.");
         });
 
         test('Delete All button does nothing if no tasks exist', async () => {

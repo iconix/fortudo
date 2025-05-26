@@ -458,7 +458,7 @@ export function deleteAllTasks(confirmed = false) {
     const numTasksDeleted = tasks.length;
     setTasks([]); // setTasks calls saveTasks. The list is empty, so sorting is trivial.
     isDeleteAllPendingConfirmation = false;
-    return { success: true, message: "All tasks deleted.", tasksDeleted: numTasksDeleted };
+    return { success: true, tasksDeleted: numTasksDeleted };
 }
 
 /**
