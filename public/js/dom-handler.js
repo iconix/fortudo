@@ -167,12 +167,13 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 /**
  * Update the start time input field with a suggested time.
  * @param {string} suggestedTime - The suggested start time in HH:MM format.
+ * @param {boolean} [forceUpdate=false] - Whether to update the field even if it has a value.
  */
-export function updateStartTimeField(suggestedTime) {
+export function updateStartTimeField(suggestedTime, forceUpdate = false) {
     const form = document.getElementById('task-form');
     if (!form) return;
     const startTimeInput = /** @type {HTMLInputElement|null} */(form.querySelector('input[name="start-time"]'));
-    if (startTimeInput && !startTimeInput.value) {
+    if (startTimeInput && (forceUpdate || !startTimeInput.value)) {
         startTimeInput.value = suggestedTime;
     }
 }

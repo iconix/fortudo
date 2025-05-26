@@ -423,5 +423,37 @@ describe('User Confirmation Flows', () => {
             expect(alertSpy).toHaveBeenCalledWith("There are no tasks to delete.");
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
+
+        test('Start time field is reset after all tasks are deleted', async () => {
+            await setupInitialStateWithTasks();
+            confirmSpy.mockReturnValueOnce(true);
+
+            // Set a value in the start time field before deleting all tasks
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (startTimeInput instanceof HTMLInputElement) {
+                startTimeInput.value = '15:30'; // Set to some arbitrary time
+                expect(startTimeInput.value).toBe('15:30'); // Verify it's set
+            }
+
+            await clickDeleteAllButton();
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain("Are you sure you want to delete all tasks?");
+
+            // Verify all tasks are deleted
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(0);
+
+            // Verify start time field is reset (should have changed from the original value)
+            if (startTimeInput instanceof HTMLInputElement) {
+                expect(startTimeInput.value).not.toBe('15:30'); // Should have changed from the original value
+                expect(startTimeInput.value).toBeTruthy(); // Should have some value (current time rounded)
+                // The exact value will depend on getCurrentTimeRounded(), but it should be a valid time format
+                expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+        });
     });
 });

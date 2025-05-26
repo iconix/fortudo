@@ -70,8 +70,8 @@ describe('DOM Handler Interaction Tests', () => {
         confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
         // Get references to form and delete button
-        const taskForm = document.getElementById('task-form');
-        const deleteAllBtn = document.getElementById('delete-all');
+        const taskForm = /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
+        const deleteAllBtn = /** @type {HTMLButtonElement|null} */(document.getElementById('delete-all'));
         // Initialize event listeners with mock callbacks and correct arguments
         initializePageEventListeners(mockAppCallbacks, taskForm, deleteAllBtn);
 
@@ -130,6 +130,38 @@ describe('DOM Handler Interaction Tests', () => {
             startTimeInput.value = '09:00';
             updateStartTimeField('10:30');
             expect(startTimeInput.value).toBe('09:00');
+        });
+
+        test('overwrites existing start time input when forceUpdate is true', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            startTimeInput.value = '09:00';
+            updateStartTimeField('10:30', true);
+            expect(startTimeInput.value).toBe('10:30');
+        });
+
+        test('sets start time input when empty and forceUpdate is true', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            startTimeInput.value = '';
+            updateStartTimeField('10:30', true);
+            expect(startTimeInput.value).toBe('10:30');
+        });
+
+        test('does nothing when form is not found', () => {
+            // Remove the form temporarily
+            const form = /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
+            if (form) form.remove();
+
+            // Should not throw an error
+            expect(() => updateStartTimeField('10:30')).not.toThrow();
+            expect(() => updateStartTimeField('10:30', true)).not.toThrow();
         });
     });
 

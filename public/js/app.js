@@ -160,7 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.success) {
                 if (result.message) showAlert(result.message);
                 renderTasks(getTasks(), taskEventCallbacks);
-                updateStartTimeField(getSuggestedStartTime());
+                // Force update after deleting all tasks
+                updateStartTimeField(getSuggestedStartTime(), true);
             } else if (result.reason && !result.requiresConfirmation) { // It's some other error
                 showAlert(result.reason);
             }

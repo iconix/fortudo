@@ -615,6 +615,51 @@ describe('App.js Callback Functions', () => {
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(alertSpy).toHaveBeenCalledWith('Delete all failed');
             });
+
+            test('should call updateStartTimeField with forceUpdate=true after delete all', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
+
+                // Mock updateStartTimeField to verify it's called with forceUpdate=true
+                const updateStartTimeFieldSpy = jest.spyOn(require('../public/js/dom-handler.js'), 'updateStartTimeField');
+
+                // Mock deleteAllTasks to return success and simulate the actual behavior
+                const deleteAllTasksSpy = jest.spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
+                    .mockReturnValueOnce({
+                        success: false,
+                        requiresConfirmation: true,
+                        reason: 'Are you sure you want to delete all tasks?'
+                    })
+                    .mockReturnValueOnce({
+                        success: true,
+                        tasksDeleted: 1
+                    });
+
+                mockSaveTasks.mockClear();
+
+                const deleteAllButton = document.getElementById('delete-all');
+                if (deleteAllButton) {
+                    deleteAllButton.dispatchEvent(new Event('click'));
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                expect(confirmSpy).toHaveBeenCalled();
+                expect(deleteAllTasksSpy).toHaveBeenCalledTimes(2); // Once for confirmation, once for actual delete
+
+                // Verify updateStartTimeField was called with forceUpdate=true
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+                updateStartTimeFieldSpy.mockRestore();
+                deleteAllTasksSpy.mockRestore();
+            });
         });
 
         describe('onGlobalClick branch coverage', () => {
