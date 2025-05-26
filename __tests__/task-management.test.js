@@ -736,7 +736,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // Current time rounded up
         });
 
-        test('should return current time rounded up when current time slot is available', () => {
+        test('should return current time rounded up when filling a gap (tasks exist before current time)', () => {
             const task1 = {
                 description: 'Morning Task',
                 startTime: '09:00',
@@ -757,7 +757,31 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             setTasks([task1, task2]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('14:35'); // Current time slot (14:35) is free
+            expect(result).toBe('14:35'); // Current time slot (14:35) is free and there's a task before it (morning task)
+        });
+
+        test('should return end time of latest task when planning ahead (no tasks before current time)', () => {
+            const task1 = {
+                description: 'Future Task 1',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const task2 = {
+                description: 'Future Task 2',
+                startTime: '18:00',
+                endTime: '19:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([task1, task2]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('19:00'); // No tasks before current time (14:35), so continue planning from latest task
         });
 
         test('should return end time of latest task when current time slot is occupied', () => {
@@ -839,7 +863,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
-        test('should ignore completed tasks when checking for conflicts', () => {
+        test('should ignore completed tasks when checking for conflicts and planning logic', () => {
             const completedTask = {
                 description: 'Completed Task',
                 startTime: '14:00',
@@ -860,7 +884,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             setTasks([completedTask, incompleteTask]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('14:35'); // Current time slot is free (completed task ignored)
+            expect(result).toBe('17:00'); // No incomplete tasks before current time (completed task ignored), so plan ahead
         });
 
         test('should return end time of chronologically latest task when multiple tasks exist', () => {
@@ -933,7 +957,64 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             setTasks([endingTask]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('15:00'); // Current time is free (task ends exactly at current time)
+            expect(result).toBe('15:00'); // Current time is free and there's a task before it, so fill the gap
+        });
+
+        test('should handle mixed scenario with completed and incomplete tasks before current time', () => {
+            const completedTask = {
+                description: 'Completed Morning Task',
+                startTime: '09:00',
+                endTime: '10:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            const incompleteTask = {
+                description: 'Incomplete Morning Task',
+                startTime: '11:00',
+                endTime: '12:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const futureTask = {
+                description: 'Future Task',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([completedTask, incompleteTask, futureTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // There's an incomplete task before current time, so fill the gap
+        });
+
+        test('should handle scenario where all tasks are in the future (planning mode)', () => {
+            const futureTask1 = {
+                description: 'Future Task 1',
+                startTime: '15:00',
+                endTime: '16:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const futureTask2 = {
+                description: 'Future Task 2',
+                startTime: '17:00',
+                endTime: '18:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([futureTask1, futureTask2]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('18:00'); // No tasks before current time (14:35), so continue planning from latest
         });
     });
 });

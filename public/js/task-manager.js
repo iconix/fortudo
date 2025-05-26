@@ -123,10 +123,12 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
  *
  * Logic:
  * 1. If no incomplete tasks exist, suggests the current time rounded up to the nearest 5 minutes
- * 2. If the current time slot is available (no conflicting tasks), suggests the current time rounded up
- * 3. If the current time slot is occupied, suggests the end time of the latest scheduled task
+ * 2. If the current time slot is occupied, suggests the end time of the latest scheduled task
+ * 3. If the current time slot is available:
+ *    - If there are existing tasks before the current time (filling a gap), suggests current time rounded up
+ *    - If there are no existing tasks before the current time (planning ahead), suggests end time of latest task
  *
- * This ensures new tasks can start immediately when possible, or are scheduled after existing work.
+ * This ensures new tasks fill schedule gaps when appropriate, or continue planning from the latest task.
  *
  * @returns {string} Suggested start time in 24-hour format (HH:MM)
  */
@@ -154,11 +156,36 @@ export function getSuggestedStartTime() {
         }
     });
 
-    if (!hasTaskAtCurrentTime) {
+    // If current time slot is occupied, use end time of latest task
+    if (hasTaskAtCurrentTime) {
+        const sortedIncompleteTasks = [...incompleteTasks]
+            .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+
+        return sortedIncompleteTasks[sortedIncompleteTasks.length - 1].endTime;
+    }
+
+    // Current time slot is available - check if there are tasks before current time
+    const tasksBeforeCurrentTime = incompleteTasks.filter(task => {
+        const taskStartMinutes = calculateMinutes(task.startTime);
+        const taskEndMinutes = calculateMinutes(task.endTime);
+
+        // Handle tasks that cross midnight
+        if (taskEndMinutes < taskStartMinutes) {
+            // Task crosses midnight - it's "before" current time if it starts before current time
+            // and current time is not in the early morning part of the task
+            return taskStartMinutes < currentTimeMinutes;
+        } else {
+            // Normal task - it's before current time if it ends before or at current time
+            return taskEndMinutes <= currentTimeMinutes;
+        }
+    });
+
+    // If there are tasks before current time, we're filling a gap - use current time
+    if (tasksBeforeCurrentTime.length > 0) {
         return currentTimeRounded;
     }
 
-    // Get end time of the latest non-completed task
+    // No tasks before current time, user is planning ahead - use end time of latest task
     const sortedIncompleteTasks = [...incompleteTasks]
         .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
