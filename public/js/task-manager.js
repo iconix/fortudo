@@ -119,19 +119,49 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
 
 
 /**
- * Get the suggested start time for a new task.
- * Uses the end time of the latest non-completed task if any exist,
- * otherwise uses the current time rounded up.
- * @returns {string} - Suggested start time in 24-hour format (HH:MM).
+ * Get the suggested start time for a new task based on current schedule availability.
+ *
+ * Logic:
+ * 1. If no incomplete tasks exist, suggests the current time rounded up to the nearest 5 minutes
+ * 2. If the current time slot is available (no conflicting tasks), suggests the current time rounded up
+ * 3. If the current time slot is occupied, suggests the end time of the latest scheduled task
+ *
+ * This ensures new tasks can start immediately when possible, or are scheduled after existing work.
+ *
+ * @returns {string} Suggested start time in 24-hour format (HH:MM)
  */
 export function getSuggestedStartTime() {
-    const sortedIncompleteTasks = [...tasks]
-        .filter(t => t.status !== 'completed')
+    const currentTimeRounded = getCurrentTimeRounded();
+    const incompleteTasks = tasks.filter(t => t.status !== 'completed');
+
+    if (incompleteTasks.length === 0) {
+        return currentTimeRounded;
+    }
+
+    // Check if any task exists at the current time rounded up
+    const currentTimeMinutes = calculateMinutes(currentTimeRounded);
+    const hasTaskAtCurrentTime = incompleteTasks.some(task => {
+        const taskStartMinutes = calculateMinutes(task.startTime);
+        const taskEndMinutes = calculateMinutes(task.endTime);
+
+        // Handle tasks that cross midnight
+        if (taskEndMinutes < taskStartMinutes) {
+            // Task crosses midnight - check if current time falls within either part
+            return currentTimeMinutes >= taskStartMinutes || currentTimeMinutes < taskEndMinutes;
+        } else {
+            // Normal task - check if current time falls within the task period
+            return currentTimeMinutes >= taskStartMinutes && currentTimeMinutes < taskEndMinutes;
+        }
+    });
+
+    if (!hasTaskAtCurrentTime) {
+        return currentTimeRounded;
+    }
+
+    // Get end time of the latest non-completed task
+    const sortedIncompleteTasks = [...incompleteTasks]
         .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
-    if (sortedIncompleteTasks.length === 0) {
-        return getCurrentTimeRounded();
-    }
     return sortedIncompleteTasks[sortedIncompleteTasks.length - 1].endTime;
 }
 

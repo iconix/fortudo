@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.requiresConfirmation && result.confirmationType === 'COMPLETE_LATE' && result.newEndTime && result.newDuration !== undefined) {
                 if (askConfirmation(`Task completed! 🎉💪🏾 Do you want to update your schedule to show you finished at ${convertTo12HourTime(result.newEndTime)}? This helps keep your timeline accurate.`)) {
                     confirmCompleteLate(index, result.newEndTime, result.newDuration);
+                    updateStartTimeField(getSuggestedStartTime(), true);
                 } else {
                     // User does not confirm, complete the task without changing time
                     completeTask(index);
@@ -64,6 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.requiresConfirmation) {
                     // The deleteTask(index, false) in task-manager sets confirmingDelete = true.
                     // renderTasks will reflect this, showing the confirm icon.
+                } else if (result.success) {
+                    // Force update start time field after successful task deletion
+                    updateStartTimeField(getSuggestedStartTime(), true);
                 } else if (!result.success && result.reason) {
                     showAlert(result.reason);
                 }
@@ -88,7 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (askConfirmation(updateResult.reason || "Reschedule tasks?")) {
                     if (updateResult.taskIndex !== undefined && updateResult.updatedData) {
                         const confirmResult = confirmUpdateTaskAndReschedule(updateResult.taskIndex, updateResult.updatedData);
-                        if (!confirmResult.success) {
+                        if (confirmResult.success) {
+                            updateStartTimeField(getSuggestedStartTime(), true);
+                        } else {
                             showAlert("Failed to update task and reschedule.");
                         }
                     }
@@ -126,7 +132,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (addResult.requiresConfirmation && addResult.confirmationType === 'RESCHEDULE_ADD') {
                 if (askConfirmation(addResult.reason || "Reschedule tasks?")) {
                     const confirmResult = confirmAddTaskAndReschedule(addResult.taskData);
-                    if (!confirmResult.success) {
+                    if (confirmResult.success) {
+                        updateStartTimeField(getSuggestedStartTime(), true);
+                    } else {
                         showAlert("Failed to add task and reschedule.");
                     }
                 } else {

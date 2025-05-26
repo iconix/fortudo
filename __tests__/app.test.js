@@ -778,5 +778,265 @@ describe('App.js Callback Functions', () => {
                 consoleSpy.mockRestore();
             });
         });
+
+        describe('Force update start time field scenarios', () => {
+            let updateStartTimeFieldSpy;
+
+            beforeEach(() => {
+                updateStartTimeFieldSpy = jest.spyOn(require('../public/js/dom-handler.js'), 'updateStartTimeField');
+            });
+
+            afterEach(() => {
+                if (updateStartTimeFieldSpy) {
+                    updateStartTimeFieldSpy.mockRestore();
+                }
+            });
+
+            test('should force update start time field after confirming late task completion', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
+                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms late completion
+
+                // Mock completeTask to return late completion scenario
+                const completeTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                    .mockReturnValue({
+                        success: true,
+                        requiresConfirmation: true,
+                        confirmationType: 'COMPLETE_LATE',
+                        newEndTime: '10:15',
+                        newDuration: 75
+                    });
+
+                const confirmCompleteLate = jest.spyOn(require('../public/js/task-manager.js'), 'confirmCompleteLate')
+                    .mockReturnValue({ success: true });
+
+                // Set current time in DOM to trigger late completion
+                const currentTimeElement = document.getElementById('current-time');
+                if (currentTimeElement) {
+                    currentTimeElement.textContent = '10:15 AM';
+                }
+
+                updateStartTimeFieldSpy.mockClear();
+
+                // Click the checkbox to complete the task
+                const checkbox = document.querySelector('.checkbox');
+                if (checkbox) {
+                    checkbox.dispatchEvent(new Event('click'));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                expect(confirmSpy).toHaveBeenCalled();
+                expect(confirmCompleteLate).toHaveBeenCalledWith(0, '10:15', 75);
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+                completeTaskSpy.mockRestore();
+                confirmCompleteLate.mockRestore();
+            });
+
+            test('should force update start time field after successful task deletion', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
+                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                // Mock deleteTask to return success on second call (after confirmation)
+                const deleteTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                    .mockReturnValueOnce({
+                        success: false,
+                        requiresConfirmation: true
+                    })
+                    .mockReturnValueOnce({
+                        success: true
+                    });
+
+                updateStartTimeFieldSpy.mockClear();
+
+                // Click delete button twice (once to confirm, once to actually delete)
+                const deleteButtons = document.querySelectorAll('.btn-delete');
+                if (deleteButtons[0]) {
+                    deleteButtons[0].dispatchEvent(new Event('click'));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    // Click again to confirm deletion
+                    const confirmDeleteButtons = document.querySelectorAll('.btn-delete');
+                    if (confirmDeleteButtons[0]) {
+                        confirmDeleteButtons[0].dispatchEvent(new Event('click'));
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                }
+
+                expect(deleteTaskSpy).toHaveBeenCalledTimes(2);
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+                deleteTaskSpy.mockRestore();
+            });
+
+            test('should force update start time field after confirming task update with rescheduling', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
+                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
+
+                // Mock updateTask to require confirmation
+                const updateTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'updateTask')
+                    .mockReturnValue({
+                        success: false,
+                        requiresConfirmation: true,
+                        confirmationType: 'RESCHEDULE_UPDATE',
+                        taskIndex: 0,
+                        updatedData: { description: 'Updated Task', startTime: '09:30', duration: 120 },
+                        reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
+                    });
+
+                const confirmUpdateTaskAndReschedule = jest.spyOn(require('../public/js/task-manager.js'), 'confirmUpdateTaskAndReschedule')
+                    .mockReturnValue({ success: true });
+
+                updateStartTimeFieldSpy.mockClear();
+
+                // Start editing the first task
+                const editButtons = document.querySelectorAll('.btn-edit');
+                if (editButtons[0]) {
+                    editButtons[0].dispatchEvent(new Event('click'));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    // Submit the edit form
+                    const editForm = document.getElementById('edit-task-0');
+                    if (editForm) {
+                        editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                }
+
+                expect(confirmSpy).toHaveBeenCalled();
+                expect(confirmUpdateTaskAndReschedule).toHaveBeenCalled();
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+                updateTaskSpy.mockRestore();
+                confirmUpdateTaskAndReschedule.mockRestore();
+            });
+
+            test('should force update start time field after confirming task addition with rescheduling', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
+
+                // Mock addTask to require confirmation
+                const addTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .mockReturnValue({
+                        success: false,
+                        requiresConfirmation: true,
+                        confirmationType: 'RESCHEDULE_ADD',
+                        taskData: { description: 'New Task', startTime: '09:30', duration: 60 },
+                        reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
+                    });
+
+                const confirmAddTaskAndReschedule = jest.spyOn(require('../public/js/task-manager.js'), 'confirmAddTaskAndReschedule')
+                    .mockReturnValue({ success: true });
+
+                updateStartTimeFieldSpy.mockClear();
+
+                // Submit the main task form
+                const taskForm = document.getElementById('task-form');
+                if (taskForm) {
+                    // Fill out the form
+                    const descInput = taskForm.querySelector('input[name="description"]');
+                    const startTimeInput = taskForm.querySelector('input[name="start-time"]');
+                    const durationHoursInput = taskForm.querySelector('input[name="duration-hours"]');
+                    const durationMinutesInput = taskForm.querySelector('input[name="duration-minutes"]');
+
+                    if (descInput instanceof HTMLInputElement) descInput.value = 'New Task';
+                    if (startTimeInput instanceof HTMLInputElement) startTimeInput.value = '09:30';
+                    if (durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = '1';
+                    if (durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = '0';
+
+                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                expect(confirmSpy).toHaveBeenCalled();
+                expect(confirmAddTaskAndReschedule).toHaveBeenCalled();
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+
+                addTaskSpy.mockRestore();
+                confirmAddTaskAndReschedule.mockRestore();
+            });
+
+            test('should not force update start time field when user denies rescheduling', async () => {
+                const tasks = [
+                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                ];
+
+                mockLoadTasks.mockReturnValue(tasks);
+                await setupIntegrationTestEnvironment();
+                setTasks(tasks);
+
+                alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies rescheduling
+
+                // Mock addTask to require confirmation
+                const addTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .mockReturnValue({
+                        success: false,
+                        requiresConfirmation: true,
+                        confirmationType: 'RESCHEDULE_ADD',
+                        taskData: { description: 'New Task', startTime: '09:30', duration: 60 },
+                        reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
+                    });
+
+                updateStartTimeFieldSpy.mockClear();
+
+                // Submit the main task form
+                const taskForm = document.getElementById('task-form');
+                if (taskForm) {
+                    // Fill out the form
+                    const descInput = taskForm.querySelector('input[name="description"]');
+                    const startTimeInput = taskForm.querySelector('input[name="start-time"]');
+                    const durationHoursInput = taskForm.querySelector('input[name="duration-hours"]');
+                    const durationMinutesInput = taskForm.querySelector('input[name="duration-minutes"]');
+
+                    if (descInput instanceof HTMLInputElement) descInput.value = 'New Task';
+                    if (startTimeInput instanceof HTMLInputElement) startTimeInput.value = '09:30';
+                    if (durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = '1';
+                    if (durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = '0';
+
+                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                expect(confirmSpy).toHaveBeenCalled();
+                expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
+
+                // Should still call updateStartTimeField but without force update (normal behavior)
+                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String));
+
+                addTaskSpy.mockRestore();
+            });
+        });
     });
 });

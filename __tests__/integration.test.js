@@ -349,6 +349,37 @@ describe('User Confirmation Flows', () => {
             expect(savedTasks.find(t=>t.description === 'Task To Complete').endTime).toBe('10:00');
             expect(savedTasks.find(t=>t.description === 'Subsequent Task').startTime).toBe('10:00');
         });
+
+        test('Start time field is force updated after confirming late completion with schedule change', async () => {
+            await setupInitialStateAndApp(true);
+            setCurrentTimeInDOM('10:30 AM');
+            confirmSpy.mockReturnValueOnce(true);
+
+            // Set a specific value in the start time field before completing the task
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (startTimeInput instanceof HTMLInputElement) {
+                startTimeInput.value = '08:00'; // Set to some arbitrary time
+                expect(startTimeInput.value).toBe('08:00'); // Verify it's set
+            }
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain("update your schedule to show you finished at 10:30 AM");
+
+            // Verify start time field was force updated (should have changed from the original value)
+            if (startTimeInput instanceof HTMLInputElement) {
+                expect(startTimeInput.value).not.toBe('08:00'); // Should have changed from the original value
+                expect(startTimeInput.value).toBeTruthy(); // Should have some value
+                // The exact value will depend on getSuggestedStartTime(), but it should be a valid time format
+                expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format
+                // Since the subsequent task now starts at 10:30 and ends at 11:00,
+                // the suggested start time should be 11:00
+                expect(startTimeInput.value).toBe('11:00');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe('Delete All Tasks with Confirmation', () => {

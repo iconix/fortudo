@@ -699,4 +699,241 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     // Old autoReschedule tests are removed. Its functionality is tested
     // via addTask, updateTask, confirmCompleteLate, etc., and performReschedule.
+
+    describe('getSuggestedStartTime', () => {
+        let dateSpy;
+
+        beforeEach(() => {
+            // Mock current time to 14:32 (2:32 PM) which rounds up to 14:35
+            const fixedDate = new Date('2023-01-01T14:32:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
+        });
+
+        afterEach(() => {
+            if (dateSpy) {
+                dateSpy.mockRestore();
+            }
+        });
+
+        test('should return current time rounded up when no tasks exist', () => {
+            setTasks([]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // 14:32 rounded up to nearest 5 minutes
+        });
+
+        test('should return current time rounded up when no incomplete tasks exist (only completed)', () => {
+            const completedTask = {
+                description: 'Completed Task',
+                startTime: '14:00',
+                endTime: '15:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([completedTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // Current time rounded up
+        });
+
+        test('should return current time rounded up when current time slot is available', () => {
+            const task1 = {
+                description: 'Morning Task',
+                startTime: '09:00',
+                endTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const task2 = {
+                description: 'Evening Task',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([task1, task2]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // Current time slot (14:35) is free
+        });
+
+        test('should return end time of latest task when current time slot is occupied', () => {
+            const task1 = {
+                description: 'Current Task',
+                startTime: '14:00',
+                endTime: '15:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const task2 = {
+                description: 'Later Task',
+                startTime: '15:30',
+                endTime: '16:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([task1, task2]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('16:30'); // End time of latest task (task2)
+        });
+
+        test('should handle task that spans current time (current time falls within task)', () => {
+            const spanningTask = {
+                description: 'Long Task',
+                startTime: '14:00',
+                endTime: '16:00',
+                duration: 120,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([spanningTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('16:00'); // End time of the spanning task
+        });
+
+        test('should handle tasks that cross midnight - current time in first part', () => {
+            // Mock current time to 23:32 (11:32 PM) which rounds up to 23:35
+            dateSpy.mockRestore();
+            const lateDate = new Date('2023-01-01T23:32:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => lateDate);
+
+            const midnightTask = {
+                description: 'Midnight Task',
+                startTime: '23:00',
+                endTime: '01:00', // Crosses midnight
+                duration: 120,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([midnightTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('01:00'); // End time of midnight-crossing task
+        });
+
+        test('should handle tasks that cross midnight - current time in second part', () => {
+            // Mock current time to 00:32 (12:32 AM) which rounds up to 00:35
+            dateSpy.mockRestore();
+            const earlyDate = new Date('2023-01-02T00:32:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => earlyDate);
+
+            const midnightTask = {
+                description: 'Midnight Task',
+                startTime: '23:00',
+                endTime: '01:00', // Crosses midnight
+                duration: 120,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([midnightTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('01:00'); // End time of midnight-crossing task
+        });
+
+        test('should ignore completed tasks when checking for conflicts', () => {
+            const completedTask = {
+                description: 'Completed Task',
+                startTime: '14:00',
+                endTime: '15:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            const incompleteTask = {
+                description: 'Future Task',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([completedTask, incompleteTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // Current time slot is free (completed task ignored)
+        });
+
+        test('should return end time of chronologically latest task when multiple tasks exist', () => {
+            const task1 = {
+                description: 'Early Task',
+                startTime: '09:00',
+                endTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const task2 = {
+                description: 'Current Conflicting Task',
+                startTime: '14:30',
+                endTime: '15:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            const task3 = {
+                description: 'Latest Task',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([task1, task2, task3]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('17:00'); // End time of chronologically latest task (task3)
+        });
+
+        test('should handle edge case where current time exactly matches task start time', () => {
+            // Mock current time to 14:30 (already rounded)
+            dateSpy.mockRestore();
+            const exactDate = new Date('2023-01-01T14:30:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => exactDate);
+
+            const exactTask = {
+                description: 'Exact Start Task',
+                startTime: '14:30',
+                endTime: '15:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([exactTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('15:30'); // End time of the conflicting task
+        });
+
+        test('should handle edge case where current time exactly matches task end time', () => {
+            // Mock current time to 15:00 (already rounded)
+            dateSpy.mockRestore();
+            const exactEndDate = new Date('2023-01-01T15:00:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => exactEndDate);
+
+            const endingTask = {
+                description: 'Ending Task',
+                startTime: '14:00',
+                endTime: '15:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            setTasks([endingTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('15:00'); // Current time is free (task ends exactly at current time)
+        });
+    });
 });
