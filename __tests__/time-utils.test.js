@@ -13,7 +13,6 @@ import {
     convertTo24HourTime,
     convertTo12HourTime,
     calculateEndTime,
-    tasksOverlap,
     getCurrentTimeRounded,
     getFormattedDate,
     getFormattedTime
@@ -81,32 +80,6 @@ describe('Time Utility Functions', () => {
         expect(calculateEndTime('09:00', 90)).toBe('10:30');
         expect(calculateEndTime('23:00', 120)).toBe('01:00'); // crosses midnight
         expect(calculateEndTime('23:45', 30)).toBe('00:15'); // crosses midnight
-    });
-
-    describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
-        test('handles times that cross midnight correctly', () => {
-            const lateNightTask = { startTime: '23:00', endTime: '00:30' };
-            const earlyMorningTask = { startTime: '00:15', endTime: '01:00' };
-            expect(tasksOverlap(lateNightTask, earlyMorningTask)).toBe(true);
-
-            const eveningTask = { startTime: '22:00', endTime: '00:00' };
-            const morningTask = { startTime: '00:00', endTime: '02:00' };
-            expect(tasksOverlap(eveningTask, morningTask)).toBe(false);
-        });
-
-        test('handles complex midnight-crossing task overlaps correctly', () => {
-            const longEveningTask = { startTime: '20:00', endTime: '02:00' };
-            const midnightTask = { startTime: '23:30', endTime: '00:30' };
-            expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
-
-            const multiDayTask = { startTime: '22:00', endTime: '08:00' };
-            const morningTask = { startTime: '07:00', endTime: '08:30' };
-            expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
-
-            const mondayTask = { startTime: '23:00', endTime: '00:30' };
-            const tuesdayEveningTask = { startTime: '20:00', endTime: '22:00' };
-            expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
-        });
     });
 
     describe('Date and Time Formatting & getCurrentTimeRounded', () => {

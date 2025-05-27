@@ -100,54 +100,6 @@ export function calculateEndTime(startTime, duration) {
 }
 
 /**
- * Check if two tasks overlap in time
- * @param {Object} task1 - First task
- * @param {string} task1.startTime - Start time in 24-hour format (HH:MM)
- * @param {string} task1.endTime - End time in 24-hour format (HH:MM)
- * @param {Object} task2 - Second task
- * @param {string} task2.startTime - Start time in 24-hour format (HH:MM)
- * @param {string} task2.endTime - End time in 24-hour format (HH:MM)
- * @returns {boolean} - Whether tasks overlap
- */
-export function tasksOverlap(task1, task2) {
-    // convert times to minutes past midnight
-    const start1 = calculateMinutes(task1.startTime);
-    const end1 = calculateMinutes(task1.endTime);
-    const start2 = calculateMinutes(task2.startTime);
-    const end2 = calculateMinutes(task2.endTime);
-
-    // check if tasks cross midnight
-    const task1CrossesMidnight = end1 < start1;
-    const task2CrossesMidnight = end2 < start2;
-
-    // handle midnight crossing by normalizing the time ranges
-    if (task1CrossesMidnight && !task2CrossesMidnight) {
-        // task1 crosses midnight, task2 doesn't
-        // overlap occurs if either:
-        // 1. task2 starts before task1 ends on the next day (start2 < end1)
-        // 2. task2 starts after or at the same time task1 starts on the first day (start2 >= start1)
-        return start2 < end1 || start2 >= start1;
-    }
-
-    if (!task1CrossesMidnight && task2CrossesMidnight) {
-        // task2 crosses midnight, task1 doesn't
-        // overlap occurs if either:
-        // 1. task1 starts before task2 ends on the next day (start1 < end2)
-        // 2. task1 starts after or at the same time task2 starts on the first day (start1 >= start2)
-        return start1 < end2 || start1 >= start2;
-    }
-
-    if (task1CrossesMidnight && task2CrossesMidnight) {
-        // both tasks cross midnight
-        // they must at least overlap at the midnight point (00:00)
-        return true;
-    }
-
-    // neither task crosses midnight - standard interval overlap check
-    return start1 < end2 && start2 < end1;
-}
-
-/**
  * Gets current time rounded up to closest 5 minutes.
  * @param {Date} [date=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {string} - Current time in 24-hour format (HH:MM)

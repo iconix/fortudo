@@ -1,10 +1,4 @@
-import {
-    calculateMinutes,
-    calculateEndTime,
-    tasksOverlap,
-    getCurrentTimeRounded,
-    logger
-} from './utils.js';
+import { calculateMinutes, calculateEndTime, getCurrentTimeRounded, logger } from './utils.js';
 import { saveTasks } from './storage.js';
 
 /**
@@ -16,72 +10,22 @@ import { saveTasks } from './storage.js';
  * @property {string} status - task status ("incomplete" or "completed")
  * @property {boolean} editing - whether task is being edited
  * @property {boolean} confirmingDelete - whether delete is being confirmed
+ * @property {number} [_startMinutes] - cached start time in minutes
+ * @property {number} [_endMinutes] - cached end time in minutes
  */
+
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
 
 /** @type {Task[]} */
 let tasks = [];
 let isDeleteAllPendingConfirmation = false;
 
-// Helper function to sort tasks by start time
-const sortTasks = (tasksToSort) => {
-    tasksToSort.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
-};
-
-/**
- * Helper function to create a new task object with default values
- * @param {{description: string, startTime: string, duration: number}} taskData - Task data
- * @returns {Task} A new task object
- */
-const createTaskObject = ({ description, startTime, duration }) => {
-    return {
-        description,
-        startTime,
-        duration,
-        endTime: calculateEndTime(startTime, duration),
-        status: 'incomplete',
-        editing: false,
-        confirmingDelete: false
-    };
-};
-
-// Helper function to reset all UI flags for all tasks
-const resetAllUIFlags = () => {
-    tasks.forEach((task) => {
-        task.editing = false;
-        task.confirmingDelete = false;
-    });
-};
-
-// Helper function that handles all post-modification cleanup for persistent state changes
-const finalizeTaskModification = () => {
-    sortTasks(tasks);
-    saveTasks(tasks);
-};
-
-// TODO: Future optimization - Consider implementing debounced state persistence for high-frequency operations
-// This would batch multiple rapid updates to reduce localStorage writes, but adds complexity.
-// Implementation would involve:
-// - Debouncing finalizeTaskModification() with ~100ms delay for non-critical operations
-// - Immediate persistence for critical operations (delete, complete)
-// - Timer management to prevent memory leaks
-// Only implement if performance profiling shows localStorage writes are a bottleneck.
-
-/**
- * Helper function to create overlap confirmation response
- * @param {string} operation - The operation type (e.g., 'ADD', 'EDIT')
- * @param {Object} data - Additional data to include in the response
- * @param {string} reason - The reason message for the confirmation
- * @returns {{success: boolean, requiresConfirmation: boolean, confirmationType: string, reason: string}} Overlap confirmation response object
- */
-const createOverlapConfirmation = (operation, data, reason) => {
-    return {
-        success: false,
-        requiresConfirmation: true,
-        confirmationType: `RESCHEDULE_${operation}`,
-        ...data,
-        reason
-    };
-};
+// Caching for sorted tasks and filtering results
+let sortedTasksCache = null;
+let sortedTasksCacheVersion = 0;
+let currentTasksVersion = 0;
 
 /**
  * Get the current task state.
@@ -92,13 +36,23 @@ export function getTaskState() {
 }
 
 /**
- * Update the tasks state. Also updates localStorage.
+ * Update the task state with a new array of tasks.
+ * Invalidates caches and ensures all tasks have cached time values
  * @param {Task[]} newTasks - The new array of tasks.
  */
 export function updateTaskState(newTasks) {
     tasks = newTasks || [];
-    // No direct sortTasks(tasks) here; saveTasks is responsible for saving the current state.
-    // Sorting is applied by functions that modify the task list order.
+
+    // Ensure all tasks have cached time values
+    for (const task of tasks) {
+        ensureTaskTimeCache(task);
+    }
+
+    // Invalidate caches when state changes
+    invalidateTaskCaches();
+
+    // Maintain backward compatibility: save tasks when state is updated externally
+    // This is needed for tests and when loading from storage
     saveTasks(tasks);
 }
 
@@ -109,6 +63,90 @@ export function updateTaskState(newTasks) {
 export function getIsDeleteAllPendingConfirmation() {
     return isDeleteAllPendingConfirmation;
 }
+
+// ============================================================================
+// CACHE MANAGEMENT UTILITIES
+// ============================================================================
+
+// Invalidate caches when tasks change
+const invalidateTaskCaches = () => {
+    currentTasksVersion++;
+    sortedTasksCache = null;
+};
+
+// Cache time calculations for tasks
+const ensureTaskTimeCache = (task) => {
+    if (task._startMinutes === undefined) {
+        task._startMinutes = calculateMinutes(task.startTime);
+    }
+    if (task._endMinutes === undefined) {
+        task._endMinutes = calculateMinutes(task.endTime);
+    }
+};
+
+// Invalidate cached time values when task times change
+const invalidateTaskTimeCache = (task) => {
+    delete task._startMinutes;
+    delete task._endMinutes;
+};
+
+// ============================================================================
+// SORTING AND TASK UTILITIES
+// ============================================================================
+
+// Helper function to sort tasks by start time
+const sortTasks = (tasksToSort) => {
+    tasksToSort.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+};
+
+// Get sorted tasks with caching
+const getSortedTasks = () => {
+    if (sortedTasksCache && sortedTasksCacheVersion === currentTasksVersion) {
+        return sortedTasksCache;
+    }
+
+    // Create a copy to avoid mutating the original array
+    sortedTasksCache = [...tasks];
+    sortTasks(sortedTasksCache);
+    sortedTasksCacheVersion = currentTasksVersion;
+    return sortedTasksCache;
+};
+
+/**
+ * Helper function to create a new task object with default values
+ * @param {{description: string, startTime: string, duration: number}} taskData - Task data
+ * @returns {Task} A new task object
+ */
+const createTaskObject = ({ description, startTime, duration }) => {
+    const endTime = calculateEndTime(startTime, duration);
+    const task = {
+        description,
+        startTime,
+        endTime,
+        duration,
+        status: 'incomplete',
+        editing: false,
+        confirmingDelete: false,
+        // Cache time calculations at creation
+        _startMinutes: calculateMinutes(startTime),
+        _endMinutes: calculateMinutes(endTime)
+    };
+    return task;
+};
+
+// Helper function to finalize task modifications (sort and save)
+const finalizeTaskModification = () => {
+    invalidateTaskCaches(); // Invalidate caches when tasks change
+    // Use cached sorted tasks for saving
+    const sortedTasks = getSortedTasks();
+    // Update the main tasks array to maintain sort order
+    tasks.splice(0, tasks.length, ...sortedTasks);
+    saveTasks(tasks);
+};
+
+// ============================================================================
+// VALIDATION UTILITIES
+// ============================================================================
 
 /**
  * Check if task data is valid.
@@ -126,47 +164,180 @@ export function isValidTaskData(description, duration) {
     return { isValid: true };
 }
 
+// ============================================================================
+// UI STATE MANAGEMENT
+// ============================================================================
+
+// Helper function to reset all UI flags for all tasks
+const resetAllUIFlags = () => {
+    tasks.forEach((task) => {
+        task.editing = false;
+        task.confirmingDelete = false;
+    });
+};
+
+/**
+ * Resets all 'confirmingDelete' flags to false for all tasks.
+ * Useful when a global click occurs, and we want to cancel any pending delete confirmations.
+ */
+export function resetAllConfirmingDeleteFlags() {
+    let changed = false;
+    tasks.forEach((task) => {
+        if (task.confirmingDelete) {
+            task.confirmingDelete = false;
+            changed = true;
+        }
+    });
+    // No sort or save needed as this is a transient UI state.
+    return changed;
+}
+
+/**
+ * Resets all 'editing' flags to false for all tasks.
+ * Useful for cancelling edits on out-click, if not clicking specific save/cancel buttons.
+ */
+export function resetAllEditingFlags() {
+    let changed = false;
+    tasks.forEach((task) => {
+        if (task.editing) {
+            task.editing = false;
+            changed = true;
+        }
+    });
+    // No sort or save needed as this is a transient UI state.
+    return changed;
+}
+
+// ============================================================================
+// OVERLAP DETECTION AND SCHEDULING
+// ============================================================================
+
+/**
+ * Determines if two tasks have overlapping time periods.
+ * Handles both normal day tasks and tasks that cross midnight.
+ * @param {Task} task1 - First task
+ * @param {Task} task2 - Second task
+ * @returns {boolean} - Whether tasks overlap
+ */
+export function tasksOverlap(task1, task2) {
+    // Ensure time calculations are cached
+    ensureTaskTimeCache(task1);
+    ensureTaskTimeCache(task2);
+
+    // These values are guaranteed to be defined after ensureTaskTimeCache
+    const start1 = task1._startMinutes;
+    const end1 = task1._endMinutes;
+    const start2 = task2._startMinutes;
+    const end2 = task2._endMinutes;
+
+    // Safety check - should never happen after ensureTaskTimeCache, but satisfies linter
+    if (start1 === undefined || end1 === undefined || start2 === undefined || end2 === undefined) {
+        console.error('Task time cache failed - cached time values are undefined');
+        // Simple fallback - assume no overlap if cache failed
+        return false;
+    }
+
+    // Early termination: if both tasks are in normal day (no midnight crossing)
+    // and one ends before the other starts, no overlap
+    const task1CrossesMidnight = end1 < start1;
+    const task2CrossesMidnight = end2 < start2;
+
+    if (!task1CrossesMidnight && !task2CrossesMidnight) {
+        // Standard interval overlap check with early termination
+        return start1 < end2 && start2 < end1;
+    }
+
+    // Handle midnight crossing cases (less common, so checked after)
+    if (task1CrossesMidnight && !task2CrossesMidnight) {
+        return start2 < end1 || start2 >= start1;
+    }
+
+    if (!task1CrossesMidnight && task2CrossesMidnight) {
+        return start1 < end2 || start1 >= start2;
+    }
+
+    if (task1CrossesMidnight && task2CrossesMidnight) {
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * Check for overlapping tasks.
+ * Uses cached time calculations and optimized overlap detection
  * @param {Task} taskToCompare - The task to check against.
  * @param {Task[]} existingTasks - The list of tasks to check for overlaps.
  * @returns {Task[]} - Array of overlapping tasks.
  */
 export function checkOverlap(taskToCompare, existingTasks) {
-    return existingTasks.filter(
-        (task) =>
-            task !== taskToCompare &&
-            task.status !== 'completed' &&
-            !task.editing && // do not consider tasks currently being edited by the user as fixed for rescheduling
-            tasksOverlap(taskToCompare, task)
-    );
+    // Ensure the task to compare has cached time values
+    // First invalidate any potentially stale cached values
+    invalidateTaskTimeCache(taskToCompare);
+    ensureTaskTimeCache(taskToCompare);
+
+    // Early termination if no existing tasks
+    if (existingTasks.length === 0) {
+        return [];
+    }
+
+    const overlappingTasks = [];
+
+    // Use optimized overlap detection with early termination
+    for (const task of existingTasks) {
+        // Skip self, completed tasks, and editing tasks
+        if (task === taskToCompare || task.status === 'completed' || task.editing) {
+            continue;
+        }
+
+        // Ensure task has cached time values
+        ensureTaskTimeCache(task);
+
+        // Use optimized overlap detection
+        if (tasksOverlap(taskToCompare, task)) {
+            overlappingTasks.push(task);
+        }
+    }
+
+    return overlappingTasks;
 }
 
 /**
  * Perform reschedule of tasks.
  *
  * OPTIMIZATION NOTES:
- * - Replaced recursive approach with iterative queue-based processing
+ * - Uses cached sorted tasks to avoid redundant sorting
+ * - Optimized overlap detection with cached time calculations
  * - Reduced time complexity from O(n²) to O(n log n) in most cases
  * - Eliminated stack overflow risk for large task cascades
  * - Uses a Set to track processed tasks, preventing infinite loops
  * - Processes tasks in chronological order for predictable behavior
  *
  * COMPLEXITY ANALYSIS:
- * - Time: O(n log n) - dominated by initial sorting, queue processing is O(n)
+ * - Time: O(n log n) - dominated by cached sorting, queue processing is O(n)
  * - Space: O(n) - for the candidate tasks array, processed set, and queue
  *
  * @param {Task} taskThatChanged - The task that triggered the reschedule.
- * @param {Task[]} allCurrentTasks - All tasks in the system.
  */
-export function performReschedule(taskThatChanged, allCurrentTasks) {
+export function performReschedule(taskThatChanged) {
     const originalEditingState = taskThatChanged.editing;
     taskThatChanged.editing = false;
 
-    // Get all tasks that could potentially need rescheduling (excluding completed and editing tasks)
-    const candidateTasks = allCurrentTasks
-        .filter((t) => t !== taskThatChanged && t.status !== 'completed' && !t.editing)
-        .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+    // Ensure the task that changed has updated cached values
+    invalidateTaskTimeCache(taskThatChanged);
+    ensureTaskTimeCache(taskThatChanged);
+
+    // Use cached sorted tasks and filter once
+    const sortedTasks = getSortedTasks();
+    const candidateTasks = [];
+
+    // Single pass filtering with early termination
+    for (const task of sortedTasks) {
+        if (task === taskThatChanged || task.status === 'completed' || task.editing) {
+            continue;
+        }
+        candidateTasks.push(task);
+    }
 
     // Track which tasks have been processed to avoid infinite loops
     const processedTasks = new Set();
@@ -179,22 +350,27 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
         const currentTask = tasksToProcess.shift();
         if (!currentTask) continue; // Safety check, though this should never happen
 
-        // Find all tasks that overlap with the current task and haven't been processed yet
-        const overlappingTasks = candidateTasks.filter((task) => {
-            if (processedTasks.has(task)) return false;
-            return tasksOverlap(task, currentTask);
-        });
+        // Ensure current task has cached time values
+        ensureTaskTimeCache(currentTask);
 
-        // Sort overlapping tasks by start time to process them in chronological order
-        overlappingTasks.sort(
-            (a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime)
-        );
+        // Find all tasks that overlap with the current task and haven't been processed yet
+        const overlappingTasks = [];
+        for (const task of candidateTasks) {
+            if (processedTasks.has(task)) continue;
+
+            // Use optimized overlap detection
+            if (tasksOverlap(task, currentTask)) {
+                overlappingTasks.push(task);
+            }
+        }
 
         let cascadeEndTime = currentTask.endTime;
+        let cascadeEndMinutes = currentTask._endMinutes || calculateMinutes(currentTask.endTime);
 
         for (const overlappingTask of overlappingTasks) {
-            const taskStartMinutes = calculateMinutes(overlappingTask.startTime);
-            const cascadeEndMinutes = calculateMinutes(cascadeEndTime);
+            // Use cached time calculations
+            ensureTaskTimeCache(overlappingTask);
+            const taskStartMinutes = overlappingTask._startMinutes;
 
             // If the task starts before the cascade end time, it needs to be shifted
             if (taskStartMinutes < cascadeEndMinutes) {
@@ -203,7 +379,13 @@ export function performReschedule(taskThatChanged, allCurrentTasks) {
                     overlappingTask.startTime,
                     overlappingTask.duration
                 );
+
+                // Update cached values immediately
+                overlappingTask._startMinutes = cascadeEndMinutes;
+                overlappingTask._endMinutes = calculateMinutes(overlappingTask.endTime);
+
                 cascadeEndTime = overlappingTask.endTime;
+                cascadeEndMinutes = overlappingTask._endMinutes;
 
                 // Mark as processed and add to queue for further cascade checking
                 processedTasks.add(overlappingTask);
@@ -299,6 +481,31 @@ export function getSuggestedStartTime() {
     }
 }
 
+// ============================================================================
+// CONFIRMATION HELPERS
+// ============================================================================
+
+/**
+ * Helper function to create overlap confirmation response
+ * @param {string} operation - The operation type (e.g., 'ADD', 'EDIT')
+ * @param {Object} data - Additional data to include in the response
+ * @param {string} reason - The reason message for the confirmation
+ * @returns {{success: boolean, requiresConfirmation: boolean, confirmationType: string, reason: string}} Overlap confirmation response object
+ */
+const createOverlapConfirmation = (operation, data, reason) => {
+    return {
+        success: false,
+        requiresConfirmation: true,
+        confirmationType: `RESCHEDULE_${operation}`,
+        ...data,
+        reason
+    };
+};
+
+// ============================================================================
+// CORE TASK OPERATIONS
+// ============================================================================
+
 /**
  * Add a new task.
  * @param {{description: string, startTime: string, duration: number}} taskData
@@ -322,7 +529,7 @@ export function addTask({ description, startTime, duration }) {
     }
 
     tasks.push(newTask);
-    performReschedule(newTask, tasks); // Reschedule based on newTask's impact
+    performReschedule(newTask); // Reschedule based on newTask's impact
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task: newTask };
 }
@@ -335,7 +542,7 @@ export function addTask({ description, startTime, duration }) {
 export function confirmAddTaskAndReschedule({ description, startTime, duration }) {
     const newTask = createTaskObject({ description, startTime, duration });
     tasks.push(newTask);
-    performReschedule(newTask, tasks); // Then reschedule
+    performReschedule(newTask); // Then reschedule
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task: newTask };
 }
@@ -369,6 +576,11 @@ export function updateTask(index, { description, startTime, duration }) {
     };
     taskWithUpdates.endTime = calculateEndTime(taskWithUpdates.startTime, taskWithUpdates.duration);
 
+    // Ensure the temporary task has cached time values for overlap detection
+    // First invalidate any inherited cached values since times may have changed
+    invalidateTaskTimeCache(taskWithUpdates);
+    ensureTaskTimeCache(taskWithUpdates);
+
     // Check overlap against tasks *other* than the one being updated
     // For checkOverlap, the task being compared (taskWithUpdates) should not be considered 'editing'
     // This requires a slight adjustment if existingTask.editing was true.
@@ -395,7 +607,10 @@ export function updateTask(index, { description, startTime, duration }) {
     existingTask.duration = newDuration;
     existingTask.endTime = taskWithUpdates.endTime; // Calculated above
 
-    performReschedule(existingTask, tasks);
+    // Invalidate cached time values since times may have changed
+    invalidateTaskTimeCache(existingTask);
+
+    performReschedule(existingTask);
     finalizeTaskModification(); // Single sort and save at the end
 
     return { success: true, task: existingTask };
@@ -419,7 +634,10 @@ export function confirmUpdateTaskAndReschedule(index, { description, startTime, 
     taskToUpdate.duration = duration !== undefined ? duration : taskToUpdate.duration;
     taskToUpdate.endTime = calculateEndTime(taskToUpdate.startTime, taskToUpdate.duration);
 
-    performReschedule(taskToUpdate, tasks);
+    // Invalidate cached time values since times may have changed
+    invalidateTaskTimeCache(taskToUpdate);
+
+    performReschedule(taskToUpdate);
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task: taskToUpdate };
 }
@@ -463,6 +681,10 @@ export function completeTask(index, currentTime24Hour) {
             task.endTime = currentTime24Hour;
             task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
             task.status = 'completed'; // Also mark as completed
+
+            // Invalidate cached time values since times changed
+            invalidateTaskTimeCache(task);
+
             finalizeTaskModification(); // Single sort and save at the end
             return { success: true, task };
         }
@@ -492,42 +714,12 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
     task.endTime = newEndTime;
     task.duration = newDuration;
 
-    performReschedule(task, tasks); // task.editing is already false
+    // Invalidate cached time values since times changed
+    invalidateTaskTimeCache(task);
+
+    performReschedule(task); // task.editing is already false
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task };
-}
-
-/**
- * Delete a task.
- * @param {number} index - Task index.
- * @param {boolean} confirmed - Whether the delete was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string}}
- */
-export function deleteTask(index, confirmed = false) {
-    if (index < 0 || index >= tasks.length) {
-        return { success: false, reason: 'Invalid task index.' };
-    }
-
-    if (!confirmed) {
-        if (tasks[index]) {
-            tasks[index].confirmingDelete = true;
-        } else {
-            logger.error(
-                `Task not found at index ${index} for delete confirmation. Tasks length: ${tasks.length}`
-            );
-            return { success: false, reason: 'Task not found at index for confirmation.' };
-        }
-        return {
-            success: false,
-            requiresConfirmation: true,
-            reason: 'Confirmation required to delete task.'
-        };
-    }
-
-    tasks.splice(index, 1);
-    resetAllUIFlags(); // Reset all UI flags
-    finalizeTaskModification(); // Single sort and save at the end
-    return { success: true, message: 'Task deleted successfully.' };
 }
 
 /**
@@ -565,6 +757,39 @@ export function cancelEdit(index) {
 }
 
 /**
+ * Delete a task.
+ * @param {number} index - Task index.
+ * @param {boolean} confirmed - Whether the delete was confirmed by the user.
+ * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string}}
+ */
+export function deleteTask(index, confirmed = false) {
+    if (index < 0 || index >= tasks.length) {
+        return { success: false, reason: 'Invalid task index.' };
+    }
+
+    if (!confirmed) {
+        if (tasks[index]) {
+            tasks[index].confirmingDelete = true;
+        } else {
+            logger.error(
+                `Task not found at index ${index} for delete confirmation. Tasks length: ${tasks.length}`
+            );
+            return { success: false, reason: 'Task not found at index for confirmation.' };
+        }
+        return {
+            success: false,
+            requiresConfirmation: true,
+            reason: 'Confirmation required to delete task.'
+        };
+    }
+
+    tasks.splice(index, 1);
+    resetAllUIFlags(); // Reset all UI flags
+    finalizeTaskModification(); // Single sort and save at the end
+    return { success: true, message: 'Task deleted successfully.' };
+}
+
+/**
  * Delete all tasks.
  * @param {boolean} confirmed - Whether the delete all was confirmed by the user.
  * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string, tasksDeleted?: number}}
@@ -589,34 +814,14 @@ export function deleteAllTasks(confirmed = false) {
     return { success: true, tasksDeleted: numTasksDeleted };
 }
 
-/**
- * Resets all 'confirmingDelete' flags to false for all tasks.
- * Useful when a global click occurs, and we want to cancel any pending delete confirmations.
- */
-export function resetAllConfirmingDeleteFlags() {
-    let changed = false;
-    tasks.forEach((task) => {
-        if (task.confirmingDelete) {
-            task.confirmingDelete = false;
-            changed = true;
-        }
-    });
-    // No sort or save needed as this is a transient UI state.
-    return changed;
-}
+// ============================================================================
+// OPTIMIZATION NOTES AND FUTURE IMPROVEMENTS
+// ============================================================================
 
-/**
- * Resets all 'editing' flags to false for all tasks.
- * Useful for cancelling edits on out-click, if not clicking specific save/cancel buttons.
- */
-export function resetAllEditingFlags() {
-    let changed = false;
-    tasks.forEach((task) => {
-        if (task.editing) {
-            task.editing = false;
-            changed = true;
-        }
-    });
-    // No sort or save needed as this is a transient UI state.
-    return changed;
-}
+// TODO: Future optimization - Consider implementing debounced state persistence for high-frequency operations
+// This would batch multiple rapid updates to reduce localStorage writes, but adds complexity.
+// Implementation would involve:
+// - Debouncing finalizeTaskModification() with ~100ms delay for non-critical operations
+// - Immediate persistence for critical operations (delete, complete)
+// - Timer management to prevent memory leaks
+// Only implement if performance profiling shows localStorage writes are a bottleneck.

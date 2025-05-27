@@ -22,9 +22,10 @@ import {
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
     getSuggestedStartTime,
-    getIsDeleteAllPendingConfirmation
+    getIsDeleteAllPendingConfirmation,
+    tasksOverlap
 } from '../public/js/task-manager.js';
-import { tasksOverlap, calculateEndTime } from '../public/js/utils.js'; // tasksOverlap is used in one test directly
+import { calculateEndTime, calculateMinutes } from '../public/js/utils.js';
 
 // Mock the storage module
 jest.mock('../public/js/storage.js', () => ({
@@ -46,41 +47,87 @@ describe('Task Management Functions (task-manager.js)', () => {
         jest.clearAllMocks();
     });
 
-    // This is a utility function, but good to have its tests here for context
-    // if it's heavily used by task-manager logic being tested.
     describe('tasksOverlap utility', () => {
         test('tasksOverlap correctly identifies overlapping tasks', () => {
-            const task1 = { startTime: '09:00', endTime: '10:00' };
-            const task2 = { startTime: '09:00', endTime: '10:00' }; // Full overlap
+            // Helper to create minimal task objects for overlap testing
+            const createTaskForOverlap = (startTime, endTime) => ({
+                description: 'Test Task',
+                startTime,
+                endTime,
+                duration: calculateMinutes(endTime) - calculateMinutes(startTime),
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+
+            const task1 = createTaskForOverlap('09:00', '10:00');
+            const task2 = createTaskForOverlap('09:00', '10:00'); // Full overlap
             expect(tasksOverlap(task1, task2)).toBe(true);
 
-            const task3 = { startTime: '09:00', endTime: '10:00' };
-            const task4 = { startTime: '09:30', endTime: '10:30' }; // Partial overlap (task4 starts during task3)
+            const task3 = createTaskForOverlap('09:00', '10:00');
+            const task4 = createTaskForOverlap('09:30', '10:30'); // Partial overlap (task4 starts during task3)
             expect(tasksOverlap(task3, task4)).toBe(true);
 
-            const task5 = { startTime: '09:30', endTime: '10:30' };
-            const task6 = { startTime: '09:00', endTime: '10:00' }; // Partial overlap (task5 starts during task6)
+            const task5 = createTaskForOverlap('09:30', '10:30');
+            const task6 = createTaskForOverlap('09:00', '10:00'); // Partial overlap (task5 starts during task6)
             expect(tasksOverlap(task5, task6)).toBe(true);
 
-            const task7 = { startTime: '09:00', endTime: '11:00' };
-            const task8 = { startTime: '09:30', endTime: '10:30' }; // Task8 contained within Task7
+            const task7 = createTaskForOverlap('09:00', '11:00');
+            const task8 = createTaskForOverlap('09:30', '10:30'); // Task8 contained within Task7
             expect(tasksOverlap(task7, task8)).toBe(true);
 
-            const task9 = { startTime: '09:30', endTime: '10:30' };
-            const task10 = { startTime: '09:00', endTime: '11:00' }; // Task9 contained within Task10
+            const task9 = createTaskForOverlap('09:30', '10:30');
+            const task10 = createTaskForOverlap('09:00', '11:00'); // Task9 contained within Task10
             expect(tasksOverlap(task9, task10)).toBe(true);
 
-            const task11 = { startTime: '09:00', endTime: '10:00' };
-            const task12 = { startTime: '10:00', endTime: '11:00' }; // Adjacent, not overlapping
+            const task11 = createTaskForOverlap('09:00', '10:00');
+            const task12 = createTaskForOverlap('10:00', '11:00'); // Adjacent, not overlapping
             expect(tasksOverlap(task11, task12)).toBe(false);
 
-            const task13 = { startTime: '09:00', endTime: '10:00' };
-            const task14 = { startTime: '10:01', endTime: '11:00' }; // Not overlapping
+            const task13 = createTaskForOverlap('09:00', '10:00');
+            const task14 = createTaskForOverlap('10:01', '11:00'); // Not overlapping
             expect(tasksOverlap(task13, task14)).toBe(false);
 
-            const task15 = { startTime: '09:00', endTime: '10:00' };
-            const task16 = { startTime: '08:00', endTime: '09:00' }; // Adjacent, not overlapping
+            const task15 = createTaskForOverlap('09:00', '10:00');
+            const task16 = createTaskForOverlap('08:00', '09:00'); // Adjacent, not overlapping
             expect(tasksOverlap(task15, task16)).toBe(false);
+        });
+    });
+
+    describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
+        // Helper to create minimal task objects for overlap testing
+        const createTaskForOverlap = (startTime, endTime) => ({
+            description: 'Test Task',
+            startTime,
+            endTime,
+            duration: calculateMinutes(endTime) - calculateMinutes(startTime),
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        });
+
+        test('handles times that cross midnight correctly', () => {
+            const lateNightTask = createTaskForOverlap('23:00', '00:30');
+            const earlyMorningTask = createTaskForOverlap('00:15', '01:00');
+            expect(tasksOverlap(lateNightTask, earlyMorningTask)).toBe(true);
+
+            const eveningTask = createTaskForOverlap('22:00', '00:00');
+            const morningTask = createTaskForOverlap('00:00', '02:00');
+            expect(tasksOverlap(eveningTask, morningTask)).toBe(false);
+        });
+
+        test('handles complex midnight-crossing task overlaps correctly', () => {
+            const longEveningTask = createTaskForOverlap('20:00', '02:00');
+            const midnightTask = createTaskForOverlap('23:30', '00:30');
+            expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
+
+            const multiDayTask = createTaskForOverlap('22:00', '08:00');
+            const morningTask = createTaskForOverlap('07:00', '08:30');
+            expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
+
+            const mondayTask = createTaskForOverlap('23:00', '00:30');
+            const tuesdayEveningTask = createTaskForOverlap('20:00', '22:00');
+            expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
         });
     });
 
@@ -200,6 +247,262 @@ describe('Task Management Functions (task-manager.js)', () => {
             const newTask = createMockTask('New', '09:00', 60);
             const tasksWithSelf = [...existingTasks, newTask];
             expect(checkOverlap(newTask, tasksWithSelf).map((t) => t.description)).toEqual(['T1']);
+        });
+
+        // Optimization-specific tests for checkOverlap
+        test('should correctly detect overlaps with cached time values', () => {
+            // Create tasks with known time values
+            const task1 = {
+                description: 'Task 1',
+                startTime: '09:00',
+                endTime: '10:30',
+                duration: 90,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                _startMinutes: 540, // Pre-cached
+                _endMinutes: 630
+            };
+
+            const task2 = {
+                description: 'Task 2',
+                startTime: '10:00',
+                endTime: '11:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                _startMinutes: 600, // Pre-cached
+                _endMinutes: 660
+            };
+
+            const overlaps = checkOverlap(task1, [task2]);
+            expect(overlaps).toHaveLength(1);
+            expect(overlaps[0].description).toBe('Task 2');
+        });
+
+        test('should handle tasks without cached values by generating them', () => {
+            const task1 = {
+                description: 'Task 1',
+                startTime: '09:00',
+                endTime: '10:30',
+                duration: 90,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+                // No cached values
+            };
+
+            const task2 = {
+                description: 'Task 2',
+                startTime: '10:00',
+                endTime: '11:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+                // No cached values
+            };
+
+            const overlaps = checkOverlap(task1, [task2]);
+            expect(overlaps).toHaveLength(1);
+            expect(overlaps[0].description).toBe('Task 2');
+
+            // Verify cached values were generated
+            expect(task1._startMinutes).toBe(540);
+            expect(task1._endMinutes).toBe(630);
+            expect(task2._startMinutes).toBe(600);
+            expect(task2._endMinutes).toBe(660);
+        });
+
+        test('should handle tasks with inherited stale cached values', () => {
+            // Create a task with stale cached values (simulating spread operator copying)
+            const originalTask = {
+                description: 'Original',
+                startTime: '09:00',
+                endTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                _startMinutes: 540, // Correct for 09:00
+                _endMinutes: 600 // Correct for 10:00
+            };
+
+            // Create a modified task with stale cached values
+            const modifiedTask = {
+                ...originalTask,
+                startTime: '10:00', // Changed time
+                endTime: '11:00', // Changed time
+                _startMinutes: 540, // Stale - still shows 09:00
+                _endMinutes: 600 // Stale - still shows 10:00
+            };
+
+            // Verify the task initially has stale cached values
+            expect(modifiedTask._startMinutes).toBe(540); // Stale value
+            expect(modifiedTask._endMinutes).toBe(600); // Stale value
+
+            // Test overlap detection with another task
+            const otherTask = {
+                description: 'Other',
+                startTime: '10:30',
+                endTime: '11:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const overlaps = checkOverlap(modifiedTask, [otherTask]);
+
+            // Should detect overlap correctly despite initially stale cached values
+            expect(overlaps).toHaveLength(1);
+            expect(overlaps[0].description).toBe('Other');
+
+            // Verify cached values were corrected during the checkOverlap call
+            expect(modifiedTask._startMinutes).toBe(600); // 10:00 - corrected
+            expect(modifiedTask._endMinutes).toBe(660); // 11:00 - corrected
+        });
+
+        test('should handle midnight crossing with cached values', () => {
+            const lateTask = {
+                description: 'Late Task',
+                startTime: '23:30',
+                endTime: '01:00', // Crosses midnight
+                duration: 90,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const earlyTask = {
+                description: 'Early Task',
+                startTime: '00:30',
+                endTime: '01:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const overlaps = checkOverlap(lateTask, [earlyTask]);
+            expect(overlaps).toHaveLength(1);
+            expect(overlaps[0].description).toBe('Early Task');
+
+            // Verify cached values are correct for midnight crossing
+            expect(lateTask._startMinutes).toBe(1410); // 23:30 = 23.5 * 60 = 1410
+            expect(lateTask._endMinutes).toBe(60); // 01:00 = 1 * 60 = 60
+            expect(earlyTask._startMinutes).toBe(30); // 00:30 = 0.5 * 60 = 30
+            expect(earlyTask._endMinutes).toBe(90); // 01:30 = 1.5 * 60 = 90
+        });
+    });
+
+    describe('Time Cache Management', () => {
+        test('should add cached time values to new tasks', () => {
+            const result = addTask({
+                description: 'Test Task',
+                startTime: '09:00',
+                duration: 60
+            });
+
+            expect(result.success).toBe(true);
+            const tasks = getTaskState();
+            const task = tasks[0];
+
+            // Verify cached time values are present
+            expect(task._startMinutes).toBe(540); // 09:00 = 9 * 60 = 540
+            expect(task._endMinutes).toBe(600); // 10:00 = 10 * 60 = 600
+        });
+
+        test('should invalidate and regenerate cached time values when task is updated', () => {
+            // Add initial task
+            addTask({
+                description: 'Test Task',
+                startTime: '09:00',
+                duration: 60
+            });
+
+            const tasks = getTaskState();
+            const originalTask = tasks[0];
+
+            // Verify initial cached values
+            expect(originalTask._startMinutes).toBe(540); // 09:00
+            expect(originalTask._endMinutes).toBe(600); // 10:00
+
+            // Update the task
+            updateTask(0, {
+                startTime: '10:00',
+                duration: 90
+            });
+
+            const updatedTasks = getTaskState();
+            const updatedTask = updatedTasks[0];
+
+            // Verify cached values were updated
+            expect(updatedTask._startMinutes).toBe(600); // 10:00 = 10 * 60 = 600
+            expect(updatedTask._endMinutes).toBe(690); // 11:30 = 11.5 * 60 = 690
+        });
+
+        test('should handle tasks loaded from storage without cached values', () => {
+            // Simulate loading tasks from storage (without cached values)
+            const tasksFromStorage = [
+                {
+                    description: 'Loaded Task',
+                    startTime: '09:00',
+                    endTime: '10:00',
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                    // No _startMinutes or _endMinutes
+                }
+            ];
+
+            updateTaskState(tasksFromStorage);
+            const tasks = getTaskState();
+            const task = tasks[0];
+
+            // Verify cached values were added during updateTaskState
+            expect(task._startMinutes).toBe(540); // 09:00
+            expect(task._endMinutes).toBe(600); // 10:00
+        });
+    });
+
+    describe('Sorted Tasks Caching', () => {
+        test('should maintain sort order when accessing tasks multiple times', () => {
+            // Add tasks in non-sorted order
+            addTask({ description: 'Task C', startTime: '11:00', duration: 60 });
+            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
+            addTask({ description: 'Task B', startTime: '10:00', duration: 60 });
+
+            const tasks1 = getTaskState();
+            const tasks2 = getTaskState();
+
+            // Verify tasks are sorted consistently
+            expect(tasks1[0].description).toBe('Task A'); // 09:00
+            expect(tasks1[1].description).toBe('Task B'); // 10:00
+            expect(tasks1[2].description).toBe('Task C'); // 11:00
+
+            expect(tasks2[0].description).toBe('Task A');
+            expect(tasks2[1].description).toBe('Task B');
+            expect(tasks2[2].description).toBe('Task C');
+        });
+
+        test('should update sort order when tasks are modified', () => {
+            // Add tasks
+            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
+            addTask({ description: 'Task B', startTime: '10:00', duration: 60 });
+
+            let tasks = getTaskState();
+            expect(tasks[0].description).toBe('Task A'); // 09:00
+            expect(tasks[1].description).toBe('Task B'); // 10:00
+
+            // Update Task A to start later than Task B
+            updateTask(0, { startTime: '11:00' });
+
+            tasks = getTaskState();
+            expect(tasks[0].description).toBe('Task B'); // 10:00
+            expect(tasks[1].description).toBe('Task A'); // 11:00 (moved)
         });
     });
 
@@ -1115,6 +1418,80 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([futureTask1, futureTask2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('18:00'); // No tasks before current time (14:35), so continue planning from latest
+        });
+    });
+
+    describe('Performance Characteristics', () => {
+        test('should handle large numbers of tasks efficiently', () => {
+            const startTime = performance.now();
+
+            // Create 100 tasks
+            const tasks = [];
+            for (let i = 0; i < 100; i++) {
+                const hour = 9 + Math.floor(i / 10);
+                const minute = (i % 10) * 6; // 0, 6, 12, 18, 24, 30, 36, 42, 48, 54
+                const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+                tasks.push({
+                    description: `Task ${i}`,
+                    startTime: timeStr,
+                    endTime: calculateEndTime(timeStr, 30),
+                    duration: 30,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                });
+            }
+
+            updateTaskState(tasks);
+
+            // Perform multiple operations that would trigger sorting and overlap detection
+            for (let i = 0; i < 10; i++) {
+                getTaskState(); // Should use cached sorting
+
+                // Test overlap detection
+                const testTask = {
+                    description: 'Test',
+                    startTime: '10:00',
+                    endTime: '10:30',
+                    duration: 30,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                };
+                checkOverlap(testTask, getTaskState());
+            }
+
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+
+            // Should complete in reasonable time (less than 100ms for 100 tasks)
+            expect(duration).toBeLessThan(100);
+        });
+
+        test('should maintain cached values during reschedule operations', () => {
+            // Add initial tasks
+            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
+            addTask({ description: 'Task B', startTime: '09:30', duration: 60 });
+            addTask({ description: 'Task C', startTime: '10:00', duration: 60 });
+
+            const tasks = getTaskState();
+            const taskA = tasks[0];
+
+            // Modify Task A to trigger reschedule
+            taskA.duration = 120; // Extend to 2 hours
+            taskA.endTime = calculateEndTime(taskA.startTime, taskA.duration);
+
+            performReschedule(taskA, tasks);
+
+            // Verify all tasks have cached values after reschedule
+            const updatedTasks = getTaskState();
+            updatedTasks.forEach((task) => {
+                expect(task._startMinutes).toBeDefined();
+                expect(task._endMinutes).toBeDefined();
+                expect(typeof task._startMinutes).toBe('number');
+                expect(typeof task._endMinutes).toBe('number');
+            });
         });
     });
 });
