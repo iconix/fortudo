@@ -1,5 +1,7 @@
 # fortudo: a daily time-blocking to-do app
 
+[![CI/CD Pipeline](https://github.com/iconix/fortudo/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/iconix/fortudo/actions/workflows/ci-cd.yml)
+
 ## firebase hosting
 
 ```bash
