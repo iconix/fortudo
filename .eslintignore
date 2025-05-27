@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Configuration files that don't need linting
+*.config.js
+babel.config.js
+
+# Minified files
+*.min.js
+
+# Logs
+*.log

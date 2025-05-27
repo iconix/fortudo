@@ -2,11 +2,15 @@ import {
     calculateMinutes,
     calculateEndTime,
     tasksOverlap,
-    convertTo24HourTime,
-    // convertTo12HourTime, // Not directly used by task logic, more for rendering
-    getCurrentTimeRounded
+    getCurrentTimeRounded,
+    logger
 } from './utils.js';
 import { saveTasks } from './storage.js';
+
+// Helper function to sort tasks by start time
+const sortTasks = (tasksToSort) => {
+    tasksToSort.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+};
 
 /**
  * @typedef {Object} Task
@@ -21,6 +25,7 @@ import { saveTasks } from './storage.js';
 
 /** @type {Task[]} */
 let tasks = [];
+let isDeleteAllPendingConfirmation = false;
 
 /**
  * Get the current list of tasks.
@@ -31,11 +36,21 @@ export function getTasks() {
 }
 
 /**
+ * Get the current state of delete all pending confirmation.
+ * @returns {boolean} Whether delete all is pending confirmation.
+ */
+export function getIsDeleteAllPendingConfirmation() {
+    return isDeleteAllPendingConfirmation;
+}
+
+/**
  * Set the tasks list. Also updates localStorage.
  * @param {Task[]} newTasks - The new array of tasks.
  */
 export function setTasks(newTasks) {
     tasks = newTasks || [];
+    // No direct sortTasks(tasks) here; saveTasks is responsible for saving the current state.
+    // Sorting is applied by functions that modify the task list order.
     saveTasks(tasks);
 }
 
@@ -46,75 +61,146 @@ export function setTasks(newTasks) {
  * @returns {{isValid: boolean, reason?: string}} Validation result.
  */
 export function isValidTaskData(description, duration) {
-    if (!description || description.trim() === "") {
-        return { isValid: false, reason: "Description cannot be empty." };
+    if (!description || description.trim() === '') {
+        return { isValid: false, reason: 'Description cannot be empty.' };
     }
     if (isNaN(duration) || duration <= 0) {
-        return { isValid: false, reason: "Duration must be a positive number." };
+        return { isValid: false, reason: 'Duration must be a positive number.' };
     }
     return { isValid: true };
 }
 
 /**
- * Auto-reschedule tasks to avoid overlap.
- * This version does not ask for confirmation and proceeds with rescheduling.
- * TODO: go back to asking for confirmation
- * @param {Task} newTask - The new task to add or update
- * @param {string} trigger - The trigger for the reschedule (e.g., "Adding" or "Updating")
- * @returns {boolean} - True if rescheduling occurred or was not needed.
+ * Check for overlapping tasks.
+ * @param {Task} taskToCompare - The task to check against.
+ * @param {Task[]} existingTasks - The list of tasks to check for overlaps.
+ * @returns {Task[]} - Array of overlapping tasks.
  */
-export function autoReschedule(newTask, trigger = 'Adding') {
-    const overlappingTasks = tasks.filter(task =>
-        task !== newTask &&
-        !task.editing &&                // should not reschedule a task that is currently being edited elsewhere (by user)
-        task.status !== 'completed' &&  // should not reschedule a completed task
-        tasksOverlap(newTask, task)
+export function checkOverlap(taskToCompare, existingTasks) {
+    return existingTasks.filter(
+        (task) =>
+            task !== taskToCompare &&
+            task.status !== 'completed' &&
+            !task.editing && // do not consider tasks currently being edited by the user as fixed for rescheduling
+            tasksOverlap(taskToCompare, task)
     );
-
-    if (overlappingTasks.length === 0) {
-        return true;
-    }
-
-    console.log(`${trigger} this task will cause overlap. Auto-rescheduling...`);
-    overlappingTasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
-
-    let nextStartTime = newTask.endTime;
-    for (const task of overlappingTasks) {
-        if (task === newTask) continue;
-
-        task.startTime = nextStartTime;
-        task.endTime = calculateEndTime(task.startTime, task.duration);
-        nextStartTime = task.endTime;
-
-        const originalEditingState = task.editing;
-        task.editing = true;
-        autoReschedule(task, trigger);
-        task.editing = originalEditingState;
-    }
-    return true;
 }
 
 /**
- * Get the suggested start time for a new task.
- * Uses the end time of the latest non-completed task if any exist,
- * otherwise uses the current time rounded up.
- * @returns {string} - Suggested start time in 24-hour format (HH:MM).
+ * Perform reschedule of tasks.
+ * @param {Task} taskThatChanged - The task that triggered the reschedule.
+ * @param {Task[]} allCurrentTasks - All tasks in the system.
  */
-export function getSuggestedStartTime() {
-    const sortedIncompleteTasks = [...tasks]
-        .filter(t => t.status !== 'completed')
+export function performReschedule(taskThatChanged, allCurrentTasks) {
+    const originalEditingState = taskThatChanged.editing;
+    taskThatChanged.editing = false;
+
+    // Identify tasks that overlap with taskThatChanged and need to be shifted
+    const tasksToShift = allCurrentTasks
+        .filter(
+            (t) =>
+                t !== taskThatChanged &&
+                t.status !== 'completed' &&
+                !t.editing &&
+                tasksOverlap(t, taskThatChanged)
+        )
         .sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
 
-    if (sortedIncompleteTasks.length === 0) {
-        return getCurrentTimeRounded();
+    let currentCascadeEndTime = taskThatChanged.endTime;
+
+    for (const task of tasksToShift) {
+        // If task starts before cascade end time, shift it and update cascade point
+        if (calculateMinutes(task.startTime) < calculateMinutes(currentCascadeEndTime)) {
+            task.startTime = currentCascadeEndTime;
+            task.endTime = calculateEndTime(task.startTime, task.duration);
+            currentCascadeEndTime = task.endTime;
+            performReschedule(task, allCurrentTasks);
+        }
     }
+
+    taskThatChanged.editing = originalEditingState;
+}
+
+/**
+ * Get the suggested start time for a new task based on current schedule availability.
+ *
+ * Logic:
+ * 1. If no incomplete tasks exist, suggests the current time rounded up to the nearest 5 minutes
+ * 2. If the current time slot is occupied, suggests the end time of the latest scheduled task
+ * 3. If the current time slot is available:
+ *    - If there are existing tasks before the current time (filling a gap), suggests current time rounded up
+ *    - If there are no existing tasks before the current time (planning ahead), suggests end time of latest task
+ *
+ * This ensures new tasks fill schedule gaps when appropriate, or continue planning from the latest task.
+ *
+ * @returns {string} Suggested start time in 24-hour format (HH:MM)
+ */
+export function getSuggestedStartTime() {
+    const currentTimeRounded = getCurrentTimeRounded();
+    const incompleteTasks = tasks.filter((t) => t.status !== 'completed');
+
+    if (incompleteTasks.length === 0) {
+        return currentTimeRounded;
+    }
+
+    // Check if any task exists at the current time rounded up
+    const currentTimeMinutes = calculateMinutes(currentTimeRounded);
+    const hasTaskAtCurrentTime = incompleteTasks.some((task) => {
+        const taskStartMinutes = calculateMinutes(task.startTime);
+        const taskEndMinutes = calculateMinutes(task.endTime);
+
+        // Handle tasks that cross midnight
+        if (taskEndMinutes < taskStartMinutes) {
+            // Task crosses midnight - check if current time falls within either part
+            return currentTimeMinutes >= taskStartMinutes || currentTimeMinutes < taskEndMinutes;
+        } else {
+            // Normal task - check if current time falls within the task period
+            return currentTimeMinutes >= taskStartMinutes && currentTimeMinutes < taskEndMinutes;
+        }
+    });
+
+    // If current time slot is occupied, use end time of latest task
+    if (hasTaskAtCurrentTime) {
+        const sortedIncompleteTasks = [...incompleteTasks].sort(
+            (a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime)
+        );
+
+        return sortedIncompleteTasks[sortedIncompleteTasks.length - 1].endTime;
+    }
+
+    // Current time slot is available - check if there are tasks before current time
+    const tasksBeforeCurrentTime = incompleteTasks.filter((task) => {
+        const taskStartMinutes = calculateMinutes(task.startTime);
+        const taskEndMinutes = calculateMinutes(task.endTime);
+
+        // Handle tasks that cross midnight
+        if (taskEndMinutes < taskStartMinutes) {
+            // Task crosses midnight - it's "before" current time if it starts before current time
+            // and current time is not in the early morning part of the task
+            return taskStartMinutes < currentTimeMinutes;
+        } else {
+            // Normal task - it's before current time if it ends before or at current time
+            return taskEndMinutes <= currentTimeMinutes;
+        }
+    });
+
+    // If there are tasks before current time, we're filling a gap - use current time
+    if (tasksBeforeCurrentTime.length > 0) {
+        return currentTimeRounded;
+    }
+
+    // No tasks before current time, user is planning ahead - use end time of latest task
+    const sortedIncompleteTasks = [...incompleteTasks].sort(
+        (a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime)
+    );
+
     return sortedIncompleteTasks[sortedIncompleteTasks.length - 1].endTime;
 }
 
 /**
  * Add a new task.
  * @param {{description: string, startTime: string, duration: number}} taskData
- * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string}}
+ * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string, taskData?: any}}
  */
 export function addTask({ description, startTime, duration }) {
     const validation = isValidTaskData(description, duration);
@@ -127,32 +213,49 @@ export function addTask({ description, startTime, duration }) {
         startTime,
         duration,
         endTime: calculateEndTime(startTime, duration),
-        status: "incomplete",
+        status: 'incomplete',
         editing: false,
-        confirmingDelete: false,
+        confirmingDelete: false
     };
 
-    const initialOverlappingTasks = tasks.filter(task =>
-        task !== newTask &&
-        !task.editing &&
-        task.status !== 'completed' &&
-        tasksOverlap(newTask, task)
-    );
-
-    if (initialOverlappingTasks.length > 0) {
-        // TODO: In a future step, dom-handler would use this to ask for confirmation.
-        // For now, we proceed as if confirmed, or could return requiresConfirmation.
-        // Let's indicate confirmation would be needed.
-        // The actual rescheduling will happen if the operation is confirmed by the caller.
-        // This means addTask itself won't auto-reschedule without explicit instruction.
-        // Or, for this phase, we just do it.
-        // Decision: For now, autoReschedule is simplified and does it.
-        // If we want user confirmation, autoReschedule itself needs to change or be called conditionally.
-        autoReschedule(newTask, 'Adding');
+    const overlaps = checkOverlap(newTask, tasks);
+    if (overlaps.length > 0) {
+        return {
+            success: false,
+            requiresConfirmation: true,
+            confirmationType: 'RESCHEDULE_ADD',
+            taskData: { description, startTime, duration }, // Pass original data back
+            reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
+        };
     }
 
     tasks.push(newTask);
-    tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+    sortTasks(tasks); // Sort to place newTask correctly
+    performReschedule(newTask, tasks); // Reschedule based on newTask's impact
+    sortTasks(tasks); // Final sort to ensure canonical order after potential shifts
+    saveTasks(tasks);
+    return { success: true, task: newTask };
+}
+
+/**
+ * Confirms adding a task and performs rescheduling.
+ * @param {{description: string, startTime: string, duration: number}} taskData
+ * @returns {{success: boolean, task?: Task}}
+ */
+export function confirmAddTaskAndReschedule({ description, startTime, duration }) {
+    const newTask = {
+        description,
+        startTime,
+        duration,
+        endTime: calculateEndTime(startTime, duration),
+        status: 'incomplete',
+        editing: false, // Ensure editing is false
+        confirmingDelete: false
+    };
+    tasks.push(newTask);
+    sortTasks(tasks); // Sort first
+    performReschedule(newTask, tasks); // Then reschedule
+    sortTasks(tasks); // Final sort
     saveTasks(tasks);
     return { success: true, task: newTask };
 }
@@ -161,11 +264,11 @@ export function addTask({ description, startTime, duration }) {
  * Update an existing task.
  * @param {number} index - Task index.
  * @param {Partial<Pick<Task, 'description' | 'startTime' | 'duration'>>} updatedData - Data to update.
- * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string}}
+ * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string, taskIndex?: number, updatedData?: any}}
  */
 export function updateTask(index, { description, startTime, duration }) {
     if (index < 0 || index >= tasks.length) {
-        return { success: false, reason: "Invalid task index." };
+        return { success: false, reason: 'Invalid task index.' };
     }
 
     const existingTask = tasks[index];
@@ -174,85 +277,89 @@ export function updateTask(index, { description, startTime, duration }) {
 
     const validation = isValidTaskData(newDescription, newDuration);
     if (!validation.isValid) {
-         return { success: false, reason: validation.reason };
+        return { success: false, reason: validation.reason };
     }
 
+    // Create a temporary task object to check for overlaps without modifying the original yet
     const taskWithUpdates = {
         ...existingTask,
         description: newDescription,
         startTime: startTime !== undefined ? startTime : existingTask.startTime,
-        duration: newDuration,
+        duration: newDuration
     };
     taskWithUpdates.endTime = calculateEndTime(taskWithUpdates.startTime, taskWithUpdates.duration);
 
-    const editingStatesMap = new Map();
-    tasks.forEach(task => {
-        const taskId = `${task.description}|${task.startTime}`;
-        editingStatesMap.set(taskId, task.editing);
-    });
-
-    existingTask.editing = true;
-
-    autoReschedule(taskWithUpdates, 'Updating');
-
-    tasks.forEach(task => {
-        const taskId = `${task.description}|${task.startTime}`;
-        if (editingStatesMap.has(taskId)) {
-            task.editing = editingStatesMap.get(taskId);
-        } else {
-            for (const [storedId, editingState] of editingStatesMap.entries()) {
-                const [storedDescription] = storedId.split('|');
-                if (storedDescription === task.description) {
-                    task.editing = editingState;
-                    break;
-                }
-            }
-        }
-    });
-
-    const updatedTaskIndex = tasks.findIndex(task =>
-        task.description === taskWithUpdates.description &&
-        task.startTime === taskWithUpdates.startTime &&
-        task.duration === taskWithUpdates.duration
+    // Check overlap against tasks *other* than the one being updated
+    // For checkOverlap, the task being compared (taskWithUpdates) should not be considered 'editing'
+    // This requires a slight adjustment if existingTask.editing was true.
+    const originalEditingStateForCheck = existingTask.editing;
+    existingTask.editing = false; // Temporarily set to false for checkOverlap
+    const overlaps = checkOverlap(
+        taskWithUpdates,
+        tasks.filter((t) => t !== existingTask)
     );
+    existingTask.editing = originalEditingStateForCheck; // Restore it
 
-    if (updatedTaskIndex !== -1) {
-        tasks[updatedTaskIndex].description = taskWithUpdates.description;
-        tasks[updatedTaskIndex].startTime = taskWithUpdates.startTime;
-        tasks[updatedTaskIndex].duration = taskWithUpdates.duration;
-        tasks[updatedTaskIndex].endTime = taskWithUpdates.endTime;
-        tasks[updatedTaskIndex].editing = false;
-    } else {
-        // Fallback: replace by original index if we can't find the updated task
-        // TODO: This fallback might not be ideal if the task's position significantly changed due to sorting after rescheduling.
-        // Consider if finding by a unique ID (if tasks had one) would be more robust.
-        tasks[index] = { ...taskWithUpdates, editing: false };
+    if (overlaps.length > 0) {
+        return {
+            success: false,
+            requiresConfirmation: true,
+            confirmationType: 'RESCHEDULE_UPDATE',
+            taskIndex: index,
+            updatedData: { description, startTime, duration }, // Pass original updates
+            reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
+        };
     }
 
-    tasks.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+    // No overlap or confirmed: apply updates
+    existingTask.editing = false; // Ensure editing is turned off
+    existingTask.description = newDescription;
+    existingTask.startTime = startTime !== undefined ? startTime : existingTask.startTime;
+    existingTask.duration = newDuration;
+    existingTask.endTime = taskWithUpdates.endTime; // Calculated above
+
+    performReschedule(existingTask, tasks);
+    sortTasks(tasks);
     saveTasks(tasks);
 
-    const finalUpdatedTask = tasks.find(task =>
-        task.description === taskWithUpdates.description &&
-        task.startTime === taskWithUpdates.startTime &&
-        task.duration === taskWithUpdates.duration
-    );
+    return { success: true, task: existingTask };
+}
 
-    return { success: true, task: finalUpdatedTask || tasks[index] };
+/**
+ * Confirms updating a task and performs rescheduling.
+ * @param {number} index - Task index.
+ * @param {{description: string, startTime: string, duration: number}} updatedData - Data to update.
+ * @returns {{success: boolean, task?: Task, reason?: string}}
+ */
+export function confirmUpdateTaskAndReschedule(index, { description, startTime, duration }) {
+    if (index < 0 || index >= tasks.length) {
+        return { success: false, reason: 'Invalid task index.' };
+    }
+    const taskToUpdate = tasks[index];
+
+    taskToUpdate.editing = false; // Ensure editing is turned off
+    taskToUpdate.description = description !== undefined ? description : taskToUpdate.description;
+    taskToUpdate.startTime = startTime !== undefined ? startTime : taskToUpdate.startTime;
+    taskToUpdate.duration = duration !== undefined ? duration : taskToUpdate.duration;
+    taskToUpdate.endTime = calculateEndTime(taskToUpdate.startTime, taskToUpdate.duration);
+
+    performReschedule(taskToUpdate, tasks);
+    sortTasks(tasks);
+    saveTasks(tasks);
+    return { success: true, task: taskToUpdate };
 }
 
 /**
  * Mark a task as completed.
  * @param {number} index - Task index.
  * @param {string} [currentTime24Hour] - Optional current time in 24-hour format (HH:MM) from UI.
- * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string, oldEndTime?: string, newEndTime?: string}}
+ * @returns {{success: boolean, task?: Task, reason?: string, requiresConfirmation?: boolean, confirmationType?: string, oldEndTime?: string, newEndTime?: string, newDuration?: number}}
  */
 export function completeTask(index, currentTime24Hour) {
     if (index < 0 || index >= tasks.length) {
-        return { success: false, reason: "Invalid task index." };
+        return { success: false, reason: 'Invalid task index.' };
     }
     const task = tasks[index];
-    task.status = "completed";
 
     if (currentTime24Hour) {
         const currentTimeMinutes = calculateMinutes(currentTime24Hour);
@@ -261,35 +368,61 @@ export function completeTask(index, currentTime24Hour) {
 
         if (currentTimeMinutes > taskEndTimeMinutes) {
             // Task finished late.
-            // This is where app.js used to window.confirm.
-            // We return info so dom-handler can confirm.
-            // For now, let's assume we want to provide this info back.
-            // The actual update will be a separate call or based on confirmation.
-            // TODO: For this phase, let's simplify: if currentTime is provided, we use it.
-            const oldEndTime = task.endTime;
-            task.endTime = currentTime24Hour;
-            task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
-
-            const originalEditingState = task.editing;
-            task.editing = true;
-            autoReschedule(task, "Completing");
-            task.editing = originalEditingState;
-
-            saveTasks(tasks);
-            return { success: true, task, requiresConfirmation: true, confirmationType: 'COMPLETE_LATE', oldEndTime, newEndTime: task.endTime };
-        } else if (currentTimeMinutes < taskEndTimeMinutes && currentTimeMinutes >= taskStartTimeMinutes) {
+            const newEndTime = currentTime24Hour;
+            const newDuration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
+            // Do not modify the task directly.
+            return {
+                success: true,
+                task: { ...task }, // Return a copy
+                requiresConfirmation: true,
+                confirmationType: 'COMPLETE_LATE',
+                oldEndTime: task.endTime,
+                newEndTime,
+                newDuration
+            };
+        } else if (
+            currentTimeMinutes < taskEndTimeMinutes &&
+            currentTimeMinutes >= taskStartTimeMinutes
+        ) {
             // Task finished early.
-            // Similar to above, this could be a confirmation.
-            // TODO: For now, just update.
             task.endTime = currentTime24Hour;
             task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
+            task.status = 'completed'; // Also mark as completed
+            sortTasks(tasks); // Sort as status change might affect order with filters
             saveTasks(tasks);
             return { success: true, task };
         }
     }
 
+    // If currentTime24Hour is not provided or task finished on time
+    task.status = 'completed';
+    sortTasks(tasks); // Sort as status change might affect order with filters
     saveTasks(tasks);
-    return { success: true, task: tasks[index] };
+    return { success: true, task };
+}
+
+/**
+ * Confirm completion of a task that finished late, updating its schedule.
+ * @param {number} index - Task index.
+ * @param {string} newEndTime - The new end time in 24-hour format.
+ * @param {number} newDuration - The new duration in minutes.
+ * @returns {{success: boolean, task?: Task, reason?: string}}
+ */
+export function confirmCompleteLate(index, newEndTime, newDuration) {
+    if (index < 0 || index >= tasks.length) {
+        return { success: false, reason: 'Invalid task index.' };
+    }
+    const task = tasks[index];
+
+    task.editing = false; // Ensure editing is turned off before reschedule
+    task.status = 'completed';
+    task.endTime = newEndTime;
+    task.duration = newDuration;
+
+    performReschedule(task, tasks); // task.editing is already false
+    sortTasks(tasks);
+    saveTasks(tasks);
+    return { success: true, task };
 }
 
 /**
@@ -300,24 +433,30 @@ export function completeTask(index, currentTime24Hour) {
  */
 export function deleteTask(index, confirmed = false) {
     if (index < 0 || index >= tasks.length) {
-         return { success: false, reason: "Invalid task index." };
+        return { success: false, reason: 'Invalid task index.' };
     }
 
     if (!confirmed) {
         if (tasks[index]) {
             tasks[index].confirmingDelete = true;
         } else {
-            // TODO: Consider logging this unexpected state.
-            return { success: false, reason: "Task not found at index for confirmation."};
+            logger.error(
+                `Task not found at index ${index} for delete confirmation. Tasks length: ${tasks.length}`
+            );
+            return { success: false, reason: 'Task not found at index for confirmation.' };
         }
-        return { success: false, requiresConfirmation: true, reason: "Confirmation required to delete task." };
+        return {
+            success: false,
+            requiresConfirmation: true,
+            reason: 'Confirmation required to delete task.'
+        };
     }
 
     tasks.splice(index, 1);
-    tasks.forEach(t => t.confirmingDelete = false);
+    tasks.forEach((t) => (t.confirmingDelete = false)); // Reset flag for all, just in case
+    sortTasks(tasks); // Deletion might change order if sorted by something other than index
     saveTasks(tasks);
-    return { success: true, message: "Task deleted successfully." };
-    // TODO: Consider if autoReschedule is needed for tasks that were after the deleted one, if time gaps are not desired.
+    return { success: true, message: 'Task deleted successfully.' };
 }
 
 /**
@@ -327,12 +466,17 @@ export function deleteTask(index, confirmed = false) {
  */
 export function editTask(index) {
     if (index < 0 || index >= tasks.length) {
-        return { success: false, reason: "Invalid task index." };
+        return { success: false, reason: 'Invalid task index.' };
     }
     tasks.forEach((task, i) => {
-        task.editing = (i === index);
-        task.confirmingDelete = false;
+        task.editing = i === index; // Set editing for the current task
+        if (i !== index) task.confirmingDelete = false; // Reset delete confirmation for others
     });
+    // Ensure the current task's delete confirmation is also reset if it was set
+    if (tasks[index]) {
+        tasks[index].confirmingDelete = false;
+    }
+    // No sort or save needed as editing is a transient UI state not affecting logical order.
     return { success: true, task: tasks[index] };
 }
 
@@ -343,30 +487,38 @@ export function editTask(index) {
  */
 export function cancelEdit(index) {
     if (index < 0 || index >= tasks.length) {
-        return { success: false, reason: "Invalid task index." };
+        return { success: false, reason: 'Invalid task index.' };
     }
     if (tasks[index]) {
         tasks[index].editing = false;
     }
+    // No sort or save needed as editing is a transient UI state.
     return { success: true, task: tasks[index] };
 }
 
 /**
  * Delete all tasks.
  * @param {boolean} confirmed - Whether the delete all was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string}}
+ * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string, tasksDeleted?: number}}
  */
 export function deleteAllTasks(confirmed = false) {
     if (tasks.length === 0) {
-        return { success: true, message: "No tasks to delete." };
+        return { success: true, message: 'No tasks to delete.', tasksDeleted: 0 };
     }
     if (!confirmed) {
-        // TODO: Consider if a specific `confirmingDeleteAll` flag should be set on a global state/app level
-        // rather than just returning requiresConfirmation. This could help UI manage this state.
-        return { success: false, requiresConfirmation: true, reason: "Confirmation required to delete all tasks." };
+        isDeleteAllPendingConfirmation = true;
+        // No sort needed as this is a confirmation step.
+        return {
+            success: false,
+            requiresConfirmation: true,
+            reason: 'Are you sure you want to delete all tasks?'
+        };
     }
-    setTasks([]);
-    return { success: true, message: "All tasks deleted." };
+
+    const numTasksDeleted = tasks.length;
+    setTasks([]); // setTasks calls saveTasks. The list is empty, so sorting is trivial.
+    isDeleteAllPendingConfirmation = false;
+    return { success: true, tasksDeleted: numTasksDeleted };
 }
 
 /**
@@ -375,12 +527,13 @@ export function deleteAllTasks(confirmed = false) {
  */
 export function resetAllConfirmingDeleteFlags() {
     let changed = false;
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
         if (task.confirmingDelete) {
             task.confirmingDelete = false;
             changed = true;
         }
     });
+    // No sort or save needed as this is a transient UI state.
     return changed;
 }
 
@@ -390,11 +543,12 @@ export function resetAllConfirmingDeleteFlags() {
  */
 export function resetAllEditingFlags() {
     let changed = false;
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
         if (task.editing) {
             task.editing = false;
             changed = true;
         }
     });
+    // No sort or save needed as this is a transient UI state.
     return changed;
 }

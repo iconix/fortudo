@@ -2,443 +2,603 @@
  * @jest-environment jsdom
  */
 
-// Mock storage BEFORE any imports to ensure the mock is set up correctly
+// Integration tests for user confirmation flows and DOM interactions.
+
+import {
+    setupIntegrationTestEnvironment,
+    addTaskDOM,
+    updateTaskDOM,
+    getRenderedTasksDOM,
+    clearLocalStorage,
+    clickCompleteCheckbox,
+    clickDeleteAllButton,
+    getEditFormForTask,
+    setCurrentTimeInDOM
+} from './test-utils.js';
+
+import { setTasks } from '../public/js/task-manager.js';
+
+// Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
-    loadTasks: jest.fn(() => [])
-})); // Mock storage to check saveTasks calls
+    loadTasks: jest.fn(() => []) // Start with no tasks loaded unless specified by a test
+}));
+import {
+    saveTasks as mockSaveTasksInternal,
+    loadTasks as mockLoadTasksInternal
+} from '../public/js/storage.js';
 
-// This file contains integration tests for fortudo
-// These tests focus on multiple components working together
+const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockLoadTasks = jest.mocked(mockLoadTasksInternal);
 
-const { setupIntegrationTestEnvironment } = require('./test-utils');
-import { saveTasks } from '../public/js/storage.js';
-import { calculateHoursAndMinutes, convertTo12HourTime } from '../public/js/utils.js'; // For assertions
+describe('User Confirmation Flows', () => {
+    let alertSpy;
+    let confirmSpy;
 
-// Helper function to fill and submit the main task form
-async function addTaskDOM(description, startTime, durationHours, durationMinutes) {
-    const form = document.getElementById('task-form');
-    if (!form) throw new Error('Task form not found');
-
-    const descriptionInput = form.querySelector('input[name="description"]');
-    const startTimeInput = form.querySelector('input[name="start-time"]');
-    const durationHoursInput = form.querySelector('input[name="duration-hours"]');
-    const durationMinutesInput = form.querySelector('input[name="duration-minutes"]');
-
-    if (!(descriptionInput instanceof HTMLInputElement)) throw new Error('Description input not found');
-    if (!(startTimeInput instanceof HTMLInputElement)) throw new Error('Start time input not found');
-    if (!(durationHoursInput instanceof HTMLInputElement)) throw new Error('Duration hours input not found');
-    if (!(durationMinutesInput instanceof HTMLInputElement)) throw new Error('Duration minutes input not found');
-
-    descriptionInput.value = description;
-    startTimeInput.value = startTime;
-    durationHoursInput.value = durationHours.toString();
-    durationMinutesInput.value = durationMinutes.toString();
-
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    // wait for microtasks (e.g., promises in event handlers) to resolve
-    await new Promise(resolve => setTimeout(resolve, 0));
-}
-
-// Helper function to parse rendered tasks from the DOM
-function getRenderedTasksDOM() {
-    const taskElements = document.querySelectorAll('#task-list > div[id^="view-task-"]');
-    return Array.from(taskElements).map(taskElement => {
-        // Based on renderViewTaskHTML structure:
-        // <div class="flex items-center space-x-4">
-        //   <label>...</label>
-        //   <input>...</input>
-        //   <div class="...">
-        //     <div class="...">${task.description}</div>
-        //     <div class="...">${time and duration}</div>
-        //   </div>
-        // </div>
-
-        const contentDiv = taskElement.querySelector('.flex.items-center.space-x-4 > div:last-child');
-        if (!contentDiv) {
-            console.warn('Could not find content div for task element:', taskElement);
-            return { description: '', startTime12: '', endTime12: '', durationText: '', isCompleted: false, isEditing: false, isConfirmingDelete: false };
-        }
-
-        const descriptionDiv = contentDiv.querySelector('div:first-child');
-        const timeDiv = contentDiv.querySelector('div:last-child');
-
-        const description = descriptionDiv ? descriptionDiv.textContent?.trim() || '' : '';
-        const timeText = timeDiv ? timeDiv.textContent?.trim() || '' : ''; // e.g., "9:00 AM – 10:00 AM (1h)"
-
-        // Extract start, end, and duration from timeText
-        // Handle both regular dash (–) and HTML entity (&ndash;)
-        let startTime12 = '', endTime12 = '', durationText = '';
-        const match = timeText.match(/(.*?)\s*[–—-]\s*(.*?)\s*\((.*?)\)/);
-        if (match) {
-            startTime12 = match[1].trim();
-            endTime12 = match[2].trim();
-            durationText = match[3].trim();
-        }
-
-        return {
-            description,
-            startTime12, // In 12-hour format as rendered
-            endTime12,   // In 12-hour format as rendered
-            durationText,
-            isCompleted: taskElement.querySelector('.line-through') !== null,
-            isEditing: false, // This helper won't see edit forms directly unless enhanced
-            isConfirmingDelete: taskElement.querySelector('.fa-check-circle') !== null,
-        };
-    });
-}
-
-// Helper to click edit button and fill/submit the edit form
-async function updateTaskDOM(index, newDescription, newStartTime, newDurationHours, newDurationMinutes) {
-    const editButton = document.querySelector(`#view-task-${index} .btn-edit`);
-    if (!editButton) throw new Error(`Edit button for task ${index} not found`);
-    editButton.dispatchEvent(new Event('click', { bubbles: true }));
-    await new Promise(resolve => setTimeout(resolve, 0)); // Allow DOM to update with edit form
-
-    const editForm = document.getElementById(`edit-task-${index}`);
-    if (!editForm) throw new Error(`Edit form for task ${index} not found`);
-
-    const descriptionInput = editForm.querySelector('input[name="description"]');
-    const startTimeInput = editForm.querySelector('input[name="start-time"]');
-    const durationHoursInput = editForm.querySelector('input[name="duration-hours"]');
-    const durationMinutesInput = editForm.querySelector('input[name="duration-minutes"]');
-
-    if (!(descriptionInput instanceof HTMLInputElement)) throw new Error('Edit description input not found');
-    if (!(startTimeInput instanceof HTMLInputElement)) throw new Error('Edit start time input not found');
-    if (!(durationHoursInput instanceof HTMLInputElement)) throw new Error('Edit duration hours input not found');
-    if (!(durationMinutesInput instanceof HTMLInputElement)) throw new Error('Edit duration minutes input not found');
-
-    descriptionInput.value = newDescription;
-    startTimeInput.value = newStartTime;
-    durationHoursInput.value = newDurationHours.toString();
-    durationMinutesInput.value = newDurationMinutes.toString();
-
-    editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await new Promise(resolve => setTimeout(resolve, 0));
-}
-
-
-describe('Integration Tests via DOM Interaction', () => {
     beforeEach(async () => {
-        // Set up a fresh DOM and app instance for each test
-        await setupIntegrationTestEnvironment();
-        // Clear the initial saveTasks call that happens during app setup (setTasks call in app.js)
+        // Reset DOM and app state
+        document.body.innerHTML = '';
+        clearLocalStorage();
+
+        // Clear mocks
         jest.clearAllMocks();
+        mockLoadTasks.mockReturnValue([]); // Default to loading no tasks
+
+        // Reset task manager state to ensure no contamination between tests
+        setTasks([]);
+
+        // Ensure clean spy state - restore any existing spies first
+        if (alertSpy) {
+            alertSpy.mockRestore();
+            alertSpy = undefined;
+        }
+        if (confirmSpy) {
+            confirmSpy.mockRestore();
+            confirmSpy = undefined;
+        }
     });
 
     afterEach(() => {
-        jest.clearAllMocks();
+        if (alertSpy) {
+            alertSpy.mockRestore();
+            alertSpy = undefined;
+        }
+        if (confirmSpy) {
+            confirmSpy.mockRestore();
+            confirmSpy = undefined;
+        }
+        clearLocalStorage();
     });
 
-    describe('Auto-rescheduling Tests', () => {
-        test('handles cascading rescheduling of multiple tasks when updating a task', async () => {
-            window.confirm = jest.fn().mockReturnValue(true); // Auto-confirm any overlap dialogs
-
-            // Initial setup: Add 3 tasks
-            await addTaskDOM('First Task', '09:00', 1, 0);  // Task 0: 09:00 - 10:00 -> saveTasks #1
-            await addTaskDOM('Second Task', '10:00', 1, 0); // Task 1: 10:00 - 11:00 -> saveTasks #2
-            await addTaskDOM('Third Task', '11:00', 1, 0);  // Task 2: 11:00 - 12:00 -> saveTasks #3
-            expect(saveTasks).toHaveBeenCalledTimes(3);
-            jest.clearAllMocks();
-
-            // Update the first task (index 0) to overlap with the second, causing a cascade
-            // Original: First Task 09:00 - 10:00 (60min)
-            // Update:   First Task 09:00 - 10:30 (90min)
-            await updateTaskDOM(0, 'First Task Updated', '09:00', 1, 30); // -> saveTasks #1 (for this step)
-            expect(saveTasks).toHaveBeenCalledTimes(1);
-
-            const renderedTasks = getRenderedTasksDOM();
-            expect(renderedTasks.length).toBe(3);
-
-            // Task 1 (updated): 09:00 - 10:30
-            expect(renderedTasks[0].description).toBe('First Task Updated');
-            expect(renderedTasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(renderedTasks[0].endTime12).toBe(convertTo12HourTime('10:30'));
-            expect(renderedTasks[0].durationText).toBe(calculateHoursAndMinutes(90));
-
-            // Task 2 (pushed back): 10:30 - 11:30
-            expect(renderedTasks[1].description).toBe('Second Task');
-            expect(renderedTasks[1].startTime12).toBe(convertTo12HourTime('10:30'));
-            expect(renderedTasks[1].endTime12).toBe(convertTo12HourTime('11:30'));
-            expect(renderedTasks[1].durationText).toBe(calculateHoursAndMinutes(60));
-
-            // Task 3 (pushed back): 11:30 - 12:30
-            expect(renderedTasks[2].description).toBe('Third Task');
-            expect(renderedTasks[2].startTime12).toBe(convertTo12HourTime('11:30'));
-            expect(renderedTasks[2].endTime12).toBe(convertTo12HourTime('12:30'));
-            expect(renderedTasks[2].durationText).toBe(calculateHoursAndMinutes(60));
-
-            // TODO: expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('overlap'));
+    describe('Add Task with Reschedule Confirmation', () => {
+        const getInitialTask = () => ({
+            description: 'Initial Task',
+            startTime: '09:00',
+            duration: 60,
+            endTime: '10:00',
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
         });
 
-        test('preserves task order and cascades rescheduling through subsequent tasks after late completion', async () => {
-            // setup window.confirm mock to always return true for any confirmation dialogs
-            // this is essential because addTask and autoReschedule ask for confirmation
-            window.confirm = jest.fn().mockReturnValue(true);
+        const setupInitialStateAndApp = async () => {
+            // Clear any existing DOM content first
+            document.body.innerHTML = '';
+            clearLocalStorage();
 
-            await addTaskDOM('Task A', '09:00', 0, 30);
-            await addTaskDOM('Task B', '10:00', 1, 0);
-            await addTaskDOM('Task C', '13:00', 0, 15);
-            expect(saveTasks).toHaveBeenCalledTimes(3);
-            jest.clearAllMocks();
+            // Get a fresh copy of the initial task for this test
+            const initialTask = getInitialTask();
 
-            let tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Task A');
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(tasks[1].description).toBe('Task B');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('10:00'));
-            expect(tasks[2].description).toBe('Task C');
-            expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:00'));
+            // Set up the mock to return the initial task when loadTasks is called
+            mockLoadTasks.mockReturnValue([initialTask]);
 
-            await addTaskDOM('Task D', '09:00', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(1);
-            jest.clearAllMocks();
+            // Set up the integration test environment (this will call loadTasks)
+            await setupIntegrationTestEnvironment();
 
-            tasks = getRenderedTasksDOM();
-            expect(tasks.length).toBe(4);
-            expect(tasks[0].description).toBe('Task D');
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:00'));
+            // After the environment is set up, we need to manually ensure
+            // the task manager state has the initial task, since the mock might not
+            // have been called at the right time during app initialization
+            setTasks([initialTask]);
 
-            expect(tasks[1].description).toBe('Task A');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('10:00'));
-            expect(tasks[1].endTime12).toBe(convertTo12HourTime('10:30'));
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
 
-            expect(tasks[2].description).toBe('Task B');
-            expect(tasks[2].startTime12).toBe(convertTo12HourTime('10:30'));
-            expect(tasks[2].endTime12).toBe(convertTo12HourTime('11:30'));
+            // Set up fresh spies after the environment is initialized
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
 
-            expect(tasks[3].description).toBe('Task C');
-            expect(tasks[3].startTime12).toBe(convertTo12HourTime('13:00'));
+        test('User confirms reschedule: overlapping task added, initial task IS shifted (correct behavior)', async () => {
+            await setupInitialStateAndApp();
 
-            const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
-            timeElement.textContent = '1:00 PM';
+            confirmSpy.mockReturnValueOnce(true);
 
-            const taskDCheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskDCheckbox) throw new Error('Task D checkbox not found');
-            taskDCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(saveTasks).toHaveBeenCalledTimes(1);
-            jest.clearAllMocks();
+            const overlappingTaskData = {
+                description: 'Overlapping Task',
+                startTime: '09:30',
+                duration: 60
+            };
+            await addTaskDOM(
+                overlappingTaskData.description,
+                overlappingTaskData.startTime,
+                '1',
+                '0'
+            );
 
-            tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Task D');
-            expect(tasks[0].isCompleted).toBe(true);
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('13:00'));
-            expect(tasks[0].durationText).toBe(calculateHoursAndMinutes(240)); // 4 hours
-
-            expect(tasks[1].description).toBe('Task A');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('13:00'));
-            expect(tasks[1].endTime12).toBe(convertTo12HourTime('13:30'));
-
-            expect(tasks[2].description).toBe('Task B');
-            expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:30'));
-            expect(tasks[2].endTime12).toBe(convertTo12HourTime('14:30'));
-
-            expect(tasks[3].description).toBe('Task C');
-            expect(tasks[3].startTime12).toBe(convertTo12HourTime('14:30'));
-            expect(tasks[3].endTime12).toBe(convertTo12HourTime('14:45'));
-        });
-
-        test('only reschedules affected tasks when a task is completed late', async () => {
-            window.confirm = jest.fn().mockReturnValue(true);
-
-            await addTaskDOM('Task A', '09:00', 1, 0);
-            await addTaskDOM('Task B', '11:00', 0, 30);
-            await addTaskDOM('Task C', '13:00', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(3);
-            jest.clearAllMocks();
-
-            const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
-            timeElement.textContent = '12:30 PM';
-
-            const taskACheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskACheckbox) throw new Error('Task A checkbox not found');
-            taskACheckbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(saveTasks).toHaveBeenCalledTimes(1);
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain('Adding this task may overlap');
 
             const tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Task A');
-            expect(tasks[0].isCompleted).toBe(true);
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('12:30'));
-            expect(tasks[0].durationText).toBe(calculateHoursAndMinutes(210));
+            expect(tasks.length).toBe(2);
 
-            expect(tasks[1].description).toBe('Task B');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('12:30'));
-            expect(tasks[1].endTime12).toBe(convertTo12HourTime('13:00'));
+            const initialTaskDOM = tasks.find((t) => t.description === 'Initial Task');
+            const overlappingTaskDOM = tasks.find((t) => t.description === 'Overlapping Task');
 
-            expect(tasks[2].description).toBe('Task C');
-            expect(tasks[2].startTime12).toBe(convertTo12HourTime('13:00'));
-            expect(tasks[2].endTime12).toBe(convertTo12HourTime('14:00'));
-        });
-
-        test('reschedules subsequent tasks when a task duration is increased', async () => {
-            window.confirm = jest.fn().mockReturnValue(true); // For overlap confirmation
-
-            await addTaskDOM('Task 1', '09:00', 1, 0);
-            await addTaskDOM('Task 2', '10:00', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(2);
-            jest.clearAllMocks();
-
-            await updateTaskDOM(0, 'Task 1 Updated', '09:00', 1, 30);
-            expect(saveTasks).toHaveBeenCalledTimes(1);
-
-            const tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Task 1 Updated');
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:30'));
-
-            expect(tasks[1].description).toBe('Task 2');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('10:30'));
-            expect(tasks[1].endTime12).toBe(convertTo12HourTime('11:30'));
-        });
-    });
-
-    describe('Complete Task Workflow', () => {
-        test('task workflow: add, update, complete, delete', async () => {
-            window.confirm = jest.fn().mockReturnValue(true); // Auto-confirm any dialogs
-
-            await addTaskDOM('Task Workflow Test', '09:00', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(1);
-            let tasks = getRenderedTasksDOM();
-            expect(tasks.length).toBe(1);
-            expect(tasks[0].description).toBe('Task Workflow Test');
-            expect(tasks[0].isCompleted).toBe(false);
-
-            await updateTaskDOM(0, 'Updated Task', '09:30', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(2);
-            tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Updated Task');
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:30'));
-
-            const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
-            timeElement.textContent = '10:15 AM';
-
-            const taskCheckbox = document.querySelector('#view-task-0 .checkbox');
-            if (!taskCheckbox) throw new Error('Task checkbox not found');
-            taskCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(saveTasks).toHaveBeenCalledTimes(3);
-
-            tasks = getRenderedTasksDOM();
-            expect(tasks[0].isCompleted).toBe(true);
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:15'));
-
-            await addTaskDOM('To Delete', '14:00', 0, 30);
-            expect(saveTasks).toHaveBeenCalledTimes(4);
-            tasks = getRenderedTasksDOM();
-            const deleteIndex = tasks.findIndex(t => t.description === 'To Delete');
-
-            let deleteButton = document.querySelector(`#view-task-${deleteIndex} .btn-delete`);
-            if (!deleteButton) throw new Error('Delete button not found');
-            deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-
-            // Wait for a brief moment to allow JSDOM to process the re-render
-            await new Promise(resolve => setTimeout(resolve, 250)); // 250ms delay
-
-            const deleteButtonAfterClick = document.querySelector(`#view-task-${deleteIndex} .btn-delete`);
-            if (!deleteButtonAfterClick) throw new Error('Delete button not found after delay');
-            const iconElement = deleteButtonAfterClick.querySelector('i.fa-check-circle');
-            expect(iconElement).not.toBeNull();
-
-            deleteButton = document.querySelector(`#view-task-${deleteIndex} .btn-delete`);
-            if (!deleteButton) throw new Error('Delete button not found');
-            deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(saveTasks).toHaveBeenCalledTimes(5);
-
-            tasks = getRenderedTasksDOM();
-            expect(tasks.find(t => t.description === 'To Delete')).toBeUndefined();
-        });
-    });
-
-    describe('Edge Case Tests', () => {
-        test('does not reschedule completed tasks when adding a new overlapping task', async () => {
-            window.confirm = jest.fn().mockReturnValue(true);
-
-            await addTaskDOM('Completed Task', '09:00', 1, 0);
-
-            const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
-            timeElement.textContent = '10:00 AM';
-
-            await new Promise(resolve => setTimeout(resolve, 0));
-            const taskCheckbox = document.querySelector('#view-task-0 .checkbox');
-            expect(taskCheckbox).not.toBeNull();
-            if (!taskCheckbox) throw new Error('Task checkbox not found');
-            taskCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            let tasks = getRenderedTasksDOM();
-            expect(tasks[0].isCompleted).toBe(true);
-            const saveCountBeforeNewTask = jest.mocked(saveTasks).mock.calls.length;
-
-            await addTaskDOM('New Task', '09:30', 1, 0);
-            expect(saveTasks).toHaveBeenCalledTimes(saveCountBeforeNewTask + 1);
-
-            tasks = getRenderedTasksDOM();
-            expect(tasks[0].description).toBe('Completed Task');
-            expect(tasks[0].startTime12).toBe(convertTo12HourTime('09:00'));
-            expect(tasks[0].endTime12).toBe(convertTo12HourTime('10:00'));
-
-            expect(tasks[1].description).toBe('New Task');
-            expect(tasks[1].startTime12).toBe(convertTo12HourTime('09:30'));
-        });
-
-        test('skips tasks being edited during rescheduling', async () => {
-            window.confirm = jest.fn().mockReturnValue(true);
-
-            await addTaskDOM('Task 1', '09:00', 1, 0);
-            await addTaskDOM('Task 2 (Editing)', '10:00', 1, 0);
-            await addTaskDOM('Task 3', '11:00', 1, 0);
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            const editButtonTask2 = document.querySelector('#view-task-1 .btn-edit');
-            expect(editButtonTask2).not.toBeNull();
-            if (!editButtonTask2) throw new Error('Edit button for Task 2 not found');
-            editButtonTask2.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            const task2EditForm = document.getElementById('edit-task-1');
-            expect(task2EditForm).not.toBeNull();
-            if (!task2EditForm) throw new Error('Edit form for Task 2 not found after clicking edit');
-
-            const timeElement = document.getElementById('current-time');
-            if (!timeElement) throw new Error('Current time element not found');
-            timeElement.textContent = '10:30 AM';
-
-            const task1Checkbox = document.querySelector('#view-task-0 .checkbox');
-            if (!task1Checkbox) throw new Error('Task 1 checkbox not found');
-            task1Checkbox.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            const allEditForms = document.querySelectorAll('form[id^="edit-task-"]');
-            let task2EditFormAfterReschedule = null;
-
-            for (const form of allEditForms) {
-                const descriptionInput = form.querySelector('input[name="description"]');
-                if (descriptionInput instanceof HTMLInputElement && descriptionInput.value.includes('Task 2 (Editing)')) {
-                    task2EditFormAfterReschedule = form;
-                    break;
-                }
+            expect(initialTaskDOM).toBeDefined();
+            if (initialTaskDOM) {
+                // After reschedule, the initial task should be shifted to 10:30 AM - 11:30 AM
+                expect(initialTaskDOM.startTime12).toBe('10:30 AM');
+                expect(initialTaskDOM.endTime12).toBe('11:30 AM');
             }
 
-            expect(task2EditFormAfterReschedule).not.toBeNull();
-            if (!task2EditFormAfterReschedule) throw new Error('Edit form for Task 2 not found after reschedule');
+            expect(overlappingTaskDOM).toBeDefined();
+            if (overlappingTaskDOM) {
+                // The overlapping task should take the 9:30 AM - 10:30 AM slot
+                expect(overlappingTaskDOM.startTime12).toBe('9:30 AM');
+                expect(overlappingTaskDOM.endTime12).toBe('10:30 AM');
+            }
 
-            const startTimeInput = task2EditFormAfterReschedule.querySelector('input[name="start-time"]');
-            if (!(startTimeInput instanceof HTMLInputElement)) throw new Error('Start time input not found in edit form');
-            expect(startTimeInput.value).toBe('10:00');
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            const savedTasks = mockSaveTasks.mock.calls[0][0];
+            expect(savedTasks.find((t) => t.description === 'Initial Task').startTime).toBe(
+                '10:30'
+            );
+            expect(savedTasks.find((t) => t.description === 'Overlapping Task').endTime).toBe(
+                '10:30'
+            );
+        });
+
+        test('User denies reschedule: overlapping task not added', async () => {
+            await setupInitialStateAndApp();
+
+            confirmSpy.mockReturnValueOnce(false);
+
+            const overlappingTaskData = {
+                description: 'Overlapping Task',
+                startTime: '09:30',
+                duration: 60
+            };
+            await addTaskDOM(
+                overlappingTaskData.description,
+                overlappingTaskData.startTime,
+                '1',
+                '0'
+            );
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
 
             const tasks = getRenderedTasksDOM();
-            const task3 = tasks.find(t => t.description === 'Task 3');
-            if (!task3) throw new Error('Task 3 not found in rendered tasks');
-            expect(task3.startTime12).toBe(convertTo12HourTime('11:00'));
+            expect(tasks.length).toBe(1);
+            expect(tasks[0].description).toBe('Initial Task');
+
+            expect(mockSaveTasks).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Update Task with Reschedule Confirmation', () => {
+        const getTaskAData = () => ({
+            description: 'Task A',
+            startTime: '09:00',
+            duration: 60,
+            endTime: '10:00',
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        });
+        const getTaskBData = () => ({
+            description: 'Task B',
+            startTime: '10:00',
+            duration: 60,
+            endTime: '11:00',
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        });
+
+        const setupInitialStateAndApp = async () => {
+            // Get fresh copies of the tasks for this test
+            const taskAData = getTaskAData();
+            const taskBData = getTaskBData();
+
+            document.body.innerHTML = '';
+            clearLocalStorage();
+            mockLoadTasks.mockReturnValue([taskAData, taskBData]);
+            await setupIntegrationTestEnvironment();
+
+            // Ensure task manager state has the correct tasks
+            setTasks([taskAData, taskBData]);
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
+
+        test('User confirms reschedule: Task A updated, Task B shifted', async () => {
+            await setupInitialStateAndApp();
+            confirmSpy.mockReturnValueOnce(true);
+
+            await updateTaskDOM(0, {
+                description: 'Task A Updated',
+                startTime: '09:00',
+                durationHours: '1',
+                durationMinutes: '30'
+            });
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain('Updating this task may overlap');
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const taskADOM = tasks.find((t) => t.description === 'Task A Updated');
+            const taskBDOM = tasks.find((t) => t.description === 'Task B');
+
+            expect(taskADOM).toBeDefined();
+            if (taskADOM) {
+                expect(taskADOM.startTime12).toBe('9:00 AM');
+                expect(taskADOM.endTime12).toBe('10:30 AM');
+            }
+
+            expect(taskBDOM).toBeDefined();
+            if (taskBDOM) {
+                expect(taskBDOM.startTime12).toBe('10:30 AM');
+                expect(taskBDOM.endTime12).toBe('11:30 AM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            const savedTasks = mockSaveTasks.mock.calls[0][0];
+            expect(savedTasks.find((t) => t.description === 'Task A Updated').endTime).toBe(
+                '10:30'
+            );
+            expect(savedTasks.find((t) => t.description === 'Task B').startTime).toBe('10:30');
+        });
+
+        test('User denies reschedule: Task A not updated, Task B unchanged', async () => {
+            await setupInitialStateAndApp();
+            confirmSpy.mockReturnValueOnce(false);
+
+            await updateTaskDOM(0, {
+                description: 'Task A Updated Attempt',
+                startTime: '09:00',
+                durationHours: '1',
+                durationMinutes: '30'
+            });
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(alertSpy).toHaveBeenCalledWith('Task update cancelled to avoid rescheduling.');
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const taskADOM = tasks.find((t) => t.description === 'Task A');
+            const taskBDOM = tasks.find((t) => t.description === 'Task B');
+
+            expect(taskADOM).toBeDefined();
+            if (taskADOM) {
+                expect(taskADOM.startTime12).toBe('9:00 AM');
+                expect(taskADOM.endTime12).toBe('10:00 AM');
+            }
+
+            expect(taskBDOM).toBeDefined();
+            if (taskBDOM) {
+                expect(taskBDOM.startTime12).toBe('10:00 AM');
+                expect(taskBDOM.endTime12).toBe('11:00 AM');
+            }
+
+            const editFormTaskA = getEditFormForTask(0);
+            expect(editFormTaskA).toBeNull(); // Edit form should be removed from DOM when editing is cancelled
+
+            expect(mockSaveTasks).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Complete Task Late with Schedule Update Confirmation', () => {
+        const getTaskToComplete = () => ({
+            description: 'Task To Complete',
+            startTime: '09:00',
+            duration: 60,
+            endTime: '10:00',
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        });
+        const getSubsequentTask = () => ({
+            description: 'Subsequent Task',
+            startTime: '10:00',
+            duration: 30,
+            endTime: '10:30',
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        });
+
+        const setupInitialStateAndApp = async (includeSubsequent = false) => {
+            // Get fresh copies of the tasks for this test
+            const taskToComplete = getTaskToComplete();
+            const subsequentTask = getSubsequentTask();
+            const initialTasks = includeSubsequent
+                ? [taskToComplete, subsequentTask]
+                : [taskToComplete];
+
+            document.body.innerHTML = '';
+            clearLocalStorage();
+            mockLoadTasks.mockReturnValue(initialTasks);
+            await setupIntegrationTestEnvironment();
+
+            // Ensure task manager state has the correct tasks
+            setTasks(initialTasks);
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
+
+        test('User confirms schedule update: Task completed late, time updated, subsequent task shifted', async () => {
+            await setupInitialStateAndApp(true);
+            setCurrentTimeInDOM('10:30 AM');
+            confirmSpy.mockReturnValueOnce(true);
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain(
+                'update your schedule to show you finished at 10:30 AM'
+            );
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const completedTaskDOM = tasks.find((t) => t.description === 'Task To Complete');
+            const subsequentTaskDOM = tasks.find((t) => t.description === 'Subsequent Task');
+
+            expect(completedTaskDOM).toBeDefined();
+            if (completedTaskDOM) {
+                expect(completedTaskDOM.isCompleted).toBe(true);
+                expect(completedTaskDOM.endTime12).toBe('10:30 AM');
+            }
+
+            expect(subsequentTaskDOM).toBeDefined();
+            if (subsequentTaskDOM) {
+                expect(subsequentTaskDOM.startTime12).toBe('10:30 AM');
+                expect(subsequentTaskDOM.endTime12).toBe('11:00 AM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            const savedTasks = mockSaveTasks.mock.calls[0][0];
+            expect(savedTasks.find((t) => t.description === 'Task To Complete').endTime).toBe(
+                '10:30'
+            );
+            expect(savedTasks.find((t) => t.description === 'Subsequent Task').startTime).toBe(
+                '10:30'
+            );
+        });
+
+        test('User denies schedule update: Task completed, original time preserved, subsequent task not shifted', async () => {
+            await setupInitialStateAndApp(true);
+            setCurrentTimeInDOM('10:30 AM');
+            confirmSpy.mockReturnValueOnce(false);
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const completedTaskDOM = tasks.find((t) => t.description === 'Task To Complete');
+            const subsequentTaskDOM = tasks.find((t) => t.description === 'Subsequent Task');
+
+            expect(completedTaskDOM).toBeDefined();
+            if (completedTaskDOM) {
+                expect(completedTaskDOM.isCompleted).toBe(true);
+                expect(completedTaskDOM.endTime12).toBe('10:00 AM');
+            }
+
+            expect(subsequentTaskDOM).toBeDefined();
+            if (subsequentTaskDOM) {
+                expect(subsequentTaskDOM.startTime12).toBe('10:00 AM');
+                expect(subsequentTaskDOM.endTime12).toBe('10:30 AM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            const savedTasks = mockSaveTasks.mock.calls[0][0];
+            expect(savedTasks.find((t) => t.description === 'Task To Complete').status).toBe(
+                'completed'
+            );
+            expect(savedTasks.find((t) => t.description === 'Task To Complete').endTime).toBe(
+                '10:00'
+            );
+            expect(savedTasks.find((t) => t.description === 'Subsequent Task').startTime).toBe(
+                '10:00'
+            );
+        });
+
+        test('Start time field is force updated after confirming late completion with schedule change', async () => {
+            await setupInitialStateAndApp(true);
+
+            // Mock the current time to match the DOM time (10:30 AM)
+            const mockDate = new Date('2023-01-01T10:30:00');
+            const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate);
+
+            setCurrentTimeInDOM('10:30 AM');
+            confirmSpy.mockReturnValueOnce(true);
+
+            // Set a specific value in the start time field before completing the task
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (startTimeInput instanceof HTMLInputElement) {
+                startTimeInput.value = '08:00'; // Set to some arbitrary time
+                expect(startTimeInput.value).toBe('08:00'); // Verify it's set
+            }
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain(
+                'update your schedule to show you finished at 10:30 AM'
+            );
+
+            // Verify start time field was force updated (should have changed from the original value)
+            if (startTimeInput instanceof HTMLInputElement) {
+                expect(startTimeInput.value).not.toBe('08:00'); // Should have changed from the original value
+                expect(startTimeInput.value).toBeTruthy(); // Should have some value
+                // The exact value will depend on getSuggestedStartTime(), but it should be a valid time format
+                expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format
+                // Since the subsequent task now starts at 10:30 and ends at 11:00,
+                // the suggested start time should be 11:00
+                expect(startTimeInput.value).toBe('11:00');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+
+            // Clean up the date spy
+            dateSpy.mockRestore();
+        });
+    });
+
+    describe('Delete All Tasks with Confirmation', () => {
+        const setupInitialStateWithTasks = async () => {
+            const tasksToLoad = [
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }
+            ];
+            document.body.innerHTML = '';
+            clearLocalStorage();
+            mockLoadTasks.mockReturnValue(tasksToLoad);
+            await setupIntegrationTestEnvironment();
+
+            // Ensure task manager state has the correct tasks
+            setTasks(tasksToLoad);
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
+
+        test('User confirms delete all: all tasks are removed', async () => {
+            await setupInitialStateWithTasks();
+            confirmSpy.mockReturnValueOnce(true);
+
+            await clickDeleteAllButton();
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain(
+                'Are you sure you want to delete all tasks?'
+            );
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(0);
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+        });
+
+        test('User denies delete all: tasks remain unchanged', async () => {
+            await setupInitialStateWithTasks();
+            confirmSpy.mockReturnValueOnce(false);
+
+            await clickDeleteAllButton();
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2); // Tasks should still be there
+            expect(tasks[0].description).toBe('Task 1');
+
+            expect(mockSaveTasks).not.toHaveBeenCalled(); // No save because action was cancelled
+        });
+
+        test('Delete All button does nothing if no tasks exist', async () => {
+            // No initial tasks setup, so localStorage is empty, mockLoadTasks returns [] by default
+            await setupIntegrationTestEnvironment(); // Re-init with empty
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+
+            await clickDeleteAllButton();
+
+            expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
+            expect(alertSpy).toHaveBeenCalledWith('There are no tasks to delete.');
+            expect(mockSaveTasks).not.toHaveBeenCalled();
+        });
+
+        test('Start time field is reset after all tasks are deleted', async () => {
+            await setupInitialStateWithTasks();
+            confirmSpy.mockReturnValueOnce(true);
+
+            // Set a value in the start time field before deleting all tasks
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (startTimeInput instanceof HTMLInputElement) {
+                startTimeInput.value = '15:30'; // Set to some arbitrary time
+                expect(startTimeInput.value).toBe('15:30'); // Verify it's set
+            }
+
+            await clickDeleteAllButton();
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain(
+                'Are you sure you want to delete all tasks?'
+            );
+
+            // Verify all tasks are deleted
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(0);
+
+            // Verify start time field is reset (should have changed from the original value)
+            if (startTimeInput instanceof HTMLInputElement) {
+                expect(startTimeInput.value).not.toBe('15:30'); // Should have changed from the original value
+                expect(startTimeInput.value).toBeTruthy(); // Should have some value (current time rounded)
+                // The exact value will depend on getCurrentTimeRounded(), but it should be a valid time format
+                expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
         });
     });
 });
