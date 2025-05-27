@@ -26,7 +26,8 @@ import {
     askConfirmation,
     getTaskFormElement,
     focusTaskDescriptionInput,
-    extractTaskFormData
+    extractTaskFormData,
+    updateActiveTaskColor
 } from './dom-handler.js';
 import { loadTasksFromStorage } from './storage.js';
 import { convertTo24HourTime, convertTo12HourTime, logger, validateTaskFormData } from './utils.js';
@@ -229,7 +230,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDateTime();
     focusTaskDescriptionInput();
 
-    setInterval(renderDateTime, 1000);
+    // Update time and active task late styling every second
+    setInterval(() => {
+        renderDateTime();
+        updateActiveTaskColor(getTaskState());
+    }, 1000);
 });
 
 /**

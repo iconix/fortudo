@@ -57,3 +57,4 @@ run tests:
 - [x] if task is running late, switch to yellow text as warning
 - [ ] move away from browser alerts to custom modals
 - [ ] automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+- [ ] confetti burst animation when you check off a task

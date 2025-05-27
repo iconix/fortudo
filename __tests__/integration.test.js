@@ -18,6 +18,8 @@ import {
 
 import { resetEventDelegation } from '../public/js/dom-handler.js';
 
+import * as domHandler from '../public/js/dom-handler.js';
+
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
@@ -27,6 +29,9 @@ import {
     saveTasks as mockSaveTasksInternal,
     loadTasksFromStorage as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
+
+// Import task-manager after the mock since it depends on mock storage.js
+import * as taskManager from '../public/js/task-manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
@@ -631,6 +636,241 @@ describe('User Confirmation Flows', () => {
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
             expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+        });
+    });
+
+    describe('Late Task Warning Feature', () => {
+        let dateSpy;
+
+        const setupInitialStateAndApp = async (initialTasks = []) => {
+            document.body.innerHTML = '';
+            clearLocalStorage();
+
+            // Set up the mock to return the initial tasks when loadTasks is called
+            mockLoadTasksFromStorage.mockReturnValue(initialTasks);
+
+            // Save tasks to localStorage for the app to load
+            if (window.localStorage) {
+                window.localStorage.setItem('tasks', JSON.stringify(initialTasks));
+            }
+
+            // Set up the integration test environment (this will call loadTasks)
+            await setupIntegrationTestEnvironment();
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            // Set up fresh spies after the environment is initialized
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
+
+        afterEach(() => {
+            if (dateSpy) {
+                dateSpy.mockRestore();
+                dateSpy = undefined;
+            }
+        });
+
+        test('Active task color changes from green to yellow when it becomes late', async () => {
+            const activeTask = {
+                description: 'Active Task',
+                startTime: '13:30',
+                duration: 60,
+                endTime: '14:30', // Task should end at 2:30 PM
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const completedTask = {
+                description: 'Completed Task',
+                startTime: '12:00',
+                duration: 60,
+                endTime: '13:00',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            await setupInitialStateAndApp([completedTask, activeTask]);
+
+            // Get the active task element (should be the first incomplete task)
+            // The active task should be at index 1 (after the completed task)
+            const activeTaskElement = document.getElementById('view-task-1');
+            expect(activeTaskElement).toBeTruthy();
+            if (!activeTaskElement) return; // Type guard
+
+            // Helper function to find task description and time divs with color classes
+            const findColoredTaskDivs = () => {
+                const taskDivs = activeTaskElement.querySelectorAll('div');
+                const coloredDivs = [];
+                for (const div of taskDivs) {
+                    if (div.classList.contains('text-green-500') || div.classList.contains('text-yellow-500')) {
+                        coloredDivs.push(div);
+                    }
+                }
+                return coloredDivs;
+            };
+
+            // Verify the function exists
+            expect(typeof domHandler.updateActiveTaskColor).toBe('function');
+
+            // PHASE 1: Mock time to be BEFORE the task end time (14:20 - task ends at 14:30)
+            // Task should be green (on time)
+            const beforeEndTime = new Date('2023-01-01T14:20:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => beforeEndTime);
+
+            // Update the active task color
+            domHandler.updateActiveTaskColor(taskManager.getTaskState());
+
+            // Find all colored divs and verify they are green
+            let coloredDivs = findColoredTaskDivs();
+            expect(coloredDivs.length).toBeGreaterThan(0); // Should have at least one colored div
+
+            for (const div of coloredDivs) {
+                expect(div.classList.contains('text-green-500')).toBe(true);
+                expect(div.classList.contains('text-yellow-500')).toBe(false);
+            }
+
+            // PHASE 2: Mock time to be AFTER the task end time (14:40 - task ended at 14:30)
+            // Task should be yellow (late)
+            dateSpy.mockRestore();
+            const afterEndTime = new Date('2023-01-01T14:40:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => afterEndTime);
+
+            // Update the active task color again
+            domHandler.updateActiveTaskColor(taskManager.getTaskState());
+
+            // Find all colored divs and verify they are now yellow
+            coloredDivs = findColoredTaskDivs();
+            expect(coloredDivs.length).toBeGreaterThan(0); // Should still have colored divs
+
+            for (const div of coloredDivs) {
+                expect(div.classList.contains('text-yellow-500')).toBe(true);
+                expect(div.classList.contains('text-green-500')).toBe(false);
+            }
+
+            // PHASE 3: Mock time to be back BEFORE the task end time (14:25)
+            // Task should be green again (back on time)
+            dateSpy.mockRestore();
+            const backToOnTime = new Date('2023-01-01T14:25:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => backToOnTime);
+
+            // Update the active task color one more time
+            domHandler.updateActiveTaskColor(taskManager.getTaskState());
+
+            // Find all colored divs and verify they are green again
+            coloredDivs = findColoredTaskDivs();
+            expect(coloredDivs.length).toBeGreaterThan(0); // Should still have colored divs
+
+            for (const div of coloredDivs) {
+                expect(div.classList.contains('text-green-500')).toBe(true);
+                expect(div.classList.contains('text-yellow-500')).toBe(false);
+            }
+        });
+
+        test('No active task styling when all tasks are completed', async () => {
+            const completedTask1 = {
+                description: 'Completed Task 1',
+                startTime: '12:00',
+                duration: 60,
+                endTime: '13:00',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const completedTask2 = {
+                description: 'Completed Task 2',
+                startTime: '13:00',
+                duration: 60,
+                endTime: '14:00',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            await setupInitialStateAndApp([completedTask1, completedTask2]);
+
+            // Trigger the updateActiveTaskColor function
+            // Call the function with proper type checking
+            if ('updateActiveTaskColor' in domHandler && typeof domHandler.updateActiveTaskColor === 'function') {
+                domHandler.updateActiveTaskColor(taskManager.getTaskState());
+            }
+
+            // Verify no tasks have active styling
+            const task1Element = document.getElementById('view-task-0');
+            const task2Element = document.getElementById('view-task-1');
+
+            if (task1Element) {
+                const task1Divs = task1Element.querySelectorAll('div');
+                for (const div of task1Divs) {
+                    expect(div.classList.contains('text-green-500')).toBe(false);
+                    expect(div.classList.contains('text-yellow-500')).toBe(false);
+                }
+            }
+
+            if (task2Element) {
+                const task2Divs = task2Element.querySelectorAll('div');
+                for (const div of task2Divs) {
+                    expect(div.classList.contains('text-green-500')).toBe(false);
+                    expect(div.classList.contains('text-yellow-500')).toBe(false);
+                }
+            }
+        });
+
+        test('updateActiveTaskColor handles completed tasks correctly', async () => {
+            const completedTask1 = {
+                description: 'Completed Task 1',
+                startTime: '12:00',
+                duration: 60,
+                endTime: '13:00',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            const completedTask2 = {
+                description: 'Completed Task 2',
+                startTime: '13:00',
+                duration: 60,
+                endTime: '14:00',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+
+            await setupInitialStateAndApp([completedTask1, completedTask2]);
+
+            // Test that the updateActiveTaskColor function works with no active tasks
+            // Function should exist and be callable even with no active tasks
+            expect(typeof domHandler.updateActiveTaskColor).toBe('function');
+            expect(() => {
+                domHandler.updateActiveTaskColor(taskManager.getTaskState());
+            }).not.toThrow();
+
+            // Verify completed tasks don't have active styling
+            const task1Element = document.getElementById('view-task-0');
+            const task2Element = document.getElementById('view-task-1');
+
+            if (task1Element) {
+                const task1Divs = task1Element.querySelectorAll('div');
+                for (const div of task1Divs) {
+                    expect(div.classList.contains('text-green-500')).toBe(false);
+                    expect(div.classList.contains('text-yellow-500')).toBe(false);
+                }
+            }
+
+            if (task2Element) {
+                const task2Divs = task2Element.querySelectorAll('div');
+                for (const div of task2Divs) {
+                    expect(div.classList.contains('text-green-500')).toBe(false);
+                    expect(div.classList.contains('text-yellow-500')).toBe(false);
+                }
+            }
         });
     });
 });

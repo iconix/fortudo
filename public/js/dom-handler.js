@@ -231,7 +231,7 @@ function getTaskIndexFromElement(element) {
 
 /**
  * Render all tasks in the task list using optimized DOM operations.
- * This version eliminates the memory leak by using event delegation instead of individual event listeners.
+ * Uses event delegation.
  * @param {object[]} tasksToRender - Array of tasks to render.
  * @param {object} eventCallbacks - Callbacks for task actions.
  * @param {(index: number) => void} eventCallbacks.onCompleteTask - Callback for completing a task.
@@ -384,4 +384,50 @@ export function resetEventDelegation() {
         taskListElement.removeEventListener('click', handleTaskListClick);
         taskListElement.removeEventListener('submit', handleTaskListSubmit);
     }
+}
+
+/**
+ * Update active task styling for late warning.
+ * This function finds the first incomplete task and updates its color styling based on whether it's running late.
+ * @param {object[]} tasks - Array of all tasks to check for the active task
+ */
+export function updateActiveTaskColor(tasks) {
+    // Find the first incomplete task (the active task)
+    let activeTaskIndex = -1;
+    for (let i = 0; i < tasks.length; i++) {
+        if (tasks[i].status !== 'completed') {
+            activeTaskIndex = i;
+            break;
+        }
+    }
+
+    // If no active task found, nothing to update
+    if (activeTaskIndex === -1) return;
+
+    const activeTask = tasks[activeTaskIndex];
+    const isLate = isTaskRunningLate(activeTask, new Date());
+
+    // Find the DOM elements for this task
+    const taskElement = document.getElementById(`view-task-${activeTaskIndex}`);
+    if (!taskElement) return; // Task might be in edit mode or not rendered
+
+    // Find the text elements that need color updates - only those that already have color classes
+    const textElements = taskElement.querySelectorAll('div.text-green-500, div.text-yellow-500');
+
+    // Determine the target color class
+    const targetColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
+    const otherColorClass = isLate ? 'text-green-500' : 'text-yellow-500';
+
+    // Update the color classes efficiently - only change if needed
+    textElements.forEach((element) => {
+        // Only update if the element doesn't already have the correct color
+        if (!element.classList.contains(targetColorClass)) {
+            // Remove the other color class if present
+            if (element.classList.contains(otherColorClass)) {
+                element.classList.remove(otherColorClass);
+            }
+            // Add the target color class
+            element.classList.add(targetColorClass);
+        }
+    });
 }

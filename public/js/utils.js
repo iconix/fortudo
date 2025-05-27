@@ -181,7 +181,7 @@ export function isTaskRunningLate(task, now = new Date()) {
             return false;
         }
     } else {
-        // Normal task (doesn't cross midnight)
+        // Normal case: task doesn't cross midnight
         return currentTimeMinutes > taskEndTimeMinutes;
     }
 }
