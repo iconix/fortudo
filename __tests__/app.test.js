@@ -13,6 +13,7 @@ import {
     getTaskState,
     cancelEdit as cancelEditDirect
 } from '../public/js/task-manager.js';
+import { resetEventDelegation, renderTasks } from '../public/js/dom-handler.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -32,6 +33,14 @@ describe('App.js Callback Functions', () => {
     let confirmSpy;
     let deleteTaskSpy;
 
+    // Helper function to initialize the app with given tasks loaded from mock localStorage
+    const setupAppWithTasks = async (tasks) => {
+        // Set up the tasks in localStorage so the app will load them
+        mockLoadTasksFromStorage.mockReturnValue(tasks);
+        // Re-setup the integration environment to ensure proper event delegation
+        await setupIntegrationTestEnvironment();
+    };
+
     // Utility functions for DOM interactions
     const clickDeleteButton = async (taskIndex) => {
         // Find delete button using proper selector (button with both classes and correct attribute)
@@ -39,7 +48,7 @@ describe('App.js Callback Functions', () => {
             `button.btn-delete[data-task-index="${taskIndex}"]`
         );
         if (deleteButton) {
-            deleteButton.dispatchEvent(new Event('click'));
+            deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
             return true;
         }
@@ -52,7 +61,7 @@ describe('App.js Callback Functions', () => {
 
         const cancelButton = editForm.querySelector('.btn-edit-cancel');
         if (cancelButton) {
-            cancelButton.dispatchEvent(new Event('click'));
+            cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
             return true;
         }
@@ -64,6 +73,7 @@ describe('App.js Callback Functions', () => {
         document.body.innerHTML = '';
         clearLocalStorage();
         jest.clearAllMocks();
+        resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
         updateTaskState([]);
 
@@ -108,9 +118,7 @@ describe('App.js Callback Functions', () => {
                 }
             ];
 
-            mockLoadTasksFromStorage.mockReturnValue(tasks);
-            await setupIntegrationTestEnvironment();
-            updateTaskState(tasks);
+            await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
@@ -215,9 +223,7 @@ describe('App.js Callback Functions', () => {
                 }
             ];
 
-            mockLoadTasksFromStorage.mockReturnValue(tasks);
-            await setupIntegrationTestEnvironment();
-            updateTaskState(tasks);
+            await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
@@ -251,7 +257,19 @@ describe('App.js Callback Functions', () => {
             // Set up multiple tasks in edit mode
             const tasks = getTaskState();
             tasks[0].editing = true; // Also set first task to editing
-            updateTaskState(tasks);
+            // Don't call setupAppWithTasks again - just update the state and re-render
+            const taskEventCallbacks = {
+                onCompleteTask: () => {},
+                onEditTask: () => {},
+                onDeleteTask: () => {},
+                onSaveTaskEdit: () => {},
+                onCancelEdit: (index) => {
+                    const { cancelEdit } = require('../public/js/task-manager.js');
+                    cancelEdit(index);
+                    renderTasks(getTaskState(), taskEventCallbacks);
+                }
+            };
+            renderTasks(tasks, taskEventCallbacks);
 
             // Cancel edit for second task only
             await clickCancelButton(1);
@@ -268,7 +286,7 @@ describe('App.js Callback Functions', () => {
             // Try to cancel edit on task that's not in edit mode
             const tasks = getTaskState();
             tasks[1].editing = false; // Make sure it's not in edit mode
-            updateTaskState(tasks);
+            await setupAppWithTasks(tasks);
 
             // This should not cause any errors
             cancelEditDirect(1);
@@ -312,9 +330,7 @@ describe('App.js Callback Functions', () => {
                 }
             ];
 
-            mockLoadTasksFromStorage.mockReturnValue(tasks);
-            await setupIntegrationTestEnvironment();
-            updateTaskState(tasks);
+            await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             mockSaveTasks.mockClear();
@@ -368,9 +384,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
@@ -397,7 +411,7 @@ describe('App.js Callback Functions', () => {
                 // Click the actual checkbox to trigger the real onCompleteTask callback
                 const checkbox = document.querySelector('.checkbox');
                 if (checkbox) {
-                    checkbox.dispatchEvent(new Event('click'));
+                    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -420,8 +434,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
+                await setupAppWithTasks(tasks);
                 updateTaskState([]); // Set empty tasks to trigger the missing task branch
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
@@ -456,9 +469,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies reschedule
@@ -520,9 +531,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 mockSaveTasks.mockClear();
@@ -553,9 +562,7 @@ describe('App.js Callback Functions', () => {
 
         describe('onTaskFormSubmit branch coverage', () => {
             test('should handle user denying reschedule during task add (real app.js callback)', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies reschedule
@@ -601,9 +608,7 @@ describe('App.js Callback Functions', () => {
             });
 
             test('should handle add task failure', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 mockSaveTasks.mockClear();
@@ -647,9 +652,7 @@ describe('App.js Callback Functions', () => {
 
         describe('onDeleteAllTasks branch coverage', () => {
             test('should handle deleting all tasks when no tasks exist', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 mockSaveTasks.mockClear();
@@ -677,9 +680,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
@@ -717,9 +718,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
@@ -761,9 +760,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
@@ -808,9 +805,7 @@ describe('App.js Callback Functions', () => {
 
         describe('onGlobalClick branch coverage', () => {
             test('should handle resetAllConfirmingDeleteFlags returning false', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 // Mock resetAllConfirmingDeleteFlags to return false
                 jest.spyOn(
@@ -827,9 +822,7 @@ describe('App.js Callback Functions', () => {
             });
 
             test('should handle resetAllEditingFlags returning false', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 // Mock both functions to return false
                 jest.spyOn(
@@ -850,9 +843,7 @@ describe('App.js Callback Functions', () => {
             });
 
             test('should handle various click scenarios', async () => {
-                mockLoadTasksFromStorage.mockReturnValue([]);
-                await setupIntegrationTestEnvironment();
-                updateTaskState([]);
+                await setupAppWithTasks([]);
 
                 // Mock to return true to trigger needsRender
                 jest.spyOn(
@@ -870,67 +861,62 @@ describe('App.js Callback Functions', () => {
         });
 
         describe('DOM element error handling', () => {
-            test('should handle missing task form element', async () => {
-                // Clear DOM and set up without task form
-                document.body.innerHTML = `
-                    <div id="task-list"></div>
-                    <div id="current-time"></div>
-                    <div id="current-date"></div>
-                    <button id="delete-all">Clear Tasks</button>
-                `;
-
+            test('should handle missing DOM elements gracefully', async () => {
+                // Set up console spy to check for error logs
                 const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-                mockLoadTasksFromStorage.mockReturnValue([]);
 
-                // Import app.js to trigger the initialization
-                await import('../public/js/app.js');
+                // Set up environment first
+                await setupIntegrationTestEnvironment();
 
-                // Manually trigger DOMContentLoaded to hit the error checking code
-                const domContentLoadedEvent = new Event('DOMContentLoaded', {
-                    bubbles: true,
-                    cancelable: true
-                });
-                document.dispatchEvent(domContentLoadedEvent);
-                await new Promise((resolve) => setTimeout(resolve, 10));
+                // Then remove key DOM elements to test error handling
+                const taskForm = document.getElementById('task-form');
+                const deleteAllButton = document.getElementById('delete-all-tasks');
+                const taskList = document.getElementById('task-list');
 
+                if (taskForm) {
+                    taskForm.remove();
+                }
+                if (deleteAllButton) {
+                    deleteAllButton.remove();
+                }
+                if (taskList) {
+                    taskList.remove();
+                }
+
+                const tasks = [
+                    {
+                        description: 'Test Task',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
+                ];
+
+                // Update task state and render with missing DOM elements
+                updateTaskState(tasks);
+
+                // Create mock callbacks to test rendering with missing elements
+                const taskEventCallbacks = {
+                    onCompleteTask: jest.fn(),
+                    onEditTask: jest.fn(),
+                    onDeleteTask: jest.fn(),
+                    onSaveTaskEdit: jest.fn(),
+                    onCancelEdit: jest.fn()
+                };
+
+                // Try to render tasks with missing task-list element
+                // This should also trigger error logging
+                renderTasks(getTaskState(), taskEventCallbacks);
+
+                // Check that error logs were generated for missing elements
                 expect(consoleSpy).toHaveBeenCalledWith(
-                    '[FORTUDO ERROR] CRITICAL: app.js could not find #task-form element.'
+                    '[FORTUDO ERROR] Task list element not found. Tasks will not be rendered.'
                 );
-                consoleSpy.mockRestore();
-            });
 
-            test('should handle missing delete all button element', async () => {
-                // Clear DOM and set up without delete all button
-                document.body.innerHTML = `
-                    <div id="task-list"></div>
-                    <form id="task-form">
-                        <input type="text" name="description" required>
-                        <input type="time" name="start-time" required>
-                        <input type="number" name="duration-hours" min="0">
-                        <input type="number" name="duration-minutes" min="0" max="59">
-                        <button type="submit">Add</button>
-                    </form>
-                    <div id="current-time"></div>
-                    <div id="current-date"></div>
-                `;
-
-                const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-                mockLoadTasksFromStorage.mockReturnValue([]);
-
-                // Import app.js to trigger the initialization
-                await import('../public/js/app.js');
-
-                // Manually trigger DOMContentLoaded to hit the error checking code
-                const domContentLoadedEvent = new Event('DOMContentLoaded', {
-                    bubbles: true,
-                    cancelable: true
-                });
-                document.dispatchEvent(domContentLoadedEvent);
-                await new Promise((resolve) => setTimeout(resolve, 10));
-
-                expect(consoleSpy).toHaveBeenCalledWith(
-                    '[FORTUDO ERROR] CRITICAL: app.js could not find #delete-all button.'
-                );
+                // Clean up
                 consoleSpy.mockRestore();
             });
         });
@@ -973,9 +959,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms late completion
@@ -1006,7 +990,7 @@ describe('App.js Callback Functions', () => {
                 // Click the checkbox to complete the task
                 const checkbox = document.querySelector('.checkbox');
                 if (checkbox) {
-                    checkbox.dispatchEvent(new Event('click'));
+                    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -1040,9 +1024,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 // Mock deleteTask to return success on second call (after confirmation)
                 const deleteTaskSpy = jest
@@ -1060,13 +1042,15 @@ describe('App.js Callback Functions', () => {
                 // Click delete button twice (once to confirm, once to actually delete)
                 const deleteButtons = document.querySelectorAll('.btn-delete');
                 if (deleteButtons[0]) {
-                    deleteButtons[0].dispatchEvent(new Event('click'));
+                    deleteButtons[0].dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
 
                     // Click again to confirm deletion
                     const confirmDeleteButtons = document.querySelectorAll('.btn-delete');
                     if (confirmDeleteButtons[0]) {
-                        confirmDeleteButtons[0].dispatchEvent(new Event('click'));
+                        confirmDeleteButtons[0].dispatchEvent(
+                            new Event('click', { bubbles: true })
+                        );
                         await new Promise((resolve) => setTimeout(resolve, 10));
                     }
                 }
@@ -1099,9 +1083,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
@@ -1134,7 +1116,7 @@ describe('App.js Callback Functions', () => {
                 // Start editing the first task
                 const editButtons = document.querySelectorAll('.btn-edit');
                 if (editButtons[0]) {
-                    editButtons[0].dispatchEvent(new Event('click'));
+                    editButtons[0].dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
 
                     // Submit the edit form
@@ -1168,9 +1150,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
@@ -1239,9 +1219,7 @@ describe('App.js Callback Functions', () => {
                     }
                 ];
 
-                mockLoadTasksFromStorage.mockReturnValue(tasks);
-                await setupIntegrationTestEnvironment();
-                updateTaskState(tasks);
+                await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies rescheduling

@@ -58,6 +58,14 @@ const finalizeTaskModification = () => {
     saveTasks(tasks);
 };
 
+// TODO: Future optimization - Consider implementing debounced state persistence for high-frequency operations
+// This would batch multiple rapid updates to reduce localStorage writes, but adds complexity.
+// Implementation would involve:
+// - Debouncing finalizeTaskModification() with ~100ms delay for non-critical operations
+// - Immediate persistence for critical operations (delete, complete)
+// - Timer management to prevent memory leaks
+// Only implement if performance profiling shows localStorage writes are a bottleneck.
+
 /**
  * Helper function to create overlap confirmation response
  * @param {string} operation - The operation type (e.g., 'ADD', 'EDIT')

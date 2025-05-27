@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // reset editing flags unless clicking on specific elements
             const clickedOnEditElement = target.closest(
-                'form[id^="edit-task-"], .btn-edit, .checkbox'
+                'form[id^="edit-task-"], .btn-edit, .btn-edit-cancel, .checkbox'
             );
             if (!clickedOnEditElement && !isDeleteButton) {
                 needsRender = resetAllEditingFlags() || needsRender;

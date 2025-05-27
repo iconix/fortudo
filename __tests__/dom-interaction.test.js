@@ -13,7 +13,8 @@ import {
     getTaskFormElement,
     focusTaskDescriptionInput,
     showAlert,
-    askConfirmation
+    askConfirmation,
+    resetEventDelegation
     // Import specific DOM element references if needed for direct checks, though usually not
     // taskForm as dfTaskForm, // Example if needed
 } from '../public/js/dom-handler.js';
@@ -87,6 +88,7 @@ describe('DOM Handler Interaction Tests', () => {
 
     afterEach(() => {
         jest.clearAllMocks();
+        resetEventDelegation();
         document.body.innerHTML = '';
     });
 
@@ -277,21 +279,21 @@ describe('DOM Handler Interaction Tests', () => {
             if (!checkbox) {
                 throw new Error('Checkbox not found');
             }
-            checkbox.dispatchEvent(new Event('click'));
+            checkbox.dispatchEvent(new Event('click', { bubbles: true }));
             expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith(0);
 
             const editButton = task1Element.querySelector('.btn-edit');
             if (!editButton) {
                 throw new Error('Edit button not found');
             }
-            editButton.dispatchEvent(new Event('click'));
+            editButton.dispatchEvent(new Event('click', { bubbles: true }));
             expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith(0);
 
             const deleteButton = task1Element.querySelector('.btn-delete');
             if (!deleteButton) {
                 throw new Error('Delete button not found');
             }
-            deleteButton.dispatchEvent(new Event('click'));
+            deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
             expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(0);
         });
 
@@ -302,7 +304,7 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Task 3 form not found');
             }
 
-            task3Form.dispatchEvent(new Event('submit'));
+            task3Form.dispatchEvent(new Event('submit', { bubbles: true }));
             expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(
                 0,
                 expect.any(FormData)
@@ -312,7 +314,7 @@ describe('DOM Handler Interaction Tests', () => {
             if (!cancelButton) {
                 throw new Error('Cancel button not found');
             }
-            cancelButton.dispatchEvent(new Event('click'));
+            cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
             expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith(0);
         });
     });

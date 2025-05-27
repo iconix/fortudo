@@ -16,6 +16,9 @@ import {
 // export const deleteAllButton = document.getElementById('delete-all'); // Deferred to functions
 // export const taskDescriptionInput = taskForm ? taskForm.querySelector('input[name="description"]') : null; // Deferred
 
+// Global event callbacks storage for event delegation
+let globalEventCallbacks = null;
+
 // --- Rendering Functions ---
 
 /**
@@ -107,7 +110,128 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
 }
 
 /**
- * Render all tasks in the task list and attach event listeners.
+ * Initialize event delegation for task list interactions.
+ * This sets up a single event listener on the task list container that handles all task interactions.
+ * This approach prevents memory leaks and improves performance by avoiding multiple event listeners.
+ * @param {object} eventCallbacks - Callbacks for task actions.
+ */
+function initializeTaskListEventDelegation(eventCallbacks) {
+    const taskListElement = document.getElementById('task-list');
+    if (!taskListElement) {
+        logger.error('Task list element not found. Event delegation cannot be initialized.');
+        return;
+    }
+
+    // Remove any existing event listener to prevent duplicates
+    taskListElement.removeEventListener('click', handleTaskListClick);
+    taskListElement.removeEventListener('submit', handleTaskListSubmit);
+
+    // Store callbacks globally for the event handlers
+    globalEventCallbacks = eventCallbacks;
+
+    // Add single delegated event listeners
+    taskListElement.addEventListener('click', handleTaskListClick);
+    taskListElement.addEventListener('submit', handleTaskListSubmit);
+}
+
+/**
+ * Handle click events on the task list using event delegation.
+ * @param {Event} event - The click event
+ */
+function handleTaskListClick(event) {
+    if (!globalEventCallbacks) return;
+
+    const target = /** @type {HTMLElement} */ (event.target);
+    const taskIndex = getTaskIndexFromElement(target);
+
+    if (taskIndex === null) return;
+
+    // Handle checkbox clicks (task completion)
+    if (target.closest('.checkbox')) {
+        event.preventDefault();
+        globalEventCallbacks.onCompleteTask(taskIndex);
+        return;
+    }
+
+    // Handle edit button clicks
+    if (target.closest('.btn-edit')) {
+        event.preventDefault();
+        globalEventCallbacks.onEditTask(taskIndex);
+        return;
+    }
+
+    // Handle delete button clicks
+    if (target.closest('.btn-delete')) {
+        event.preventDefault();
+        event.stopPropagation();
+        globalEventCallbacks.onDeleteTask(taskIndex);
+        return;
+    }
+
+    // Handle cancel button clicks
+    if (target.closest('.btn-edit-cancel')) {
+        event.preventDefault();
+        globalEventCallbacks.onCancelEdit(taskIndex);
+        return;
+    }
+}
+
+/**
+ * Handle form submit events on the task list using event delegation.
+ * @param {Event} event - The submit event
+ */
+function handleTaskListSubmit(event) {
+    if (!globalEventCallbacks) return;
+
+    const target = /** @type {HTMLElement} */ (event.target);
+    const taskIndex = getTaskIndexFromElement(target);
+
+    if (taskIndex === null) return;
+
+    // Handle edit form submissions
+    if (target.id && target.id.startsWith('edit-task-')) {
+        event.preventDefault();
+        const formData = new FormData(/** @type {HTMLFormElement} */ (target));
+        globalEventCallbacks.onSaveTaskEdit(taskIndex, formData);
+        return;
+    }
+}
+
+/**
+ * Extract task index from DOM element or its data attributes.
+ * @param {HTMLElement} element - The DOM element
+ * @returns {number | null} - The task index or null if not found
+ */
+function getTaskIndexFromElement(element) {
+    // Check for data-task-index attribute on the element or its parents
+    let current = element;
+    while (current && current !== document.body) {
+        if (current.dataset && current.dataset.taskIndex !== undefined) {
+            const index = parseInt(current.dataset.taskIndex, 10);
+            return isNaN(index) ? null : index;
+        }
+
+        // Check for edit form ID pattern
+        if (current.id && current.id.startsWith('edit-task-')) {
+            const index = parseInt(current.id.replace('edit-task-', ''), 10);
+            return isNaN(index) ? null : index;
+        }
+
+        // Check for view task ID pattern
+        if (current.id && current.id.startsWith('view-task-')) {
+            const index = parseInt(current.id.replace('view-task-', ''), 10);
+            return isNaN(index) ? null : index;
+        }
+
+        current = /** @type {HTMLElement} */ (current.parentElement);
+    }
+
+    return null;
+}
+
+/**
+ * Render all tasks in the task list using optimized DOM operations.
+ * This version eliminates the memory leak by using event delegation instead of individual event listeners.
  * @param {object[]} tasksToRender - Array of tasks to render.
  * @param {object} eventCallbacks - Callbacks for task actions.
  * @param {(index: number) => void} eventCallbacks.onCompleteTask - Callback for completing a task.
@@ -123,6 +247,15 @@ export function renderTasks(tasksToRender, eventCallbacks) {
         return;
     }
 
+    // Initialize event delegation if not already done
+    if (!globalEventCallbacks) {
+        initializeTaskListEventDelegation(eventCallbacks);
+    } else {
+        // Update callbacks if they've changed
+        globalEventCallbacks = eventCallbacks;
+    }
+
+    // Render tasks efficiently using innerHTML (single DOM operation)
     let firstIncompleteTaskFound = false;
     taskListElement.innerHTML = tasksToRender
         .map((task, index) => {
@@ -136,46 +269,6 @@ export function renderTasks(tasksToRender, eventCallbacks) {
                 : renderViewTaskHTML(task, index, isFirstForStyling);
         })
         .join('');
-
-    // attach event listeners to each rendered task element
-    tasksToRender.forEach((task, index) => {
-        const viewTaskElement = taskListElement.querySelector(`#view-task-${index}`);
-        const editTaskForm = taskListElement.querySelector(`#edit-task-${index}`);
-
-        if (task.editing && editTaskForm && editTaskForm instanceof HTMLFormElement) {
-            // handle event listeners for tasks in editing mode
-            editTaskForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                eventCallbacks.onSaveTaskEdit(index, new FormData(editTaskForm));
-            });
-            const cancelButton = editTaskForm.querySelector('.btn-edit-cancel');
-            if (cancelButton) {
-                cancelButton.addEventListener('click', () => eventCallbacks.onCancelEdit(index));
-            }
-        } else if (!task.editing && viewTaskElement) {
-            // handle event listeners for tasks in view mode
-            const checkboxLabel = viewTaskElement.querySelector(`.checkbox`);
-            if (checkboxLabel && task.status !== 'completed') {
-                checkboxLabel.addEventListener('click', () => eventCallbacks.onCompleteTask(index));
-            }
-
-            const editButton = viewTaskElement.querySelector(`.btn-edit`);
-            if (editButton && task.status !== 'completed') {
-                editButton.addEventListener('click', () => eventCallbacks.onEditTask(index));
-            }
-
-            const deleteButton = viewTaskElement.querySelector(`.btn-delete`);
-            if (deleteButton && task.status !== 'completed') {
-                // prevent delete button clicks from bubbling to global click handlers.
-                // this ensures that global handlers (like those that reset editing/confirmation states)
-                // don't interfere with the delete confirmation workflow
-                deleteButton.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    eventCallbacks.onDeleteTask(index);
-                });
-            }
-        }
-    });
 }
 
 /**
@@ -276,4 +369,19 @@ export function extractTaskFormData(formData) {
     const durationMinutes = formData.get('duration-minutes') || '0';
     const duration = calculateMinutes(`${durationHours}:${durationMinutes}`);
     return { description, startTime, duration };
+}
+
+/**
+ * Reset event delegation state (for testing purposes).
+ * This allows tests to reinitialize event delegation with fresh callbacks.
+ */
+export function resetEventDelegation() {
+    globalEventCallbacks = null;
+
+    // Remove existing event listeners from task list
+    const taskListElement = document.getElementById('task-list');
+    if (taskListElement) {
+        taskListElement.removeEventListener('click', handleTaskListClick);
+        taskListElement.removeEventListener('submit', handleTaskListSubmit);
+    }
 }

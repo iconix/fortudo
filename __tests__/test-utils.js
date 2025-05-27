@@ -199,7 +199,9 @@ async function updateTaskDOM(taskIndex, data) {
     if (taskIndex < 0 || taskIndex >= editButtons.length)
         throw new Error(`Edit button for task index ${taskIndex} not found or out of bounds.`);
     const editButton = editButtons[taskIndex];
-    if (editButton instanceof HTMLElement) editButton.click();
+    if (editButton instanceof HTMLElement) {
+        editButton.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const editForm = document.getElementById(`edit-task-${taskIndex}`);
@@ -227,11 +229,8 @@ async function updateTaskDOM(taskIndex, data) {
             durationMinutesInput.value = data.durationMinutes;
     }
 
-    // Look for the correct save button class name
-    const saveButton =
-        editForm.querySelector('.btn-save-edit') || editForm.querySelector('button[type="submit"]');
-    if (!saveButton) throw new Error(`Save button for edit form ${taskIndex} not found.`);
-    if (saveButton instanceof HTMLElement) saveButton.click();
+    // Submit the form to trigger the save
+    editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -246,14 +245,18 @@ async function clickCompleteCheckbox(taskIndex) {
     if (taskIndex < 0 || taskIndex >= checkboxLabels.length)
         throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
     const checkboxLabel = checkboxLabels[taskIndex];
-    if (checkboxLabel instanceof HTMLElement) checkboxLabel.click(); // Click the label, not the hidden checkbox
+    if (checkboxLabel instanceof HTMLElement) {
+        checkboxLabel.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 async function clickDeleteAllButton() {
     const button = document.getElementById('delete-all');
     if (!button) throw new Error(`Delete All button not found.`);
-    if (button instanceof HTMLElement) button.click();
+    if (button instanceof HTMLElement) {
+        button.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -270,7 +273,9 @@ async function clickSaveButtonOnEditForm(taskIndex) {
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
     const saveButton = editForm.querySelector('.btn-save');
     if (!saveButton) throw new Error(`Save button for task ${taskIndex} not found.`);
-    if (saveButton instanceof HTMLElement) saveButton.click();
+    if (saveButton instanceof HTMLElement) {
+        saveButton.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -279,7 +284,9 @@ async function clickCancelButtonOnEditForm(taskIndex) {
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
     const cancelButton = editForm.querySelector('.btn-cancel');
     if (!cancelButton) throw new Error(`Cancel button for task ${taskIndex} not found.`);
-    if (cancelButton instanceof HTMLElement) cancelButton.click();
+    if (cancelButton instanceof HTMLElement) {
+        cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -290,7 +297,9 @@ async function clickEditButtonForTask(taskIndex) {
     const taskItem = taskItems[taskIndex];
     const editButton = taskItem.querySelector('.btn-edit');
     if (!editButton) throw new Error(`Edit button for task ${taskIndex} not found.`);
-    if (editButton instanceof HTMLElement) editButton.click();
+    if (editButton instanceof HTMLElement) {
+        editButton.dispatchEvent(new Event('click', { bubbles: true }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 

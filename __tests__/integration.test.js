@@ -16,7 +16,7 @@ import {
     setCurrentTimeInDOM
 } from './test-utils.js';
 
-import { updateTaskState } from '../public/js/task-manager.js';
+import { resetEventDelegation } from '../public/js/dom-handler.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -40,12 +40,14 @@ describe('User Confirmation Flows', () => {
         document.body.innerHTML = '';
         clearLocalStorage();
 
+        // Reset event delegation state for clean tests
+        resetEventDelegation();
+
         // Clear mocks
         jest.clearAllMocks();
         mockLoadTasksFromStorage.mockReturnValue([]); // Default to loading no tasks
 
-        // Reset task manager state to ensure no contamination between tests
-        updateTaskState([]);
+        // Note: Removed updateTaskState call - let the app handle task loading naturally
 
         // Ensure clean spy state - restore any existing spies first
         if (alertSpy) {
@@ -94,11 +96,6 @@ describe('User Confirmation Flows', () => {
 
             // Set up the integration test environment (this will call loadTasks)
             await setupIntegrationTestEnvironment();
-
-            // After the environment is set up, we need to manually ensure
-            // the task manager state has the initial task, since the mock might not
-            // have been called at the right time during app initialization
-            updateTaskState([initialTask]);
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
@@ -218,9 +215,6 @@ describe('User Confirmation Flows', () => {
             mockLoadTasksFromStorage.mockReturnValue([taskAData, taskBData]);
             await setupIntegrationTestEnvironment();
 
-            // Ensure task manager state has the correct tasks
-            updateTaskState([taskAData, taskBData]);
-
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
             if (confirmSpy) confirmSpy.mockRestore();
@@ -329,33 +323,27 @@ describe('User Confirmation Flows', () => {
             confirmingDelete: false
         });
 
-        const setupInitialStateAndApp = async (includeSubsequent = false) => {
-            // Get fresh copies of the tasks for this test
-            const taskToComplete = getTaskToComplete();
-            const subsequentTask = getSubsequentTask();
-            const initialTasks = includeSubsequent
-                ? [taskToComplete, subsequentTask]
-                : [taskToComplete];
-
+        const setupInitialStateAndApp = async (initialTasks = []) => {
             document.body.innerHTML = '';
             clearLocalStorage();
-            mockLoadTasksFromStorage.mockReturnValue(initialTasks);
-            await setupIntegrationTestEnvironment();
 
-            // Ensure task manager state has the correct tasks
-            updateTaskState(initialTasks);
+            // Set up the mock to return the initial tasks when loadTasks is called
+            mockLoadTasksFromStorage.mockReturnValue(initialTasks);
+
+            await setupIntegrationTestEnvironment();
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
             if (confirmSpy) confirmSpy.mockRestore();
 
+            // Set up fresh spies after the environment is initialized
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
         };
 
         test('User confirms schedule update: Task completed late, time updated, subsequent task shifted', async () => {
-            await setupInitialStateAndApp(true);
+            await setupInitialStateAndApp([getTaskToComplete(), getSubsequentTask()]);
             setCurrentTimeInDOM('10:30 AM');
             confirmSpy.mockReturnValueOnce(true);
 
@@ -395,7 +383,7 @@ describe('User Confirmation Flows', () => {
         });
 
         test('User denies schedule update: Task completed, original time preserved, subsequent task not shifted', async () => {
-            await setupInitialStateAndApp(true);
+            await setupInitialStateAndApp([getTaskToComplete(), getSubsequentTask()]);
             setCurrentTimeInDOM('10:30 AM');
             confirmSpy.mockReturnValueOnce(false);
 
@@ -435,7 +423,7 @@ describe('User Confirmation Flows', () => {
         });
 
         test('Start time field is force updated after confirming late completion with schedule change', async () => {
-            await setupInitialStateAndApp(true);
+            await setupInitialStateAndApp([getTaskToComplete(), getSubsequentTask()]);
 
             // Mock the current time to match the DOM time (10:30 AM)
             const mockDate = new Date('2023-01-01T10:30:00');
@@ -477,8 +465,33 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Delete All Tasks with Confirmation', () => {
-        const setupInitialStateWithTasks = async () => {
-            const tasksToLoad = [
+        const setupInitialStateAndApp = async (initialTasks = []) => {
+            document.body.innerHTML = '';
+            clearLocalStorage();
+
+            // Set up the mock to return the initial tasks when loadTasks is called
+            mockLoadTasksFromStorage.mockReturnValue(initialTasks);
+
+            // Save tasks to localStorage for the app to load
+            if (window.localStorage) {
+                window.localStorage.setItem('tasks', JSON.stringify(initialTasks));
+            }
+
+            // Set up the integration test environment (this will call loadTasks)
+            await setupIntegrationTestEnvironment();
+
+            // Ensure any existing spies are cleaned up before creating new ones
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            // Set up fresh spies after the environment is initialized
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+        };
+
+        test('User confirms delete all: all tasks are removed', async () => {
+            await setupInitialStateAndApp([
                 {
                     description: 'Task 1',
                     startTime: '09:00',
@@ -497,26 +510,7 @@ describe('User Confirmation Flows', () => {
                     editing: false,
                     confirmingDelete: false
                 }
-            ];
-            document.body.innerHTML = '';
-            clearLocalStorage();
-            mockLoadTasksFromStorage.mockReturnValue(tasksToLoad);
-            await setupIntegrationTestEnvironment();
-
-            // Ensure task manager state has the correct tasks
-            updateTaskState(tasksToLoad);
-
-            // Ensure any existing spies are cleaned up before creating new ones
-            if (alertSpy) alertSpy.mockRestore();
-            if (confirmSpy) confirmSpy.mockRestore();
-
-            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-            confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-        };
-
-        test('User confirms delete all: all tasks are removed', async () => {
-            await setupInitialStateWithTasks();
+            ]);
             confirmSpy.mockReturnValueOnce(true);
 
             await clickDeleteAllButton();
@@ -534,7 +528,26 @@ describe('User Confirmation Flows', () => {
         });
 
         test('User denies delete all: tasks remain unchanged', async () => {
-            await setupInitialStateWithTasks();
+            await setupInitialStateAndApp([
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }
+            ]);
             confirmSpy.mockReturnValueOnce(false);
 
             await clickDeleteAllButton();
@@ -568,7 +581,26 @@ describe('User Confirmation Flows', () => {
         });
 
         test('Start time field is reset after all tasks are deleted', async () => {
-            await setupInitialStateWithTasks();
+            await setupInitialStateAndApp([
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }
+            ]);
             confirmSpy.mockReturnValueOnce(true);
 
             // Set a value in the start time field before deleting all tasks
