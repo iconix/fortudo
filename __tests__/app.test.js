@@ -2,27 +2,23 @@
  * @jest-environment jsdom
  */
 
-// Tests for app.js callback functions: onDeleteTask and onCancelEdit
-
 import {
     setupIntegrationTestEnvironment,
     getRenderedTasksDOM,
     clearLocalStorage
 } from './test-utils.js';
 
-import {
-    setTasks,
-    getTasks,
-    deleteTask as deleteTaskDirect,
-    cancelEdit as cancelEditDirect
-} from '../public/js/task-manager.js';
+import { setTasks, getTasks, cancelEdit as cancelEditDirect } from '../public/js/task-manager.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
-import { saveTasks as mockSaveTasksInternal, loadTasks as mockLoadTasksInternal } from '../public/js/storage.js';
+import {
+    saveTasks as mockSaveTasksInternal,
+    loadTasks as mockLoadTasksInternal
+} from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockLoadTasks = jest.mocked(mockLoadTasksInternal);
@@ -35,10 +31,12 @@ describe('App.js Callback Functions', () => {
     // Utility functions for DOM interactions
     const clickDeleteButton = async (taskIndex) => {
         // Find delete button using proper selector (button with both classes and correct attribute)
-        const deleteButton = document.querySelector(`button.btn-delete[data-task-index="${taskIndex}"]`);
+        const deleteButton = document.querySelector(
+            `button.btn-delete[data-task-index="${taskIndex}"]`
+        );
         if (deleteButton) {
             deleteButton.dispatchEvent(new Event('click'));
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise((resolve) => setTimeout(resolve, 0));
             return true;
         }
         return false;
@@ -51,7 +49,7 @@ describe('App.js Callback Functions', () => {
         const cancelButton = editForm.querySelector('.btn-edit-cancel');
         if (cancelButton) {
             cancelButton.dispatchEvent(new Event('click'));
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise((resolve) => setTimeout(resolve, 0));
             return true;
         }
         return false;
@@ -86,8 +84,24 @@ describe('App.js Callback Functions', () => {
     describe('onDeleteTask callback', () => {
         const setupTasksForDelete = async () => {
             const tasks = [
-                { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
-                { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }
             ];
 
             mockLoadTasks.mockReturnValue(tasks);
@@ -146,7 +160,8 @@ describe('App.js Callback Functions', () => {
             await setupTasksForDelete();
 
             // Mock deleteTask to fail
-            deleteTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+            deleteTaskSpy = jest
+                .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
                 .mockReturnValue({
                     success: false,
                     requiresConfirmation: false,
@@ -176,8 +191,24 @@ describe('App.js Callback Functions', () => {
     describe('onCancelEdit callback', () => {
         const setupTasksForEdit = async () => {
             const tasks = [
-                { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
-                { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: true, confirmingDelete: false }
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: true,
+                    confirmingDelete: false
+                }
             ];
 
             mockLoadTasks.mockReturnValue(tasks);
@@ -223,7 +254,7 @@ describe('App.js Callback Functions', () => {
 
             // Verify only second task exited edit mode
             const updatedTasks = getTasks();
-            expect(updatedTasks[0].editing).toBe(true);  // Should still be editing
+            expect(updatedTasks[0].editing).toBe(true); // Should still be editing
             expect(updatedTasks[1].editing).toBe(false); // Should no longer be editing
         });
 
@@ -257,8 +288,24 @@ describe('App.js Callback Functions', () => {
     describe('onDeleteTask and onCancelEdit integration', () => {
         test('should not interfere with each other', async () => {
             const tasks = [
-                { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: true, confirmingDelete: false },
-                { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                {
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60,
+                    endTime: '10:00',
+                    status: 'incomplete',
+                    editing: true,
+                    confirmingDelete: false
+                },
+                {
+                    description: 'Task 2',
+                    startTime: '10:00',
+                    duration: 30,
+                    endTime: '10:30',
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }
             ];
 
             mockLoadTasks.mockReturnValue(tasks);
@@ -277,7 +324,7 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks[0].editing).toBe(false);
 
             // Wait for any potential DOM updates
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // First click on delete button for second task - should set confirmingDelete to true
             const firstDeleteClick = await clickDeleteButton(1);
@@ -288,7 +335,7 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks[1].confirmingDelete).toBe(true);
 
             // Wait for DOM update
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Second click - should actually delete the task
             const secondDeleteClick = await clickDeleteButton(1);
@@ -306,7 +353,15 @@ describe('App.js Callback Functions', () => {
         describe('onCompleteTask callback coverage', () => {
             test('should handle user denying late completion confirmation (real app.js callback)', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -318,7 +373,8 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock the completeTask to return late completion scenario
-                const completeTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                const completeTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
                     .mockReturnValueOnce({
                         success: true,
                         requiresConfirmation: true,
@@ -338,7 +394,7 @@ describe('App.js Callback Functions', () => {
                 const checkbox = document.querySelector('.checkbox');
                 if (checkbox) {
                     checkbox.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -349,12 +405,20 @@ describe('App.js Callback Functions', () => {
         describe('onDeleteTask edge cases', () => {
             test('should handle deleting non-existent task index (real app.js callback)', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
                 await setupIntegrationTestEnvironment();
-                setTasks([]);  // Set empty tasks to trigger the missing task branch
+                setTasks([]); // Set empty tasks to trigger the missing task branch
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 mockSaveTasks.mockClear();
@@ -368,7 +432,7 @@ describe('App.js Callback Functions', () => {
                 // Click the delete button - this should trigger the real onDeleteTask callback
                 // which will find no task at index 0
                 deleteButton.dispatchEvent(new Event('click'));
-                await new Promise(resolve => setTimeout(resolve, 10));
+                await new Promise((resolve) => setTimeout(resolve, 10));
 
                 // The callback should execute but not do anything since taskToDelete is undefined
             });
@@ -377,7 +441,15 @@ describe('App.js Callback Functions', () => {
         describe('onSaveTaskEdit branch coverage', () => {
             test('should handle user denying reschedule during task update (real app.js callback)', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: true, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: true,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -389,24 +461,31 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask')
-                    .mockReturnValue({
-                        success: false,
-                        requiresConfirmation: true,
-                        confirmationType: 'RESCHEDULE_UPDATE',
-                        reason: 'Would cause overlap',
-                        taskIndex: 0,
-                        updatedData: {}
-                    });
+                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                    success: false,
+                    requiresConfirmation: true,
+                    confirmationType: 'RESCHEDULE_UPDATE',
+                    reason: 'Would cause overlap',
+                    taskIndex: 0,
+                    updatedData: {}
+                });
 
                 // Find the edit form and submit it to trigger real onSaveTaskEdit
                 const editForm = document.getElementById('edit-task-0');
                 if (editForm) {
                     // Fill out the form
-                    const descInput = /** @type {HTMLInputElement} */ (editForm.querySelector('input[name="description"]'));
-                    const startTimeInput = /** @type {HTMLInputElement} */ (editForm.querySelector('input[name="start-time"]'));
-                    const durationHoursInput = /** @type {HTMLInputElement} */ (editForm.querySelector('input[name="duration-hours"]'));
-                    const durationMinutesInput = /** @type {HTMLInputElement} */ (editForm.querySelector('input[name="duration-minutes"]'));
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        editForm.querySelector('input[name="description"]')
+                    );
+                    const startTimeInput = /** @type {HTMLInputElement} */ (
+                        editForm.querySelector('input[name="start-time"]')
+                    );
+                    const durationHoursInput = /** @type {HTMLInputElement} */ (
+                        editForm.querySelector('input[name="duration-hours"]')
+                    );
+                    const durationMinutesInput = /** @type {HTMLInputElement} */ (
+                        editForm.querySelector('input[name="duration-minutes"]')
+                    );
 
                     if (descInput) descInput.value = 'Updated Task';
                     if (startTimeInput) startTimeInput.value = '09:30';
@@ -414,17 +493,29 @@ describe('App.js Callback Functions', () => {
                     if (durationMinutesInput) durationMinutesInput.value = '0';
 
                     // Submit the form to trigger the real callback
-                    editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    editForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
-                expect(alertSpy).toHaveBeenCalledWith("Task update cancelled to avoid rescheduling.");
+                expect(alertSpy).toHaveBeenCalledWith(
+                    'Task update cancelled to avoid rescheduling.'
+                );
             });
 
             test('should handle update task failure', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: true, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: true,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -435,20 +526,23 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask')
-                    .mockReturnValue({
-                        success: false,
-                        reason: 'Update failed'
-                    });
+                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                    success: false,
+                    reason: 'Update failed'
+                });
 
                 // Submit the edit form to trigger the real callback
                 const editForm = document.getElementById('edit-task-0');
                 if (editForm) {
-                    const descInput = /** @type {HTMLInputElement} */ (editForm.querySelector('input[name="description"]'));
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        editForm.querySelector('input[name="description"]')
+                    );
                     if (descInput) descInput.value = 'Updated Task';
 
-                    editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    editForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(alertSpy).toHaveBeenCalledWith('Update failed');
@@ -466,33 +560,42 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
-                    .mockReturnValue({
-                        success: false,
-                        requiresConfirmation: true,
-                        confirmationType: 'RESCHEDULE_ADD',
-                        reason: 'Would cause overlap'
-                    });
+                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                    success: false,
+                    requiresConfirmation: true,
+                    confirmationType: 'RESCHEDULE_ADD',
+                    reason: 'Would cause overlap'
+                });
 
                 // Fill out and submit the main task form
                 const taskForm = document.getElementById('task-form');
                 if (taskForm) {
-                    const descInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="description"]'));
-                    const startTimeInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="start-time"]'));
-                    const durationHoursInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="duration-hours"]'));
-                    const durationMinutesInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="duration-minutes"]'));
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="description"]')
+                    );
+                    const startTimeInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="start-time"]')
+                    );
+                    const durationHoursInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-hours"]')
+                    );
+                    const durationMinutesInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-minutes"]')
+                    );
 
                     if (descInput) descInput.value = 'New Task';
                     if (startTimeInput) startTimeInput.value = '09:00';
                     if (durationHoursInput) durationHoursInput.value = '1';
                     if (durationMinutesInput) durationMinutesInput.value = '0';
 
-                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    taskForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
-                expect(alertSpy).toHaveBeenCalledWith("Task not added to avoid rescheduling.");
+                expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
             });
 
             test('should handle add task failure', async () => {
@@ -504,27 +607,36 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
-                    .mockReturnValue({
-                        success: false,
-                        reason: 'Add failed'
-                    });
+                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                    success: false,
+                    reason: 'Add failed'
+                });
 
                 // Submit the task form with valid data
                 const taskForm = document.getElementById('task-form');
                 if (taskForm) {
-                    const descInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="description"]'));
-                    const startTimeInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="start-time"]'));
-                    const durationHoursInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="duration-hours"]'));
-                    const durationMinutesInput = /** @type {HTMLInputElement} */ (taskForm.querySelector('input[name="duration-minutes"]'));
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="description"]')
+                    );
+                    const startTimeInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="start-time"]')
+                    );
+                    const durationHoursInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-hours"]')
+                    );
+                    const durationMinutesInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-minutes"]')
+                    );
 
                     if (descInput) descInput.value = 'New Task';
                     if (startTimeInput) startTimeInput.value = '09:00';
                     if (durationHoursInput) durationHoursInput.value = '1';
                     if (durationMinutesInput) durationMinutesInput.value = '0';
 
-                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    taskForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(alertSpy).toHaveBeenCalledWith('Add failed');
@@ -544,15 +656,23 @@ describe('App.js Callback Functions', () => {
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
                     deleteAllButton.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(alertSpy).toHaveBeenCalledWith("There are no tasks to delete.");
+                expect(alertSpy).toHaveBeenCalledWith('There are no tasks to delete.');
             });
 
             test('should handle user denying delete all confirmation', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -564,17 +684,19 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock deleteAllTasks to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
-                    .mockReturnValue({
-                        success: false,
-                        requiresConfirmation: true,
-                        reason: 'Are you sure?'
-                    });
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'deleteAllTasks'
+                ).mockReturnValue({
+                    success: false,
+                    requiresConfirmation: true,
+                    reason: 'Are you sure?'
+                });
 
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
                     deleteAllButton.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -582,7 +704,15 @@ describe('App.js Callback Functions', () => {
 
             test('should handle delete all failure with error', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -609,7 +739,7 @@ describe('App.js Callback Functions', () => {
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
                     deleteAllButton.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -618,7 +748,15 @@ describe('App.js Callback Functions', () => {
 
             test('should call updateStartTimeField with forceUpdate=true after delete all', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -629,10 +767,14 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
 
                 // Mock updateStartTimeField to verify it's called with forceUpdate=true
-                const updateStartTimeFieldSpy = jest.spyOn(require('../public/js/dom-handler.js'), 'updateStartTimeField');
+                const updateStartTimeFieldSpy = jest.spyOn(
+                    require('../public/js/dom-handler.js'),
+                    'updateStartTimeField'
+                );
 
                 // Mock deleteAllTasks to return success and simulate the actual behavior
-                const deleteAllTasksSpy = jest.spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
+                const deleteAllTasksSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
                     .mockReturnValueOnce({
                         success: false,
                         requiresConfirmation: true,
@@ -648,7 +790,7 @@ describe('App.js Callback Functions', () => {
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
                     deleteAllButton.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise((resolve) => setTimeout(resolve, 50));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -669,14 +811,16 @@ describe('App.js Callback Functions', () => {
                 setTasks([]);
 
                 // Mock resetAllConfirmingDeleteFlags to return false
-                jest.spyOn(require('../public/js/task-manager.js'), 'resetAllConfirmingDeleteFlags')
-                    .mockReturnValue(false);
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'resetAllConfirmingDeleteFlags'
+                ).mockReturnValue(false);
 
                 // Click somewhere that's not a delete button to trigger global click
                 const taskList = document.getElementById('task-list');
                 if (taskList) {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             });
 
@@ -686,16 +830,20 @@ describe('App.js Callback Functions', () => {
                 setTasks([]);
 
                 // Mock both functions to return false
-                jest.spyOn(require('../public/js/task-manager.js'), 'resetAllConfirmingDeleteFlags')
-                    .mockReturnValue(false);
-                jest.spyOn(require('../public/js/task-manager.js'), 'resetAllEditingFlags')
-                    .mockReturnValue(false);
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'resetAllConfirmingDeleteFlags'
+                ).mockReturnValue(false);
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'resetAllEditingFlags'
+                ).mockReturnValue(false);
 
                 // Click somewhere that triggers both reset calls
                 const taskList = document.getElementById('task-list');
                 if (taskList) {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             });
 
@@ -705,14 +853,16 @@ describe('App.js Callback Functions', () => {
                 setTasks([]);
 
                 // Mock to return true to trigger needsRender
-                jest.spyOn(require('../public/js/task-manager.js'), 'resetAllConfirmingDeleteFlags')
-                    .mockReturnValue(true);
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'resetAllConfirmingDeleteFlags'
+                ).mockReturnValue(true);
 
                 // Click on task list element
                 const taskList = document.getElementById('task-list');
                 if (taskList) {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             });
         });
@@ -739,9 +889,11 @@ describe('App.js Callback Functions', () => {
                     cancelable: true
                 });
                 document.dispatchEvent(domContentLoadedEvent);
-                await new Promise(resolve => setTimeout(resolve, 10));
+                await new Promise((resolve) => setTimeout(resolve, 10));
 
-                expect(consoleSpy).toHaveBeenCalledWith("[FORTUDO ERROR] CRITICAL: app.js could not find #task-form element.");
+                expect(consoleSpy).toHaveBeenCalledWith(
+                    '[FORTUDO ERROR] CRITICAL: app.js could not find #task-form element.'
+                );
                 consoleSpy.mockRestore();
             });
 
@@ -772,9 +924,11 @@ describe('App.js Callback Functions', () => {
                     cancelable: true
                 });
                 document.dispatchEvent(domContentLoadedEvent);
-                await new Promise(resolve => setTimeout(resolve, 10));
+                await new Promise((resolve) => setTimeout(resolve, 10));
 
-                expect(consoleSpy).toHaveBeenCalledWith("[FORTUDO ERROR] CRITICAL: app.js could not find #delete-all button.");
+                expect(consoleSpy).toHaveBeenCalledWith(
+                    '[FORTUDO ERROR] CRITICAL: app.js could not find #delete-all button.'
+                );
                 consoleSpy.mockRestore();
             });
         });
@@ -783,7 +937,10 @@ describe('App.js Callback Functions', () => {
             let updateStartTimeFieldSpy;
 
             beforeEach(() => {
-                updateStartTimeFieldSpy = jest.spyOn(require('../public/js/dom-handler.js'), 'updateStartTimeField');
+                updateStartTimeFieldSpy = jest.spyOn(
+                    require('../public/js/dom-handler.js'),
+                    'updateStartTimeField'
+                );
             });
 
             afterEach(() => {
@@ -794,8 +951,24 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming late task completion', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
-                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    },
+                    {
+                        description: 'Task 2',
+                        startTime: '10:00',
+                        duration: 30,
+                        endTime: '10:30',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -806,7 +979,8 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms late completion
 
                 // Mock completeTask to return late completion scenario
-                const completeTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                const completeTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
                     .mockReturnValue({
                         success: true,
                         requiresConfirmation: true,
@@ -815,7 +989,8 @@ describe('App.js Callback Functions', () => {
                         newDuration: 75
                     });
 
-                const confirmCompleteLate = jest.spyOn(require('../public/js/task-manager.js'), 'confirmCompleteLate')
+                const confirmCompleteLate = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'confirmCompleteLate')
                     .mockReturnValue({ success: true });
 
                 // Set current time in DOM to trigger late completion
@@ -830,7 +1005,7 @@ describe('App.js Callback Functions', () => {
                 const checkbox = document.querySelector('.checkbox');
                 if (checkbox) {
                     checkbox.dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -843,8 +1018,24 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after successful task deletion', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
-                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    },
+                    {
+                        description: 'Task 2',
+                        startTime: '10:00',
+                        duration: 30,
+                        endTime: '10:30',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -852,7 +1043,8 @@ describe('App.js Callback Functions', () => {
                 setTasks(tasks);
 
                 // Mock deleteTask to return success on second call (after confirmation)
-                const deleteTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                const deleteTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
                     .mockReturnValueOnce({
                         success: false,
                         requiresConfirmation: true
@@ -867,13 +1059,13 @@ describe('App.js Callback Functions', () => {
                 const deleteButtons = document.querySelectorAll('.btn-delete');
                 if (deleteButtons[0]) {
                     deleteButtons[0].dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
 
                     // Click again to confirm deletion
                     const confirmDeleteButtons = document.querySelectorAll('.btn-delete');
                     if (confirmDeleteButtons[0]) {
                         confirmDeleteButtons[0].dispatchEvent(new Event('click'));
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                        await new Promise((resolve) => setTimeout(resolve, 10));
                     }
                 }
 
@@ -885,8 +1077,24 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming task update with rescheduling', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false },
-                    { description: 'Task 2', startTime: '10:00', duration: 30, endTime: '10:30', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    },
+                    {
+                        description: 'Task 2',
+                        startTime: '10:00',
+                        duration: 30,
+                        endTime: '10:30',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -897,17 +1105,26 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
 
                 // Mock updateTask to require confirmation
-                const updateTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'updateTask')
+                const updateTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'updateTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
                         confirmationType: 'RESCHEDULE_UPDATE',
                         taskIndex: 0,
-                        updatedData: { description: 'Updated Task', startTime: '09:30', duration: 120 },
+                        updatedData: {
+                            description: 'Updated Task',
+                            startTime: '09:30',
+                            duration: 120
+                        },
                         reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
                     });
 
-                const confirmUpdateTaskAndReschedule = jest.spyOn(require('../public/js/task-manager.js'), 'confirmUpdateTaskAndReschedule')
+                const confirmUpdateTaskAndReschedule = jest
+                    .spyOn(
+                        require('../public/js/task-manager.js'),
+                        'confirmUpdateTaskAndReschedule'
+                    )
                     .mockReturnValue({ success: true });
 
                 updateStartTimeFieldSpy.mockClear();
@@ -916,13 +1133,15 @@ describe('App.js Callback Functions', () => {
                 const editButtons = document.querySelectorAll('.btn-edit');
                 if (editButtons[0]) {
                     editButtons[0].dispatchEvent(new Event('click'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise((resolve) => setTimeout(resolve, 10));
 
                     // Submit the edit form
                     const editForm = document.getElementById('edit-task-0');
                     if (editForm) {
-                        editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                        editForm.dispatchEvent(
+                            new Event('submit', { bubbles: true, cancelable: true })
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 10));
                     }
                 }
 
@@ -936,7 +1155,15 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming task addition with rescheduling', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -947,7 +1174,8 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms rescheduling
 
                 // Mock addTask to require confirmation
-                const addTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
+                const addTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
@@ -956,7 +1184,8 @@ describe('App.js Callback Functions', () => {
                         reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
                     });
 
-                const confirmAddTaskAndReschedule = jest.spyOn(require('../public/js/task-manager.js'), 'confirmAddTaskAndReschedule')
+                const confirmAddTaskAndReschedule = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'confirmAddTaskAndReschedule')
                     .mockReturnValue({ success: true });
 
                 updateStartTimeFieldSpy.mockClear();
@@ -967,16 +1196,24 @@ describe('App.js Callback Functions', () => {
                     // Fill out the form
                     const descInput = taskForm.querySelector('input[name="description"]');
                     const startTimeInput = taskForm.querySelector('input[name="start-time"]');
-                    const durationHoursInput = taskForm.querySelector('input[name="duration-hours"]');
-                    const durationMinutesInput = taskForm.querySelector('input[name="duration-minutes"]');
+                    const durationHoursInput = taskForm.querySelector(
+                        'input[name="duration-hours"]'
+                    );
+                    const durationMinutesInput = taskForm.querySelector(
+                        'input[name="duration-minutes"]'
+                    );
 
                     if (descInput instanceof HTMLInputElement) descInput.value = 'New Task';
                     if (startTimeInput instanceof HTMLInputElement) startTimeInput.value = '09:30';
-                    if (durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = '1';
-                    if (durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = '0';
+                    if (durationHoursInput instanceof HTMLInputElement)
+                        durationHoursInput.value = '1';
+                    if (durationMinutesInput instanceof HTMLInputElement)
+                        durationMinutesInput.value = '0';
 
-                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    taskForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
@@ -989,7 +1226,15 @@ describe('App.js Callback Functions', () => {
 
             test('should not force update start time field when user denies rescheduling', async () => {
                 const tasks = [
-                    { description: 'Task 1', startTime: '09:00', duration: 60, endTime: '10:00', status: 'incomplete', editing: false, confirmingDelete: false }
+                    {
+                        description: 'Task 1',
+                        startTime: '09:00',
+                        duration: 60,
+                        endTime: '10:00',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    }
                 ];
 
                 mockLoadTasks.mockReturnValue(tasks);
@@ -1000,7 +1245,8 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies rescheduling
 
                 // Mock addTask to require confirmation
-                const addTaskSpy = jest.spyOn(require('../public/js/task-manager.js'), 'addTask')
+                const addTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
@@ -1017,16 +1263,24 @@ describe('App.js Callback Functions', () => {
                     // Fill out the form
                     const descInput = taskForm.querySelector('input[name="description"]');
                     const startTimeInput = taskForm.querySelector('input[name="start-time"]');
-                    const durationHoursInput = taskForm.querySelector('input[name="duration-hours"]');
-                    const durationMinutesInput = taskForm.querySelector('input[name="duration-minutes"]');
+                    const durationHoursInput = taskForm.querySelector(
+                        'input[name="duration-hours"]'
+                    );
+                    const durationMinutesInput = taskForm.querySelector(
+                        'input[name="duration-minutes"]'
+                    );
 
                     if (descInput instanceof HTMLInputElement) descInput.value = 'New Task';
                     if (startTimeInput instanceof HTMLInputElement) startTimeInput.value = '09:30';
-                    if (durationHoursInput instanceof HTMLInputElement) durationHoursInput.value = '1';
-                    if (durationMinutesInput instanceof HTMLInputElement) durationMinutesInput.value = '0';
+                    if (durationHoursInput instanceof HTMLInputElement)
+                        durationHoursInput.value = '1';
+                    if (durationMinutesInput instanceof HTMLInputElement)
+                        durationMinutesInput.value = '0';
 
-                    taskForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    taskForm.dispatchEvent(
+                        new Event('submit', { bubbles: true, cancelable: true })
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();

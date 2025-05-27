@@ -13,11 +13,11 @@ import {
     getTaskFormElement,
     focusTaskDescriptionInput,
     showAlert,
-    askConfirmation,
+    askConfirmation
     // Import specific DOM element references if needed for direct checks, though usually not
     // taskForm as dfTaskForm, // Example if needed
 } from '../public/js/dom-handler.js';
-import { convertTo12HourTime, calculateHoursAndMinutes } from '../public/js/utils.js'; // For verifying rendered output format
+import { convertTo12HourTime } from '../public/js/utils.js'; // For verifying rendered output format
 
 describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;
@@ -55,7 +55,7 @@ describe('DOM Handler Interaction Tests', () => {
         mockAppCallbacks = {
             onTaskFormSubmit: jest.fn(),
             onDeleteAllTasks: jest.fn(),
-            onGlobalClick: jest.fn(),
+            onGlobalClick: jest.fn()
         };
 
         mockTaskEventCallbacks = {
@@ -63,15 +63,17 @@ describe('DOM Handler Interaction Tests', () => {
             onEditTask: jest.fn(),
             onDeleteTask: jest.fn(),
             onSaveTaskEdit: jest.fn(),
-            onCancelEdit: jest.fn(),
+            onCancelEdit: jest.fn()
         };
 
         alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
         confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
         // Get references to form and delete button
-        const taskForm = /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
-        const deleteAllBtn = /** @type {HTMLButtonElement|null} */(document.getElementById('delete-all'));
+        const taskForm = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+        const deleteAllBtn = /** @type {HTMLButtonElement|null} */ (
+            document.getElementById('delete-all')
+        );
         // Initialize event listeners with mock callbacks and correct arguments
         initializePageEventListeners(mockAppCallbacks, taskForm, deleteAllBtn);
 
@@ -102,8 +104,17 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Time or date element not found');
             }
 
-            expect(timeElement.textContent).toBe(fixedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            expect(dateElement.textContent).toBe(fixedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
+            expect(timeElement.textContent).toBe(
+                fixedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            );
+            expect(dateElement.textContent).toBe(
+                fixedDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                })
+            );
 
             jest.useRealTimers();
         });
@@ -156,7 +167,7 @@ describe('DOM Handler Interaction Tests', () => {
 
         test('does nothing when form is not found', () => {
             // Remove the form temporarily
-            const form = /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
+            const form = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
             if (form) form.remove();
 
             // Should not throw an error
@@ -183,9 +194,33 @@ describe('DOM Handler Interaction Tests', () => {
 
     describe('renderTasks', () => {
         const sampleTasks = [
-            { description: 'Task 1', startTime: '09:00', endTime: '10:00', duration: 60, status: 'incomplete', editing: false, confirmingDelete: false },
-            { description: 'Task 2', startTime: '10:30', endTime: '11:00', duration: 30, status: 'completed', editing: false, confirmingDelete: false },
-            { description: 'Task 3', startTime: '11:30', endTime: '12:00', duration: 30, status: 'incomplete', editing: true, confirmingDelete: false },
+            {
+                description: 'Task 1',
+                startTime: '09:00',
+                endTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            },
+            {
+                description: 'Task 2',
+                startTime: '10:30',
+                endTime: '11:00',
+                duration: 30,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            },
+            {
+                description: 'Task 3',
+                startTime: '11:30',
+                endTime: '12:00',
+                duration: 30,
+                status: 'incomplete',
+                editing: true,
+                confirmingDelete: false
+            }
         ];
 
         test('renders tasks correctly (view and edit modes)', () => {
@@ -268,7 +303,10 @@ describe('DOM Handler Interaction Tests', () => {
             }
 
             task3Form.dispatchEvent(new Event('submit'));
-            expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(0, expect.any(FormData));
+            expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(
+                0,
+                expect.any(FormData)
+            );
 
             const cancelButton = task3Form.querySelector('.btn-edit-cancel');
             if (!cancelButton) {

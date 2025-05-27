@@ -1,5 +1,4 @@
 import {
-    calculateMinutes, // Needed for parsing duration in edit form submit if handled here
     calculateHoursAndMinutes,
     convertTo12HourTime,
     logger
@@ -16,7 +15,6 @@ import {
 // export const deleteAllButton = document.getElementById('delete-all'); // Deferred to functions
 // export const taskDescriptionInput = taskForm ? taskForm.querySelector('input[name="description"]') : null; // Deferred
 
-
 // --- Rendering Functions ---
 
 /**
@@ -28,10 +26,18 @@ export function renderDateTime() {
     const currentDateElement = document.getElementById('current-date');
 
     if (currentTimeElement) {
-        currentTimeElement.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        currentTimeElement.textContent = now.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     }
     if (currentDateElement) {
-        currentDateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        currentDateElement.textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
     }
 }
 
@@ -83,7 +89,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
                 <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i>
             </label>
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
-            <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : (isCompleted ? '' : 'opacity-60') }">
+            <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
                 <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${task.description}</div>
                 <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${convertTo12HourTime(task.startTime)} &ndash; ${convertTo12HourTime(task.endTime)} (${calculateHoursAndMinutes(task.duration)})</div>
             </div>
@@ -92,7 +98,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
             <button class="${isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-yellow-500'} btn-edit p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}">
                 <i class="far fa-pen"></i>
             </button>
-            <button class="${task.confirmingDelete ? 'text-red-500' : (isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-red-500')} btn-delete p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}">
+            <button class="${task.confirmingDelete ? 'text-red-500' : isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-red-500'} btn-delete p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}">
                 <i class="far ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
             </button>
         </div>
@@ -117,14 +123,18 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     }
 
     let firstIncompleteTaskFound = false;
-    taskListElement.innerHTML = tasksToRender.map((task, index) => {
-        let isFirstForStyling = false;
-        if (!firstIncompleteTaskFound && task.status !== 'completed') {
-            firstIncompleteTaskFound = true;
-            isFirstForStyling = true;
-        }
-        return task.editing ? renderEditTaskHTML(task, index) : renderViewTaskHTML(task, index, isFirstForStyling);
-    }).join('');
+    taskListElement.innerHTML = tasksToRender
+        .map((task, index) => {
+            let isFirstForStyling = false;
+            if (!firstIncompleteTaskFound && task.status !== 'completed') {
+                firstIncompleteTaskFound = true;
+                isFirstForStyling = true;
+            }
+            return task.editing
+                ? renderEditTaskHTML(task, index)
+                : renderViewTaskHTML(task, index, isFirstForStyling);
+        })
+        .join('');
 
     tasksToRender.forEach((task, index) => {
         const viewTaskElement = taskListElement.querySelector(`#view-task-${index}`);
@@ -142,7 +152,7 @@ export function renderTasks(tasksToRender, eventCallbacks) {
         } else if (!task.editing && viewTaskElement) {
             const checkboxLabel = viewTaskElement.querySelector(`.checkbox`);
             if (checkboxLabel && task.status !== 'completed') {
-                 checkboxLabel.addEventListener('click', () => eventCallbacks.onCompleteTask(index));
+                checkboxLabel.addEventListener('click', () => eventCallbacks.onCompleteTask(index));
             }
 
             const editButton = viewTaskElement.querySelector(`.btn-edit`);
@@ -172,7 +182,9 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 export function updateStartTimeField(suggestedTime, forceUpdate = false) {
     const form = document.getElementById('task-form');
     if (!form) return;
-    const startTimeInput = /** @type {HTMLInputElement|null} */(form.querySelector('input[name="start-time"]'));
+    const startTimeInput = /** @type {HTMLInputElement|null} */ (
+        form.querySelector('input[name="start-time"]')
+    );
     if (startTimeInput && (forceUpdate || !startTimeInput.value)) {
         startTimeInput.value = suggestedTime;
     }
@@ -187,20 +199,26 @@ export function updateStartTimeField(suggestedTime, forceUpdate = false) {
  * @param {HTMLFormElement | null} taskFormElement - The main task form element.
  * @param {HTMLButtonElement | null} deleteAllButtonElement - The delete all button element.
  */
-export function initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement) {
+export function initializePageEventListeners(
+    appCallbacks,
+    taskFormElement,
+    deleteAllButtonElement
+) {
     if (taskFormElement) {
         taskFormElement.addEventListener('submit', (e) => {
             e.preventDefault();
             appCallbacks.onTaskFormSubmit(new FormData(taskFormElement));
         });
     } else {
-        logger.error("dom-handler: initializePageEventListeners received null taskFormElement.");
+        logger.error('dom-handler: initializePageEventListeners received null taskFormElement.');
     }
 
     if (deleteAllButtonElement) {
         deleteAllButtonElement.addEventListener('click', appCallbacks.onDeleteAllTasks);
     } else {
-        logger.error("dom-handler: initializePageEventListeners received null deleteAllButtonElement.");
+        logger.error(
+            'dom-handler: initializePageEventListeners received null deleteAllButtonElement.'
+        );
     }
 
     document.addEventListener('click', appCallbacks.onGlobalClick);
@@ -211,7 +229,7 @@ export function initializePageEventListeners(appCallbacks, taskFormElement, dele
  * @returns {HTMLFormElement | null}
  */
 export function getTaskFormElement() {
-    return /** @type {HTMLFormElement|null} */(document.getElementById('task-form'));
+    return /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
 }
 
 /**

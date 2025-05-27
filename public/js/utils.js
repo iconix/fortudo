@@ -52,8 +52,8 @@ export function calculate24HourTimeFromMinutes(minutes) {
  */
 export function convertTo24HourTime(time12Hour) {
     let hours = parseInt(time12Hour.split(':')[0]);
-    let minutes = time12Hour.split(':')[1].split(' ')[0];
-    let ampm = time12Hour.split(' ')[1];
+    const minutes = time12Hour.split(':')[1].split(' ')[0];
+    const ampm = time12Hour.split(' ')[1];
 
     if (ampm.toUpperCase() === 'PM' && hours < 12) {
         hours += 12;
@@ -73,7 +73,7 @@ export function convertTo24HourTime(time12Hour) {
  */
 export function convertTo12HourTime(time24Hour) {
     let hours = parseInt(time24Hour.split(':')[0]);
-    let minutes = time24Hour.split(':')[1];
+    const minutes = time24Hour.split(':')[1];
     let ampm = 'AM';
 
     if (hours >= 12) {
