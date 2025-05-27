@@ -2,19 +2,9 @@ import {
     calculateMinutes,
     calculateHoursAndMinutes,
     convertTo12HourTime,
-    logger
-    // getFormattedDate, // renderDateTime can use Date().toLocaleDateString directly
-    // getFormattedTime, // renderDateTime can use Date().toLocaleTimeString directly
+    logger,
+    isTaskRunningLate
 } from './utils.js';
-
-// --- DOM Element References ---
-// Elements used for attaching initial event listeners or frequent access will be fetched by functions.
-// export const taskForm = document.getElementById('task-form'); // Deferred to functions
-// export const taskListElement = document.getElementById('task-list'); // Now fetched dynamically
-// export const currentTimeElement = document.getElementById('current-time'); // Now fetched dynamically
-// export const currentDateElement = document.getElementById('current-date'); // Now fetched dynamically
-// export const deleteAllButton = document.getElementById('delete-all'); // Deferred to functions
-// export const taskDescriptionInput = taskForm ? taskForm.querySelector('input[name="description"]') : null; // Deferred
 
 // Global event callbacks storage for event delegation
 let globalEventCallbacks = null;
@@ -87,6 +77,16 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted;
 
+    // Check if this is the active task and if it's running late
+    const isActiveTaskRunningLate =
+        isFirstIncompleteForStyling && !isCompleted && isTaskRunningLate(task);
+
+    // Determine text color class for active task
+    let activeTaskColorClass = '';
+    if (isFirstIncompleteForStyling && !isCompleted) {
+        activeTaskColorClass = isActiveTaskRunningLate ? 'text-yellow-500' : 'text-green-500';
+    }
+
     return `<div id="view-task-${index}" class="flex items-center justify-between space-x-2 p-2 border-b">
         <div class="flex items-center space-x-4">
             <label for="task-checkbox-${index}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
@@ -94,8 +94,8 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
             </label>
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
             <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
-                <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${task.description}</div>
-                <div class="${isFirstIncompleteForStyling && !isCompleted ? 'text-green-500' : ''}">${convertTo12HourTime(task.startTime)} &ndash; ${convertTo12HourTime(task.endTime)} (${calculateHoursAndMinutes(task.duration)})</div>
+                <div class="${activeTaskColorClass}">${task.description}</div>
+                <div class="${activeTaskColorClass}">${convertTo12HourTime(task.startTime)} &ndash; ${convertTo12HourTime(task.endTime)} (${calculateHoursAndMinutes(task.duration)})</div>
             </div>
         </div>
         <div>

@@ -14,8 +14,7 @@ import {
     convertTo12HourTime,
     calculateEndTime,
     getCurrentTimeRounded,
-    getFormattedDate,
-    getFormattedTime
+    isTaskRunningLate
 } from '../public/js/utils.js';
 
 describe('Time Utility Functions', () => {
@@ -83,12 +82,6 @@ describe('Time Utility Functions', () => {
     });
 
     describe('Date and Time Formatting & getCurrentTimeRounded', () => {
-        let dateSpy;
-
-        afterEach(() => {
-            if (dateSpy) dateSpy.mockRestore();
-        });
-
         test('getCurrentTimeRounded returns exact time when already at 5-minute interval', () => {
             const fixedDate = new Date(2025, 0, 15, 14, 30, 0); // Jan 15, 2025, 2:30 PM
             expect(getCurrentTimeRounded(fixedDate)).toBe('14:30');
@@ -108,21 +101,96 @@ describe('Time Utility Functions', () => {
             const almostMidnight = new Date(2025, 0, 15, 23, 58, 0);
             expect(getCurrentTimeRounded(almostMidnight)).toBe('00:00');
         });
+    });
 
-        test('getFormattedDate returns date in readable format', () => {
-            const fixedDate = new Date(2025, 0, 15, 14, 30, 0);
-            expect(getFormattedDate(fixedDate)).toBe('Wednesday, January 15');
+    describe('Late Task Warning Feature', () => {
+        let dateSpy;
+
+        beforeEach(() => {
+            // Mock the current time to 2:30 PM (14:30)
+            const mockDate = new Date('2024-01-01T14:30:00');
+            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate);
         });
 
-        test('getFormattedTime returns time in 12-hour format with AM/PM', () => {
-            const fixedDate = new Date(2025, 0, 15, 14, 30, 0); // 2:30 PM
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
-            expect(getFormattedTime()).toBe('2:30 PM');
-
+        afterEach(() => {
             dateSpy.mockRestore();
-            const fixedDateAM = new Date(2025, 0, 15, 10, 0, 0); // 10:00 AM
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDateAM);
-            expect(getFormattedTime()).toBe('10:00 AM');
+        });
+
+        describe('isTaskRunningLate', () => {
+            test('should return true when current time is past task end time', () => {
+                const lateTask = {
+                    startTime: '13:00',
+                    endTime: '14:00', // Task should have ended at 2:00 PM, current time is 2:30 PM
+                    duration: 60,
+                    status: 'incomplete'
+                };
+
+                expect(isTaskRunningLate(lateTask)).toBe(true);
+            });
+
+            test('should return false when current time is before task end time', () => {
+                const onTimeTask = {
+                    startTime: '14:00',
+                    endTime: '15:00', // Task ends at 3:00 PM, current time is 2:30 PM
+                    duration: 60,
+                    status: 'incomplete'
+                };
+
+                expect(isTaskRunningLate(onTimeTask)).toBe(false);
+            });
+
+            test('should return false when current time equals task end time', () => {
+                const exactTimeTask = {
+                    startTime: '13:30',
+                    endTime: '14:30', // Task ends exactly at current time (2:30 PM)
+                    duration: 60,
+                    status: 'incomplete'
+                };
+
+                expect(isTaskRunningLate(exactTimeTask)).toBe(false);
+            });
+
+            test('should handle tasks that cross midnight correctly', () => {
+                // Temporarily restore the real Date constructor for this test
+                dateSpy.mockRestore();
+
+                // Mock current time to 1:00 AM (using local time constructor)
+                const mockDate = new Date(2024, 0, 1, 1, 0, 0); // Year, month (0-based), day, hour, minute, second
+
+                const midnightTask = {
+                    startTime: '23:00', // 11:00 PM previous day
+                    endTime: '02:00', // 2:00 AM next day
+                    duration: 180, // 3 hours
+                    status: 'incomplete'
+                };
+
+                expect(isTaskRunningLate(midnightTask, mockDate)).toBe(false); // 1:00 AM is before 2:00 AM end time
+
+                // Restore the mock for other tests
+                const mockDate2 = new Date('2024-01-01T14:30:00');
+                dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate2);
+            });
+
+            test('should return true for midnight-crossing task that is late', () => {
+                // Temporarily restore the real Date constructor for this test
+                dateSpy.mockRestore();
+
+                // Mock current time to 3:00 AM (using local time constructor)
+                const mockDate = new Date(2024, 0, 1, 3, 0, 0); // Year, month (0-based), day, hour, minute, second
+
+                const lateNightTask = {
+                    startTime: '23:00', // 11:00 PM previous day
+                    endTime: '02:00', // 2:00 AM next day
+                    duration: 180, // 3 hours
+                    status: 'incomplete'
+                };
+
+                expect(isTaskRunningLate(lateNightTask, mockDate)).toBe(true); // 3:00 AM is past 2:00 AM end time
+
+                // Restore the mock for other tests
+                const mockDate2 = new Date('2024-01-01T14:30:00');
+                dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate2);
+            });
         });
     });
 });

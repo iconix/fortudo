@@ -54,6 +54,6 @@ run tests:
 - [x] move delete task button to the right ?
 - [x] on-add/form validation
 - [x] "tap again to delete"
-- [ ] if task is running late, switch to yellow text as warning
+- [x] if task is running late, switch to yellow text as warning
 - [ ] move away from browser alerts to custom modals
 - [ ] automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight

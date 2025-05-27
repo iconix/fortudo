@@ -124,32 +124,6 @@ export function getCurrentTimeRounded(date = new Date()) {
 }
 
 /**
- * Format a date as a readable string (e.g., "Monday, January 1")
- * @param {Date} [date=new Date()] - Optional date object to format. Defaults to `new Date()`.
- * @returns {string} - Formatted date string
- */
-export function getFormattedDate(date = new Date()) {
-    return date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric'
-    });
-}
-
-/**
- * Format the current time in 12-hour format with AM/PM
- * @returns {string} - Formatted time string (e.g., "12:00 PM")
- */
-export function getFormattedTime() {
-    const date = new Date();
-    return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-    });
-}
-
-/**
  * Simple logger utility for consistent logging across the application
  */
 export const logger = {
@@ -176,4 +150,38 @@ export const logger = {
  */
 export function validateTaskFormData(description, duration, isValidTaskData) {
     return isValidTaskData(description, duration);
+}
+
+/**
+ * Check if a task is running late (current time is past the task's end time)
+ * @param {Object} task - The task object with endTime property
+ * @param {Date} [now=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
+ * @returns {boolean} - True if the task is running late
+ */
+export function isTaskRunningLate(task, now = new Date()) {
+    const currentTime24 = now.toTimeString().substring(0, 5); // Get current time in HH:MM format
+    const currentTimeMinutes = calculateMinutes(currentTime24);
+    const taskEndTimeMinutes = calculateMinutes(task.endTime);
+
+    // Handle tasks that cross midnight
+    if (taskEndTimeMinutes < calculateMinutes(task.startTime)) {
+        // Task crosses midnight, so we need to check if current time is past midnight end time
+        // or if we're still in the same day but past the start time
+        const currentHour = now.getHours();
+        const taskEndHour = parseInt(task.endTime.split(':')[0]);
+
+        if (taskEndHour < 12 && currentHour >= 12) {
+            // Task ends in early morning, current time is afternoon/evening
+            return true;
+        } else if (taskEndHour < 12 && currentHour < 12) {
+            // Both in morning, normal comparison
+            return currentTimeMinutes > taskEndTimeMinutes;
+        } else {
+            // Current time is before midnight, task hasn't ended yet
+            return false;
+        }
+    } else {
+        // Normal task (doesn't cross midnight)
+        return currentTimeMinutes > taskEndTimeMinutes;
+    }
 }
