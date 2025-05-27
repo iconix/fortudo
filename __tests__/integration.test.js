@@ -708,7 +708,10 @@ describe('User Confirmation Flows', () => {
                 const taskDivs = activeTaskElement.querySelectorAll('div');
                 const coloredDivs = [];
                 for (const div of taskDivs) {
-                    if (div.classList.contains('text-green-500') || div.classList.contains('text-yellow-500')) {
+                    if (
+                        div.classList.contains('text-green-500') ||
+                        div.classList.contains('text-yellow-500')
+                    ) {
                         coloredDivs.push(div);
                     }
                 }
@@ -797,7 +800,10 @@ describe('User Confirmation Flows', () => {
 
             // Trigger the updateActiveTaskColor function
             // Call the function with proper type checking
-            if ('updateActiveTaskColor' in domHandler && typeof domHandler.updateActiveTaskColor === 'function') {
+            if (
+                'updateActiveTaskColor' in domHandler &&
+                typeof domHandler.updateActiveTaskColor === 'function'
+            ) {
                 domHandler.updateActiveTaskColor(taskManager.getTaskState());
             }
 
