@@ -1,7 +1,7 @@
 // Orchestrator: public/js/app.js
 import {
-    setTasks,
-    getTasks,
+    updateTaskState,
+    getTaskState,
     addTask,
     confirmAddTaskAndReschedule,
     updateTask,
@@ -25,16 +25,22 @@ import {
     showAlert,
     askConfirmation,
     getTaskFormElement,
-    focusTaskDescriptionInput
+    focusTaskDescriptionInput,
+    extractTaskFormData
 } from './dom-handler.js';
-import { loadTasks } from './storage.js';
-import { calculateMinutes, convertTo24HourTime, convertTo12HourTime, logger } from './utils.js';
+import { loadTasksFromStorage } from './storage.js';
+import { convertTo24HourTime, convertTo12HourTime, logger, validateTaskFormData } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    const loadedTasks = loadTasks();
-    setTasks(loadedTasks);
+    const loadedTasks = loadTasksFromStorage();
+    updateTaskState(loadedTasks);
 
     const taskEventCallbacks = {
+        /**
+         * Handles task completion.
+         * Checks if the task is being completed late and prompts for confirmation to update the schedule.
+         * @param {number} index - The index of the task to complete.
+         */
         onCompleteTask: (index) => {
             const currentTimeDisplayElement = document.getElementById('current-time');
             let currentTime24;
@@ -60,112 +66,97 @@ document.addEventListener('DOMContentLoaded', () => {
                     completeTask(index);
                 }
             }
-            renderTasks(getTasks(), taskEventCallbacks);
+            renderTasks(getTaskState(), taskEventCallbacks);
         },
+        /**
+         * Handles task editing.
+         * Sets the task to editing mode and re-renders the task list.
+         * @param {number} index - The index of the task to edit.
+         */
         onEditTask: (index) => {
             editTask(index);
-            renderTasks(getTasks(), taskEventCallbacks);
+            renderTasks(getTaskState(), taskEventCallbacks);
         },
+        /**
+         * Handles task deletion.
+         * Shows confirmation dialog and handles the deletion process.
+         * @param {number} index - The index of the task to delete.
+         */
         onDeleteTask: (index) => {
-            const tasks = getTasks();
+            const tasks = getTaskState();
             const taskToDelete = tasks[index];
             if (taskToDelete) {
                 const result = deleteTask(index, taskToDelete.confirmingDelete);
                 if (result.requiresConfirmation) {
-                    // The deleteTask(index, false) in task-manager sets confirmingDelete = true.
-                    // renderTasks will reflect this, showing the confirm icon.
+                    // two-step delete pattern: deleteTask(index, false) in task-manager sets confirmingDelete = true.
+                    // so renderTasks will reflect this, showing the confirm icon for user confirmation.
                 } else if (result.success) {
                     updateStartTimeField(getSuggestedStartTime(), true);
                 } else if (!result.success && result.reason) {
                     showAlert(result.reason);
                 }
             }
-            renderTasks(getTasks(), taskEventCallbacks);
+            renderTasks(getTaskState(), taskEventCallbacks);
         },
+        /**
+         * Handles saving task edits.
+         * Validates the form data, updates the task, and handles any confirmation dialogs for rescheduling.
+         * @param {number} index - The index of the task being edited.
+         * @param {FormData} formData - The form data containing updated task details.
+         */
         onSaveTaskEdit: (index, formData) => {
-            const description = /** @type {string} */ (formData.get('description') || '');
-            const startTime = /** @type {string} */ (formData.get('start-time') || '');
-            const durationHours = formData.get('duration-hours') || '0';
-            const durationMinutes = formData.get('duration-minutes') || '0';
-            const duration = calculateMinutes(`${durationHours}:${durationMinutes}`);
-
-            const validationResult = isValidTaskData(description, duration);
-            if (!validationResult.isValid && validationResult.reason) {
-                showAlert(validationResult.reason);
+            const { description, startTime, duration } = extractTaskFormData(formData);
+            const validationResult = validateTaskFormData(description, duration, isValidTaskData);
+            if (!validationResult.isValid) {
+                if (validationResult.reason) showAlert(validationResult.reason);
                 return;
             }
             const updateResult = updateTask(index, { description, startTime, duration });
-
-            if (
-                updateResult.requiresConfirmation &&
-                updateResult.confirmationType === 'RESCHEDULE_UPDATE'
-            ) {
-                if (askConfirmation(updateResult.reason || 'Reschedule tasks?')) {
-                    if (updateResult.taskIndex !== undefined && updateResult.updatedData) {
-                        const confirmResult = confirmUpdateTaskAndReschedule(
-                            updateResult.taskIndex,
-                            updateResult.updatedData
-                        );
-                        if (confirmResult.success) {
-                            updateStartTimeField(getSuggestedStartTime(), true);
-                        } else {
-                            showAlert('Failed to update task and reschedule.');
-                        }
-                    }
-                } else {
-                    showAlert('Task update cancelled to avoid rescheduling.');
-                    cancelEdit(index); // Revert UI to non-editing state
-                }
-            } else if (!updateResult.success && updateResult.reason) {
-                showAlert(updateResult.reason);
-            }
-            renderTasks(getTasks(), taskEventCallbacks);
+            handleRescheduleConfirmation(updateResult, confirmUpdateTaskAndReschedule, () =>
+                cancelEdit(index)
+            );
+            renderTasks(getTaskState(), taskEventCallbacks);
         },
+        /**
+         * Handles canceling task edits.
+         * Reverts the task to non-editing mode and re-renders the task list.
+         * @param {number} index - The index of the task to cancel editing for.
+         */
         onCancelEdit: (index) => {
             cancelEdit(index);
-            renderTasks(getTasks(), taskEventCallbacks);
+            renderTasks(getTaskState(), taskEventCallbacks);
         }
     };
 
     const appCallbacks = {
+        /**
+         * Handles submission of the main task form.
+         * Validates input data, adds the task, and handles any confirmation dialogs for rescheduling.
+         * @param {FormData} formData - The form data containing task details.
+         */
         onTaskFormSubmit: (formData) => {
-            const description = /** @type {string} */ (formData.get('description') || '');
-            const startTime = /** @type {string} */ (formData.get('start-time') || '');
-            const durationHours = formData.get('duration-hours') || '0';
-            const durationMinutes = formData.get('duration-minutes') || '0';
-            const duration = calculateMinutes(`${durationHours}:${durationMinutes}`);
-
-            const validationResult = isValidTaskData(description, duration);
-            if (!validationResult.isValid && validationResult.reason) {
-                showAlert(validationResult.reason);
+            const { description, startTime, duration } = extractTaskFormData(formData);
+            const validationResult = validateTaskFormData(description, duration, isValidTaskData);
+            if (!validationResult.isValid) {
+                if (validationResult.reason) showAlert(validationResult.reason);
                 return;
             }
-
             const addResult = addTask({ description, startTime, duration });
+            handleRescheduleConfirmation(addResult, confirmAddTaskAndReschedule, () => {});
+            renderTasks(getTaskState(), taskEventCallbacks);
 
-            if (addResult.requiresConfirmation && addResult.confirmationType === 'RESCHEDULE_ADD') {
-                if (askConfirmation(addResult.reason || 'Reschedule tasks?')) {
-                    const confirmResult = confirmAddTaskAndReschedule(addResult.taskData);
-                    if (confirmResult.success) {
-                        updateStartTimeField(getSuggestedStartTime(), true);
-                    } else {
-                        showAlert('Failed to add task and reschedule.');
-                    }
-                } else {
-                    showAlert('Task not added to avoid rescheduling.');
-                }
-            } else if (!addResult.success && addResult.reason) {
-                showAlert(addResult.reason);
-            }
-
-            renderTasks(getTasks(), taskEventCallbacks);
+            // reset form and update ui
             const mainForm = getTaskFormElement();
             if (mainForm) mainForm.reset();
-            updateStartTimeField(getSuggestedStartTime());
+            updateStartTimeField(getSuggestedStartTime(), true);
             focusTaskDescriptionInput();
         },
+        /**
+         * Handles deletion of all tasks.
+         * Shows confirmation dialog and handles the deletion process.
+         */
         onDeleteAllTasks: () => {
-            if (getTasks().length === 0) {
+            if (getTaskState().length === 0) {
                 showAlert('There are no tasks to delete.');
                 return;
             }
@@ -176,59 +167,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 ) {
                     result = deleteAllTasks(true);
                 } else {
-                    renderTasks(getTasks(), taskEventCallbacks); // Re-render to clear any confirmation states
-                    return; // Exit, as user cancelled
+                    renderTasks(getTaskState(), taskEventCallbacks); // re-render to clear any confirmation states
+                    return; // exit, as user cancelled
                 }
             }
-            // At this point, deletion either happened or was not needed (no tasks).
+
+            // at this point, deletion either succeeded or failed due to an error
             if (result.success) {
                 if (result.message) showAlert(result.message);
-                renderTasks(getTasks(), taskEventCallbacks);
-                // Force update after deleting all tasks
+                renderTasks(getTaskState(), taskEventCallbacks);
+                // force update after deleting all tasks
                 updateStartTimeField(getSuggestedStartTime(), true);
-            } else if (result.reason && !result.requiresConfirmation) {
-                // It's some other error
-                showAlert(result.reason);
+            } else {
+                showAlert(result.reason || 'Failed to delete all tasks.');
             }
         },
+        /**
+         * Handles global click events on the document.
+         * Manages resetting of editing and confirmation states when clicking outside relevant elements.
+         * @param {Event} event - The click event.
+         */
         onGlobalClick: (event) => {
             const target = /** @type {HTMLElement} */ (event.target);
-            let needsRender = false;
 
-            let isClickOnTaskViewDeleteButton = false;
-            const isButton = target.tagName === 'BUTTON';
-            const hasBtnDeleteClass = target.classList && target.classList.contains('btn-delete');
-            const hasDataTaskIndex = target.hasAttribute('data-task-index');
-            const taskListElement = document.getElementById('task-list');
-            const isContainedInTaskList = taskListElement
-                ? taskListElement.contains(target)
-                : false;
+            const isDeleteButton = target.matches('#task-list .btn-delete[data-task-index]');
 
-            if (isButton && hasBtnDeleteClass && hasDataTaskIndex && isContainedInTaskList) {
-                isClickOnTaskViewDeleteButton = true;
-            }
+            // reset confirmation flags unless clicking on delete button
+            let needsRender = !isDeleteButton && resetAllConfirmingDeleteFlags();
 
-            if (!isClickOnTaskViewDeleteButton) {
-                if (resetAllConfirmingDeleteFlags()) {
-                    needsRender = true;
-                }
-            }
-
-            const clickedInsideEditForm = target.closest('form[id^="edit-task-"]');
-            const clickedOnEditButton = target.closest('.btn-edit');
-            const clickedOnCheckbox = target.closest('.checkbox');
-
-            if (
-                !clickedInsideEditForm &&
-                !clickedOnEditButton &&
-                !clickedOnCheckbox &&
-                !isClickOnTaskViewDeleteButton
-            ) {
-                if (resetAllEditingFlags()) needsRender = true;
+            // reset editing flags unless clicking on specific elements
+            const clickedOnEditElement = target.closest(
+                'form[id^="edit-task-"], .btn-edit, .checkbox'
+            );
+            if (!clickedOnEditElement && !isDeleteButton) {
+                needsRender = resetAllEditingFlags() || needsRender;
             }
 
             if (needsRender) {
-                renderTasks(getTasks(), taskEventCallbacks);
+                renderTasks(getTaskState(), taskEventCallbacks);
             }
         }
     };
@@ -248,10 +224,71 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement);
-    renderTasks(getTasks(), taskEventCallbacks);
+    renderTasks(getTaskState(), taskEventCallbacks);
     updateStartTimeField(getSuggestedStartTime());
     renderDateTime();
     focusTaskDescriptionInput();
 
     setInterval(renderDateTime, 1000);
 });
+
+/**
+ * Handles the rescheduling confirmation flow for task updates and additions.
+ * @param {Object} updateResult - The result object from the update/add operation
+ * @param {Function} confirmCallback - Callback function to execute on confirmation
+ * @param {Function} cancelCallback - Callback function to execute on cancellation
+ */
+function handleRescheduleConfirmation(updateResult, confirmCallback, cancelCallback) {
+    // handle non-confirmation cases early
+    if (!updateResult.requiresConfirmation) {
+        if (!updateResult.success && updateResult.reason) {
+            showAlert(updateResult.reason);
+        }
+        return;
+    }
+
+    const confirmationMessage = updateResult.reason || 'Reschedule tasks?';
+    const userConfirmed = askConfirmation(confirmationMessage);
+
+    // define confirmation type handlers
+    const handlers = {
+        RESCHEDULE_UPDATE: () => {
+            if (!userConfirmed) {
+                showAlert('Task not updated to avoid rescheduling.');
+                cancelCallback();
+                return;
+            }
+
+            if (updateResult.taskIndex !== undefined && updateResult.updatedData) {
+                const confirmResult = confirmCallback(
+                    updateResult.taskIndex,
+                    updateResult.updatedData
+                );
+                if (confirmResult.success) {
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
+                    showAlert('Failed to update task and reschedule.');
+                }
+            }
+        },
+        RESCHEDULE_ADD: () => {
+            if (!userConfirmed) {
+                showAlert('Task not added to avoid rescheduling.');
+                cancelCallback();
+                return;
+            }
+
+            if (updateResult.taskData) {
+                const confirmResult = confirmCallback(updateResult.taskData);
+                if (!confirmResult.success) {
+                    showAlert('Failed to add task and reschedule.');
+                }
+            }
+        }
+    };
+
+    const handler = handlers[updateResult.confirmationType];
+    if (handler) {
+        handler();
+    }
+}

@@ -16,20 +16,20 @@ import {
     setCurrentTimeInDOM
 } from './test-utils.js';
 
-import { setTasks } from '../public/js/task-manager.js';
+import { updateTaskState } from '../public/js/task-manager.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
-    loadTasks: jest.fn(() => []) // Start with no tasks loaded unless specified by a test
+    loadTasksFromStorage: jest.fn(() => []) // Start with no tasks loaded unless specified by a test
 }));
 import {
     saveTasks as mockSaveTasksInternal,
-    loadTasks as mockLoadTasksInternal
+    loadTasksFromStorage as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
-const mockLoadTasks = jest.mocked(mockLoadTasksInternal);
+const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 
 describe('User Confirmation Flows', () => {
     let alertSpy;
@@ -42,10 +42,10 @@ describe('User Confirmation Flows', () => {
 
         // Clear mocks
         jest.clearAllMocks();
-        mockLoadTasks.mockReturnValue([]); // Default to loading no tasks
+        mockLoadTasksFromStorage.mockReturnValue([]); // Default to loading no tasks
 
         // Reset task manager state to ensure no contamination between tests
-        setTasks([]);
+        updateTaskState([]);
 
         // Ensure clean spy state - restore any existing spies first
         if (alertSpy) {
@@ -90,7 +90,7 @@ describe('User Confirmation Flows', () => {
             const initialTask = getInitialTask();
 
             // Set up the mock to return the initial task when loadTasks is called
-            mockLoadTasks.mockReturnValue([initialTask]);
+            mockLoadTasksFromStorage.mockReturnValue([initialTask]);
 
             // Set up the integration test environment (this will call loadTasks)
             await setupIntegrationTestEnvironment();
@@ -98,7 +98,7 @@ describe('User Confirmation Flows', () => {
             // After the environment is set up, we need to manually ensure
             // the task manager state has the initial task, since the mock might not
             // have been called at the right time during app initialization
-            setTasks([initialTask]);
+            updateTaskState([initialTask]);
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
@@ -128,7 +128,7 @@ describe('User Confirmation Flows', () => {
             );
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(confirmSpy.mock.calls[0][0]).toContain('Adding this task may overlap');
+            expect(confirmSpy.mock.calls[0][0]).toContain('Adding this task will overlap');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -215,11 +215,11 @@ describe('User Confirmation Flows', () => {
 
             document.body.innerHTML = '';
             clearLocalStorage();
-            mockLoadTasks.mockReturnValue([taskAData, taskBData]);
+            mockLoadTasksFromStorage.mockReturnValue([taskAData, taskBData]);
             await setupIntegrationTestEnvironment();
 
             // Ensure task manager state has the correct tasks
-            setTasks([taskAData, taskBData]);
+            updateTaskState([taskAData, taskBData]);
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
@@ -282,7 +282,7 @@ describe('User Confirmation Flows', () => {
             });
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(alertSpy).toHaveBeenCalledWith('Task update cancelled to avoid rescheduling.');
+            expect(alertSpy).toHaveBeenCalledWith('Task not updated to avoid rescheduling.');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -339,11 +339,11 @@ describe('User Confirmation Flows', () => {
 
             document.body.innerHTML = '';
             clearLocalStorage();
-            mockLoadTasks.mockReturnValue(initialTasks);
+            mockLoadTasksFromStorage.mockReturnValue(initialTasks);
             await setupIntegrationTestEnvironment();
 
             // Ensure task manager state has the correct tasks
-            setTasks(initialTasks);
+            updateTaskState(initialTasks);
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
@@ -500,11 +500,11 @@ describe('User Confirmation Flows', () => {
             ];
             document.body.innerHTML = '';
             clearLocalStorage();
-            mockLoadTasks.mockReturnValue(tasksToLoad);
+            mockLoadTasksFromStorage.mockReturnValue(tasksToLoad);
             await setupIntegrationTestEnvironment();
 
             // Ensure task manager state has the correct tasks
-            setTasks(tasksToLoad);
+            updateTaskState(tasksToLoad);
 
             // Ensure any existing spies are cleaned up before creating new ones
             if (alertSpy) alertSpy.mockRestore();
@@ -549,7 +549,7 @@ describe('User Confirmation Flows', () => {
         });
 
         test('Delete All button does nothing if no tasks exist', async () => {
-            // No initial tasks setup, so localStorage is empty, mockLoadTasks returns [] by default
+            // No initial tasks setup, so localStorage is empty, mockLoadTasksFromStorage returns [] by default
             await setupIntegrationTestEnvironment(); // Re-init with empty
 
             // Ensure any existing spies are cleaned up before creating new ones

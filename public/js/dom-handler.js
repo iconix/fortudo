@@ -1,4 +1,5 @@
 import {
+    calculateMinutes,
     calculateHoursAndMinutes,
     convertTo12HourTime,
     logger
@@ -136,11 +137,13 @@ export function renderTasks(tasksToRender, eventCallbacks) {
         })
         .join('');
 
+    // attach event listeners to each rendered task element
     tasksToRender.forEach((task, index) => {
         const viewTaskElement = taskListElement.querySelector(`#view-task-${index}`);
         const editTaskForm = taskListElement.querySelector(`#edit-task-${index}`);
 
         if (task.editing && editTaskForm && editTaskForm instanceof HTMLFormElement) {
+            // handle event listeners for tasks in editing mode
             editTaskForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 eventCallbacks.onSaveTaskEdit(index, new FormData(editTaskForm));
@@ -150,6 +153,7 @@ export function renderTasks(tasksToRender, eventCallbacks) {
                 cancelButton.addEventListener('click', () => eventCallbacks.onCancelEdit(index));
             }
         } else if (!task.editing && viewTaskElement) {
+            // handle event listeners for tasks in view mode
             const checkboxLabel = viewTaskElement.querySelector(`.checkbox`);
             if (checkboxLabel && task.status !== 'completed') {
                 checkboxLabel.addEventListener('click', () => eventCallbacks.onCompleteTask(index));
@@ -162,9 +166,9 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 
             const deleteButton = viewTaskElement.querySelector(`.btn-delete`);
             if (deleteButton && task.status !== 'completed') {
-                // Prevent delete button clicks from bubbling to global click handlers.
-                // This ensures that global handlers (like those that reset editing/confirmation states)
-                // don't interfere with the delete confirmation workflow.
+                // prevent delete button clicks from bubbling to global click handlers.
+                // this ensures that global handlers (like those that reset editing/confirmation states)
+                // don't interfere with the delete confirmation workflow
                 deleteButton.addEventListener('click', (event) => {
                     event.stopPropagation();
                     eventCallbacks.onDeleteTask(index);
@@ -258,4 +262,18 @@ export function showAlert(message) {
  */
 export function askConfirmation(message) {
     return window.confirm(message);
+}
+
+/**
+ * Extracts task form data from a FormData object.
+ * @param {FormData} formData - The form data containing task details
+ * @returns {{description: string, startTime: string, duration: number}} Object containing extracted task data
+ */
+export function extractTaskFormData(formData) {
+    const description = /** @type {string} */ (formData.get('description') || '');
+    const startTime = /** @type {string} */ (formData.get('start-time') || '');
+    const durationHours = formData.get('duration-hours') || '0';
+    const durationMinutes = formData.get('duration-minutes') || '0';
+    const duration = calculateMinutes(`${durationHours}:${durationMinutes}`);
+    return { description, startTime, duration };
 }

@@ -214,3 +214,14 @@ export const logger = {
         console.debug(`[FORTUDO DEBUG] ${message}`, ...args);
     }
 };
+
+/**
+ * Validates task form data for description and duration.
+ * @param {string} description - The task description
+ * @param {number} duration - The task duration in minutes
+ * @param {Function} isValidTaskData - The validation function from task-manager
+ * @returns {{isValid: boolean, reason?: string}} Validation result with reason if invalid
+ */
+export function validateTaskFormData(description, duration, isValidTaskData) {
+    return isValidTaskData(description, duration);
+}

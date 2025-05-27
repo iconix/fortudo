@@ -4,7 +4,7 @@
 
 // This file contains tests for localStorage operations in fortudo
 
-import { saveTasks, loadTasks } from '../public/js/storage.js';
+import { saveTasks, loadTasksFromStorage } from '../public/js/storage.js';
 import { logger } from '../public/js/utils.js';
 
 // Mock localStorage
@@ -107,7 +107,7 @@ describe('Storage Functionality', () => {
         });
     });
 
-    describe('loadTasks', () => {
+    describe('loadTasksFromStorage', () => {
         test('should load tasks from localStorage', () => {
             const storedTasks = [
                 {
@@ -131,14 +131,14 @@ describe('Storage Functionality', () => {
             ];
             mockLocalStorage.getItem.mockReturnValue(JSON.stringify(storedTasks));
 
-            const loadedTasks = loadTasks();
+            const loadedTasks = loadTasksFromStorage();
             expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
             expect(loadedTasks).toEqual(storedTasks);
         });
 
         test('should return an empty array if no tasks are in localStorage', () => {
             mockLocalStorage.getItem.mockReturnValue(null);
-            const loadedTasks = loadTasks();
+            const loadedTasks = loadTasksFromStorage();
             expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
             expect(loadedTasks).toEqual([]);
         });
@@ -150,7 +150,7 @@ describe('Storage Functionality', () => {
             // of JSON.parse, but we expect it to behave like 'null' or empty.
             // For the purpose of this test, we assume it will behave like 'null' (empty array).
             const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
-            const loadedTasks = loadTasks();
+            const loadedTasks = loadTasksFromStorage();
             expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
             expect(loadedTasks).toEqual([]);
             expect(loggerErrorSpy).toHaveBeenCalled(); // Verify logger.error was called
@@ -159,7 +159,7 @@ describe('Storage Functionality', () => {
 
         test('should return an empty array if localStorage tasks are empty string', () => {
             mockLocalStorage.getItem.mockReturnValue('');
-            const loadedTasks = loadTasks();
+            const loadedTasks = loadTasksFromStorage();
             expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
             expect(loadedTasks).toEqual([]);
         });

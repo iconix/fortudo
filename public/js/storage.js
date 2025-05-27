@@ -6,7 +6,7 @@ export function saveTasks(tasks) {
 }
 
 // Function to load tasks from localStorage
-export function loadTasks() {
+export function loadTasksFromStorage() {
     const tasksString = localStorage.getItem('tasks');
     if (tasksString) {
         try {

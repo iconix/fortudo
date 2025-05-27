@@ -12,7 +12,7 @@
     "lint:fix": "eslint public/js/**/*.js __tests__/**/*.js --fix",
     "format": "prettier --write \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "format:check": "prettier --check \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
-    "lint:format": "npm run lint && npm run format",
+    "lint:format": "npm run lint:fix && npm run format",
     "check": "npm run lint && npm run format:check"
   },
   "repository": {
