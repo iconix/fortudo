@@ -526,7 +526,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('should not shift any tasks if no subsequent tasks exist', () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             updateTaskState([taskA]);
-            performReschedule(taskA, getTaskState());
+            performReschedule(taskA);
             expect(getTaskState()[0].startTime).toBe('09:00');
             expect(getTaskState()[0].endTime).toBe('10:00');
         });
@@ -537,7 +537,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([taskA, taskB]);
 
             // Simulate taskA was just updated/added, potentially causing overlap
-            performReschedule(taskA, getTaskState());
+            performReschedule(taskA);
 
             const tasks = getTaskState();
             const taskAResult = tasks.find((t) => t.description === 'Task A');
@@ -559,7 +559,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskB = createTask('B', '09:30', 30); // Original: 09:30 - 10:00
             const taskC = createTask('C', '09:45', 30); // Original: 09:45 - 10:15
             updateTaskState([taskA, taskB, taskC]);
-            performReschedule(taskA, getTaskState()); // taskA's change causes cascade
+            performReschedule(taskA); // taskA's change causes cascade
 
             const tasks = getTaskState();
             const taskAResult = tasks.find((t) => t.description === 'Task A');
@@ -583,7 +583,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskB_completed = createTask('B_completed', '09:30', 30, 'completed'); // Original: 09:30 - 10:00
             updateTaskState([taskA, taskB_completed]);
-            performReschedule(taskA, getTaskState());
+            performReschedule(taskA);
 
             expect(taskB_completed.startTime).toBe('09:30'); // Should not change
             expect(taskB_completed.endTime).toBe('10:00');
@@ -593,7 +593,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskC_editing = createTask('C_editing', '09:45', 30, 'incomplete', true); // Original: 09:45 - 10:15
             updateTaskState([taskA, taskC_editing]);
-            performReschedule(taskA, getTaskState());
+            performReschedule(taskA);
 
             expect(taskC_editing.startTime).toBe('09:45'); // Should not change
             expect(taskC_editing.endTime).toBe('10:15');
@@ -608,7 +608,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             taskA.duration = 90; // Now 09:00 - 10:30
             taskA.endTime = calculateEndTime(taskA.startTime, taskA.duration);
 
-            performReschedule(taskA, getTaskState());
+            performReschedule(taskA);
 
             expect(taskA.startTime).toBe('09:00');
             expect(taskA.endTime).toBe('10:30');
@@ -627,7 +627,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskB = createTask('B', '09:30', 30);
             updateTaskState([taskA_editing, taskB]);
 
-            performReschedule(taskA_editing, getTaskState());
+            performReschedule(taskA_editing);
             expect(taskA_editing.editing).toBe(true); // Should be restored
 
             const tasks = getTaskState();
@@ -1266,7 +1266,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
-        test('should ignore completed tasks when checking for conflicts and planning logic', () => {
+        test('should consider completed tasks when determining gap-filling vs planning ahead', () => {
             const completedTask = {
                 description: 'Completed Task',
                 startTime: '14:00',
@@ -1287,7 +1287,31 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([completedTask, incompleteTask]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('17:00'); // No incomplete tasks before current time (completed task ignored), so plan ahead
+            expect(result).toBe('14:35'); // Completed task counts as existing task before current time, so fill the gap
+        });
+
+        test('should ignore completed tasks for conflict detection but consider them for gap-filling', () => {
+            const completedTaskAtCurrentTime = {
+                description: 'Completed Task at Current Time',
+                startTime: '14:30',
+                endTime: '15:30',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            const futureTask = {
+                description: 'Future Task',
+                startTime: '16:00',
+                endTime: '17:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            updateTaskState([completedTaskAtCurrentTime, futureTask]);
+            const result = getSuggestedStartTime();
+            expect(result).toBe('14:35'); // Current time is free (completed task doesn't conflict) and there's a task before it, so fill the gap
         });
 
         test('should return end time of chronologically latest task when multiple tasks exist', () => {
@@ -1393,7 +1417,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([completedTask, incompleteTask, futureTask]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('14:35'); // There's an incomplete task before current time, so fill the gap
+            expect(result).toBe('14:35'); // There are tasks (both completed and incomplete) before current time, so fill the gap
         });
 
         test('should handle scenario where all tasks are in the future (planning mode)', () => {
@@ -1482,7 +1506,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             taskA.duration = 120; // Extend to 2 hours
             taskA.endTime = calculateEndTime(taskA.startTime, taskA.duration);
 
-            performReschedule(taskA, tasks);
+            performReschedule(taskA);
 
             // Verify all tasks have cached values after reschedule
             const updatedTasks = getTaskState();

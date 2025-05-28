@@ -402,9 +402,9 @@ export function performReschedule(taskThatChanged) {
  *
  * Logic:
  * 1. If no incomplete tasks exist, suggests the current time rounded up to the nearest 5 minutes
- * 2. If the current time slot is occupied, suggests the end time of the latest scheduled task
+ * 2. If the current time slot is occupied (by an incomplete task), suggests the end time of the latest incomplete task
  * 3. If the current time slot is available:
- *    - If there are existing tasks before the current time (filling a gap), suggests current time rounded up
+ *    - If there are existing tasks (including completed ones) before the current time (filling a gap), suggests current time rounded up
  *    - If there are no existing tasks before the current time (planning ahead), suggests end time of latest task
  *
  * This ensures new tasks fill schedule gaps when appropriate, or continue planning from the latest task.
@@ -416,48 +416,43 @@ export function getSuggestedStartTime() {
     const currentTimeMinutes = calculateMinutes(currentTimeRounded);
 
     let latestTaskEndTime = null;
+    let latestTaskEndMinutes = -1;
     let hasTaskAtCurrentTime = false;
     let hasTasksBeforeCurrentTime = false;
     let incompleteTaskCount = 0;
 
     for (const task of tasks) {
-        if (task.status === 'completed') continue;
-
-        incompleteTaskCount++;
-
         const taskStartMinutes = calculateMinutes(task.startTime);
         const taskEndMinutes = calculateMinutes(task.endTime);
+        const isTaskCrossingMidnight = taskEndMinutes < taskStartMinutes;
 
-        // track latest task end time
-        if (
-            latestTaskEndTime === null ||
-            calculateMinutes(task.endTime) > calculateMinutes(latestTaskEndTime)
-        ) {
-            latestTaskEndTime = task.endTime;
-        }
+        // only count incomplete tasks for the task count and latest end time
+        if (task.status === 'incomplete') {
+            incompleteTaskCount++;
 
-        // check if current time slot is occupied
-        if (!hasTaskAtCurrentTime) {
-            if (taskEndMinutes < taskStartMinutes) {
-                // task crosses midnight
-                hasTaskAtCurrentTime =
-                    currentTimeMinutes >= taskStartMinutes || currentTimeMinutes < taskEndMinutes;
-            } else {
-                // normal task
-                hasTaskAtCurrentTime =
-                    currentTimeMinutes >= taskStartMinutes && currentTimeMinutes < taskEndMinutes;
+            // track latest incomplete task end time
+            if (taskEndMinutes > latestTaskEndMinutes) {
+                latestTaskEndTime = task.endTime;
+                latestTaskEndMinutes = taskEndMinutes;
+            }
+
+            // check if current time slot is occupied (only by incomplete tasks)
+            if (
+                !hasTaskAtCurrentTime &&
+                isTimeInTask(
+                    currentTimeMinutes,
+                    taskStartMinutes,
+                    taskEndMinutes,
+                    isTaskCrossingMidnight
+                )
+            ) {
+                hasTaskAtCurrentTime = true;
             }
         }
 
-        // check if there are tasks before current time
+        // check if there are tasks (including completed ones) before current time
         if (!hasTasksBeforeCurrentTime) {
-            if (taskEndMinutes < taskStartMinutes) {
-                // task crosses midnight
-                hasTasksBeforeCurrentTime = taskStartMinutes < currentTimeMinutes;
-            } else {
-                // normal task
-                hasTasksBeforeCurrentTime = taskEndMinutes <= currentTimeMinutes;
-            }
+            hasTasksBeforeCurrentTime = taskStartMinutes < currentTimeMinutes;
         }
     }
 
@@ -478,6 +473,24 @@ export function getSuggestedStartTime() {
     } else {
         // planning ahead - use end time of latest task
         return latestTaskEndTime || currentTimeRounded;
+    }
+}
+
+/**
+ * Helper function to check if a given time falls within a task's time range
+ * @param {number} timeMinutes - Time to check in minutes since midnight
+ * @param {number} taskStartMinutes - Task start time in minutes since midnight
+ * @param {number} taskEndMinutes - Task end time in minutes since midnight
+ * @param {boolean} crossesMidnight - Whether the task crosses midnight
+ * @returns {boolean} True if the time falls within the task range
+ */
+function isTimeInTask(timeMinutes, taskStartMinutes, taskEndMinutes, crossesMidnight) {
+    if (crossesMidnight) {
+        // task crosses midnight
+        return timeMinutes >= taskStartMinutes || timeMinutes < taskEndMinutes;
+    } else {
+        // normal task
+        return timeMinutes >= taskStartMinutes && timeMinutes < taskEndMinutes;
     }
 }
 

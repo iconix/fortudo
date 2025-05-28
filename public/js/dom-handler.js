@@ -405,7 +405,7 @@ export function updateActiveTaskColor(tasks) {
     if (activeTaskIndex === -1) return;
 
     const activeTask = tasks[activeTaskIndex];
-    const isLate = isTaskRunningLate(activeTask, new Date());
+    const isLate = isTaskRunningLate(activeTask);
 
     // Find the DOM elements for this task
     const taskElement = document.getElementById(`view-task-${activeTaskIndex}`);
