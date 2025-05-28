@@ -3,11 +3,33 @@ import {
     calculateHoursAndMinutes,
     convertTo12HourTime,
     logger,
-    isTaskRunningLate
+    isTaskRunningLate,
+    getCurrentTimeRounded
 } from './utils.js';
 
 // Global event callbacks storage for event delegation
 let globalEventCallbacks = null;
+
+// Auto-update state for start time field
+const startTimeAutoUpdate = {
+    trackedTime: null,
+
+    isEnabled() {
+        return this.trackedTime !== null;
+    },
+
+    enable(timeValue) {
+        this.trackedTime = timeValue;
+    },
+
+    disable() {
+        this.trackedTime = null;
+    },
+
+    isTracking(timeValue) {
+        return this.trackedTime === timeValue;
+    }
+};
 
 // --- Rendering Functions ---
 
@@ -284,7 +306,63 @@ export function updateStartTimeField(suggestedTime, forceUpdate = false) {
     );
     if (startTimeInput && (forceUpdate || !startTimeInput.value)) {
         startTimeInput.value = suggestedTime;
+
+        // Track if we're setting it to current time rounded up
+        const currentTimeRounded = getCurrentTimeRounded();
+        if (suggestedTime === currentTimeRounded) {
+            startTimeAutoUpdate.enable(suggestedTime);
+        } else {
+            startTimeAutoUpdate.disable();
+        }
     }
+}
+
+/**
+ * Check if the start time field should be updated when current time advances.
+ * Updates the field if it was previously set to current time rounded up and current time has advanced.
+ */
+export function refreshStartTimeField() {
+    // Only check if we previously set the field to current time rounded up
+    if (!startTimeAutoUpdate.isEnabled()) return;
+
+    const form = document.getElementById('task-form');
+    if (!form) return;
+
+    const startTimeInput = /** @type {HTMLInputElement|null} */ (
+        form.querySelector('input[name="start-time"]')
+    );
+    if (!startTimeInput) return;
+
+    // Check if the field still has the value we set it to
+    if (startTimeInput.value !== startTimeAutoUpdate.trackedTime) {
+        // User has manually changed the field, stop tracking
+        startTimeAutoUpdate.disable();
+        return;
+    }
+
+    const currentTimeRounded = getCurrentTimeRounded();
+    const currentTimeMinutes = calculateMinutes(currentTimeRounded);
+    const fieldTimeMinutes = calculateMinutes(startTimeAutoUpdate.trackedTime);
+
+    // Handle midnight crossing: if current time is much smaller than field time,
+    // it likely means we've crossed midnight, so we should update
+    const timeDifference = currentTimeMinutes - fieldTimeMinutes;
+    const crossedMidnight = timeDifference < -12 * 60; // More than 12 hours backwards suggests midnight crossing
+
+    // If current time has advanced past the field's value, or we've crossed midnight, update it
+    if (timeDifference > 0 || crossedMidnight) {
+        startTimeInput.value = currentTimeRounded;
+        startTimeAutoUpdate.enable(currentTimeRounded);
+    }
+}
+
+/**
+ * Disables automatic updating of the start time field.
+ * Called when the form is reset, when the field is manually changed,
+ * or when we want to stop tracking and updating the field based on current time.
+ */
+export function disableStartTimeAutoUpdate() {
+    startTimeAutoUpdate.disable();
 }
 
 /**
@@ -306,6 +384,19 @@ export function initializePageEventListeners(
             e.preventDefault();
             appCallbacks.onTaskFormSubmit(new FormData(taskFormElement));
         });
+
+        // Reset tracking when form is reset
+        taskFormElement.addEventListener('reset', () => {
+            disableStartTimeAutoUpdate();
+        });
+
+        // Reset tracking when start time field is manually changed
+        const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
+        if (startTimeInput) {
+            startTimeInput.addEventListener('input', () => {
+                disableStartTimeAutoUpdate();
+            });
+        }
     } else {
         logger.error('dom-handler: initializePageEventListeners received null taskFormElement.');
     }
@@ -391,7 +482,7 @@ export function resetEventDelegation() {
  * This function finds the first incomplete task and updates its color styling based on whether it's running late.
  * @param {object[]} tasks - Array of all tasks to check for the active task
  */
-export function updateActiveTaskColor(tasks) {
+export function refreshActiveTaskColor(tasks) {
     // Find the first incomplete task (the active task)
     let activeTaskIndex = -1;
     for (let i = 0; i < tasks.length; i++) {

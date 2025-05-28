@@ -14,11 +14,11 @@ import {
     focusTaskDescriptionInput,
     showAlert,
     askConfirmation,
-    resetEventDelegation
-    // Import specific DOM element references if needed for direct checks, though usually not
-    // taskForm as dfTaskForm, // Example if needed
+    resetEventDelegation,
+    refreshStartTimeField,
+    disableStartTimeAutoUpdate
 } from '../public/js/dom-handler.js';
-import { convertTo12HourTime } from '../public/js/utils.js'; // For verifying rendered output format
+import { convertTo12HourTime } from '../public/js/utils.js';
 
 describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;
@@ -354,6 +354,145 @@ describe('DOM Handler Interaction Tests', () => {
             focusTaskDescriptionInput();
             expect(focusSpy).toHaveBeenCalled();
             focusSpy.mockRestore();
+        });
+    });
+
+    describe('refreshStartTimeField and disableStartTimeAutoUpdate', () => {
+        let getCurrentTimeRoundedSpy;
+
+        beforeEach(() => {
+            // Mock getCurrentTimeRounded to return predictable values
+            getCurrentTimeRoundedSpy = jest.spyOn(
+                require('../public/js/utils.js'),
+                'getCurrentTimeRounded'
+            );
+        });
+
+        afterEach(() => {
+            if (getCurrentTimeRoundedSpy) {
+                getCurrentTimeRoundedSpy.mockRestore();
+            }
+            disableStartTimeAutoUpdate();
+        });
+
+        test('updates field when current time advances past tracked time', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time to 14:30
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('14:30'); // This should set tracking
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Advance time to 14:35
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:35');
+        });
+
+        test('does not update field when not tracking', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set field to some time without tracking
+            startTimeInput.value = '14:30';
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should not change
+        });
+
+        test('stops tracking when user manually changes field', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time to 14:30 (this sets tracking)
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // User manually changes field
+            startTimeInput.value = '15:00';
+
+            // Advance time to 14:35
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('15:00'); // Should not change because tracking stopped
+        });
+
+        test('does not track when setting field to non-current time', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Current time is 14:30, but we set field to 16:00
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('16:00');
+            expect(startTimeInput.value).toBe('16:00');
+
+            // Advance time to 14:35
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('16:00'); // Should not change because not tracking
+        });
+
+        test('disableStartTimeAutoUpdate stops tracking', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time to 14:30 (this sets tracking)
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Reset tracking
+            disableStartTimeAutoUpdate();
+
+            // Advance time to 14:35
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should not change because tracking was reset
+        });
+
+        test('handles missing form gracefully', () => {
+            // Remove the form temporarily
+            const form = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+            if (form) form.remove();
+
+            // Should not throw an error
+            expect(() => refreshStartTimeField()).not.toThrow();
+            expect(() => disableStartTimeAutoUpdate()).not.toThrow();
+        });
+
+        test('handles midnight crossing correctly', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time to 23:55 (late evening)
+            getCurrentTimeRoundedSpy.mockReturnValue('23:55');
+            startTimeInput.value = '';
+            updateStartTimeField('23:55'); // This should set tracking
+            expect(startTimeInput.value).toBe('23:55');
+
+            // Time crosses midnight to 00:05
+            getCurrentTimeRoundedSpy.mockReturnValue('00:05');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('00:05');
         });
     });
 });

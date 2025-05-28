@@ -27,7 +27,9 @@ import {
     getTaskFormElement,
     focusTaskDescriptionInput,
     extractTaskFormData,
-    updateActiveTaskColor
+    refreshActiveTaskColor,
+    refreshStartTimeField,
+    disableStartTimeAutoUpdate
 } from './dom-handler.js';
 import { loadTasksFromStorage } from './storage.js';
 import { convertTo24HourTime, convertTo12HourTime, logger, validateTaskFormData } from './utils.js';
@@ -148,7 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // reset form and update ui
             const mainForm = getTaskFormElement();
-            if (mainForm) mainForm.reset();
+            if (mainForm) {
+                mainForm.reset();
+                disableStartTimeAutoUpdate();
+            }
             updateStartTimeField(getSuggestedStartTime(), true);
             focusTaskDescriptionInput();
         },
@@ -233,7 +238,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update time and active task late styling every second
     setInterval(() => {
         renderDateTime();
-        updateActiveTaskColor(getTaskState());
+        refreshActiveTaskColor(getTaskState());
+        refreshStartTimeField();
     }, 1000);
 });
 
