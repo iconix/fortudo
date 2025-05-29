@@ -12,22 +12,32 @@ let globalEventCallbacks = null;
 
 // Auto-update state for start time field
 const startTimeAutoUpdate = {
-    trackedTime: null,
+    trackedTime: /** @type {string|null} */ (null),
+    trackedDate: /** @type {string|null} */ (null),
 
     isEnabled() {
         return this.trackedTime !== null;
     },
 
-    enable(timeValue) {
+    /**
+     * Enable automatic updating of the start time field.
+     * Used to track what time was automatically set in the start time input field.
+     * Also tracks the date to detect midnight crossings.
+     * @param {string} timeValue - The time value to track.
+     * @param {Date} [date=new Date()] - The date to track.
+     */
+    enable(timeValue, date = new Date()) {
         this.trackedTime = timeValue;
+        this.trackedDate = date.toDateString();
     },
 
     disable() {
         this.trackedTime = null;
+        this.trackedDate = null;
     },
 
-    isTracking(timeValue) {
-        return this.trackedTime === timeValue;
+    hasDateChanged(currentDate = new Date()) {
+        return this.trackedDate && this.trackedDate !== currentDate.toDateString();
     }
 };
 
@@ -38,8 +48,8 @@ const startTimeAutoUpdate = {
  */
 export function renderDateTime() {
     const now = new Date();
-    const currentTimeElement = document.getElementById('current-time');
-    const currentDateElement = document.getElementById('current-date');
+    const currentTimeElement = getCurrentTimeElement();
+    const currentDateElement = getCurrentDateElement();
 
     if (currentTimeElement) {
         currentTimeElement.textContent = now.toLocaleTimeString([], {
@@ -58,7 +68,7 @@ export function renderDateTime() {
 }
 
 /**
- * Generate HTML for task edit form. (Internal helper)
+ * Generate HTML for task edit form.
  * @param {object} task - The task to edit (using a generic object type from task-manager's perspective)
  * @param {number} index - Task index.
  * @returns {string} - HTML for edit form.
@@ -89,23 +99,22 @@ function renderEditTaskHTML(task, index) {
 }
 
 /**
- * Render a task in view mode. (Internal helper)
+ * Render a task in view mode.
  * @param {object} task - The task to render.
  * @param {number} index - The index of the task.
- * @param {boolean} isFirstIncompleteForStyling - Whether this is the first incomplete task for styling.
+ * @param {boolean} isActiveTask - Whether this is the active task for styling.
  * @returns {string} - HTML for the task.
  */
-function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
+function renderViewTaskHTML(task, index, isActiveTask) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted;
 
     // Check if this is the active task and if it's running late
-    const isActiveTaskRunningLate =
-        isFirstIncompleteForStyling && !isCompleted && isTaskRunningLate(task);
+    const isActiveTaskRunningLate = isActiveTask && !isCompleted && isTaskRunningLate(task);
 
     // Determine text color class for active task
     let activeTaskColorClass = '';
-    if (isFirstIncompleteForStyling && !isCompleted) {
+    if (isActiveTask && !isCompleted) {
         activeTaskColorClass = isActiveTaskRunningLate ? 'text-yellow-500' : 'text-green-500';
     }
 
@@ -115,7 +124,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
                 <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i>
             </label>
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
-            <div class="${isCompleted ? 'line-through' : ''} ${isFirstIncompleteForStyling && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
+            <div class="${isCompleted ? 'line-through' : ''} ${isActiveTask && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
                 <div class="${activeTaskColorClass}">${task.description}</div>
                 <div class="${activeTaskColorClass}">${convertTo12HourTime(task.startTime)} &ndash; ${convertTo12HourTime(task.endTime)} (${calculateHoursAndMinutes(task.duration)})</div>
             </div>
@@ -138,7 +147,7 @@ function renderViewTaskHTML(task, index, isFirstIncompleteForStyling) {
  * @param {object} eventCallbacks - Callbacks for task actions.
  */
 function initializeTaskListEventDelegation(eventCallbacks) {
-    const taskListElement = document.getElementById('task-list');
+    const taskListElement = getTaskListElement();
     if (!taskListElement) {
         logger.error('Task list element not found. Event delegation cannot be initialized.');
         return;
@@ -263,7 +272,7 @@ function getTaskIndexFromElement(element) {
  * @param {(index: number) => void} eventCallbacks.onCancelEdit - Callback for cancelling task edit.
  */
 export function renderTasks(tasksToRender, eventCallbacks) {
-    const taskListElement = document.getElementById('task-list');
+    const taskListElement = getTaskListElement();
     if (!taskListElement) {
         logger.error('Task list element not found. Tasks will not be rendered.');
         return;
@@ -278,17 +287,17 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     }
 
     // Render tasks efficiently using innerHTML (single DOM operation)
-    let firstIncompleteTaskFound = false;
+    let activeTaskFound = false;
     taskListElement.innerHTML = tasksToRender
         .map((task, index) => {
-            let isFirstForStyling = false;
-            if (!firstIncompleteTaskFound && task.status !== 'completed') {
-                firstIncompleteTaskFound = true;
-                isFirstForStyling = true;
+            let isActiveTask = false;
+            if (!activeTaskFound && task.status !== 'completed') {
+                activeTaskFound = true;
+                isActiveTask = true;
             }
             return task.editing
                 ? renderEditTaskHTML(task, index)
-                : renderViewTaskHTML(task, index, isFirstForStyling);
+                : renderViewTaskHTML(task, index, isActiveTask);
         })
         .join('');
 }
@@ -299,7 +308,7 @@ export function renderTasks(tasksToRender, eventCallbacks) {
  * @param {boolean} [forceUpdate=false] - Whether to update the field even if it has a value.
  */
 export function updateStartTimeField(suggestedTime, forceUpdate = false) {
-    const form = document.getElementById('task-form');
+    const form = getTaskFormElement();
     if (!form) return;
     const startTimeInput = /** @type {HTMLInputElement|null} */ (
         form.querySelector('input[name="start-time"]')
@@ -325,7 +334,7 @@ export function refreshStartTimeField() {
     // Only check if we previously set the field to current time rounded up
     if (!startTimeAutoUpdate.isEnabled()) return;
 
-    const form = document.getElementById('task-form');
+    const form = getTaskFormElement();
     if (!form) return;
 
     const startTimeInput = /** @type {HTMLInputElement|null} */ (
@@ -344,13 +353,11 @@ export function refreshStartTimeField() {
     const currentTimeMinutes = calculateMinutes(currentTimeRounded);
     const fieldTimeMinutes = calculateMinutes(startTimeAutoUpdate.trackedTime);
 
-    // Handle midnight crossing: if current time is much smaller than field time,
-    // it likely means we've crossed midnight, so we should update
-    const timeDifference = currentTimeMinutes - fieldTimeMinutes;
-    const crossedMidnight = timeDifference < -12 * 60; // More than 12 hours backwards suggests midnight crossing
+    // Check if date has changed (definitive midnight crossing) OR time has advanced
+    const dateChanged = startTimeAutoUpdate.hasDateChanged();
+    const timeAdvanced = currentTimeMinutes > fieldTimeMinutes;
 
-    // If current time has advanced past the field's value, or we've crossed midnight, update it
-    if (timeDifference > 0 || crossedMidnight) {
+    if (timeAdvanced || dateChanged) {
         startTimeInput.value = currentTimeRounded;
         startTimeAutoUpdate.enable(currentTimeRounded);
     }
@@ -421,10 +428,60 @@ export function getTaskFormElement() {
 }
 
 /**
+ * Returns a reference to the task list container.
+ * @returns {HTMLElement | null}
+ */
+export function getTaskListElement() {
+    return document.getElementById('task-list');
+}
+
+/**
+ * Returns a reference to the current time display element.
+ * @returns {HTMLElement | null}
+ */
+export function getCurrentTimeElement() {
+    return document.getElementById('current-time');
+}
+
+/**
+ * Returns a reference to the current date display element.
+ * @returns {HTMLElement | null}
+ */
+export function getCurrentDateElement() {
+    return document.getElementById('current-date');
+}
+
+/**
+ * Returns a reference to the delete all button.
+ * @returns {HTMLButtonElement | null}
+ */
+export function getDeleteAllButtonElement() {
+    return /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all'));
+}
+
+/**
+ * Returns a reference to a specific task view element.
+ * @param {number} index - The task index
+ * @returns {HTMLElement | null}
+ */
+export function getTaskViewElement(index) {
+    return document.getElementById(`view-task-${index}`);
+}
+
+/**
+ * Returns a reference to a specific task edit form element.
+ * @param {number} index - The task index
+ * @returns {HTMLFormElement | null}
+ */
+export function getTaskEditFormElement(index) {
+    return /** @type {HTMLFormElement|null} */ (document.getElementById(`edit-task-${index}`));
+}
+
+/**
  * Focuses on the main task description input field.
  */
 export function focusTaskDescriptionInput() {
-    const form = document.getElementById('task-form');
+    const form = getTaskFormElement();
     const descriptionInput = form ? form.querySelector('input[name="description"]') : null;
     if (descriptionInput instanceof HTMLInputElement) {
         descriptionInput.focus();
@@ -470,7 +527,7 @@ export function resetEventDelegation() {
     globalEventCallbacks = null;
 
     // Remove existing event listeners from task list
-    const taskListElement = document.getElementById('task-list');
+    const taskListElement = getTaskListElement();
     if (taskListElement) {
         taskListElement.removeEventListener('click', handleTaskListClick);
         taskListElement.removeEventListener('submit', handleTaskListSubmit);
@@ -499,7 +556,7 @@ export function refreshActiveTaskColor(tasks) {
     const isLate = isTaskRunningLate(activeTask);
 
     // Find the DOM elements for this task
-    const taskElement = document.getElementById(`view-task-${activeTaskIndex}`);
+    const taskElement = getTaskViewElement(activeTaskIndex);
     if (!taskElement) return; // Task might be in edit mode or not rendered
 
     // Find the text elements that need color updates - only those that already have color classes

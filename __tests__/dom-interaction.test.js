@@ -71,7 +71,7 @@ describe('DOM Handler Interaction Tests', () => {
         confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
         // Get references to form and delete button
-        const taskForm = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+        const taskForm = /** @type {HTMLFormElement|null} */ (getTaskFormElement());
         const deleteAllBtn = /** @type {HTMLButtonElement|null} */ (
             document.getElementById('delete-all')
         );
@@ -169,7 +169,7 @@ describe('DOM Handler Interaction Tests', () => {
 
         test('does nothing when form is not found', () => {
             // Remove the form temporarily
-            const form = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+            const form = /** @type {HTMLFormElement|null} */ (getTaskFormElement());
             if (form) form.remove();
 
             // Should not throw an error
@@ -469,7 +469,7 @@ describe('DOM Handler Interaction Tests', () => {
 
         test('handles missing form gracefully', () => {
             // Remove the form temporarily
-            const form = /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+            const form = /** @type {HTMLFormElement|null} */ (getTaskFormElement());
             if (form) form.remove();
 
             // Should not throw an error
@@ -483,16 +483,231 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Start time input not found or not an input element');
             }
 
-            // Set initial time to 23:55 (late evening)
+            // Set initial time to 23:55 (late evening) on Jan 15
+            const day1 = new Date('2025-01-15T23:55:00');
             getCurrentTimeRoundedSpy.mockReturnValue('23:55');
+
+            // Mock the date change detection
+            jest.useFakeTimers().setSystemTime(day1);
+
             startTimeInput.value = '';
-            updateStartTimeField('23:55'); // This should set tracking
+            updateStartTimeField('23:55'); // This should set tracking with current date
             expect(startTimeInput.value).toBe('23:55');
 
-            // Time crosses midnight to 00:05
+            // Time crosses midnight to 00:05 on Jan 16
+            const day2 = new Date('2025-01-16T00:05:00');
             getCurrentTimeRoundedSpy.mockReturnValue('00:05');
+
+            // Mock the date change detection
+            jest.useFakeTimers().setSystemTime(day2);
+
             refreshStartTimeField();
             expect(startTimeInput.value).toBe('00:05');
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - hasDateChanged returns true when date changes', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time on Jan 15
+            const day1 = new Date('2025-01-15T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+
+            // Mock the date change
+            jest.useFakeTimers().setSystemTime(day1);
+
+            startTimeInput.value = '';
+            updateStartTimeField('14:30'); // This sets tracking
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Same time but different date (Jan 16)
+            const day2 = new Date('2025-01-16T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+
+            // Mock the date change
+            jest.useFakeTimers().setSystemTime(day2);
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should update because date changed
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - hasDateChanged returns false when date stays same', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time on Jan 15 at 14:30
+            const sameDay = new Date('2025-01-15T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            jest.useFakeTimers().setSystemTime(sameDay);
+
+            startTimeInput.value = '';
+            updateStartTimeField('14:30'); // This sets tracking
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Same date, earlier time (shouldn't update because time didn't advance)
+            const sameDayEarlier = new Date('2025-01-15T14:25:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:25');
+            jest.useFakeTimers().setSystemTime(sameDayEarlier);
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should not update
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - clears date when disabling auto-update', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time to enable tracking
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Disable tracking
+            disableStartTimeAutoUpdate();
+
+            // Even with date change, should not update
+            const nextDay = new Date('2025-01-16T14:35:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            jest.useFakeTimers().setSystemTime(nextDay);
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should not change
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - updates field when time advances on same day', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set initial time
+            const morning = new Date('2025-01-15T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            jest.useFakeTimers().setSystemTime(morning);
+
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Time advances on same day
+            const laterMorning = new Date('2025-01-15T14:35:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            jest.useFakeTimers().setSystemTime(laterMorning);
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:35'); // Should update due to time advance
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - handles timezone edge cases gracefully', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Use dates that are definitely different (more than 24 hours apart)
+            const day1 = new Date('2025-01-15T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            jest.useFakeTimers().setSystemTime(day1);
+
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Move to a clearly different date (2 days later)
+            const day3 = new Date('2025-01-17T14:30:00');
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            jest.useFakeTimers().setSystemTime(day3);
+
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:30'); // Should update due to date change
+
+            jest.useRealTimers();
+        });
+
+        test('date tracking - internal state management', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Initially, auto-update should be disabled
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe(''); // Should not change when not tracking
+
+            // Enable tracking by setting field to current time
+            startTimeInput.value = ''; // Ensure empty first
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // Setting to a different time should disable tracking
+            // But we need to clear the field first for updateStartTimeField to work
+            startTimeInput.value = '';
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30'); // Keep current time the same
+            updateStartTimeField('16:00'); // Different from current time
+            expect(startTimeInput.value).toBe('16:00');
+
+            // Now advance current time - should not update because tracking is disabled
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('16:00'); // Should not change because tracking disabled
+
+            // Re-enable tracking with current time
+            startTimeInput.value = ''; // Clear field first
+            getCurrentTimeRoundedSpy.mockReturnValue('14:40');
+            updateStartTimeField('14:40');
+            expect(startTimeInput.value).toBe('14:40');
+
+            // Now time advancement should work
+            getCurrentTimeRoundedSpy.mockReturnValue('14:45');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('14:45');
+        });
+
+        test('date tracking - user modification disables tracking', () => {
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            if (!(startTimeInput instanceof HTMLInputElement)) {
+                throw new Error('Start time input not found or not an input element');
+            }
+
+            // Set tracking
+            getCurrentTimeRoundedSpy.mockReturnValue('14:30');
+            startTimeInput.value = '';
+            updateStartTimeField('14:30');
+            expect(startTimeInput.value).toBe('14:30');
+
+            // User manually changes the field value
+            startTimeInput.value = '15:00';
+
+            // Time advances but field was manually changed
+            getCurrentTimeRoundedSpy.mockReturnValue('14:35');
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('15:00'); // Should not update because user changed it
+
+            // Even with date change, should not update
+            const nextDay = new Date('2025-01-16T14:35:00');
+            jest.useFakeTimers().setSystemTime(nextDay);
+            refreshStartTimeField();
+            expect(startTimeInput.value).toBe('15:00'); // Still should not change
+
+            jest.useRealTimers();
         });
     });
 });

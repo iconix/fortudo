@@ -13,7 +13,7 @@ import {
     getTaskState,
     cancelEdit as cancelEditDirect
 } from '../public/js/task-manager.js';
-import { resetEventDelegation, renderTasks } from '../public/js/dom-handler.js';
+import { resetEventDelegation, renderTasks, getTaskFormElement } from '../public/js/dom-handler.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -577,7 +577,7 @@ describe('App.js Callback Functions', () => {
                 });
 
                 // Fill out and submit the main task form
-                const taskForm = document.getElementById('task-form');
+                const taskForm = getTaskFormElement();
                 if (taskForm) {
                     const descInput = /** @type {HTMLInputElement} */ (
                         taskForm.querySelector('input[name="description"]')
@@ -620,7 +620,7 @@ describe('App.js Callback Functions', () => {
                 });
 
                 // Submit the task form with valid data
-                const taskForm = document.getElementById('task-form');
+                const taskForm = getTaskFormElement();
                 if (taskForm) {
                     const descInput = /** @type {HTMLInputElement} */ (
                         taskForm.querySelector('input[name="description"]')
@@ -860,7 +860,7 @@ describe('App.js Callback Functions', () => {
                 await setupIntegrationTestEnvironment();
 
                 // Then remove key DOM elements to test error handling
-                const taskForm = document.getElementById('task-form');
+                const taskForm = getTaskFormElement();
                 const deleteAllButton = document.getElementById('delete-all-tasks');
                 const taskList = document.getElementById('task-list');
 
@@ -1164,7 +1164,7 @@ describe('App.js Callback Functions', () => {
                 updateStartTimeFieldSpy.mockClear();
 
                 // Submit the main task form
-                const taskForm = document.getElementById('task-form');
+                const taskForm = getTaskFormElement();
                 if (taskForm) {
                     // Fill out the form
                     const descInput = taskForm.querySelector('input[name="description"]');
@@ -1229,7 +1229,7 @@ describe('App.js Callback Functions', () => {
                 updateStartTimeFieldSpy.mockClear();
 
                 // Submit the main task form
-                const taskForm = document.getElementById('task-form');
+                const taskForm = getTaskFormElement();
                 if (taskForm) {
                     // Fill out the form
                     const descInput = taskForm.querySelector('input[name="description"]');

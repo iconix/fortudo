@@ -25,6 +25,8 @@ import {
     showAlert,
     askConfirmation,
     getTaskFormElement,
+    getCurrentTimeElement,
+    getDeleteAllButtonElement,
     focusTaskDescriptionInput,
     extractTaskFormData,
     refreshActiveTaskColor,
@@ -45,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
          * @param {number} index - The index of the task to complete.
          */
         onCompleteTask: (index) => {
-            const currentTimeDisplayElement = document.getElementById('current-time');
+            const currentTimeDisplayElement = getCurrentTimeElement();
             let currentTime24;
             if (currentTimeDisplayElement && currentTimeDisplayElement.textContent) {
                 currentTime24 = convertTo24HourTime(currentTimeDisplayElement.textContent);
@@ -207,12 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const taskFormElement = /** @type {HTMLFormElement|null} */ (
-        document.getElementById('task-form')
-    );
-    const deleteAllButtonElement = /** @type {HTMLButtonElement|null} */ (
-        document.getElementById('delete-all')
-    );
+    const taskFormElement = getTaskFormElement();
+    const deleteAllButtonElement = getDeleteAllButtonElement();
 
     if (!taskFormElement) {
         logger.error('CRITICAL: app.js could not find #task-form element.');
@@ -237,20 +235,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /**
  * Handles the rescheduling confirmation flow for task updates and additions.
- * @param {Object} updateResult - The result object from the update/add operation
+ * @param {Object} opResult - The result object from the update/add operation
  * @param {Function} confirmCallback - Callback function to execute on confirmation
  * @param {Function} cancelCallback - Callback function to execute on cancellation
  */
-function handleRescheduleConfirmation(updateResult, confirmCallback, cancelCallback) {
+function handleRescheduleConfirmation(opResult, confirmCallback, cancelCallback) {
     // handle non-confirmation cases early
-    if (!updateResult.requiresConfirmation) {
-        if (!updateResult.success && updateResult.reason) {
-            showAlert(updateResult.reason);
+    if (!opResult.requiresConfirmation) {
+        if (!opResult.success && opResult.reason) {
+            showAlert(opResult.reason);
         }
         return;
     }
 
-    const confirmationMessage = updateResult.reason || 'Reschedule tasks?';
+    const confirmationMessage = opResult.reason || 'Reschedule tasks?';
     const userConfirmed = askConfirmation(confirmationMessage);
 
     // define confirmation type handlers
@@ -262,11 +260,8 @@ function handleRescheduleConfirmation(updateResult, confirmCallback, cancelCallb
                 return;
             }
 
-            if (updateResult.taskIndex !== undefined && updateResult.updatedData) {
-                const confirmResult = confirmCallback(
-                    updateResult.taskIndex,
-                    updateResult.updatedData
-                );
+            if (opResult.taskIndex !== undefined && opResult.updatedData) {
+                const confirmResult = confirmCallback(opResult.taskIndex, opResult.updatedData);
                 if (confirmResult.success) {
                     updateStartTimeField(getSuggestedStartTime(), true);
                 } else {
@@ -281,16 +276,18 @@ function handleRescheduleConfirmation(updateResult, confirmCallback, cancelCallb
                 return;
             }
 
-            if (updateResult.taskData) {
-                const confirmResult = confirmCallback(updateResult.taskData);
-                if (!confirmResult.success) {
+            if (opResult.taskData) {
+                const confirmResult = confirmCallback(opResult.taskData);
+                if (confirmResult.success) {
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
                     showAlert('Failed to add task and reschedule.');
                 }
             }
         }
     };
 
-    const handler = handlers[updateResult.confirmationType];
+    const handler = handlers[opResult.confirmationType];
     if (handler) {
         handler();
     }
