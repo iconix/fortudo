@@ -1,8 +1,10 @@
+import { calculateMinutes, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
+
 /**
  * @typedef {Object} Task
  * @property {string} description - Task description
- * @property {string} startTime - Start time in 24-hour format (HH:MM)
- * @property {string} endTime - End time in 24-hour format (HH:MM)
+ * @property {string} startDateTime - Start date and time in ISO format (YYYY-MM-DDTHH:MM:SS.sssZ)
+ * @property {string} endDateTime - End date and time in ISO format (YYYY-MM-DDTHH:MM:SS.sssZ)
  * @property {number} duration - Duration in minutes
  * @property {string} status - Task status ("incomplete" or "completed")
  * @property {boolean} editing - Whether task is being edited
@@ -91,15 +93,6 @@ function setupMockLocalStorage() {
 
 function clearLocalStorage() {
     localStorageMock.clear();
-}
-
-function saveTasksToLocalStorage(tasks) {
-    localStorageMock.setItem('tasks', JSON.stringify(tasks));
-}
-
-function getTaskDataFromLocalStorage() {
-    const tasksJson = localStorageMock.getItem('tasks');
-    return tasksJson ? JSON.parse(tasksJson) : [];
 }
 
 // DOM Interaction Helpers (minimal viable set, can be expanded)
@@ -264,61 +257,75 @@ function getEditFormForTask(index) {
     return document.getElementById(`edit-task-${index}`);
 }
 
-function getTaskFormElement() {
-    return document.getElementById('task-form');
-}
+/**
+ * Calculate duration properly for tasks that may cross midnight
+ * @param {string} startTime - Start time in HH:MM format
+ * @param {string} endTime - End time in HH:MM format
+ * @returns {number} - Duration in minutes (always positive)
+ */
+function calculateDurationMidnightAware(startTime, endTime) {
+    const startMinutes = calculateMinutes(startTime);
+    const endMinutes = calculateMinutes(endTime);
 
-async function clickSaveButtonOnEditForm(taskIndex) {
-    const editForm = getEditFormForTask(taskIndex);
-    if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
-    const saveButton = editForm.querySelector('.btn-save');
-    if (!saveButton) throw new Error(`Save button for task ${taskIndex} not found.`);
-    if (saveButton instanceof HTMLElement) {
-        saveButton.dispatchEvent(new Event('click', { bubbles: true }));
+    // If end time is less than start time, task crosses midnight
+    if (endMinutes < startMinutes) {
+        // Task crosses midnight: add 24 hours to end time
+        return endMinutes + 24 * 60 - startMinutes;
+    } else {
+        // Normal task on same day
+        return endMinutes - startMinutes;
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function clickCancelButtonOnEditForm(taskIndex) {
-    const editForm = getEditFormForTask(taskIndex);
-    if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
-    const cancelButton = editForm.querySelector('.btn-cancel');
-    if (!cancelButton) throw new Error(`Cancel button for task ${taskIndex} not found.`);
-    if (cancelButton instanceof HTMLElement) {
-        cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
+/**
+ * Helper function to create a task with DateTime fields from legacy time data
+ * @param {Object} params - Task parameters
+ * @param {string} params.description - Task description
+ * @param {string} params.startTime - Start time in HH:MM format
+ * @param {number} params.duration - Duration in minutes
+ * @param {string} [params.status] - Task status (defaults to 'incomplete')
+ * @param {boolean} [params.editing] - Whether task is being edited (defaults to false)
+ * @param {boolean} [params.confirmingDelete] - Whether delete is being confirmed (defaults to false)
+ * @param {string} [params.date] - Date in YYYY-MM-DD format (defaults to today)
+ * @returns {Object} Task object with DateTime fields
+ */
+function createTaskWithDateTime({
+    description,
+    startTime,
+    duration,
+    status = 'incomplete',
+    editing = false,
+    confirmingDelete = false,
+    date
+}) {
+    if (!date) {
+        date = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const startDateTime = timeToDateTime(startTime, date);
+    const endDateTime = calculateEndDateTime(startDateTime, duration);
+
+    return {
+        description,
+        startDateTime,
+        endDateTime,
+        duration,
+        status,
+        editing,
+        confirmingDelete
+    };
 }
 
-async function clickEditButtonForTask(taskIndex) {
-    const taskItems = document.querySelectorAll('#task-list li');
-    if (taskIndex < 0 || taskIndex >= taskItems.length)
-        throw new Error(`Task item for index ${taskIndex} not found.`);
-    const taskItem = taskItems[taskIndex];
-    const editButton = taskItem.querySelector('.btn-edit');
-    if (!editButton) throw new Error(`Edit button for task ${taskIndex} not found.`);
-    if (editButton instanceof HTMLElement) {
-        editButton.dispatchEvent(new Event('click', { bubbles: true }));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-module.exports = {
+export {
+    createTaskWithDateTime,
+    calculateDurationMidnightAware,
     setupIntegrationTestEnvironment,
-    setupMockLocalStorage,
-    setupDOM,
-    clearLocalStorage,
-    saveTasksToLocalStorage,
-    getTaskDataFromLocalStorage,
     addTaskDOM,
-    getRenderedTasksDOM,
     updateTaskDOM,
-    setCurrentTimeInDOM,
+    getRenderedTasksDOM,
+    clearLocalStorage,
     clickCompleteCheckbox,
     clickDeleteAllButton,
     getEditFormForTask,
-    getTaskFormElement,
-    clickSaveButtonOnEditForm,
-    clickCancelButtonOnEditForm,
-    clickEditButtonForTask
+    setCurrentTimeInDOM
 };

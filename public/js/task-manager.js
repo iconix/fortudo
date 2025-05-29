@@ -1,18 +1,63 @@
-import { calculateMinutes, calculateEndTime, getCurrentTimeRounded, logger } from './utils.js';
+import {
+    calculateMinutes,
+    getCurrentTimeRounded,
+    logger,
+    timeToDateTime,
+    calculateEndDateTime,
+    extractTimeFromDateTime,
+    getTaskDates
+} from './utils.js';
 import { saveTasks } from './storage.js';
 
 /**
  * @typedef {Object} Task
  * @property {string} description - task description
- * @property {string} startTime - start time in 24-hour format (HH:MM)
- * @property {string} endTime - end time in 24-hour format (HH:MM)
+ * @property {string} [startTime] - start time in 24-hour format (HH:MM) - DEPRECATED: use startDateTime
+ * @property {string} [endTime] - end time in 24-hour format (HH:MM) - DEPRECATED: use endDateTime
+ * @property {string} startDateTime - start date and time in ISO format (YYYY-MM-DDTHH:MM:SS.sssZ)
+ * @property {string} endDateTime - end date and time in ISO format (YYYY-MM-DDTHH:MM:SS.sssZ)
  * @property {number} duration - duration in minutes
  * @property {string} status - task status ("incomplete" or "completed")
  * @property {boolean} editing - whether task is being edited
  * @property {boolean} confirmingDelete - whether delete is being confirmed
- * @property {number} [_startMinutes] - cached start time in minutes
- * @property {number} [_endMinutes] - cached end time in minutes
  */
+
+// ============================================================================
+// MIGRATION UTILITIES
+// TODO: Remove this once we've migrated all tasks to the new DateTime format
+// ============================================================================
+
+/**
+ * Migrate tasks from legacy time format to new DateTime format
+ * @param {Task[]} tasks - Array of tasks that may need migration
+ * @returns {Task[]} - Migrated tasks with DateTime fields
+ */
+function migrateTasks(tasks) {
+    const today = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
+
+    return tasks.map((task) => {
+        // If task already has DateTime fields, no migration needed
+        if (task.startDateTime && task.endDateTime) {
+            return task;
+        }
+
+        // Skip migration if task doesn't have startTime (malformed task)
+        if (!task.startTime) {
+            logger.error('migrateTasks: Task is malformed and has no startTime', task);
+            return task;
+        }
+
+        // Migrate legacy time fields to DateTime
+        const startDateTime = timeToDateTime(task.startTime, today);
+        const endDateTime = calculateEndDateTime(startDateTime, task.duration);
+
+        return {
+            ...task,
+            startDateTime,
+            endDateTime
+        };
+    });
+}
 
 // ============================================================================
 // STATE MANAGEMENT
@@ -40,12 +85,8 @@ export function getTaskState() {
  * @param {Task[]} newTasks - The new array of tasks.
  */
 export function updateTaskState(newTasks) {
-    tasks = newTasks || [];
-
-    // Ensure all tasks have cached time values
-    for (const task of tasks) {
-        ensureTaskTimeCache(task);
-    }
+    // Migrate tasks to new DateTime format if needed
+    tasks = migrateTasks(newTasks || []);
 
     // Invalidate caches when state changes
     invalidateTaskCaches();
@@ -64,29 +105,22 @@ const invalidateTaskCaches = () => {
     sortedTasksCache = null;
 };
 
-// Cache time calculations for tasks
-const ensureTaskTimeCache = (task) => {
-    if (task._startMinutes === undefined) {
-        task._startMinutes = calculateMinutes(task.startTime);
-    }
-    if (task._endMinutes === undefined) {
-        task._endMinutes = calculateMinutes(task.endTime);
-    }
-};
-
-// Invalidate cached time values when task times change
-const invalidateTaskTimeCache = (task) => {
-    delete task._startMinutes;
-    delete task._endMinutes;
-};
-
 // ============================================================================
 // SORTING AND TASK UTILITIES
 // ============================================================================
 
 // Helper function to sort tasks by start time
 const sortTasks = (tasksToSort) => {
-    tasksToSort.sort((a, b) => calculateMinutes(a.startTime) - calculateMinutes(b.startTime));
+    tasksToSort.sort((a, b) => {
+        // After migration, all tasks should have DateTime fields
+        if (!a.startDateTime || !b.startDateTime) {
+            throw new Error('Task missing startDateTime field after migration');
+        }
+
+        const aStartTime = new Date(/** @type {string} */ (a.startDateTime));
+        const bStartTime = new Date(/** @type {string} */ (b.startDateTime));
+        return aStartTime.getTime() - bStartTime.getTime();
+    });
 };
 
 // Get sorted tasks with caching
@@ -108,30 +142,35 @@ const getSortedTasks = () => {
  * @returns {Task} A new task object
  */
 const createTaskObject = ({ description, startTime, duration }) => {
-    const endTime = calculateEndTime(startTime, duration);
+    const today = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
+
+    // Create DateTime fields
+    const startDateTime = timeToDateTime(startTime, today);
+    const endDateTime = calculateEndDateTime(startDateTime, duration);
+
     const task = {
         description,
-        startTime,
-        endTime,
+        startDateTime,
+        endDateTime,
         duration,
         status: 'incomplete',
         editing: false,
-        confirmingDelete: false,
-        // Cache time calculations at creation
-        _startMinutes: calculateMinutes(startTime),
-        _endMinutes: calculateMinutes(endTime)
+        confirmingDelete: false
     };
     return task;
 };
 
 // Helper function to finalize task modifications (sort and save)
 const finalizeTaskModification = () => {
-    invalidateTaskCaches(); // Invalidate caches when tasks change
-    // Use cached sorted tasks for saving
-    const sortedTasks = getSortedTasks();
+    invalidateTaskCaches(); // Clears sortedTasksCache
+
+    // Create a new sorted list directly from the current state of global tasks
+    const currentTasksCopy = [...tasks]; // Fresh copy of potentially modified (e.g. spliced) tasks
+    sortTasks(currentTasksCopy); // Sort this fresh copy
+
     // Update the main tasks array to maintain sort order
-    tasks.splice(0, tasks.length, ...sortedTasks);
-    saveTasks(tasks);
+    tasks.splice(0, tasks.length, ...currentTasksCopy);
+    saveTasks(tasks); // Save the now sorted global tasks array
 };
 
 // ============================================================================
@@ -204,68 +243,24 @@ export function resetAllEditingFlags() {
 
 /**
  * Determines if two tasks have overlapping time periods.
- * Handles both normal day tasks and tasks that cross midnight.
  * @param {Task} task1 - First task
  * @param {Task} task2 - Second task
  * @returns {boolean} - Whether tasks overlap
  */
 export function tasksOverlap(task1, task2) {
-    // Ensure time calculations are cached
-    ensureTaskTimeCache(task1);
-    ensureTaskTimeCache(task2);
-
-    // These values are guaranteed to be defined after ensureTaskTimeCache
-    const start1 = task1._startMinutes;
-    const end1 = task1._endMinutes;
-    const start2 = task2._startMinutes;
-    const end2 = task2._endMinutes;
-
-    // Safety check - should never happen after ensureTaskTimeCache, but satisfies linter
-    if (start1 === undefined || end1 === undefined || start2 === undefined || end2 === undefined) {
-        console.error('Task time cache failed - cached time values are undefined');
-        // Simple fallback - assume no overlap if cache failed
-        return false;
-    }
-
-    // Early termination: if both tasks are in normal day (no midnight crossing)
-    // and one ends before the other starts, no overlap
-    const task1CrossesMidnight = end1 < start1;
-    const task2CrossesMidnight = end2 < start2;
-
-    if (!task1CrossesMidnight && !task2CrossesMidnight) {
-        // Standard interval overlap check with early termination
-        return start1 < end2 && start2 < end1;
-    }
-
-    // Handle midnight crossing cases (less common, so checked after)
-    if (task1CrossesMidnight && !task2CrossesMidnight) {
-        return start2 < end1 || start2 >= start1;
-    }
-
-    if (!task1CrossesMidnight && task2CrossesMidnight) {
-        return start1 < end2 || start1 >= start2;
-    }
-
-    if (task1CrossesMidnight && task2CrossesMidnight) {
-        return true;
-    }
-
-    return false;
+    const { startDate: start1, endDate: end1 } = getTaskDates(task1);
+    const { startDate: start2, endDate: end2 } = getTaskDates(task2);
+    return start1 < end2 && start2 < end1;
 }
 
 /**
  * Check for overlapping tasks.
- * Uses cached time calculations and optimized overlap detection
+ * Uses simplified DateTime-based overlap detection
  * @param {Task} taskToCompare - The task to check against.
  * @param {Task[]} existingTasks - The list of tasks to check for overlaps.
  * @returns {Task[]} - Array of overlapping tasks.
  */
 export function checkOverlap(taskToCompare, existingTasks) {
-    // Ensure the task to compare has cached time values
-    // First invalidate any potentially stale cached values
-    invalidateTaskTimeCache(taskToCompare);
-    ensureTaskTimeCache(taskToCompare);
-
     // Early termination if no existing tasks
     if (existingTasks.length === 0) {
         return [];
@@ -273,17 +268,13 @@ export function checkOverlap(taskToCompare, existingTasks) {
 
     const overlappingTasks = [];
 
-    // Use optimized overlap detection with early termination
+    // Simple overlap detection using DateTime comparisons
     for (const task of existingTasks) {
         // Skip self, completed tasks, and editing tasks
         if (task === taskToCompare || task.status === 'completed' || task.editing) {
             continue;
         }
 
-        // Ensure task has cached time values
-        ensureTaskTimeCache(task);
-
-        // Use optimized overlap detection
         if (tasksOverlap(taskToCompare, task)) {
             overlappingTasks.push(task);
         }
@@ -295,96 +286,110 @@ export function checkOverlap(taskToCompare, existingTasks) {
 /**
  * Perform reschedule of tasks.
  *
- * OPTIMIZATION NOTES:
- * - Uses cached sorted tasks to avoid redundant sorting
- * - Optimized overlap detection with cached time calculations
- * - Reduced time complexity from O(n²) to O(n log n) in most cases
- * - Eliminated stack overflow risk for large task cascades
- * - Uses a Set to track processed tasks, preventing infinite loops
  * - Processes tasks in chronological order for predictable behavior
- *
- * COMPLEXITY ANALYSIS:
- * - Time: O(n log n) - dominated by cached sorting, queue processing is O(n)
- * - Space: O(n) - for the candidate tasks array, processed set, and queue
+ * - Uses a Set to track processed tasks, preventing infinite loops
  *
  * @param {Task} taskThatChanged - The task that triggered the reschedule.
+ * @param {Task} [actualTaskRef] - Optional direct reference to the actual task (when called from update functions)
  */
-export function performReschedule(taskThatChanged) {
-    const originalEditingState = taskThatChanged.editing;
-    taskThatChanged.editing = false;
+export function performReschedule(taskThatChanged, actualTaskRef = undefined) {
+    let actualTask = actualTaskRef;
 
-    // Ensure the task that changed has updated cached values
-    invalidateTaskTimeCache(taskThatChanged);
-    ensureTaskTimeCache(taskThatChanged);
+    if (!actualTask) {
+        actualTask =
+            tasks.find(
+                (t) =>
+                    t.description === taskThatChanged.description &&
+                    t.startDateTime === taskThatChanged.startDateTime
+            ) || undefined;
+        if (!actualTask) {
+            logger.warn('performReschedule: Could not find task in global state', taskThatChanged);
+            return;
+        }
+    }
 
-    // Use cached sorted tasks and filter once
-    const sortedTasks = getSortedTasks();
-    const candidateTasks = [];
+    if (taskThatChanged.duration !== actualTask.duration) {
+        actualTask.duration = taskThatChanged.duration;
+        if (actualTask.startDateTime) {
+            actualTask.endDateTime = calculateEndDateTime(
+                actualTask.startDateTime,
+                actualTask.duration
+            );
+        } else {
+            logger.warn(
+                'performReschedule: actualTask missing startDateTime for duration update',
+                actualTask
+            );
+            return;
+        }
+    }
 
-    // Single pass filtering with early termination
-    for (const task of sortedTasks) {
-        if (task === taskThatChanged || task.status === 'completed' || task.editing) {
+    const originalEditingState = actualTask.editing;
+    actualTask.editing = false;
+
+    // Get a sorted list of all tasks once at the beginning.
+    // This list's order is for the optimized break condition.
+    // The task objects within are references to the global tasks, so their properties will update.
+    const sortedAllTasksView = getSortedTasks();
+
+    // tasksToProcess will contain tasks that need to have their overlaps checked and resolved.
+    // processedTasks tracks tasks that have been added to tasksToProcess to avoid redundant queueing.
+    const tasksToProcess = [actualTask];
+    const processedTasks = new Set([actualTask]);
+    let headIndex = 0;
+
+    while (headIndex < tasksToProcess.length) {
+        const currentTask = tasksToProcess[headIndex++];
+
+        if (!currentTask || !currentTask.startDateTime || !currentTask.endDateTime) {
+            logger.warn('performReschedule: Invalid currentTask in queue', currentTask);
             continue;
         }
-        candidateTasks.push(task);
-    }
 
-    // Track which tasks have been processed to avoid infinite loops
-    const processedTasks = new Set();
-
-    // Use a queue to process tasks that need rescheduling
-    const tasksToProcess = [taskThatChanged];
-    processedTasks.add(taskThatChanged);
-
-    while (tasksToProcess.length > 0) {
-        const currentTask = tasksToProcess.shift();
-        if (!currentTask) continue; // Safety check, though this should never happen
-
-        // Ensure current task has cached time values
-        ensureTaskTimeCache(currentTask);
-
-        // Find all tasks that overlap with the current task and haven't been processed yet
-        const overlappingTasks = [];
-        for (const task of candidateTasks) {
-            if (processedTasks.has(task)) continue;
-
-            // Use optimized overlap detection
-            if (tasksOverlap(task, currentTask)) {
-                overlappingTasks.push(task);
+        // Iterate through all other relevant tasks to check for overlaps with currentTask.
+        // sortedAllTasksView is used for a potentially optimized iteration order.
+        for (const taskToCompare of sortedAllTasksView) {
+            // Skip if taskToCompare is the current task, completed, editing, or already the current task itself.
+            if (
+                taskToCompare === currentTask ||
+                taskToCompare.status === 'completed' ||
+                taskToCompare.editing
+            ) {
+                continue;
             }
-        }
 
-        let cascadeEndTime = currentTask.endTime;
-        let cascadeEndMinutes = currentTask._endMinutes || calculateMinutes(currentTask.endTime);
+            if (!taskToCompare.startDateTime || typeof taskToCompare.duration !== 'number') {
+                logger.warn('performReschedule: Invalid taskToCompare found', taskToCompare);
+                continue;
+            }
 
-        for (const overlappingTask of overlappingTasks) {
-            // Use cached time calculations
-            ensureTaskTimeCache(overlappingTask);
-            const taskStartMinutes = overlappingTask._startMinutes;
+            // Optimization: If taskToCompare (in its current state) starts after currentTask ends,
+            // it (and subsequent sorted tasks) cannot overlap with currentTask's current position.
+            if (new Date(taskToCompare.startDateTime) >= new Date(currentTask.endDateTime)) {
+                break; // Assumes sortedAllTasksView is sorted by start times
+            }
 
-            // If the task starts before the cascade end time, it needs to be shifted
-            if (taskStartMinutes < cascadeEndMinutes) {
-                overlappingTask.startTime = cascadeEndTime;
-                overlappingTask.endTime = calculateEndTime(
-                    overlappingTask.startTime,
-                    overlappingTask.duration
+            if (tasksOverlap(currentTask, taskToCompare)) {
+                const newStartDateTimeStr = currentTask.endDateTime;
+                const newEndDateTimeStr = calculateEndDateTime(
+                    newStartDateTimeStr,
+                    taskToCompare.duration
                 );
 
-                // Update cached values immediately
-                overlappingTask._startMinutes = cascadeEndMinutes;
-                overlappingTask._endMinutes = calculateMinutes(overlappingTask.endTime);
+                // Update the task that needs to be shifted
+                taskToCompare.startDateTime = newStartDateTimeStr;
+                taskToCompare.endDateTime = newEndDateTimeStr;
 
-                cascadeEndTime = overlappingTask.endTime;
-                cascadeEndMinutes = overlappingTask._endMinutes;
-
-                // Mark as processed and add to queue for further cascade checking
-                processedTasks.add(overlappingTask);
-                tasksToProcess.push(overlappingTask);
+                // If this shifted task hasn't been queued for its own processing turn, add it.
+                if (!processedTasks.has(taskToCompare)) {
+                    processedTasks.add(taskToCompare);
+                    tasksToProcess.push(taskToCompare);
+                }
             }
         }
     }
 
-    taskThatChanged.editing = originalEditingState;
+    actualTask.editing = originalEditingState;
 }
 
 /**
@@ -403,7 +408,7 @@ export function performReschedule(taskThatChanged) {
  */
 export function getSuggestedStartTime() {
     const currentTimeRounded = getCurrentTimeRounded();
-    const currentTimeMinutes = calculateMinutes(currentTimeRounded);
+    const currentMinutes = calculateMinutes(currentTimeRounded);
 
     let latestTaskEndTime = null;
     let latestTaskEndMinutes = -1;
@@ -412,37 +417,48 @@ export function getSuggestedStartTime() {
     let incompleteTaskCount = 0;
 
     for (const task of tasks) {
-        const taskStartMinutes = calculateMinutes(task.startTime);
-        const taskEndMinutes = calculateMinutes(task.endTime);
-        const isTaskCrossingMidnight = taskEndMinutes < taskStartMinutes;
+        const { startDate: taskStartDateObj, endDate: taskEndDateObj } = getTaskDates(task);
+        const taskStartTime = extractTimeFromDateTime(taskStartDateObj.toISOString());
+        const taskStartMinutes = calculateMinutes(taskStartTime);
 
         // only count incomplete tasks for the task count and latest end time
         if (task.status === 'incomplete') {
             incompleteTaskCount++;
 
-            // track latest incomplete task end time
-            if (taskEndMinutes > latestTaskEndMinutes) {
-                latestTaskEndTime = task.endTime;
-                latestTaskEndMinutes = taskEndMinutes;
+            const taskEndTime = extractTimeFromDateTime(taskEndDateObj.toISOString());
+            const taskEndMinutesValue = calculateMinutes(taskEndTime);
+
+            if (taskEndMinutesValue > latestTaskEndMinutes) {
+                latestTaskEndTime = taskEndTime;
+                latestTaskEndMinutes = taskEndMinutesValue;
             }
 
-            // check if current time slot is occupied (only by incomplete tasks)
-            if (
-                !hasTaskAtCurrentTime &&
-                isTimeInTask(
-                    currentTimeMinutes,
-                    taskStartMinutes,
-                    taskEndMinutes,
-                    isTaskCrossingMidnight
-                )
-            ) {
-                hasTaskAtCurrentTime = true;
+            if (!hasTaskAtCurrentTime) {
+                if (taskEndMinutesValue < taskStartMinutes) {
+                    // Task crosses midnight
+                    if (
+                        currentMinutes >= taskStartMinutes ||
+                        currentMinutes < taskEndMinutesValue
+                    ) {
+                        hasTaskAtCurrentTime = true;
+                    }
+                } else {
+                    // Normal task on same day
+                    if (
+                        currentMinutes >= taskStartMinutes &&
+                        currentMinutes < taskEndMinutesValue
+                    ) {
+                        hasTaskAtCurrentTime = true;
+                    }
+                }
             }
         }
 
         // check if there are tasks (including completed ones) before current time
         if (!hasTasksBeforeCurrentTime) {
-            hasTasksBeforeCurrentTime = taskStartMinutes < currentTimeMinutes;
+            if (taskStartMinutes < currentMinutes) {
+                hasTasksBeforeCurrentTime = true;
+            }
         }
     }
 
@@ -463,24 +479,6 @@ export function getSuggestedStartTime() {
     } else {
         // planning ahead - use end time of latest task
         return latestTaskEndTime || currentTimeRounded;
-    }
-}
-
-/**
- * Helper function to check if a given time falls within a task's time range
- * @param {number} timeMinutes - Time to check in minutes since midnight
- * @param {number} taskStartMinutes - Task start time in minutes since midnight
- * @param {number} taskEndMinutes - Task end time in minutes since midnight
- * @param {boolean} crossesMidnight - Whether the task crosses midnight
- * @returns {boolean} True if the time falls within the task range
- */
-function isTimeInTask(timeMinutes, taskStartMinutes, taskEndMinutes, crossesMidnight) {
-    if (crossesMidnight) {
-        // task crosses midnight
-        return timeMinutes >= taskStartMinutes || timeMinutes < taskEndMinutes;
-    } else {
-        // normal task
-        return timeMinutes >= taskStartMinutes && timeMinutes < taskEndMinutes;
     }
 }
 
@@ -571,22 +569,31 @@ export function updateTask(index, { description, startTime, duration }) {
     }
 
     // Create a temporary task object to check for overlaps without modifying the original yet
+    if (startTime === undefined) {
+        // Extract startTime from existing DateTime fields if available
+        if (existingTask.startDateTime) {
+            startTime = extractTimeFromDateTime(existingTask.startDateTime);
+        } else {
+            // TODO: remove this fallback once all tasks have startDateTime
+            const { startDate } = getTaskDates(existingTask);
+            startTime = extractTimeFromDateTime(startDate.toISOString());
+        }
+    }
+
+    // Create DateTime fields for the updated task
+    const today = new Date().toISOString().split('T')[0];
+    const startDateTime = timeToDateTime(startTime, today);
+    const endDateTime = calculateEndDateTime(startDateTime, newDuration);
+
     const taskWithUpdates = {
         ...existingTask,
         description: newDescription,
-        startTime: startTime !== undefined ? startTime : existingTask.startTime,
-        duration: newDuration
+        duration: newDuration,
+        startDateTime,
+        endDateTime
     };
-    taskWithUpdates.endTime = calculateEndTime(taskWithUpdates.startTime, taskWithUpdates.duration);
-
-    // Ensure the temporary task has cached time values for overlap detection
-    // First invalidate any inherited cached values since times may have changed
-    invalidateTaskTimeCache(taskWithUpdates);
-    ensureTaskTimeCache(taskWithUpdates);
 
     // Check overlap against tasks *other* than the one being updated
-    // For checkOverlap, the task being compared (taskWithUpdates) should not be considered 'editing'
-    // This requires a slight adjustment if existingTask.editing was true.
     const originalEditingStateForCheck = existingTask.editing;
     existingTask.editing = false; // Temporarily set to false for checkOverlap
     const overlaps = checkOverlap(
@@ -606,12 +613,9 @@ export function updateTask(index, { description, startTime, duration }) {
     // No overlap or confirmed: apply updates
     existingTask.editing = false; // Ensure editing is turned off
     existingTask.description = newDescription;
-    existingTask.startTime = startTime !== undefined ? startTime : existingTask.startTime;
     existingTask.duration = newDuration;
-    existingTask.endTime = taskWithUpdates.endTime; // Calculated above
-
-    // Invalidate cached time values since times may have changed
-    invalidateTaskTimeCache(existingTask);
+    existingTask.startDateTime = startDateTime;
+    existingTask.endDateTime = endDateTime;
 
     performReschedule(existingTask);
     finalizeTaskModification(); // Single sort and save at the end
@@ -633,14 +637,27 @@ export function confirmUpdateTaskAndReschedule(index, { description, startTime, 
 
     taskToUpdate.editing = false; // Ensure editing is turned off
     taskToUpdate.description = description !== undefined ? description : taskToUpdate.description;
-    taskToUpdate.startTime = startTime !== undefined ? startTime : taskToUpdate.startTime;
+
+    let newStartTime = startTime;
+    if (newStartTime === undefined) {
+        // Extract startTime from existing DateTime fields
+        if (taskToUpdate.startDateTime) {
+            newStartTime = extractTimeFromDateTime(taskToUpdate.startDateTime);
+        } else {
+            throw new Error('Task must have startDateTime field after migration');
+        }
+    }
+
     taskToUpdate.duration = duration !== undefined ? duration : taskToUpdate.duration;
-    taskToUpdate.endTime = calculateEndTime(taskToUpdate.startTime, taskToUpdate.duration);
 
-    // Invalidate cached time values since times may have changed
-    invalidateTaskTimeCache(taskToUpdate);
+    // Calculate and update DateTime fields
+    const today = new Date().toISOString().split('T')[0];
+    const startDateTime = timeToDateTime(newStartTime, today);
+    const endDateTime = calculateEndDateTime(startDateTime, taskToUpdate.duration);
+    taskToUpdate.startDateTime = startDateTime;
+    taskToUpdate.endDateTime = endDateTime;
 
-    performReschedule(taskToUpdate);
+    performReschedule(taskToUpdate, taskToUpdate); // Pass direct reference
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task: taskToUpdate };
 }
@@ -659,8 +676,13 @@ export function completeTask(index, currentTime24Hour) {
 
     if (currentTime24Hour) {
         const currentTimeMinutes = calculateMinutes(currentTime24Hour);
-        const taskStartTimeMinutes = calculateMinutes(task.startTime);
-        const taskEndTimeMinutes = calculateMinutes(task.endTime);
+
+        // Extract start and end times from DateTime fields
+        const { startDate, endDate } = getTaskDates(task);
+        const taskStartTime = extractTimeFromDateTime(startDate.toISOString());
+        const taskEndTime = extractTimeFromDateTime(endDate.toISOString());
+        const taskStartTimeMinutes = calculateMinutes(taskStartTime);
+        const taskEndTimeMinutes = calculateMinutes(taskEndTime);
 
         if (currentTimeMinutes > taskEndTimeMinutes) {
             // Task finished late.
@@ -672,7 +694,7 @@ export function completeTask(index, currentTime24Hour) {
                 task: { ...task }, // Return a copy
                 requiresConfirmation: true,
                 confirmationType: 'COMPLETE_LATE',
-                oldEndTime: task.endTime,
+                oldEndTime: taskEndTime,
                 newEndTime,
                 newDuration
             };
@@ -680,13 +702,16 @@ export function completeTask(index, currentTime24Hour) {
             currentTimeMinutes < taskEndTimeMinutes &&
             currentTimeMinutes >= taskStartTimeMinutes
         ) {
-            // Task finished early.
-            task.endTime = currentTime24Hour;
+            // Task finished early - update duration and DateTime fields
             task.duration = Math.max(0, currentTimeMinutes - taskStartTimeMinutes);
-            task.status = 'completed'; // Also mark as completed
+            task.status = 'completed';
 
-            // Invalidate cached time values since times changed
-            invalidateTaskTimeCache(task);
+            // Update DateTime fields
+            if (task.startDateTime) {
+                task.endDateTime = calculateEndDateTime(task.startDateTime, task.duration);
+            } else {
+                throw new Error('Task must have startDateTime field after migration');
+            }
 
             finalizeTaskModification(); // Single sort and save at the end
             return { success: true, task };
@@ -714,13 +739,16 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
 
     task.editing = false; // Ensure editing is turned off before reschedule
     task.status = 'completed';
-    task.endTime = newEndTime;
     task.duration = newDuration;
 
-    // Invalidate cached time values since times changed
-    invalidateTaskTimeCache(task);
+    // Update DateTime fields
+    if (task.startDateTime) {
+        task.endDateTime = calculateEndDateTime(task.startDateTime, task.duration);
+    } else {
+        throw new Error('Task must have startDateTime field after migration');
+    }
 
-    performReschedule(task); // task.editing is already false
+    performReschedule(task, task); // Pass direct reference
     finalizeTaskModification(); // Single sort and save at the end
     return { success: true, task };
 }

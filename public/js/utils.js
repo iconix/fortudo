@@ -1,5 +1,73 @@
 // Time utilities and pure functions
 
+// ============================================================================
+// DATETIME UTILITIES
+// ============================================================================
+
+/**
+ * Create a Date object from a date and time string
+ * @param {string} timeStr - Time in HH:MM format
+ * @param {string} [dateStr] - Date in YYYY-MM-DD format. Defaults to today.
+ * @returns {Date} - Date object
+ */
+export function createDateTime(timeStr, dateStr) {
+    if (!dateStr) {
+        dateStr = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD
+    }
+    return new Date(`${dateStr}T${timeStr}:00.000`);
+}
+
+/**
+ * Calculate end DateTime from start DateTime and duration
+ * @param {string} startDateTime - Start date and time in ISO format
+ * @param {number} duration - Duration in minutes
+ * @returns {string} - End date and time in ISO format
+ */
+export function calculateEndDateTime(startDateTime, duration) {
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(startDate.getTime() + duration * 60000);
+    return endDate.toISOString();
+}
+
+/**
+ * Extract time portion from DateTime string
+ * @param {string} dateTimeStr - DateTime in ISO format
+ * @returns {string} - Time in HH:MM format
+ */
+export function extractTimeFromDateTime(dateTimeStr) {
+    const date = new Date(dateTimeStr);
+    return date.toTimeString().substring(0, 5);
+}
+
+/**
+ * Convert legacy time strings to DateTime strings (for migration)
+ * @param {string} timeStr - Time in HH:MM format
+ * @param {string} [dateStr] - Date in YYYY-MM-DD format. Defaults to today.
+ * @returns {string} - DateTime in ISO format
+ */
+export function timeToDateTime(timeStr, dateStr) {
+    if (!dateStr) {
+        dateStr = new Date().toISOString().split('T')[0];
+    }
+    return createDateTime(timeStr, dateStr).toISOString();
+}
+
+/**
+ * Get task start/end Date objects with DateTime support (backward compatible)
+ * @param {Object} task - Task object with either legacy time fields or new DateTime fields
+ * @returns {{startDate: Date, endDate: Date}} - Start and end Date objects
+ */
+export function getTaskDates(task) {
+    return {
+        startDate: new Date(task.startDateTime),
+        endDate: new Date(task.endDateTime)
+    };
+}
+
+// ============================================================================
+// TIME UTILITIES
+// ============================================================================
+
 /**
  * Calculate total minutes from a 24-hour time string
  * @param {string} time24Hour - Time in 24-hour format (HH:MM)
@@ -51,15 +119,18 @@ export function calculate24HourTimeFromMinutes(minutes) {
  * @returns {string} - Time in 24-hour format (HH:MM)
  */
 export function convertTo24HourTime(time12Hour) {
-    let hours = parseInt(time12Hour.split(':')[0]);
-    const minutes = time12Hour.split(':')[1].split(' ')[0];
-    const ampm = time12Hour.split(' ')[1];
+    const match = time12Hour.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) throw new Error('Invalid time format');
 
-    if (ampm.toUpperCase() === 'PM' && hours < 12) {
+    let hours = parseInt(match[1]);
+    const minutes = match[2];
+    const ampm = match[3].toUpperCase();
+
+    if (ampm === 'PM' && hours < 12) {
         hours += 12;
     }
 
-    if (ampm.toUpperCase() === 'AM' && hours === 12) {
+    if (ampm === 'AM' && hours === 12) {
         hours = 0;
     }
 
@@ -89,36 +160,16 @@ export function convertTo12HourTime(time24Hour) {
 }
 
 /**
- * Calculate the end time of a task
- * @param {string} startTime - Start time in 24-hour format (HH:MM)
- * @param {number} duration - Duration in minutes
- * @returns {string} - End time in 24-hour format (HH:MM)
- */
-export function calculateEndTime(startTime, duration) {
-    const endMinutes = calculateMinutes(startTime) + duration;
-    return calculate24HourTimeFromMinutes(endMinutes);
-}
-
-/**
  * Gets current time rounded up to closest 5 minutes.
- * @param {Date} [date=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
+ * @param {Date} [now=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {string} - Current time in 24-hour format (HH:MM)
  */
-export function getCurrentTimeRounded(date = new Date()) {
-    const now = date;
+export function getCurrentTimeRounded(now = new Date()) {
     const minutes = Math.ceil(now.getMinutes() / 5) * 5;
-
     const roundedDate = new Date(now.getTime());
 
-    // Reset seconds and milliseconds to ensure clean rounding for minutes/hours
     roundedDate.setSeconds(0, 0);
-
-    if (minutes === 60) {
-        roundedDate.setHours(roundedDate.getHours() + 1);
-        roundedDate.setMinutes(0);
-    } else {
-        roundedDate.setMinutes(minutes);
-    }
+    roundedDate.setMinutes(minutes); // note: this automatically handles >= 60
 
     return roundedDate.toTimeString().substring(0, 5);
 }
@@ -154,34 +205,14 @@ export function validateTaskFormData(description, duration, isValidTaskData) {
 
 /**
  * Check if a task is running late (current time is past the task's end time)
- * @param {Object} task - The task object with endTime property
+ * @param {Object} task - The task object with either legacy time fields or new DateTime fields
  * @param {Date} [now=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {boolean} - True if the task is running late
  */
 export function isTaskRunningLate(task, now = new Date()) {
-    const currentTime24 = now.toTimeString().substring(0, 5); // Get current time in HH:MM format
-    const currentTimeMinutes = calculateMinutes(currentTime24);
-    const taskEndTimeMinutes = calculateMinutes(task.endTime);
+    // Get task end Date (with backward compatibility)
+    const { endDate } = getTaskDates(task);
 
-    // Handle tasks that cross midnight
-    if (taskEndTimeMinutes < calculateMinutes(task.startTime)) {
-        // Task crosses midnight, so we need to check if current time is past midnight end time
-        // or if we're still in the same day but past the start time
-        const currentHour = now.getHours();
-        const taskEndHour = parseInt(task.endTime.split(':')[0]);
-
-        if (taskEndHour < 12 && currentHour >= 12) {
-            // Task ends in early morning, current time is afternoon/evening
-            return true;
-        } else if (taskEndHour < 12 && currentHour < 12) {
-            // Both in morning, normal comparison
-            return currentTimeMinutes > taskEndTimeMinutes;
-        } else {
-            // Current time is before midnight, task hasn't ended yet
-            return false;
-        }
-    } else {
-        // Normal case: task doesn't cross midnight
-        return currentTimeMinutes > taskEndTimeMinutes;
-    }
+    // A task is late if the current time 'now' is past its calculated 'endDate'.
+    return now > endDate;
 }

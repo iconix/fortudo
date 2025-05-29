@@ -4,7 +4,8 @@ import {
     convertTo12HourTime,
     logger,
     isTaskRunningLate,
-    getCurrentTimeRounded
+    getCurrentTimeRounded,
+    extractTimeFromDateTime
 } from './utils.js';
 
 // Global event callbacks storage for event delegation
@@ -74,6 +75,8 @@ export function renderDateTime() {
  * @returns {string} - HTML for edit form.
  */
 function renderEditTaskHTML(task, index) {
+    const displayStartTime = extractTimeFromDateTime(task.startDateTime);
+
     return `<form id="edit-task-${index}" autocomplete="off" class="mb-4 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
         <div class="mb-4">
             <input type="text" name="description" value="${task.description}" class="bg-gray-700 p-2 rounded w-full" required>
@@ -81,7 +84,7 @@ function renderEditTaskHTML(task, index) {
         <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
             <label class="flex items-center w-full sm:w-auto">
                 <span class="text-gray-400">Start Time</span>
-                <input type="time" name="start-time" value="${task.startTime}" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
+                <input type="time" name="start-time" value="${displayStartTime}" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
             </label>
             <label class="flex items-center w-full sm:w-auto">
                 <span class="mr-2 text-gray-400">Duration</span>
@@ -109,14 +112,15 @@ function renderViewTaskHTML(task, index, isActiveTask) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted;
 
-    // Check if this is the active task and if it's running late
-    const isActiveTaskRunningLate = isActiveTask && !isCompleted && isTaskRunningLate(task);
-
-    // Determine text color class for active task
-    let activeTaskColorClass = '';
+    // Determine task styling based on active status and completion
+    let activeTaskColorClass = 'text-white';
     if (isActiveTask && !isCompleted) {
-        activeTaskColorClass = isActiveTaskRunningLate ? 'text-yellow-500' : 'text-green-500';
+        const isLate = isTaskRunningLate(task);
+        activeTaskColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
     }
+
+    const displayStartTime = extractTimeFromDateTime(task.startDateTime);
+    const displayEndTime = extractTimeFromDateTime(task.endDateTime);
 
     return `<div id="view-task-${index}" class="flex items-center justify-between space-x-2 p-2 border-b">
         <div class="flex items-center space-x-4">
@@ -126,7 +130,7 @@ function renderViewTaskHTML(task, index, isActiveTask) {
             <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
             <div class="${isCompleted ? 'line-through' : ''} ${isActiveTask && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
                 <div class="${activeTaskColorClass}">${task.description}</div>
-                <div class="${activeTaskColorClass}">${convertTo12HourTime(task.startTime)} &ndash; ${convertTo12HourTime(task.endTime)} (${calculateHoursAndMinutes(task.duration)})</div>
+                <div class="${activeTaskColorClass}">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${calculateHoursAndMinutes(task.duration)})</div>
             </div>
         </div>
         <div>
@@ -538,8 +542,9 @@ export function resetEventDelegation() {
  * Update active task styling for late warning.
  * This function finds the first incomplete task and updates its color styling based on whether it's running late.
  * @param {object[]} tasks - Array of all tasks to check for the active task
+ * @param {Date} [now] - Current date and time - defaults to the current date and time
  */
-export function refreshActiveTaskColor(tasks) {
+export function refreshActiveTaskColor(tasks, now = new Date()) {
     // Find the first incomplete task (the active task)
     let activeTaskIndex = -1;
     for (let i = 0; i < tasks.length; i++) {
@@ -553,7 +558,7 @@ export function refreshActiveTaskColor(tasks) {
     if (activeTaskIndex === -1) return;
 
     const activeTask = tasks[activeTaskIndex];
-    const isLate = isTaskRunningLate(activeTask);
+    const isLate = isTaskRunningLate(activeTask, now);
 
     // Find the DOM elements for this task
     const taskElement = getTaskViewElement(activeTaskIndex);

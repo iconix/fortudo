@@ -24,17 +24,34 @@ import {
     getSuggestedStartTime,
     tasksOverlap
 } from '../public/js/task-manager.js';
-import { calculateEndTime, calculateMinutes } from '../public/js/utils.js';
+import {
+    calculateEndDateTime,
+    extractTimeFromDateTime,
+    timeToDateTime
+} from '../public/js/utils.js';
+const { createTaskWithDateTime, calculateDurationMidnightAware } = require('./test-utils.js');
 
 // Mock the storage module
 jest.mock('../public/js/storage.js', () => ({
-    saveTasks: jest.fn()
+    saveTasks: jest.fn(),
+    loadTasks: jest.fn(() => [])
 }));
 
 // Import the mocked saveTasks
 import { saveTasks } from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(saveTasks);
+
+// Mock localStorage before any other imports
+const localStorageMock = {
+    getItem: jest.fn(),
+    setItem: jest.fn(),
+    removeItem: jest.fn(),
+    clear: jest.fn()
+};
+Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock
+});
 
 describe('Task Management Functions (task-manager.js)', () => {
     beforeEach(() => {
@@ -46,19 +63,32 @@ describe('Task Management Functions (task-manager.js)', () => {
         jest.clearAllMocks();
     });
 
-    describe('tasksOverlap utility', () => {
-        test('tasksOverlap correctly identifies overlapping tasks', () => {
-            // Helper to create minimal task objects for overlap testing
-            const createTaskForOverlap = (startTime, endTime) => ({
-                description: 'Test Task',
-                startTime,
-                endTime,
-                duration: calculateMinutes(endTime) - calculateMinutes(startTime),
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-            });
+    /**
+     * Create a task object for testing with proper DateTime fields
+     * @param {string} startTime - Start time in HH:MM format
+     * @param {string} endTime - End time in HH:MM format
+     * @param {string} description - Task description (optional, defaults to 'Test Task')
+     * @returns {Object} - Task object for testing
+     */
+    function createTaskForOverlap(startTime, endTime, description = 'Test Task') {
+        const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+        const duration = calculateDurationMidnightAware(startTime, endTime);
+        const startDateTime = timeToDateTime(startTime, today);
+        const endDateTime = calculateEndDateTime(startDateTime, duration);
 
+        return {
+            description,
+            startDateTime,
+            endDateTime,
+            duration,
+            status: 'incomplete',
+            editing: false,
+            confirmingDelete: false
+        };
+    }
+
+    describe('tasksOverlap', () => {
+        test('tasksOverlap correctly identifies overlapping tasks', () => {
             const task1 = createTaskForOverlap('09:00', '10:00');
             const task2 = createTaskForOverlap('09:00', '10:00'); // Full overlap
             expect(tasksOverlap(task1, task2)).toBe(true);
@@ -94,38 +124,65 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
-        // Helper to create minimal task objects for overlap testing
-        const createTaskForOverlap = (startTime, endTime) => ({
-            description: 'Test Task',
-            startTime,
-            endTime,
-            duration: calculateMinutes(endTime) - calculateMinutes(startTime),
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
-
         test('handles times that cross midnight correctly', () => {
-            const lateNightTask = createTaskForOverlap('23:00', '00:30');
-            const earlyMorningTask = createTaskForOverlap('00:15', '01:00');
+            const lateNightTask = createTaskForOverlap('23:00', '00:30'); // Ends next day
+
+            const dateForEarlyMorningTask = new Date();
+            dateForEarlyMorningTask.setDate(dateForEarlyMorningTask.getDate() + 1);
+            const earlyMorningTask = createTaskWithDateTime({
+                description: 'Early Morning Task',
+                startTime: '00:15',
+                duration: 45, // 00:15 to 01:00
+                date: dateForEarlyMorningTask.toISOString().split('T')[0]
+            });
             expect(tasksOverlap(lateNightTask, earlyMorningTask)).toBe(true);
 
-            const eveningTask = createTaskForOverlap('22:00', '00:00');
-            const morningTask = createTaskForOverlap('00:00', '02:00');
-            expect(tasksOverlap(eveningTask, morningTask)).toBe(false);
+            const eveningTask = createTaskForOverlap('22:00', '00:00'); // Ends at midnight
+            const morningTask = createTaskWithDateTime({
+                // Starts at midnight on the NEXT day
+                description: 'Morning Task',
+                startTime: '00:00',
+                duration: 120, // 00:00 to 02:00
+                date: dateForEarlyMorningTask.toISOString().split('T')[0] // Use next day's date
+            });
+            expect(tasksOverlap(eveningTask, morningTask)).toBe(false); // Should be false if on different days like this
         });
 
         test('handles complex midnight-crossing task overlaps correctly', () => {
-            const longEveningTask = createTaskForOverlap('20:00', '02:00');
-            const midnightTask = createTaskForOverlap('23:30', '00:30');
+            const longEveningTask = createTaskForOverlap('20:00', '02:00'); // Spans 20:00 to 02:00 next day
+
+            const dateForNextDay = new Date();
+            dateForNextDay.setDate(dateForNextDay.getDate() + 1);
+
+            const midnightTask = createTaskWithDateTime({
+                description: 'Midnight Task',
+                startTime: '23:30', // On first day
+                duration: 60 // 23:30 to 00:30 next day
+                // This task will naturally cross into the same day as longEveningTask's end
+            });
             expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
 
-            const multiDayTask = createTaskForOverlap('22:00', '08:00');
-            const morningTask = createTaskForOverlap('07:00', '08:30');
+            const multiDayTask = createTaskForOverlap('22:00', '08:00'); // Spans 22:00 day1 to 08:00 day2
+
+            const morningTask = createTaskWithDateTime({
+                description: 'Morning Task',
+                startTime: '07:00', // on day 2
+                duration: 90, // 07:00 to 08:30 on day 2
+                date: dateForNextDay.toISOString().split('T')[0]
+            });
             expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
 
-            const mondayTask = createTaskForOverlap('23:00', '00:30');
-            const tuesdayEveningTask = createTaskForOverlap('20:00', '22:00');
+            const mondayTask = createTaskForOverlap('23:00', '00:30'); // Monday 23:00 to Tuesday 00:30
+
+            const dateForTuesdayEvening = new Date();
+            dateForTuesdayEvening.setDate(dateForTuesdayEvening.getDate() + 1); // Represents Tuesday
+            const tuesdayEveningTask = createTaskWithDateTime({
+                description: 'Tuesday Evening Task',
+                startTime: '20:00', // Tuesday 20:00
+                duration: 120, // Tuesday 20:00 to 22:00
+                date: dateForTuesdayEvening.toISOString().split('T')[0]
+            });
+            // mondayTask ends Tues 00:30. tuesdayEveningTask starts Tues 20:00. No overlap.
             expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
         });
     });
@@ -172,15 +229,15 @@ describe('Task Management Functions (task-manager.js)', () => {
             duration,
             status = 'incomplete',
             editing = false
-        ) => ({
-            description: desc,
-            startTime,
-            duration,
-            endTime: calculateEndTime(startTime, duration),
-            status,
-            editing,
-            confirmingDelete: false
-        });
+        ) => {
+            return createTaskWithDateTime({
+                description: desc,
+                startTime,
+                duration,
+                status,
+                editing
+            });
+        };
 
         let existingTasks;
 
@@ -247,224 +304,6 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasksWithSelf = [...existingTasks, newTask];
             expect(checkOverlap(newTask, tasksWithSelf).map((t) => t.description)).toEqual(['T1']);
         });
-
-        // Optimization-specific tests for checkOverlap
-        test('should correctly detect overlaps with cached time values', () => {
-            // Create tasks with known time values
-            const task1 = {
-                description: 'Task 1',
-                startTime: '09:00',
-                endTime: '10:30',
-                duration: 90,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false,
-                _startMinutes: 540, // Pre-cached
-                _endMinutes: 630
-            };
-
-            const task2 = {
-                description: 'Task 2',
-                startTime: '10:00',
-                endTime: '11:00',
-                duration: 60,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false,
-                _startMinutes: 600, // Pre-cached
-                _endMinutes: 660
-            };
-
-            const overlaps = checkOverlap(task1, [task2]);
-            expect(overlaps).toHaveLength(1);
-            expect(overlaps[0].description).toBe('Task 2');
-        });
-
-        test('should handle tasks without cached values by generating them', () => {
-            const task1 = {
-                description: 'Task 1',
-                startTime: '09:00',
-                endTime: '10:30',
-                duration: 90,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-                // No cached values
-            };
-
-            const task2 = {
-                description: 'Task 2',
-                startTime: '10:00',
-                endTime: '11:00',
-                duration: 60,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-                // No cached values
-            };
-
-            const overlaps = checkOverlap(task1, [task2]);
-            expect(overlaps).toHaveLength(1);
-            expect(overlaps[0].description).toBe('Task 2');
-
-            // Verify cached values were generated
-            expect(task1._startMinutes).toBe(540);
-            expect(task1._endMinutes).toBe(630);
-            expect(task2._startMinutes).toBe(600);
-            expect(task2._endMinutes).toBe(660);
-        });
-
-        test('should handle tasks with inherited stale cached values', () => {
-            // Create a task with stale cached values (simulating spread operator copying)
-            const originalTask = {
-                description: 'Original',
-                startTime: '09:00',
-                endTime: '10:00',
-                duration: 60,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false,
-                _startMinutes: 540, // Correct for 09:00
-                _endMinutes: 600 // Correct for 10:00
-            };
-
-            // Create a modified task with stale cached values
-            const modifiedTask = {
-                ...originalTask,
-                startTime: '10:00', // Changed time
-                endTime: '11:00', // Changed time
-                _startMinutes: 540, // Stale - still shows 09:00
-                _endMinutes: 600 // Stale - still shows 10:00
-            };
-
-            // Verify the task initially has stale cached values
-            expect(modifiedTask._startMinutes).toBe(540); // Stale value
-            expect(modifiedTask._endMinutes).toBe(600); // Stale value
-
-            // Test overlap detection with another task
-            const otherTask = {
-                description: 'Other',
-                startTime: '10:30',
-                endTime: '11:30',
-                duration: 60,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-            };
-
-            const overlaps = checkOverlap(modifiedTask, [otherTask]);
-
-            // Should detect overlap correctly despite initially stale cached values
-            expect(overlaps).toHaveLength(1);
-            expect(overlaps[0].description).toBe('Other');
-
-            // Verify cached values were corrected during the checkOverlap call
-            expect(modifiedTask._startMinutes).toBe(600); // 10:00 - corrected
-            expect(modifiedTask._endMinutes).toBe(660); // 11:00 - corrected
-        });
-
-        test('should handle midnight crossing with cached values', () => {
-            const lateTask = {
-                description: 'Late Task',
-                startTime: '23:30',
-                endTime: '01:00', // Crosses midnight
-                duration: 90,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-            };
-
-            const earlyTask = {
-                description: 'Early Task',
-                startTime: '00:30',
-                endTime: '01:30',
-                duration: 60,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-            };
-
-            const overlaps = checkOverlap(lateTask, [earlyTask]);
-            expect(overlaps).toHaveLength(1);
-            expect(overlaps[0].description).toBe('Early Task');
-
-            // Verify cached values are correct for midnight crossing
-            expect(lateTask._startMinutes).toBe(1410); // 23:30 = 23.5 * 60 = 1410
-            expect(lateTask._endMinutes).toBe(60); // 01:00 = 1 * 60 = 60
-            expect(earlyTask._startMinutes).toBe(30); // 00:30 = 0.5 * 60 = 30
-            expect(earlyTask._endMinutes).toBe(90); // 01:30 = 1.5 * 60 = 90
-        });
-    });
-
-    describe('Time Cache Management', () => {
-        test('should add cached time values to new tasks', () => {
-            const result = addTask({
-                description: 'Test Task',
-                startTime: '09:00',
-                duration: 60
-            });
-
-            expect(result.success).toBe(true);
-            const tasks = getTaskState();
-            const task = tasks[0];
-
-            // Verify cached time values are present
-            expect(task._startMinutes).toBe(540); // 09:00 = 9 * 60 = 540
-            expect(task._endMinutes).toBe(600); // 10:00 = 10 * 60 = 600
-        });
-
-        test('should invalidate and regenerate cached time values when task is updated', () => {
-            // Add initial task
-            addTask({
-                description: 'Test Task',
-                startTime: '09:00',
-                duration: 60
-            });
-
-            const tasks = getTaskState();
-            const originalTask = tasks[0];
-
-            // Verify initial cached values
-            expect(originalTask._startMinutes).toBe(540); // 09:00
-            expect(originalTask._endMinutes).toBe(600); // 10:00
-
-            // Update the task
-            updateTask(0, {
-                startTime: '10:00',
-                duration: 90
-            });
-
-            const updatedTasks = getTaskState();
-            const updatedTask = updatedTasks[0];
-
-            // Verify cached values were updated
-            expect(updatedTask._startMinutes).toBe(600); // 10:00 = 10 * 60 = 600
-            expect(updatedTask._endMinutes).toBe(690); // 11:30 = 11.5 * 60 = 690
-        });
-
-        test('should handle tasks loaded from storage without cached values', () => {
-            // Simulate loading tasks from storage (without cached values)
-            const tasksFromStorage = [
-                {
-                    description: 'Loaded Task',
-                    startTime: '09:00',
-                    endTime: '10:00',
-                    duration: 60,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                    // No _startMinutes or _endMinutes
-                }
-            ];
-
-            updateTaskState(tasksFromStorage);
-            const tasks = getTaskState();
-            const task = tasks[0];
-
-            // Verify cached values were added during updateTaskState
-            expect(task._startMinutes).toBe(540); // 09:00
-            expect(task._endMinutes).toBe(600); // 10:00
-        });
     });
 
     describe('Sorted Tasks Caching', () => {
@@ -507,15 +346,16 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('performReschedule', () => {
         // Helper to create mock tasks for these tests
-        const createTask = (id, startTime, duration, status = 'incomplete', editing = false) => ({
-            description: `Task ${id}`,
-            startTime,
-            duration,
-            endTime: calculateEndTime(startTime, duration),
-            status,
-            editing,
-            confirmingDelete: false
-        });
+        const createTask = (id, startTime, duration, status = 'incomplete', editing = false) => {
+            return createTaskWithDateTime({
+                description: `Task ${id}`,
+                startTime,
+                duration,
+                status,
+                editing,
+                confirmingDelete: false
+            });
+        };
 
         beforeEach(() => {
             updateTaskState([]);
@@ -526,8 +366,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             updateTaskState([taskA]);
             performReschedule(taskA);
-            expect(getTaskState()[0].startTime).toBe('09:00');
-            expect(getTaskState()[0].endTime).toBe('10:00');
+            expect(extractTimeFromDateTime(getTaskState()[0].startDateTime)).toBe('09:00');
+            expect(extractTimeFromDateTime(getTaskState()[0].endDateTime)).toBe('10:00');
         });
 
         test('should shift a single subsequent overlapping task', () => {
@@ -546,10 +386,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskBResult).toBeDefined();
 
             if (taskAResult && taskBResult) {
-                expect(taskAResult.startTime).toBe('09:00');
-                expect(taskAResult.endTime).toBe('10:00');
-                expect(taskBResult.startTime).toBe('10:00'); // Shifted
-                expect(taskBResult.endTime).toBe('10:30');
+                expect(extractTimeFromDateTime(taskAResult.startDateTime)).toBe('09:00');
+                expect(extractTimeFromDateTime(taskAResult.endDateTime)).toBe('10:00');
+                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00'); // Shifted
+                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('10:30');
             }
         });
 
@@ -570,11 +410,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskCResult).toBeDefined();
 
             if (taskAResult && taskBResult && taskCResult) {
-                expect(taskAResult.endTime).toBe('10:00');
-                expect(taskBResult.startTime).toBe('10:00'); // Shifted by A
-                expect(taskBResult.endTime).toBe('10:30');
-                expect(taskCResult.startTime).toBe('10:30'); // Shifted by B
-                expect(taskCResult.endTime).toBe('11:00');
+                expect(extractTimeFromDateTime(taskAResult.endDateTime)).toBe('10:00');
+                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00'); // Shifted by A
+                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('10:30');
+                expect(extractTimeFromDateTime(taskCResult.startDateTime)).toBe('10:30'); // Shifted by B
+                expect(extractTimeFromDateTime(taskCResult.endDateTime)).toBe('11:00');
             }
         });
 
@@ -584,8 +424,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([taskA, taskB_completed]);
             performReschedule(taskA);
 
-            expect(taskB_completed.startTime).toBe('09:30'); // Should not change
-            expect(taskB_completed.endTime).toBe('10:00');
+            expect(extractTimeFromDateTime(taskB_completed.startDateTime)).toBe('09:30'); // Should not change
+            expect(extractTimeFromDateTime(taskB_completed.endDateTime)).toBe('10:00');
         });
 
         test('should not shift tasks currently being edited by the user', () => {
@@ -594,8 +434,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([taskA, taskC_editing]);
             performReschedule(taskA);
 
-            expect(taskC_editing.startTime).toBe('09:45'); // Should not change
-            expect(taskC_editing.endTime).toBe('10:15');
+            expect(extractTimeFromDateTime(taskC_editing.startDateTime)).toBe('09:45'); // Should not change
+            expect(extractTimeFromDateTime(taskC_editing.endDateTime)).toBe('10:15');
         });
 
         test('taskThatChanged maintains its properties correctly', () => {
@@ -605,20 +445,20 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             // Update taskA to overlap with B
             taskA.duration = 90; // Now 09:00 - 10:30
-            taskA.endTime = calculateEndTime(taskA.startTime, taskA.duration);
+            taskA.endDateTime = calculateEndDateTime(taskA.startDateTime, taskA.duration);
 
             performReschedule(taskA);
 
-            expect(taskA.startTime).toBe('09:00');
-            expect(taskA.endTime).toBe('10:30');
+            expect(extractTimeFromDateTime(taskA.startDateTime)).toBe('09:00');
+            expect(extractTimeFromDateTime(taskA.endDateTime)).toBe('10:30');
 
             const tasks = getTaskState();
             const taskBResult = tasks.find((t) => t.description === 'Task B');
             expect(taskBResult).toBeDefined();
 
             if (taskBResult) {
-                expect(taskBResult.startTime).toBe('10:30');
-                expect(taskBResult.endTime).toBe('11:00');
+                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:30');
+                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('11:00');
             }
         });
         test('should correctly restore editing state of taskThatChanged', () => {
@@ -634,7 +474,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskBResult).toBeDefined();
 
             if (taskBResult) {
-                expect(taskBResult.startTime).toBe('10:00');
+                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00');
             }
         });
     });
@@ -690,15 +530,14 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('confirmAddTaskAndReschedule', () => {
         beforeEach(() => {
             updateTaskState([
-                {
+                createTaskWithDateTime({
                     description: 'Existing Task 1',
                     startTime: '09:00',
-                    endTime: '10:00',
                     duration: 60,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                }
+                })
             ]);
             mockSaveTasks.mockClear();
         });
@@ -719,9 +558,14 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(existingTaskInList).toBeDefined();
 
             if (newTaskInList && existingTaskInList) {
-                expect(newTaskInList).toMatchObject(taskData); // New task added
-                expect(existingTaskInList.startTime).toBe('10:30'); // Existing task shifted by performReschedule
-                expect(existingTaskInList.endTime).toBe('11:30');
+                const { startTime: expectedStartTime, ...taskDataWithoutStartTime } = taskData;
+                expect(newTaskInList).toMatchObject(taskDataWithoutStartTime);
+                expect(extractTimeFromDateTime(newTaskInList.startDateTime)).toBe(
+                    expectedStartTime
+                );
+
+                expect(extractTimeFromDateTime(existingTaskInList.startDateTime)).toBe('10:30'); // Existing task shifted by performReschedule
+                expect(extractTimeFromDateTime(existingTaskInList.endDateTime)).toBe('11:30');
             }
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
@@ -732,24 +576,22 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('updateTask', () => {
         beforeEach(() => {
             updateTaskState([
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    endTime: '10:00',
                     duration: 60,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                },
-                {
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    endTime: '11:00',
                     duration: 60,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                }
+                })
             ]);
             mockSaveTasks.mockClear();
         });
@@ -762,7 +604,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.task).toBeDefined();
             const tasks = getTaskState();
             expect(tasks[0].description).toBe('Task 1 Updated');
-            expect(tasks[0].endTime).toBe('09:30');
+            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('09:30');
             expect(tasks[1].description).toBe('Task 2'); // Task 2 remains, no reschedule needed for it in this case
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -780,7 +622,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const tasks = getTaskState();
             expect(tasks[0].description).toBe('Task 1'); // Unchanged
-            expect(tasks[0].startTime).toBe('09:00');
+            expect(extractTimeFromDateTime(tasks[0].startDateTime)).toBe('09:00');
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
@@ -801,33 +643,30 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('confirmUpdateTaskAndReschedule', () => {
         let task1, task2, task3;
         beforeEach(() => {
-            task1 = {
+            task1 = createTaskWithDateTime({
                 description: 'Task 1',
                 startTime: '09:00',
-                endTime: '10:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            task2 = {
+            });
+            task2 = createTaskWithDateTime({
                 description: 'Task 2',
                 startTime: '10:00',
-                endTime: '11:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            task3 = {
+            });
+            task3 = createTaskWithDateTime({
                 description: 'Task 3',
                 startTime: '11:00',
-                endTime: '12:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2, task3]);
             mockSaveTasks.mockClear();
         });
@@ -852,11 +691,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(shiftedT3).toBeDefined();
 
             if (updatedT1 && shiftedT2 && shiftedT3) {
-                expect(updatedT1.endTime).toBe('10:30');
-                expect(shiftedT2.startTime).toBe('10:30'); // Shifted
-                expect(shiftedT2.endTime).toBe('11:30');
-                expect(shiftedT3.startTime).toBe('11:30'); // Shifted
-                expect(shiftedT3.endTime).toBe('12:30');
+                expect(extractTimeFromDateTime(updatedT1.endDateTime)).toBe('10:30');
+                expect(extractTimeFromDateTime(shiftedT2.startDateTime)).toBe('10:30'); // Shifted
+                expect(extractTimeFromDateTime(shiftedT2.endDateTime)).toBe('11:30');
+                expect(extractTimeFromDateTime(shiftedT3.startDateTime)).toBe('11:30'); // Shifted
+                expect(extractTimeFromDateTime(shiftedT3.endDateTime)).toBe('12:30');
             }
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
@@ -866,24 +705,22 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('completeTask', () => {
         beforeEach(() => {
             updateTaskState([
-                {
+                createTaskWithDateTime({
                     description: 'Test Task',
                     startTime: '09:00',
-                    endTime: '10:00',
                     duration: 60,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                },
-                {
+                }),
+                createTaskWithDateTime({
                     description: 'Another Task',
                     startTime: '10:00',
-                    endTime: '11:00',
                     duration: 60,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                }
+                })
             ]);
             mockSaveTasks.mockClear();
         });
@@ -893,7 +730,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
-            expect(tasks[0].endTime).toBe('10:00'); // Original end time
+            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('10:00'); // Original end time
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
 
@@ -903,7 +740,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
-            expect(tasks[0].endTime).toBe(currentTime);
+            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe(currentTime);
             expect(tasks[0].duration).toBe(30); // 09:00 to 09:30
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -926,7 +763,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('incomplete'); // Not yet completed
-            expect(tasks[0].endTime).toBe('10:00'); // Not yet changed
+            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('10:00'); // Not yet changed
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
         test('should handle invalid index gracefully', () => {
@@ -939,24 +776,22 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('confirmCompleteLate', () => {
         let task1, task2;
         beforeEach(() => {
-            task1 = {
+            task1 = createTaskWithDateTime({
                 description: 'Task A',
                 startTime: '09:00',
-                endTime: '10:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            task2 = {
+            });
+            task2 = createTaskWithDateTime({
                 description: 'Task B',
                 startTime: '10:00',
-                endTime: '10:30',
                 duration: 30,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2]);
             mockSaveTasks.mockClear();
         });
@@ -976,12 +811,12 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             if (completedTask && subsequentTask) {
                 expect(completedTask.status).toBe('completed');
-                expect(completedTask.endTime).toBe(newEndTime);
+                expect(extractTimeFromDateTime(completedTask.endDateTime)).toBe(newEndTime);
                 expect(completedTask.duration).toBe(newDuration);
                 expect(completedTask.editing).toBe(false); // Should be reset if it was true for performReschedule
 
-                expect(subsequentTask.startTime).toBe('10:15'); // Rescheduled
-                expect(subsequentTask.endTime).toBe('10:45');
+                expect(extractTimeFromDateTime(subsequentTask.startDateTime)).toBe('10:15'); // Rescheduled
+                expect(extractTimeFromDateTime(subsequentTask.endDateTime)).toBe('10:45');
             }
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -1074,244 +909,224 @@ describe('Task Management Functions (task-manager.js)', () => {
     // via addTask, updateTask, confirmCompleteLate, etc., and performReschedule.
 
     describe('getSuggestedStartTime', () => {
-        let dateSpy;
+        let getCurrentTimeRoundedSpy;
 
         beforeEach(() => {
-            // Mock current time to 14:32 (2:32 PM) which rounds up to 14:35
-            const fixedDate = new Date('2023-01-01T14:32:00');
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => fixedDate);
+            // Mock getCurrentTimeRounded to return 14:35 (2:32 PM rounded up to 2:35 PM)
+            getCurrentTimeRoundedSpy = jest
+                .spyOn(require('../public/js/utils.js'), 'getCurrentTimeRounded')
+                .mockReturnValue('14:35');
         });
 
         afterEach(() => {
-            if (dateSpy) {
-                dateSpy.mockRestore();
+            if (getCurrentTimeRoundedSpy) {
+                getCurrentTimeRoundedSpy.mockRestore();
             }
         });
 
         test('should return current time rounded up when no tasks exist', () => {
             updateTaskState([]);
             const result = getSuggestedStartTime();
-            expect(result).toBe('14:35'); // 14:32 rounded up to nearest 5 minutes
+            expect(result).toBe('14:35'); // getCurrentTimeRounded() returns 14:35
         });
 
         test('should return current time rounded up when no incomplete tasks exist (only completed)', () => {
-            const completedTask = {
+            const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '14:00',
-                endTime: '15:00',
                 duration: 60,
                 status: 'completed',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([completedTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // Current time rounded up
         });
 
         test('should return current time rounded up when filling a gap (tasks exist before current time)', () => {
-            const task1 = {
+            const task1 = createTaskWithDateTime({
                 description: 'Morning Task',
                 startTime: '09:00',
-                endTime: '10:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const task2 = {
+            });
+            const task2 = createTaskWithDateTime({
                 description: 'Evening Task',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // Current time slot (14:35) is free and there's a task before it (morning task)
         });
 
         test('should return end time of latest task when planning ahead (no tasks before current time)', () => {
-            const task1 = {
+            const task1 = createTaskWithDateTime({
                 description: 'Future Task 1',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const task2 = {
+            });
+            const task2 = createTaskWithDateTime({
                 description: 'Future Task 2',
                 startTime: '18:00',
-                endTime: '19:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('19:00'); // No tasks before current time (14:35), so continue planning from latest task
         });
 
         test('should return end time of latest task when current time slot is occupied', () => {
-            const task1 = {
+            const task1 = createTaskWithDateTime({
                 description: 'Current Task',
                 startTime: '14:00',
-                endTime: '15:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const task2 = {
+            });
+            const task2 = createTaskWithDateTime({
                 description: 'Later Task',
                 startTime: '15:30',
-                endTime: '16:30',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('16:30'); // End time of latest task (task2)
         });
 
         test('should handle task that spans current time (current time falls within task)', () => {
-            const spanningTask = {
+            const spanningTask = createTaskWithDateTime({
                 description: 'Long Task',
                 startTime: '14:00',
-                endTime: '16:00',
                 duration: 120,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([spanningTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('16:00'); // End time of the spanning task
         });
 
         test('should handle tasks that cross midnight - current time in first part', () => {
-            // Mock current time to 23:32 (11:32 PM) which rounds up to 23:35
-            dateSpy.mockRestore();
-            const lateDate = new Date('2023-01-01T23:32:00');
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => lateDate);
+            // Mock current time to 23:35 (11:35 PM)
+            getCurrentTimeRoundedSpy.mockReturnValue('23:35');
 
-            const midnightTask = {
+            const midnightTask = createTaskWithDateTime({
                 description: 'Midnight Task',
                 startTime: '23:00',
-                endTime: '01:00', // Crosses midnight
                 duration: 120,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([midnightTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
         test('should handle tasks that cross midnight - current time in second part', () => {
-            // Mock current time to 00:32 (12:32 AM) which rounds up to 00:35
-            dateSpy.mockRestore();
-            const earlyDate = new Date('2023-01-02T00:32:00');
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => earlyDate);
+            // Mock current time to 00:35 (12:35 AM)
+            getCurrentTimeRoundedSpy.mockReturnValue('00:35');
 
-            const midnightTask = {
+            const midnightTask = createTaskWithDateTime({
                 description: 'Midnight Task',
                 startTime: '23:00',
-                endTime: '01:00', // Crosses midnight
                 duration: 120,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([midnightTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
         test('should consider completed tasks when determining gap-filling vs planning ahead', () => {
-            const completedTask = {
+            const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '14:00',
-                endTime: '15:00',
                 duration: 60,
                 status: 'completed',
                 editing: false,
                 confirmingDelete: false
-            };
-            const incompleteTask = {
+            });
+            const incompleteTask = createTaskWithDateTime({
                 description: 'Future Task',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([completedTask, incompleteTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // Completed task counts as existing task before current time, so fill the gap
         });
 
         test('should ignore completed tasks for conflict detection but consider them for gap-filling', () => {
-            const completedTaskAtCurrentTime = {
+            const completedTaskAtCurrentTime = createTaskWithDateTime({
                 description: 'Completed Task at Current Time',
                 startTime: '14:30',
-                endTime: '15:30',
                 duration: 60,
                 status: 'completed',
                 editing: false,
                 confirmingDelete: false
-            };
-            const futureTask = {
+            });
+            const futureTask = createTaskWithDateTime({
                 description: 'Future Task',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([completedTaskAtCurrentTime, futureTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // Current time is free (completed task doesn't conflict) and there's a task before it, so fill the gap
         });
 
         test('should return end time of chronologically latest task when multiple tasks exist', () => {
-            const task1 = {
+            const task1 = createTaskWithDateTime({
                 description: 'Early Task',
                 startTime: '09:00',
-                endTime: '10:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const task2 = {
+            });
+            const task2 = createTaskWithDateTime({
                 description: 'Current Conflicting Task',
                 startTime: '14:30',
-                endTime: '15:30',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const task3 = {
+            });
+            const task3 = createTaskWithDateTime({
                 description: 'Latest Task',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([task1, task2, task3]);
             const result = getSuggestedStartTime();
             expect(result).toBe('17:00'); // End time of chronologically latest task (task3)
@@ -1319,19 +1134,19 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should handle edge case where current time exactly matches task start time', () => {
             // Mock current time to 14:30 (already rounded)
-            dateSpy.mockRestore();
-            const exactDate = new Date('2023-01-01T14:30:00');
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => exactDate);
+            getCurrentTimeRoundedSpy.mockRestore();
+            getCurrentTimeRoundedSpy = jest
+                .spyOn(require('../public/js/utils.js'), 'getCurrentTimeRounded')
+                .mockImplementation(() => '14:30');
 
-            const exactTask = {
+            const exactTask = createTaskWithDateTime({
                 description: 'Exact Start Task',
                 startTime: '14:30',
-                endTime: '15:30',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([exactTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('15:30'); // End time of the conflicting task
@@ -1339,76 +1154,71 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should handle edge case where current time exactly matches task end time', () => {
             // Mock current time to 15:00 (already rounded)
-            dateSpy.mockRestore();
-            const exactEndDate = new Date('2023-01-01T15:00:00');
-            dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => exactEndDate);
+            getCurrentTimeRoundedSpy.mockRestore();
+            getCurrentTimeRoundedSpy = jest
+                .spyOn(require('../public/js/utils.js'), 'getCurrentTimeRounded')
+                .mockImplementation(() => '15:00');
 
-            const endingTask = {
+            const endingTask = createTaskWithDateTime({
                 description: 'Ending Task',
                 startTime: '14:00',
-                endTime: '15:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([endingTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('15:00'); // Current time is free and there's a task before it, so fill the gap
         });
 
         test('should handle mixed scenario with completed and incomplete tasks before current time', () => {
-            const completedTask = {
+            const completedTask = createTaskWithDateTime({
                 description: 'Completed Morning Task',
                 startTime: '09:00',
-                endTime: '10:00',
                 duration: 60,
                 status: 'completed',
                 editing: false,
                 confirmingDelete: false
-            };
-            const incompleteTask = {
+            });
+            const incompleteTask = createTaskWithDateTime({
                 description: 'Incomplete Morning Task',
                 startTime: '11:00',
-                endTime: '12:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const futureTask = {
+            });
+            const futureTask = createTaskWithDateTime({
                 description: 'Future Task',
                 startTime: '16:00',
-                endTime: '17:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([completedTask, incompleteTask, futureTask]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // There are tasks (both completed and incomplete) before current time, so fill the gap
         });
 
         test('should handle scenario where all tasks are in the future (planning mode)', () => {
-            const futureTask1 = {
+            const futureTask1 = createTaskWithDateTime({
                 description: 'Future Task 1',
                 startTime: '15:00',
-                endTime: '16:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
-            const futureTask2 = {
+            });
+            const futureTask2 = createTaskWithDateTime({
                 description: 'Future Task 2',
                 startTime: '17:00',
-                endTime: '18:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false
-            };
+            });
             updateTaskState([futureTask1, futureTask2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('18:00'); // No tasks before current time (14:35), so continue planning from latest
@@ -1426,15 +1236,16 @@ describe('Task Management Functions (task-manager.js)', () => {
                 const minute = (i % 10) * 6; // 0, 6, 12, 18, 24, 30, 36, 42, 48, 54
                 const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
-                tasks.push({
-                    description: `Task ${i}`,
-                    startTime: timeStr,
-                    endTime: calculateEndTime(timeStr, 30),
-                    duration: 30,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                });
+                tasks.push(
+                    createTaskWithDateTime({
+                        description: `Task ${i}`,
+                        startTime: timeStr,
+                        duration: 30,
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false
+                    })
+                );
             }
 
             updateTaskState(tasks);
@@ -1444,15 +1255,14 @@ describe('Task Management Functions (task-manager.js)', () => {
                 getTaskState(); // Should use cached sorting
 
                 // Test overlap detection
-                const testTask = {
+                const testTask = createTaskWithDateTime({
                     description: 'Test',
                     startTime: '10:00',
-                    endTime: '10:30',
                     duration: 30,
                     status: 'incomplete',
                     editing: false,
                     confirmingDelete: false
-                };
+                });
                 checkOverlap(testTask, getTaskState());
             }
 
@@ -1461,31 +1271,6 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             // Should complete in reasonable time (less than 100ms for 100 tasks)
             expect(duration).toBeLessThan(100);
-        });
-
-        test('should maintain cached values during reschedule operations', () => {
-            // Add initial tasks
-            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
-            addTask({ description: 'Task B', startTime: '09:30', duration: 60 });
-            addTask({ description: 'Task C', startTime: '10:00', duration: 60 });
-
-            const tasks = getTaskState();
-            const taskA = tasks[0];
-
-            // Modify Task A to trigger reschedule
-            taskA.duration = 120; // Extend to 2 hours
-            taskA.endTime = calculateEndTime(taskA.startTime, taskA.duration);
-
-            performReschedule(taskA);
-
-            // Verify all tasks have cached values after reschedule
-            const updatedTasks = getTaskState();
-            updatedTasks.forEach((task) => {
-                expect(task._startMinutes).toBeDefined();
-                expect(task._endMinutes).toBeDefined();
-                expect(typeof task._startMinutes).toBe('number');
-                expect(typeof task._endMinutes).toBe('number');
-            });
         });
     });
 });

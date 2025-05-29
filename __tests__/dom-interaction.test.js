@@ -18,7 +18,7 @@ import {
     refreshStartTimeField,
     disableStartTimeAutoUpdate
 } from '../public/js/dom-handler.js';
-import { convertTo12HourTime } from '../public/js/utils.js';
+import { convertTo12HourTime, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
 
 describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;
@@ -195,11 +195,12 @@ describe('DOM Handler Interaction Tests', () => {
     });
 
     describe('renderTasks', () => {
+        const testDate = '2025-01-01'; // Use a fixed date for consistency
         const sampleTasks = [
             {
                 description: 'Task 1',
-                startTime: '09:00',
-                endTime: '10:00',
+                startDateTime: timeToDateTime('09:00', testDate),
+                endDateTime: calculateEndDateTime(timeToDateTime('09:00', testDate), 60),
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
@@ -207,8 +208,8 @@ describe('DOM Handler Interaction Tests', () => {
             },
             {
                 description: 'Task 2',
-                startTime: '10:30',
-                endTime: '11:00',
+                startDateTime: timeToDateTime('10:30', testDate),
+                endDateTime: calculateEndDateTime(timeToDateTime('10:30', testDate), 30),
                 duration: 30,
                 status: 'completed',
                 editing: false,
@@ -216,8 +217,8 @@ describe('DOM Handler Interaction Tests', () => {
             },
             {
                 description: 'Task 3',
-                startTime: '11:30',
-                endTime: '12:00',
+                startDateTime: timeToDateTime('11:30', testDate),
+                endDateTime: calculateEndDateTime(timeToDateTime('11:30', testDate), 30),
                 duration: 30,
                 status: 'incomplete',
                 editing: true,
