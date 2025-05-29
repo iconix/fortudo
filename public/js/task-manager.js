@@ -20,7 +20,6 @@ import { saveTasks } from './storage.js';
 
 /** @type {Task[]} */
 let tasks = [];
-let isDeleteAllPendingConfirmation = false;
 
 // Caching for sorted tasks and filtering results
 let sortedTasksCache = null;
@@ -51,17 +50,8 @@ export function updateTaskState(newTasks) {
     // Invalidate caches when state changes
     invalidateTaskCaches();
 
-    // Maintain backward compatibility: save tasks when state is updated externally
-    // This is needed for tests and when loading from storage
+    // Persist any changes to task state
     saveTasks(tasks);
-}
-
-/**
- * Get the current state of delete all pending confirmation.
- * @returns {boolean} Whether delete all is pending confirmation.
- */
-export function getIsDeleteAllPendingConfirmation() {
-    return isDeleteAllPendingConfirmation;
 }
 
 // ============================================================================
@@ -804,27 +794,23 @@ export function deleteTask(index, confirmed = false) {
 
 /**
  * Delete all tasks.
- * @param {boolean} confirmed - Whether the delete all was confirmed by the user.
- * @returns {{success: boolean, requiresConfirmation?: boolean, reason?: string, message?: string, tasksDeleted?: number}}
+ * @returns {{success: boolean, message?: string, tasksDeleted?: number, reason?: string}}
  */
-export function deleteAllTasks(confirmed = false) {
+export function deleteAllTasks() {
     if (tasks.length === 0) {
-        return { success: true, message: 'No tasks to delete.', tasksDeleted: 0 };
-    }
-    if (!confirmed) {
-        isDeleteAllPendingConfirmation = true;
-        // No sort needed as this is a confirmation step.
         return {
-            success: false,
-            requiresConfirmation: true,
-            reason: 'Are you sure you want to delete all tasks?'
+            success: true,
+            tasksDeleted: 0
         };
     }
 
     const numTasksDeleted = tasks.length;
-    updateTaskState([]); // updateTaskState calls saveTasks. The list is empty, so sorting is trivial.
-    isDeleteAllPendingConfirmation = false;
-    return { success: true, tasksDeleted: numTasksDeleted };
+    updateTaskState([]); // note: calls saveTasks
+    return {
+        success: true,
+        message: 'All tasks deleted successfully.',
+        tasksDeleted: numTasksDeleted
+    };
 }
 
 // ============================================================================

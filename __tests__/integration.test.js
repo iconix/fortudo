@@ -575,13 +575,13 @@ describe('User Confirmation Flows', () => {
             if (confirmSpy) confirmSpy.mockRestore();
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-            confirmSpy = jest.spyOn(window, 'confirm');
+            confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
             mockSaveTasks.mockClear();
 
             await clickDeleteAllButton();
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-            expect(alertSpy).toHaveBeenCalledWith('There are no tasks to delete.');
+            expect(alertSpy).not.toHaveBeenCalled();
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 

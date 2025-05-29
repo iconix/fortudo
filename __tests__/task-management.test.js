@@ -22,7 +22,6 @@ import {
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
     getSuggestedStartTime,
-    getIsDeleteAllPendingConfirmation,
     tasksOverlap
 } from '../public/js/task-manager.js';
 import { calculateEndTime, calculateMinutes } from '../public/js/utils.js';
@@ -1050,51 +1049,22 @@ describe('Task Management Functions (task-manager.js)', () => {
             mockSaveTasks.mockClear();
         });
 
-        test('should remove all tasks if deleteAllTasks(true) is called after deleteAllTasks(false)', () => {
-            deleteAllTasks(false); // Set pending confirmation
-            expect(getIsDeleteAllPendingConfirmation()).toBe(true);
-            mockSaveTasks.mockClear();
-            const result = deleteAllTasks(true);
+        test('should delete all tasks and return success result', () => {
+            const result = deleteAllTasks();
             expect(result.success).toBe(true);
-            expect(getTaskState().length).toBe(0);
-            expect(mockSaveTasks).toHaveBeenCalledWith([]);
-            // Check that the flag is reset after successful deletion
-            expect(getIsDeleteAllPendingConfirmation()).toBe(false);
-        });
-
-        test('should remove all tasks if deleteAllTasks(true) is called directly', () => {
-            const result = deleteAllTasks(true);
-            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(2);
+            expect(result.message).toBe('All tasks deleted successfully.');
             expect(getTaskState().length).toBe(0);
             expect(mockSaveTasks).toHaveBeenCalledWith([]);
         });
 
-        test('should require confirmation if deleteAllTasks(false) and tasks exist', () => {
-            const result = deleteAllTasks(false);
-            expect(result.success).toBe(false);
-            expect(result.requiresConfirmation).toBe(true);
-            expect(result.reason).toBe('Are you sure you want to delete all tasks?');
-            expect(getTaskState().length).toBe(2); // Tasks still exist
-            expect(mockSaveTasks).not.toHaveBeenCalled();
-            // Check that the isDeleteAllPendingConfirmation flag is set
-            expect(getIsDeleteAllPendingConfirmation()).toBe(true);
-        });
+        test('should return success if no tasks to delete', () => {
+            updateTaskState([]);
+            mockSaveTasks.mockClear();
 
-        test('should return success if no tasks to delete (even if confirmed=false)', () => {
-            updateTaskState([]);
-            mockSaveTasks.mockClear();
-            const result = deleteAllTasks(false); // No tasks, so no confirmation needed.
+            const result = deleteAllTasks();
             expect(result.success).toBe(true);
-            expect(result.message).toBe('No tasks to delete.');
-            expect(getTaskState().length).toBe(0);
-            expect(mockSaveTasks).not.toHaveBeenCalled();
-        });
-        test('should return success if no tasks to delete (confirmed=true)', () => {
-            updateTaskState([]);
-            mockSaveTasks.mockClear();
-            const result = deleteAllTasks(true);
-            expect(result.success).toBe(true);
-            expect(result.message).toBe('No tasks to delete.');
+            expect(result.tasksDeleted).toBe(0);
             expect(getTaskState().length).toBe(0);
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });

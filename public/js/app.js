@@ -163,29 +163,21 @@ document.addEventListener('DOMContentLoaded', () => {
          */
         onDeleteAllTasks: () => {
             if (getTaskState().length === 0) {
-                showAlert('There are no tasks to delete.');
                 return;
             }
-            let result = deleteAllTasks(false);
-            if (result.requiresConfirmation) {
-                if (
-                    askConfirmation(result.reason || 'Are you sure you want to delete all tasks?')
-                ) {
-                    result = deleteAllTasks(true);
-                } else {
-                    renderTasks(getTaskState(), taskEventCallbacks); // re-render to clear any confirmation states
-                    return; // exit, as user cancelled
-                }
-            }
 
-            // at this point, deletion either succeeded or failed due to an error
-            if (result.success) {
-                if (result.message) showAlert(result.message);
-                renderTasks(getTaskState(), taskEventCallbacks);
-                // force update after deleting all tasks
-                updateStartTimeField(getSuggestedStartTime(), true);
+            if (askConfirmation('Are you sure you want to delete all tasks?')) {
+                const deleteResult = deleteAllTasks();
+                if (deleteResult.success) {
+                    if (deleteResult.message) showAlert(deleteResult.message);
+                    renderTasks(getTaskState(), taskEventCallbacks);
+                    // force update after deleting all tasks
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
+                    showAlert(deleteResult.reason || 'Failed to delete all tasks.');
+                }
             } else {
-                showAlert(result.reason || 'Failed to delete all tasks.');
+                renderTasks(getTaskState(), taskEventCallbacks); // re-render to clear any confirmation states
             }
         },
         /**

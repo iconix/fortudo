@@ -655,6 +655,7 @@ describe('App.js Callback Functions', () => {
                 await setupAppWithTasks([]);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
                 mockSaveTasks.mockClear();
 
                 // Click the delete all button when no tasks exist
@@ -664,7 +665,8 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(alertSpy).toHaveBeenCalledWith('There are no tasks to delete.');
+                expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
+                expect(alertSpy).not.toHaveBeenCalled();
             });
 
             test('should handle user denying delete all confirmation', async () => {
@@ -686,23 +688,16 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
                 mockSaveTasks.mockClear();
 
-                // Mock deleteAllTasks to require confirmation
-                jest.spyOn(
-                    require('../public/js/task-manager.js'),
-                    'deleteAllTasks'
-                ).mockReturnValue({
-                    success: false,
-                    requiresConfirmation: true,
-                    reason: 'Are you sure?'
-                });
-
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
                     deleteAllButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(confirmSpy).toHaveBeenCalled();
+                expect(confirmSpy).toHaveBeenCalledWith(
+                    'Are you sure you want to delete all tasks?'
+                );
+                expect(mockSaveTasks).not.toHaveBeenCalled(); // Should not save since user denied
             });
 
             test('should handle delete all failure with error', async () => {
@@ -724,18 +719,14 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
                 mockSaveTasks.mockClear();
 
-                // Mock deleteAllTasks to require confirmation first, then fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
-                    .mockReturnValueOnce({
-                        success: false,
-                        requiresConfirmation: true,
-                        reason: 'Are you sure?'
-                    })
-                    .mockReturnValueOnce({
-                        success: false,
-                        reason: 'Delete all failed',
-                        requiresConfirmation: false
-                    });
+                // Mock deleteAllTasks to fail
+                jest.spyOn(
+                    require('../public/js/task-manager.js'),
+                    'deleteAllTasks'
+                ).mockReturnValue({
+                    success: false,
+                    reason: 'Delete all failed'
+                });
 
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
@@ -743,7 +734,9 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(confirmSpy).toHaveBeenCalled();
+                expect(confirmSpy).toHaveBeenCalledWith(
+                    'Are you sure you want to delete all tasks?'
+                );
                 expect(alertSpy).toHaveBeenCalledWith('Delete all failed');
             });
 
@@ -771,17 +764,13 @@ describe('App.js Callback Functions', () => {
                     'updateStartTimeField'
                 );
 
-                // Mock deleteAllTasks to return success and simulate the actual behavior
-                const deleteAllTasksSpy = jest
+                // Mock deleteAllTasks to succeed
+                const executeDeleteSpy = jest
                     .spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
-                    .mockReturnValueOnce({
-                        success: false,
-                        requiresConfirmation: true,
-                        reason: 'Are you sure you want to delete all tasks?'
-                    })
-                    .mockReturnValueOnce({
+                    .mockReturnValue({
                         success: true,
-                        tasksDeleted: 1
+                        tasksDeleted: 1,
+                        message: 'All tasks deleted successfully.'
                     });
 
                 mockSaveTasks.mockClear();
@@ -792,14 +781,16 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 50));
                 }
 
-                expect(confirmSpy).toHaveBeenCalled();
-                expect(deleteAllTasksSpy).toHaveBeenCalledTimes(2); // Once for confirmation, once for actual delete
+                expect(confirmSpy).toHaveBeenCalledWith(
+                    'Are you sure you want to delete all tasks?'
+                );
+                expect(executeDeleteSpy).toHaveBeenCalledTimes(1);
 
                 // Verify updateStartTimeField was called with forceUpdate=true
                 expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
 
                 updateStartTimeFieldSpy.mockRestore();
-                deleteAllTasksSpy.mockRestore();
+                executeDeleteSpy.mockRestore();
             });
         });
 
