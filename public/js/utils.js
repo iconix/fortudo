@@ -1,21 +1,10 @@
 // Time utilities and pure functions
 
+const MILLISECONDS_PER_MINUTE = 60000;
+
 // ============================================================================
 // DATETIME UTILITIES
 // ============================================================================
-
-/**
- * Create a Date object from a date and time string
- * @param {string} timeStr - Time in HH:MM format
- * @param {string} [dateStr] - Date in YYYY-MM-DD format. Defaults to today.
- * @returns {Date} - Date object
- */
-export function createDateTime(timeStr, dateStr) {
-    if (!dateStr) {
-        dateStr = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD
-    }
-    return new Date(`${dateStr}T${timeStr}:00.000`);
-}
 
 /**
  * Calculate end DateTime from start DateTime and duration
@@ -25,35 +14,40 @@ export function createDateTime(timeStr, dateStr) {
  */
 export function calculateEndDateTime(startDateTime, duration) {
     const startDate = new Date(startDateTime);
-    const endDate = new Date(startDate.getTime() + duration * 60000);
+    const endDate = new Date(startDate.getTime() + duration * MILLISECONDS_PER_MINUTE);
     return endDate.toISOString();
 }
 
 /**
  * Extract time portion from DateTime string
- * @param {string} dateTimeStr - DateTime in ISO format
+ * @param {Date} dateObj - Date object
  * @returns {string} - Time in HH:MM format
  */
-export function extractTimeFromDateTime(dateTimeStr) {
-    const date = new Date(dateTimeStr);
-    return date.toTimeString().substring(0, 5);
+export function extractTimeFromDateTime(dateObj) {
+    return dateObj.toTimeString().substring(0, 5);
 }
 
 /**
- * Convert legacy time strings to DateTime strings (for migration)
+ * Extract date portion from DateTime string
+ * @param {Date} dateObj - Date object
+ * @returns {string} - Date in YYYY-MM-DD format
+ */
+export function extractDateFromDateTime(dateObj) {
+    return dateObj.toISOString().split('T')[0];
+}
+
+/**
+ * Convert time strings to DateTime strings
  * @param {string} timeStr - Time in HH:MM format
  * @param {string} [dateStr] - Date in YYYY-MM-DD format. Defaults to today.
  * @returns {string} - DateTime in ISO format
  */
-export function timeToDateTime(timeStr, dateStr) {
-    if (!dateStr) {
-        dateStr = new Date().toISOString().split('T')[0];
-    }
-    return createDateTime(timeStr, dateStr).toISOString();
+export function timeToDateTime(timeStr, dateStr = extractDateFromDateTime(new Date())) {
+    return new Date(`${dateStr}T${timeStr}:00.000`).toISOString();
 }
 
 /**
- * Get task start/end Date objects with DateTime support (backward compatible)
+ * Get task start/end Date objects with DateTime support
  * @param {Object} task - Task object with either legacy time fields or new DateTime fields
  * @returns {{startDate: Date, endDate: Date}} - Start and end Date objects
  */
@@ -178,41 +172,50 @@ export function getCurrentTimeRounded(now = new Date()) {
  * Simple logger utility for consistent logging across the application
  */
 export const logger = {
+    /**
+     * Log an error message
+     * @param {string} message - The error message to log
+     * @param {...*} args - Additional arguments to log
+     */
     error: (message, ...args) => {
-        console.error(`[FORTUDO ERROR] ${message}`, ...args);
+        console.error(`[💪🏾 ERROR] ${message}`, ...args);
     },
+
+    /**
+     * Log a warning message
+     * @param {string} message - The warning message to log
+     * @param {...*} args - Additional arguments to log
+     */
     warn: (message, ...args) => {
-        console.warn(`[FORTUDO WARN] ${message}`, ...args);
+        console.warn(`[💪🏾 WARNING] ${message}`, ...args);
     },
+
+    /**
+     * Log an info message
+     * @param {string} message - The info message to log
+     * @param {...*} args - Additional arguments to log
+     */
     info: (message, ...args) => {
-        console.info(`[FORTUDO INFO] ${message}`, ...args);
+        console.info(`[💪🏾 INFO] ${message}`, ...args);
     },
+
+    /**
+     * Log a debug message
+     * @param {string} message - The debug message to log
+     * @param {...*} args - Additional arguments to log
+     */
     debug: (message, ...args) => {
-        console.debug(`[FORTUDO DEBUG] ${message}`, ...args);
+        console.debug(`[💪🏾 DEBUG] ${message}`, ...args);
     }
 };
 
 /**
- * Validates task form data for description and duration.
- * @param {string} description - The task description
- * @param {number} duration - The task duration in minutes
- * @param {Function} isValidTaskData - The validation function from task-manager
- * @returns {{isValid: boolean, reason?: string}} Validation result with reason if invalid
- */
-export function validateTaskFormData(description, duration, isValidTaskData) {
-    return isValidTaskData(description, duration);
-}
-
-/**
- * Check if a task is running late (current time is past the task's end time)
- * @param {Object} task - The task object with either legacy time fields or new DateTime fields
+ * Check if a task is running late
+ * @param {Object} task - The task object
  * @param {Date} [now=new Date()] - Optional date object to use as current time. Defaults to `new Date()`.
  * @returns {boolean} - True if the task is running late
  */
 export function isTaskRunningLate(task, now = new Date()) {
-    // Get task end Date (with backward compatibility)
-    const { endDate } = getTaskDates(task);
-
     // A task is late if the current time 'now' is past its calculated 'endDate'.
-    return now > endDate;
+    return now > task.endDateTime;
 }

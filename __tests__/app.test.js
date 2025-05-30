@@ -769,8 +769,7 @@ describe('App.js Callback Functions', () => {
                     .spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
                     .mockReturnValue({
                         success: true,
-                        tasksDeleted: 1,
-                        message: 'All tasks deleted successfully.'
+                        tasksDeleted: 1
                     });
 
                 mockSaveTasks.mockClear();

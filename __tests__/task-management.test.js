@@ -26,6 +26,7 @@ import {
 } from '../public/js/task-manager.js';
 import {
     calculateEndDateTime,
+    extractDateFromDateTime,
     extractTimeFromDateTime,
     timeToDateTime
 } from '../public/js/utils.js';
@@ -70,8 +71,8 @@ describe('Task Management Functions (task-manager.js)', () => {
      * @param {string} description - Task description (optional, defaults to 'Test Task')
      * @returns {Object} - Task object for testing
      */
-    function createTaskForOverlap(startTime, endTime, description = 'Test Task') {
-        const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+    function createTaskWithTimes(startTime, endTime, description = 'Test Task') {
+        const today = extractDateFromDateTime(new Date()); // Get today's date in YYYY-MM-DD format
         const duration = calculateDurationMidnightAware(startTime, endTime);
         const startDateTime = timeToDateTime(startTime, today);
         const endDateTime = calculateEndDateTime(startDateTime, duration);
@@ -89,67 +90,68 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('tasksOverlap', () => {
         test('tasksOverlap correctly identifies overlapping tasks', () => {
-            const task1 = createTaskForOverlap('09:00', '10:00');
-            const task2 = createTaskForOverlap('09:00', '10:00'); // Full overlap
+            const task1 = createTaskWithTimes('09:00', '10:00');
+            const task2 = createTaskWithTimes('09:00', '10:00'); // Full overlap
             expect(tasksOverlap(task1, task2)).toBe(true);
 
-            const task3 = createTaskForOverlap('09:00', '10:00');
-            const task4 = createTaskForOverlap('09:30', '10:30'); // Partial overlap (task4 starts during task3)
+            const task3 = createTaskWithTimes('09:00', '10:00');
+            const task4 = createTaskWithTimes('09:30', '10:30'); // Partial overlap (task4 starts during task3)
             expect(tasksOverlap(task3, task4)).toBe(true);
 
-            const task5 = createTaskForOverlap('09:30', '10:30');
-            const task6 = createTaskForOverlap('09:00', '10:00'); // Partial overlap (task5 starts during task6)
+            const task5 = createTaskWithTimes('09:30', '10:30');
+            const task6 = createTaskWithTimes('09:00', '10:00'); // Partial overlap (task5 starts during task6)
             expect(tasksOverlap(task5, task6)).toBe(true);
 
-            const task7 = createTaskForOverlap('09:00', '11:00');
-            const task8 = createTaskForOverlap('09:30', '10:30'); // Task8 contained within Task7
+            const task7 = createTaskWithTimes('09:00', '11:00');
+            const task8 = createTaskWithTimes('09:30', '10:30'); // Task8 contained within Task7
             expect(tasksOverlap(task7, task8)).toBe(true);
 
-            const task9 = createTaskForOverlap('09:30', '10:30');
-            const task10 = createTaskForOverlap('09:00', '11:00'); // Task9 contained within Task10
+            const task9 = createTaskWithTimes('09:30', '10:30');
+            const task10 = createTaskWithTimes('09:00', '11:00'); // Task9 contained within Task10
             expect(tasksOverlap(task9, task10)).toBe(true);
 
-            const task11 = createTaskForOverlap('09:00', '10:00');
-            const task12 = createTaskForOverlap('10:00', '11:00'); // Adjacent, not overlapping
+            const task11 = createTaskWithTimes('09:00', '10:00');
+            const task12 = createTaskWithTimes('10:00', '11:00'); // Adjacent, not overlapping
             expect(tasksOverlap(task11, task12)).toBe(false);
 
-            const task13 = createTaskForOverlap('09:00', '10:00');
-            const task14 = createTaskForOverlap('10:01', '11:00'); // Not overlapping
+            const task13 = createTaskWithTimes('09:00', '10:00');
+            const task14 = createTaskWithTimes('10:01', '11:00'); // Not overlapping
             expect(tasksOverlap(task13, task14)).toBe(false);
 
-            const task15 = createTaskForOverlap('09:00', '10:00');
-            const task16 = createTaskForOverlap('08:00', '09:00'); // Adjacent, not overlapping
+            const task15 = createTaskWithTimes('09:00', '10:00');
+            const task16 = createTaskWithTimes('08:00', '09:00'); // Adjacent, not overlapping
             expect(tasksOverlap(task15, task16)).toBe(false);
         });
     });
 
     describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
         test('handles times that cross midnight correctly', () => {
-            const lateNightTask = createTaskForOverlap('23:00', '00:30'); // Ends next day
+            const lateNightTask = createTaskWithTimes('23:00', '00:30'); // Ends next day
 
             const dateForEarlyMorningTask = new Date();
-            dateForEarlyMorningTask.setDate(dateForEarlyMorningTask.getDate() + 1);
+            dateForEarlyMorningTask.setDate(dateForEarlyMorningTask.getDate() + 1); // next day
+
             const earlyMorningTask = createTaskWithDateTime({
                 description: 'Early Morning Task',
                 startTime: '00:15',
                 duration: 45, // 00:15 to 01:00
-                date: dateForEarlyMorningTask.toISOString().split('T')[0]
+                date: extractDateFromDateTime(dateForEarlyMorningTask)
             });
             expect(tasksOverlap(lateNightTask, earlyMorningTask)).toBe(true);
 
-            const eveningTask = createTaskForOverlap('22:00', '00:00'); // Ends at midnight
+            const eveningTask = createTaskWithTimes('22:00', '00:00'); // Ends at midnight
             const morningTask = createTaskWithDateTime({
                 // Starts at midnight on the NEXT day
                 description: 'Morning Task',
                 startTime: '00:00',
                 duration: 120, // 00:00 to 02:00
-                date: dateForEarlyMorningTask.toISOString().split('T')[0] // Use next day's date
+                date: extractDateFromDateTime(dateForEarlyMorningTask) // Use next day's date
             });
             expect(tasksOverlap(eveningTask, morningTask)).toBe(false); // Should be false if on different days like this
         });
 
         test('handles complex midnight-crossing task overlaps correctly', () => {
-            const longEveningTask = createTaskForOverlap('20:00', '02:00'); // Spans 20:00 to 02:00 next day
+            const longEveningTask = createTaskWithTimes('20:00', '02:00'); // Spans 20:00 to 02:00 next day
 
             const dateForNextDay = new Date();
             dateForNextDay.setDate(dateForNextDay.getDate() + 1);
@@ -162,28 +164,29 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             expect(tasksOverlap(longEveningTask, midnightTask)).toBe(true);
 
-            const multiDayTask = createTaskForOverlap('22:00', '08:00'); // Spans 22:00 day1 to 08:00 day2
+            const multiDayTask = createTaskWithTimes('22:00', '08:00'); // Spans 22:00 day1 to 08:00 day2
 
             const morningTask = createTaskWithDateTime({
                 description: 'Morning Task',
                 startTime: '07:00', // on day 2
                 duration: 90, // 07:00 to 08:30 on day 2
-                date: dateForNextDay.toISOString().split('T')[0]
+                date: extractDateFromDateTime(dateForNextDay)
             });
             expect(tasksOverlap(multiDayTask, morningTask)).toBe(true);
 
-            const mondayTask = createTaskForOverlap('23:00', '00:30'); // Monday 23:00 to Tuesday 00:30
+            const day1Task = createTaskWithTimes('23:00', '00:30'); // Day 1 23:00 to Day 2 00:30
 
-            const dateForTuesdayEvening = new Date();
-            dateForTuesdayEvening.setDate(dateForTuesdayEvening.getDate() + 1); // Represents Tuesday
-            const tuesdayEveningTask = createTaskWithDateTime({
-                description: 'Tuesday Evening Task',
-                startTime: '20:00', // Tuesday 20:00
-                duration: 120, // Tuesday 20:00 to 22:00
-                date: dateForTuesdayEvening.toISOString().split('T')[0]
+            const dateForDay2Evening = new Date();
+            dateForDay2Evening.setDate(dateForDay2Evening.getDate() + 1); // Next day
+
+            const day2EveningTask = createTaskWithDateTime({
+                description: 'Day 2 Evening Task',
+                startTime: '20:00', // Day 2 20:00
+                duration: 120, // Day 2 20:00 to 22:00
+                date: extractDateFromDateTime(dateForDay2Evening)
             });
-            // mondayTask ends Tues 00:30. tuesdayEveningTask starts Tues 20:00. No overlap.
-            expect(tasksOverlap(mondayTask, tuesdayEveningTask)).toBe(false);
+            // day1Task ends Day 2 00:30. day2EveningTask starts Day 2 20:00. No overlap.
+            expect(tasksOverlap(day1Task, day2EveningTask)).toBe(false);
         });
     });
 
@@ -366,8 +369,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             updateTaskState([taskA]);
             performReschedule(taskA);
-            expect(extractTimeFromDateTime(getTaskState()[0].startDateTime)).toBe('09:00');
-            expect(extractTimeFromDateTime(getTaskState()[0].endDateTime)).toBe('10:00');
+            expect(extractTimeFromDateTime(new Date(getTaskState()[0].startDateTime))).toBe(
+                '09:00'
+            );
+            expect(extractTimeFromDateTime(new Date(getTaskState()[0].endDateTime))).toBe('10:00');
         });
 
         test('should shift a single subsequent overlapping task', () => {
@@ -386,10 +391,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskBResult).toBeDefined();
 
             if (taskAResult && taskBResult) {
-                expect(extractTimeFromDateTime(taskAResult.startDateTime)).toBe('09:00');
-                expect(extractTimeFromDateTime(taskAResult.endDateTime)).toBe('10:00');
-                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00'); // Shifted
-                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('10:30');
+                expect(extractTimeFromDateTime(new Date(taskAResult.startDateTime))).toBe('09:00');
+                expect(extractTimeFromDateTime(new Date(taskAResult.endDateTime))).toBe('10:00');
+                expect(extractTimeFromDateTime(new Date(taskBResult.startDateTime))).toBe('10:00'); // Shifted
+                expect(extractTimeFromDateTime(new Date(taskBResult.endDateTime))).toBe('10:30');
             }
         });
 
@@ -410,11 +415,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskCResult).toBeDefined();
 
             if (taskAResult && taskBResult && taskCResult) {
-                expect(extractTimeFromDateTime(taskAResult.endDateTime)).toBe('10:00');
-                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00'); // Shifted by A
-                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('10:30');
-                expect(extractTimeFromDateTime(taskCResult.startDateTime)).toBe('10:30'); // Shifted by B
-                expect(extractTimeFromDateTime(taskCResult.endDateTime)).toBe('11:00');
+                expect(extractTimeFromDateTime(new Date(taskAResult.endDateTime))).toBe('10:00');
+                expect(extractTimeFromDateTime(new Date(taskBResult.startDateTime))).toBe('10:00'); // Shifted by A
+                expect(extractTimeFromDateTime(new Date(taskBResult.endDateTime))).toBe('10:30');
+                expect(extractTimeFromDateTime(new Date(taskCResult.startDateTime))).toBe('10:30'); // Shifted by B
+                expect(extractTimeFromDateTime(new Date(taskCResult.endDateTime))).toBe('11:00');
             }
         });
 
@@ -424,8 +429,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([taskA, taskB_completed]);
             performReschedule(taskA);
 
-            expect(extractTimeFromDateTime(taskB_completed.startDateTime)).toBe('09:30'); // Should not change
-            expect(extractTimeFromDateTime(taskB_completed.endDateTime)).toBe('10:00');
+            expect(extractTimeFromDateTime(new Date(taskB_completed.startDateTime))).toBe('09:30'); // Should not change
+            expect(extractTimeFromDateTime(new Date(taskB_completed.endDateTime))).toBe('10:00');
         });
 
         test('should not shift tasks currently being edited by the user', () => {
@@ -434,8 +439,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([taskA, taskC_editing]);
             performReschedule(taskA);
 
-            expect(extractTimeFromDateTime(taskC_editing.startDateTime)).toBe('09:45'); // Should not change
-            expect(extractTimeFromDateTime(taskC_editing.endDateTime)).toBe('10:15');
+            expect(extractTimeFromDateTime(new Date(taskC_editing.startDateTime))).toBe('09:45'); // Should not change
+            expect(extractTimeFromDateTime(new Date(taskC_editing.endDateTime))).toBe('10:15');
         });
 
         test('taskThatChanged maintains its properties correctly', () => {
@@ -449,16 +454,16 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             performReschedule(taskA);
 
-            expect(extractTimeFromDateTime(taskA.startDateTime)).toBe('09:00');
-            expect(extractTimeFromDateTime(taskA.endDateTime)).toBe('10:30');
+            expect(extractTimeFromDateTime(new Date(taskA.startDateTime))).toBe('09:00');
+            expect(extractTimeFromDateTime(new Date(taskA.endDateTime))).toBe('10:30');
 
             const tasks = getTaskState();
             const taskBResult = tasks.find((t) => t.description === 'Task B');
             expect(taskBResult).toBeDefined();
 
             if (taskBResult) {
-                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:30');
-                expect(extractTimeFromDateTime(taskBResult.endDateTime)).toBe('11:00');
+                expect(extractTimeFromDateTime(new Date(taskBResult.startDateTime))).toBe('10:30');
+                expect(extractTimeFromDateTime(new Date(taskBResult.endDateTime))).toBe('11:00');
             }
         });
         test('should correctly restore editing state of taskThatChanged', () => {
@@ -474,7 +479,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(taskBResult).toBeDefined();
 
             if (taskBResult) {
-                expect(extractTimeFromDateTime(taskBResult.startDateTime)).toBe('10:00');
+                expect(extractTimeFromDateTime(new Date(taskBResult.startDateTime))).toBe('10:00');
             }
         });
     });
@@ -560,12 +565,16 @@ describe('Task Management Functions (task-manager.js)', () => {
             if (newTaskInList && existingTaskInList) {
                 const { startTime: expectedStartTime, ...taskDataWithoutStartTime } = taskData;
                 expect(newTaskInList).toMatchObject(taskDataWithoutStartTime);
-                expect(extractTimeFromDateTime(newTaskInList.startDateTime)).toBe(
+                expect(extractTimeFromDateTime(new Date(newTaskInList.startDateTime))).toBe(
                     expectedStartTime
                 );
 
-                expect(extractTimeFromDateTime(existingTaskInList.startDateTime)).toBe('10:30'); // Existing task shifted by performReschedule
-                expect(extractTimeFromDateTime(existingTaskInList.endDateTime)).toBe('11:30');
+                expect(extractTimeFromDateTime(new Date(existingTaskInList.startDateTime))).toBe(
+                    '10:30'
+                ); // Existing task shifted by performReschedule
+                expect(extractTimeFromDateTime(new Date(existingTaskInList.endDateTime))).toBe(
+                    '11:30'
+                );
             }
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
@@ -604,7 +613,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.task).toBeDefined();
             const tasks = getTaskState();
             expect(tasks[0].description).toBe('Task 1 Updated');
-            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('09:30');
+            expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('09:30');
             expect(tasks[1].description).toBe('Task 2'); // Task 2 remains, no reschedule needed for it in this case
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -622,7 +631,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const tasks = getTaskState();
             expect(tasks[0].description).toBe('Task 1'); // Unchanged
-            expect(extractTimeFromDateTime(tasks[0].startDateTime)).toBe('09:00');
+            expect(extractTimeFromDateTime(new Date(tasks[0].startDateTime))).toBe('09:00');
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
@@ -691,11 +700,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(shiftedT3).toBeDefined();
 
             if (updatedT1 && shiftedT2 && shiftedT3) {
-                expect(extractTimeFromDateTime(updatedT1.endDateTime)).toBe('10:30');
-                expect(extractTimeFromDateTime(shiftedT2.startDateTime)).toBe('10:30'); // Shifted
-                expect(extractTimeFromDateTime(shiftedT2.endDateTime)).toBe('11:30');
-                expect(extractTimeFromDateTime(shiftedT3.startDateTime)).toBe('11:30'); // Shifted
-                expect(extractTimeFromDateTime(shiftedT3.endDateTime)).toBe('12:30');
+                expect(extractTimeFromDateTime(new Date(updatedT1.endDateTime))).toBe('10:30');
+                expect(extractTimeFromDateTime(new Date(shiftedT2.startDateTime))).toBe('10:30'); // Shifted
+                expect(extractTimeFromDateTime(new Date(shiftedT2.endDateTime))).toBe('11:30');
+                expect(extractTimeFromDateTime(new Date(shiftedT3.startDateTime))).toBe('11:30'); // Shifted
+                expect(extractTimeFromDateTime(new Date(shiftedT3.endDateTime))).toBe('12:30');
             }
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
@@ -730,7 +739,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
-            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('10:00'); // Original end time
+            expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Original end time
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
 
@@ -740,7 +749,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
-            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe(currentTime);
+            expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe(currentTime);
             expect(tasks[0].duration).toBe(30); // 09:00 to 09:30
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -763,7 +772,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('incomplete'); // Not yet completed
-            expect(extractTimeFromDateTime(tasks[0].endDateTime)).toBe('10:00'); // Not yet changed
+            expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Not yet changed
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
         test('should handle invalid index gracefully', () => {
@@ -811,12 +820,16 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             if (completedTask && subsequentTask) {
                 expect(completedTask.status).toBe('completed');
-                expect(extractTimeFromDateTime(completedTask.endDateTime)).toBe(newEndTime);
+                expect(extractTimeFromDateTime(new Date(completedTask.endDateTime))).toBe(
+                    newEndTime
+                );
                 expect(completedTask.duration).toBe(newDuration);
                 expect(completedTask.editing).toBe(false); // Should be reset if it was true for performReschedule
 
-                expect(extractTimeFromDateTime(subsequentTask.startDateTime)).toBe('10:15'); // Rescheduled
-                expect(extractTimeFromDateTime(subsequentTask.endDateTime)).toBe('10:45');
+                expect(extractTimeFromDateTime(new Date(subsequentTask.startDateTime))).toBe(
+                    '10:15'
+                ); // Rescheduled
+                expect(extractTimeFromDateTime(new Date(subsequentTask.endDateTime))).toBe('10:45');
             }
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
         });
@@ -888,7 +901,6 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = deleteAllTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(2);
-            expect(result.message).toBe('All tasks deleted successfully.');
             expect(getTaskState().length).toBe(0);
             expect(mockSaveTasks).toHaveBeenCalledWith([]);
         });

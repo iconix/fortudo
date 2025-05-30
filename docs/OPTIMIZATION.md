@@ -43,8 +43,8 @@ This document summarizes the performance optimizations implemented for the appli
 
 - **Issue**: Time string parsing and midnight-crossing logic executed repeatedly
 - **Impact**: O(n²) time complexity for overlap checks with redundant calculations
-- **Solution**: Cached time calculations and optimized overlap detection with early termination
-- **Performance Gain**: 60-80% faster overlap detection, reduced from O(n²) to O(n) in most cases
+- **Solution**: Optimized overlap detection with early termination, directly using DateTime fields.
+- **Performance Gain**: Significant improvement in overlap detection speed by avoiding repeated parsing and leveraging direct DateTime comparisons.
 - **Status**: ✅ **IMPLEMENTED & TESTED**
 
 ## Technical Implementation Details
@@ -112,41 +112,27 @@ const invalidateTaskCaches = () => {
 
 ### Optimized Overlap Detection
 
+Direct DateTime comparisons are now used within the `tasksOverlap` function, which is called by `checkOverlap`. This avoids the overhead of maintaining a separate minute-based cache.
+
 ```javascript
-// Cache time calculations for tasks
-const ensureTaskTimeCache = (task) => {
-  if (task._startMinutes === undefined) {
-    task._startMinutes = calculateMinutes(task.startTime);
+// tasksOverlap function (simplified representation of its role)
+export function tasksOverlap(task1, task2) {
+  const { startDate: start1, endDate: end1 } = getTaskDates(task1);
+  const { startDate: start2, endDate: end2 } = getTaskDates(task2);
+  return start1 < end2 && start2 < end1;
+}
+
+// checkOverlap function now relies on tasksOverlap using direct DateTime
+export function checkOverlap(taskToCompare, existingTasks) {
+  // ... (filtering logic) ...
+  for (const task of existingTasks) {
+    // ... (skip self, completed, editing) ...
+    if (tasksOverlap(taskToCompare, task)) {
+      overlappingTasks.push(task);
+    }
   }
-  if (task._endMinutes === undefined) {
-    task._endMinutes = calculateMinutes(task.endTime);
-  }
-};
-
-// Optimized overlap detection with early termination and caching
-const tasksOverlapOptimized = (task1, task2) => {
-  // Ensure time calculations are cached
-  ensureTaskTimeCache(task1);
-  ensureTaskTimeCache(task2);
-
-  const start1 = task1._startMinutes;
-  const end1 = task1._endMinutes;
-  const start2 = task2._startMinutes;
-  const end2 = task2._endMinutes;
-
-  // Early termination: if both tasks are in normal day (no midnight crossing)
-  // and one ends before the other starts, no overlap
-  const task1CrossesMidnight = end1 < start1;
-  const task2CrossesMidnight = end2 < start2;
-
-  if (!task1CrossesMidnight && !task2CrossesMidnight) {
-    // Standard interval overlap check with early termination
-    return start1 < end2 && start2 < end1;
-  }
-
-  // Handle midnight crossing cases (less common, so checked after)
-  // ... rest of midnight logic
-};
+  return overlappingTasks;
+}
 ```
 
 ## Performance Metrics
@@ -171,9 +157,9 @@ const tasksOverlapOptimized = (task1, task2) => {
 
 ### Overlap Detection Performance
 
-- **Before**: O(n²) with repeated string parsing and complex logic
-- **After**: O(n) with cached calculations and early termination
-- **Improvement**: 60-80% faster overlap detection
+- **Before**: O(n²) with repeated string parsing and complex logic, plus cache maintenance.
+- **After**: O(n) using direct DateTime comparisons and early termination logic within `performReschedule`.
+- **Improvement**: Faster and simpler overlap detection.
 
 ### Event Listener Count
 
@@ -209,9 +195,8 @@ The optimization logic is thoroughly tested through tests integrated into the ex
 
 #### Time Cache Management (`task-management.test.js`)
 
-- **Cached Value Creation**: Verifies new tasks get cached time values (`_startMinutes`, `_endMinutes`)
-- **Cache Invalidation**: Confirms cached values are updated when task times change
-- **Storage Compatibility**: Ensures tasks loaded from storage without cached values get them added
+- **No Time Cache**: Confirms that tasks no longer use `_startMinutes` or `_endMinutes`.
+- **Storage Compatibility**: Ensures tasks loaded from storage are handled correctly without minute-based cached values.
 
 #### Sorted Tasks Caching (`task-management.test.js`)
 
@@ -220,11 +205,9 @@ The optimization logic is thoroughly tested through tests integrated into the ex
 
 #### Optimized Overlap Detection (`task-management.test.js`)
 
-- **Cached Overlap Detection**: Tests overlap detection with pre-cached time values
-- **Cache Generation**: Verifies cache generation for tasks without cached values
-- **Filtering Efficiency**: Confirms completed and editing tasks are skipped efficiently
-- **Stale Cache Handling**: Tests detection and correction of inherited stale cached values
-- **Midnight Crossing**: Verifies cached values work correctly for tasks crossing midnight
+- **Direct DateTime Overlap**: Tests overlap detection using direct `startDateTime` and `endDateTime` comparisons.
+- **Filtering Efficiency**: Confirms completed and editing tasks are skipped efficiently.
+- **Midnight Crossing**: Verifies DateTime logic correctly handles tasks crossing midnight.
 
 #### Performance Characteristics (`task-management.test.js`)
 
@@ -314,33 +297,7 @@ The codebase is now optimized for both current usage patterns and future scalabi
 
 ## Bug Fixes During Optimization Testing
 
-### Stale Cache Value Handling ⚠️ **CRITICAL BUG FIXED**
-
-During the implementation of optimization-specific tests, we discovered a critical edge case:
-
-- **Issue**: Tasks with inherited stale cached values (e.g., from spread operator copying) could cause incorrect overlap detection
-- **Root Cause**: `ensureTaskTimeCache()` only added cached values if they were `undefined`, but didn't validate existing values
-- **Impact**: Could lead to incorrect scheduling decisions when tasks had outdated cached time values
-- **Solution**: Modified `checkOverlap()` to invalidate cached values before ensuring cache for the task being compared
-- **Status**: ✅ **FIXED** - All tests passing, including edge case scenarios
-
-**Code Change:**
-
-```javascript
-export function checkOverlap(taskToCompare, existingTasks) {
-  // OPTIMIZATION: Ensure the task to compare has cached time values
-  // First invalidate any potentially stale cached values
-  invalidateTaskTimeCache(taskToCompare);
-  ensureTaskTimeCache(taskToCompare);
-  // ... rest of function
-}
-```
-
-This fix ensures that:
-
-1. **Data Integrity**: Cached values always reflect current task times
-2. **Reliability**: Overlap detection is always accurate, even with complex task modifications
-3. **Robustness**: System handles edge cases like object spreading and inheritance correctly
+(This section can be removed or updated if other bugs were fixed during this refactoring)
 
 ## Code Cleanup and Consolidation ✅
 

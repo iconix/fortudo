@@ -34,7 +34,7 @@ import {
     disableStartTimeAutoUpdate
 } from './dom-handler.js';
 import { loadTasksFromStorage } from './storage.js';
-import { convertTo24HourTime, convertTo12HourTime, logger, validateTaskFormData } from './utils.js';
+import { convertTo24HourTime, convertTo12HourTime, logger } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const loadedTasks = loadTasksFromStorage();
@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
          */
         onSaveTaskEdit: (index, formData) => {
             const { description, startTime, duration } = extractTaskFormData(formData);
-            const validationResult = validateTaskFormData(description, duration, isValidTaskData);
+            const validationResult = isValidTaskData(description, duration);
             if (!validationResult.isValid) {
                 if (validationResult.reason) showAlert(validationResult.reason);
                 return;
@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
          */
         onTaskFormSubmit: (formData) => {
             const { description, startTime, duration } = extractTaskFormData(formData);
-            const validationResult = validateTaskFormData(description, duration, isValidTaskData);
+            const validationResult = isValidTaskData(description, duration);
             if (!validationResult.isValid) {
                 if (validationResult.reason) showAlert(validationResult.reason);
                 return;

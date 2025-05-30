@@ -3,7 +3,6 @@
  */
 
 // This file contains tests for time utility functions in fortudo
-// This file contains tests for time utility functions in fortudo
 // These are pure functions that don't interact with state or DOM
 
 import {

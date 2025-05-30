@@ -154,12 +154,14 @@ describe('User Confirmation Flows', () => {
             const savedTasks = mockSaveTasks.mock.calls[0][0];
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Initial Task').startDateTime
+                    new Date(savedTasks.find((t) => t.description === 'Initial Task').startDateTime)
                 )
             ).toBe('10:30');
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Overlapping Task').endDateTime
+                    new Date(
+                        savedTasks.find((t) => t.description === 'Overlapping Task').endDateTime
+                    )
                 )
             ).toBe('10:30');
         });
@@ -262,12 +264,12 @@ describe('User Confirmation Flows', () => {
             const savedTasks = mockSaveTasks.mock.calls[0][0];
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Task A Updated').endDateTime
+                    new Date(savedTasks.find((t) => t.description === 'Task A Updated').endDateTime)
                 )
             ).toBe('10:30');
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Task B').startDateTime
+                    new Date(savedTasks.find((t) => t.description === 'Task B').startDateTime)
                 )
             ).toBe('10:30');
         });
@@ -387,12 +389,16 @@ describe('User Confirmation Flows', () => {
             );
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
+                    new Date(
+                        savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
+                    )
                 )
             ).toBe('10:30');
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
+                    new Date(
+                        savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
+                    )
                 )
             ).toBe('10:30');
         });
@@ -431,12 +437,16 @@ describe('User Confirmation Flows', () => {
             );
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
+                    new Date(
+                        savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
+                    )
                 )
             ).toBe('10:00');
             expect(
                 extractTimeFromDateTime(
-                    savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
+                    new Date(
+                        savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
+                    )
                 )
             ).toBe('10:00');
         });

@@ -75,7 +75,7 @@ export function renderDateTime() {
  * @returns {string} - HTML for edit form.
  */
 function renderEditTaskHTML(task, index) {
-    const displayStartTime = extractTimeFromDateTime(task.startDateTime);
+    const displayStartTime = extractTimeFromDateTime(new Date(task.startDateTime));
 
     return `<form id="edit-task-${index}" autocomplete="off" class="mb-4 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
         <div class="mb-4">
@@ -119,8 +119,8 @@ function renderViewTaskHTML(task, index, isActiveTask) {
         activeTaskColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
     }
 
-    const displayStartTime = extractTimeFromDateTime(task.startDateTime);
-    const displayEndTime = extractTimeFromDateTime(task.endDateTime);
+    const displayStartTime = extractTimeFromDateTime(new Date(task.startDateTime));
+    const displayEndTime = extractTimeFromDateTime(new Date(task.endDateTime));
 
     return `<div id="view-task-${index}" class="flex items-center justify-between space-x-2 p-2 border-b">
         <div class="flex items-center space-x-4">

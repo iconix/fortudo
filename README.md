@@ -58,3 +58,4 @@ run tests:
 - [ ] move away from browser alerts to custom modals
 - [ ] automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [ ] confetti burst animation when you check off a task
+- [ ] add a lock function (🔒) that prevents a task from being auto-rescheduled

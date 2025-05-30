@@ -5,7 +5,8 @@ import {
     timeToDateTime,
     calculateEndDateTime,
     extractTimeFromDateTime,
-    getTaskDates
+    getTaskDates,
+    extractDateFromDateTime
 } from './utils.js';
 import { saveTasks } from './storage.js';
 
@@ -33,7 +34,7 @@ import { saveTasks } from './storage.js';
  * @returns {Task[]} - Migrated tasks with DateTime fields
  */
 function migrateTasks(tasks) {
-    const today = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
+    const today = extractDateFromDateTime(new Date()); // Today in YYYY-MM-DD format
 
     return tasks.map((task) => {
         // If task already has DateTime fields, no migration needed
@@ -142,7 +143,8 @@ const getSortedTasks = () => {
  * @returns {Task} A new task object
  */
 const createTaskObject = ({ description, startTime, duration }) => {
-    const today = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
+    // Assumes all tasks will start today, in YYYY-MM-DD format
+    const today = extractDateFromDateTime(new Date());
 
     // Create DateTime fields
     const startDateTime = timeToDateTime(startTime, today);
@@ -286,8 +288,8 @@ export function checkOverlap(taskToCompare, existingTasks) {
 /**
  * Perform reschedule of tasks.
  *
- * - Processes tasks in chronological order for predictable behavior
- * - Uses a Set to track processed tasks, preventing infinite loops
+ * Processes tasks in chronological order for predictable behavior
+ * Uses a Set to track processed tasks, preventing infinite loops
  *
  * @param {Task} taskThatChanged - The task that triggered the reschedule.
  * @param {Task} [actualTaskRef] - Optional direct reference to the actual task (when called from update functions)
@@ -418,14 +420,14 @@ export function getSuggestedStartTime() {
 
     for (const task of tasks) {
         const { startDate: taskStartDateObj, endDate: taskEndDateObj } = getTaskDates(task);
-        const taskStartTime = extractTimeFromDateTime(taskStartDateObj.toISOString());
+        const taskStartTime = extractTimeFromDateTime(taskStartDateObj);
         const taskStartMinutes = calculateMinutes(taskStartTime);
 
         // only count incomplete tasks for the task count and latest end time
         if (task.status === 'incomplete') {
             incompleteTaskCount++;
 
-            const taskEndTime = extractTimeFromDateTime(taskEndDateObj.toISOString());
+            const taskEndTime = extractTimeFromDateTime(taskEndDateObj);
             const taskEndMinutesValue = calculateMinutes(taskEndTime);
 
             if (taskEndMinutesValue > latestTaskEndMinutes) {
@@ -572,16 +574,16 @@ export function updateTask(index, { description, startTime, duration }) {
     if (startTime === undefined) {
         // Extract startTime from existing DateTime fields if available
         if (existingTask.startDateTime) {
-            startTime = extractTimeFromDateTime(existingTask.startDateTime);
+            startTime = extractTimeFromDateTime(new Date(existingTask.startDateTime));
         } else {
             // TODO: remove this fallback once all tasks have startDateTime
             const { startDate } = getTaskDates(existingTask);
-            startTime = extractTimeFromDateTime(startDate.toISOString());
+            startTime = extractTimeFromDateTime(startDate);
         }
     }
 
     // Create DateTime fields for the updated task
-    const today = new Date().toISOString().split('T')[0];
+    const today = extractDateFromDateTime(new Date());
     const startDateTime = timeToDateTime(startTime, today);
     const endDateTime = calculateEndDateTime(startDateTime, newDuration);
 
@@ -642,7 +644,7 @@ export function confirmUpdateTaskAndReschedule(index, { description, startTime, 
     if (newStartTime === undefined) {
         // Extract startTime from existing DateTime fields
         if (taskToUpdate.startDateTime) {
-            newStartTime = extractTimeFromDateTime(taskToUpdate.startDateTime);
+            newStartTime = extractTimeFromDateTime(new Date(taskToUpdate.startDateTime));
         } else {
             throw new Error('Task must have startDateTime field after migration');
         }
@@ -651,7 +653,7 @@ export function confirmUpdateTaskAndReschedule(index, { description, startTime, 
     taskToUpdate.duration = duration !== undefined ? duration : taskToUpdate.duration;
 
     // Calculate and update DateTime fields
-    const today = new Date().toISOString().split('T')[0];
+    const today = extractDateFromDateTime(new Date());
     const startDateTime = timeToDateTime(newStartTime, today);
     const endDateTime = calculateEndDateTime(startDateTime, taskToUpdate.duration);
     taskToUpdate.startDateTime = startDateTime;
@@ -679,8 +681,8 @@ export function completeTask(index, currentTime24Hour) {
 
         // Extract start and end times from DateTime fields
         const { startDate, endDate } = getTaskDates(task);
-        const taskStartTime = extractTimeFromDateTime(startDate.toISOString());
-        const taskEndTime = extractTimeFromDateTime(endDate.toISOString());
+        const taskStartTime = extractTimeFromDateTime(startDate);
+        const taskEndTime = extractTimeFromDateTime(endDate);
         const taskStartTimeMinutes = calculateMinutes(taskStartTime);
         const taskEndTimeMinutes = calculateMinutes(taskEndTime);
 
@@ -836,7 +838,6 @@ export function deleteAllTasks() {
     updateTaskState([]); // note: calls saveTasks
     return {
         success: true,
-        message: 'All tasks deleted successfully.',
         tasksDeleted: numTasksDeleted
     };
 }

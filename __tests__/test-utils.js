@@ -1,4 +1,9 @@
-import { calculateMinutes, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
+import {
+    calculateMinutes,
+    timeToDateTime,
+    calculateEndDateTime,
+    extractDateFromDateTime
+} from '../public/js/utils.js';
 
 /**
  * @typedef {Object} Task
@@ -299,7 +304,7 @@ function createTaskWithDateTime({
     date
 }) {
     if (!date) {
-        date = new Date().toISOString().split('T')[0]; // Today in YYYY-MM-DD format
+        date = extractDateFromDateTime(new Date()); // Today in YYYY-MM-DD format
     }
 
     const startDateTime = timeToDateTime(startTime, date);
