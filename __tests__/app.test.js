@@ -903,7 +903,7 @@ describe('App.js Callback Functions', () => {
 
                 // Check that error logs were generated for missing elements
                 expect(consoleSpy).toHaveBeenCalledWith(
-                    '[FORTUDO ERROR] Task list element not found. Tasks will not be rendered.'
+                    '[💪🏾 ERROR] Task list element not found. Tasks will not be rendered.'
                 );
 
                 // Clean up

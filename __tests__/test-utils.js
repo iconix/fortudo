@@ -17,14 +17,6 @@ import {
  */
 
 /**
- * @typedef {Object} FortudoTestingInterface - This is what `public/js/app.js` should expose on `window.fortudo` for tests.
- * @property {() => Array<Task>} tasks - Getter for current tasks from task-manager.
- * @property {Object} tm - Direct access to task-manager module's functions.
- * @property {Object} dom - Direct access to dom-handler module's functions.
- * @property {Object} utils - Direct access to utils module's functions.
- */
-
-/**
  * Sets up the DOM for testing fortudo
  */
 function setupDOM() {

@@ -217,5 +217,5 @@ export const logger = {
  */
 export function isTaskRunningLate(task, now = new Date()) {
     // A task is late if the current time 'now' is past its calculated 'endDate'.
-    return now > task.endDateTime;
+    return now > new Date(task.endDateTime);
 }
