@@ -24,7 +24,8 @@ jobs:
         with:
           # Base branch to compare against.
           # For PRs, this is the base branch. For pushes, it's the previous commit.
-          base: ${{ github.event_name == 'pull_request' && github.base_ref || github.event.before }}
+          # This option is ignored if action is triggered by pull_request event.
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
           # List of paths to ignore (e.g., documentation, CI/CD workflows)
           filters: |
             src:
@@ -32,6 +33,7 @@ jobs:
               - '!.gitignore'
               - '!LICENSE'
               - '!.github/**'
+          predicate-quantifier: 'every'
 
   test:
     name: Test & Lint
