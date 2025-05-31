@@ -121,7 +121,7 @@
 
             <div id="unscheduled-task-list" class="grid grid-cols-1 gap-3">
                 <!-- Example High priority task card (placeholder) -->
-                <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 border-red-500 p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true">
+                <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 border-red-500 p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true" data-task-name="Finish project proposal" data-task-est-duration="1 h 30 m">
                     <div class="flex items-start space-x-3">
                         <input type="checkbox" class="mt-1 h-5 w-5 rounded border-gray-600 text-red-500 focus:ring-red-500">
                         <div>
@@ -137,7 +137,7 @@
                         </div>
                     </div>
                     <div class="flex space-x-1">
-                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Schedule this task">
+                        <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule this task">
                             <i class="far fa-calendar-plus"></i>
                         </button>
                         <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Edit task">
@@ -157,7 +157,7 @@
         <div id="info-panel" class="py-6 px-4 glassmorphism rounded-lg mt-8 shadow-lg">
             <div class="flex justify-between items-center">
                 <div id="current-datetime" class="pl-4">
-                    <div id="current-time" class="text-left text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-500"></div>
+                    <div id="current-time" class="text-left text-3xl font-bold text-gray-200"></div>
                     <div id="current-date" class="text-left text-gray-300"></div>
                 </div>
                 <div class="text-right pt-2 pr-2">
@@ -221,6 +221,80 @@
             <div class="flex justify-end space-x-3">
                 <button id="ok-custom-alert-modal" class="bg-yellow-500 hover:bg-yellow-400 px-5 py-2 rounded-lg font-medium transition-colors text-gray-900">OK</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="custom-confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-gray-800 bg-opacity-90 p-6 rounded-lg max-w-sm w-full border border-gray-700 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="custom-confirm-title" class="text-xl font-bold text-yellow-500">Confirm Action</h3> <!-- Changed ID and text -->
+                <button id="close-custom-confirm-modal" class="text-gray-400 hover:text-gray-200 p-1"> <!-- Changed ID -->
+                    <i class="far fa-times text-xl"></i>
+                </button>
+            </div>
+            <p id="custom-confirm-message" class="mb-6 text-gray-300">Are you sure you want to proceed?</p> <!-- Changed ID and text -->
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-custom-confirm-modal" type="button" class="bg-gray-600 hover:bg-gray-500 px-5 py-2 rounded-lg transition-colors text-white">Cancel</button> <!-- Added Cancel button -->
+                <button id="ok-custom-confirm-modal" class="bg-yellow-500 hover:bg-yellow-400 px-5 py-2 rounded-lg font-medium transition-colors text-gray-900">OK</button> <!-- Changed ID -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Unscheduled Task Modal -->
+    <div id="edit-unscheduled-task-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-gray-800 bg-opacity-90 p-6 rounded-lg max-w-md w-full border border-gray-700 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="edit-unscheduled-modal-title" class="text-xl font-bold text-purple-400">Edit Unscheduled Task</h3>
+                <button id="close-edit-unscheduled-modal" class="text-gray-400 hover:text-gray-200 p-1">
+                    <i class="far fa-times text-xl"></i>
+                </button>
+            </div>
+            <form id="edit-unscheduled-task-form" class="space-y-6">
+                <div class="mb-4">
+                    <label for="edit-unscheduled-description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                    <input type="text" name="edit-unscheduled-description" id="edit-unscheduled-description" class="bg-gray-700 p-3 rounded-lg w-full focus:ring-2 focus:ring-purple-400 focus:outline-none transition-all" required>
+                </div>
+
+                <div id="edit-priority-input" class="mb-4">
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Priority</label>
+                    <div class="flex space-x-2">
+                        <label class="flex-1">
+                            <input type="radio" name="edit-priority" value="high" class="hidden peer">
+                            <div class="text-center p-2 rounded-lg border border-red-500 bg-gray-700 bg-opacity-30 peer-checked:bg-red-500 peer-checked:bg-opacity-20 peer-checked:border-red-400 cursor-pointer transition-all">
+                                <i class="far fa-exclamation-circle mb-1 text-red-400"></i> <div class="text-sm">High</div>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="edit-priority" value="medium" class="hidden peer">
+                            <div class="text-center p-2 rounded-lg border border-yellow-500 bg-gray-700 bg-opacity-30 peer-checked:bg-yellow-500 peer-checked:bg-opacity-20 peer-checked:border-yellow-400 cursor-pointer transition-all">
+                                <i class="far fa-equals mb-1 text-yellow-400"></i> <div class="text-sm">Medium</div>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="edit-priority" value="low" class="hidden peer">
+                            <div class="text-center p-2 rounded-lg border border-green-500 bg-gray-700 bg-opacity-30 peer-checked:bg-green-500 peer-checked:bg-opacity-20 peer-checked:border-green-400 cursor-pointer transition-all">
+                                <i class="far fa-minus mb-1 text-green-400"></i> <div class="text-sm">Low</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Estimated Duration</label>
+                    <div class="flex space-x-2 w-full">
+                        <input type="number" name="edit-est-duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded-lg w-full focus:ring-2 focus:ring-purple-400 focus:outline-none transition-all">
+                        <input type="number" name="edit-est-duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded-lg w-full focus:ring-2 focus:ring-purple-400 focus:outline-none transition-all">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button id="cancel-edit-unscheduled-modal" type="button" class="bg-gray-600 hover:bg-gray-500 px-5 py-2 rounded-lg transition-colors text-white">Cancel</button>
+                    <button id="save-edit-unscheduled-modal" type="submit" class="bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 px-5 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center">
+                        <i class="far fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </body>
