@@ -9,10 +9,6 @@ updates:
       time: "09:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
-    reviewers:
-      - "iconix"
-    assignees:
-      - "iconix"
     commit-message:
       prefix: "chore"
       prefix-development: "chore"
