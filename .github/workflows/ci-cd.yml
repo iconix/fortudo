@@ -129,23 +129,3 @@ jobs:
           projectId: fortudo
         env:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
-
-      - name: Create Release
-        if: success()
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
-          body: |
-            Automated release created by GitHub Actions
-
-            **Changes in this release:**
-            - Deployed from commit: ${{ github.sha }}
-            - Build number: ${{ github.run_number }}
-
-            **Deployment:**
-            - Production URL: https://fortudo.web.app
-          draft: false
-          prerelease: false
