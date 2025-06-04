@@ -546,7 +546,7 @@ function renderViewTaskHTML(task, index, isActiveTask) {
         : '';
     const durationText = calculateHoursAndMinutes(task.duration);
 
-    return `<div id="view-task-${task.id}" class="flex items-center justify-between p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative" data-task-index="${index}" data-task-id="${task.id}">
+    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0" data-task-index="${index}" data-task-id="${task.id}">
         <div class="celebration-container hidden">
             <span class="celebration-emoji">🎉</span>
             <span class="celebration-emoji">🌟</span>
@@ -556,28 +556,28 @@ function renderViewTaskHTML(task, index, isActiveTask) {
             <span class="celebration-emoji">💫</span>
             <span class="celebration-emoji">💪🏾</span>
         </div>
-        <div class="flex items-center space-x-4">
-            <label for="task-checkbox-${task.id}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
-                <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-xl"></i>
+        <div class="flex items-start space-x-3">
+            <label for="task-checkbox-${task.id}" class="checkbox mt-0.5 ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
+                <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-lg sm:text-xl"></i>
             </label>
-            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked' : ''} ${checkboxDisabled ? 'disabled' : ''}>
-            <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'}">
-                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`}">${task.description}</div>
-                <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-sm">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
+            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
+            <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
+                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words">${task.description}</div>
+                <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>
-        <div class="flex space-x-1">
-            <button class="text-slate-400 hover:text-teal-400 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-lock" title="${task.locked ? 'Unlock task' : 'Lock task'}" data-task-id="${task.id}" data-task-index="${index}">
-                <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open'}"></i>
+        <div class="flex space-x-1 ml-auto">
+            <button class="text-slate-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-lock" title="${task.locked ? 'Unlock task' : 'Lock task'}" data-task-id="${task.id}" data-task-index="${index}">
+                <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open'} text-sm sm:text-base"></i>
             </button>
-            <button class="text-slate-400 hover:text-indigo-400 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-unschedule" title="Unschedule task" data-task-id="${task.id}" data-task-index="${index}">
-                <i class="fa-regular fa-calendar-xmark"></i>
+            <button class="text-slate-400 hover:text-indigo-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-unschedule" title="Unschedule task" data-task-id="${task.id}" data-task-index="${index}">
+                <i class="fa-regular fa-calendar-xmark text-sm sm:text-base"></i>
             </button>
-            <button class="text-slate-400 hover:text-amber-300 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-edit" title="Edit task">
-                <i class="fa-solid fa-pen"></i>
+            <button class="text-slate-400 hover:text-amber-300 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-edit" title="Edit task">
+                <i class="fa-solid fa-pen text-sm sm:text-base"></i>
             </button>
-            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition-colors'} btn-delete p-2" title="Delete task">
-                <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
+            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition-colors'} btn-delete p-1.5 sm:p-2" title="Delete task">
+                <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-sm sm:text-base"></i>
             </button>
         </div>
     </div>`;
@@ -603,7 +603,7 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
         const isCompleted = task.status === 'completed';
 
         const durationDetailsOrString = calculateHoursAndMinutes(task.estDuration, true);
-        let durationText = '0m'; // Default value
+        let durationText = '0m';
         if (
             typeof durationDetailsOrString === 'object' &&
             durationDetailsOrString !== null &&
@@ -619,86 +619,86 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
         }
 
         const taskCard = document.createElement('div');
-        taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-4 rounded-lg shadow-lg flex flex-col`;
+        taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2`;
         taskCard.dataset.taskId = task.id;
         taskCard.dataset.taskName = task.description;
         taskCard.dataset.taskEstDuration = durationText;
 
         const taskDisplayPart = document.createElement('div');
-        taskDisplayPart.className = 'flex justify-between items-start w-full';
+        taskDisplayPart.className = 'flex flex-col sm:flex-row justify-between items-start w-full gap-2 sm:gap-0';
 
         taskDisplayPart.innerHTML = `
-                <div class="flex items-start space-x-3">
-                <label class="task-checkbox-unscheduled mt-1 ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${isCompleted ? 'Task already completed' : 'Toggle complete status'}">
-                    <i class="fa-regular ${isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500'} text-xl"></i>
+            <div class="flex items-start space-x-3 min-w-0 flex-1">
+                <label class="task-checkbox-unscheduled mt-0.5 ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${isCompleted ? 'Task already completed' : 'Toggle complete status'}">
+                    <i class="fa-regular ${isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500'} text-lg sm:text-xl"></i>
                 </label>
-                    <div>
-                    <div class="font-medium text-white ${isCompleted ? 'line-through opacity-70' : ''}">${task.description}</div>
-                        <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2 ${isCompleted ? 'opacity-70' : ''}">
-                        <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-2 py-1 rounded-full text-xs">
-                            <i class="${priorityClasses.icon} mr-1"></i>${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
-                            </span>
-                            <span class="inline-flex items-center text-gray-400">
+                <div class="min-w-0 flex-1">
+                    <div class="font-medium text-white ${isCompleted ? 'line-through opacity-70' : ''} text-sm sm:text-base break-words">${task.description}</div>
+                    <div class="text-xs text-gray-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
+                        <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
+                            <i class="${priorityClasses.icon} mr-1 text-xs"></i>${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
+                        </span>
+                        <span class="inline-flex items-center text-gray-400 text-xs">
                             <i class="fa-regular fa-hourglass mr-1"></i>Est: ${durationText}
-                            </span>
-                        </div>
+                        </span>
                     </div>
                 </div>
-            <div class="flex space-x-1">
-                    <button class="text-gray-400 hover:text-teal-400 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule task" data-task-id="${task.id}" ${isCompleted ? 'disabled class="opacity-50 cursor-not-allowed"' : ''}>
-                        <i class="fa-regular fa-calendar-plus"></i>
-                    </button>
-                <button class="text-gray-400 hover:text-amber-300 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled" title="Edit task" data-task-id="${task.id}">
-                        <i class="fa-solid fa-pen"></i>
-                    </button>
-                <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-gray-400 hover:text-rose-500 hover:bg-gray-700 rounded-lg transition-colors'} btn-delete-unscheduled p-2" title="Delete task" data-task-id="${task.id}">
-                    <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
-                    </button>
-                </div>
+            </div>
+            <div class="flex space-x-1 ml-auto">
+                <button class="text-gray-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule task" data-task-id="${task.id}" ${isCompleted ? 'disabled class="opacity-50 cursor-not-allowed"' : ''}>
+                    <i class="fa-regular fa-calendar-plus text-sm sm:text-base"></i>
+                </button>
+                <button class="text-gray-400 hover:text-amber-300 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled" title="Edit task" data-task-id="${task.id}">
+                    <i class="fa-solid fa-pen text-sm sm:text-base"></i>
+                </button>
+                <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-gray-400 hover:text-rose-500 hover:bg-gray-700 rounded-lg transition-colors'} btn-delete-unscheduled p-1.5 sm:p-2" title="Delete task" data-task-id="${task.id}">
+                    <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-sm sm:text-base"></i>
+                </button>
+            </div>
         `;
         taskCard.appendChild(taskDisplayPart);
 
         // Inline Edit Form (hidden by default)
         const editFormContainer = document.createElement('div');
         editFormContainer.className =
-            'inline-edit-unscheduled-form hidden mt-4 pt-4 border-t border-gray-700 w-full';
+            'inline-edit-unscheduled-form hidden mt-3 pt-3 border-t border-gray-700 w-full';
         editFormContainer.innerHTML = `
-            <form class="space-y-4">
+            <form class="space-y-3">
                 <!-- Description Row -->
                 <div class="relative">
                     <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
                     <input type="text" id="inline-edit-description-${task.id}" name="inline-edit-description"
                         placeholder="What needs to be done?"
-                        class="task-edit-description bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all" required>
+                        class="task-edit-description bg-gray-700 pl-9 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base" required>
                 </div>
 
                 <!-- Priority, Duration, and Buttons Row -->
-                <div class="flex items-center gap-x-4">
+                <div class="flex flex-col sm:flex-row gap-3">
                     <!-- Priority -->
-                    <div class="flex items-center gap-2 min-w-[200px]">
+                    <div class="flex items-center gap-2 sm:min-w-[200px]">
                         <label class="flex-1">
                             <input type="radio" name="inline-edit-priority" value="high" class="hidden peer" ${task.priority === 'high' ? 'checked' : ''}>
-                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                            <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
                                 peer-checked:bg-rose-500 peer-checked:bg-opacity-20
-                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                hover:bg-opacity-50 cursor-pointer transition-all text-sm">
                                 <i class="fa-solid fa-bars text-rose-400"></i>
                                 <span class="ml-1">High</span>
                             </div>
                         </label>
                         <label class="flex-1">
                             <input type="radio" name="inline-edit-priority" value="medium" class="hidden peer" ${task.priority === 'medium' ? 'checked' : ''}>
-                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                            <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
                                 peer-checked:bg-amber-400 peer-checked:bg-opacity-20
-                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                hover:bg-opacity-50 cursor-pointer transition-all text-sm">
                                 <i class="fa-regular fa-equals text-amber-400"></i>
                                 <span class="ml-1">Med</span>
                             </div>
                         </label>
                         <label class="flex-1">
                             <input type="radio" name="inline-edit-priority" value="low" class="hidden peer" ${task.priority === 'low' ? 'checked' : ''}>
-                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                            <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
                                 peer-checked:bg-teal-500 peer-checked:bg-opacity-20
-                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                hover:bg-opacity-50 cursor-pointer transition-all text-sm">
                                 <i class="fa-solid fa-minus text-teal-400"></i>
                                 <span class="ml-1">Low</span>
                             </div>
@@ -706,25 +706,25 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
                     </div>
 
                     <!-- Estimated Duration -->
-                    <div class="flex items-center gap-2 min-w-[140px]">
+                    <div class="flex items-center gap-2 sm:min-w-[140px]">
                         <div class="relative flex-1">
                             <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
                             <input type="number" name="inline-edit-est-duration-hours" placeholder="HH" min="0"
-                                class="task-edit-duration-hours bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all">
+                                class="task-edit-duration-hours bg-gray-700 pl-9 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
                         </div>
                         <span class="text-gray-400 text-lg">:</span>
                         <div class="relative flex-1">
                             <input type="number" name="inline-edit-est-duration-minutes" placeholder="MM" min="0" max="59"
-                                class="task-edit-duration-minutes bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all">
+                                class="task-edit-duration-minutes bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
                         </div>
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="flex items-center gap-2 ml-auto">
-                        <button type="button" class="btn-cancel-inline-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600">
+                    <div class="flex items-center gap-2 sm:ml-auto">
+                        <button type="button" class="btn-cancel-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                             <i class="fa-solid fa-xmark mr-2"></i>Cancel
                         </button>
-                        <button type="button" class="btn-save-inline-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400">
+                        <button type="button" class="btn-save-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                             <i class="fa-regular fa-save mr-2"></i>Save
                         </button>
                     </div>
