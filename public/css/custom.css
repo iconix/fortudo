@@ -1,0 +1,157 @@
+.task-card {
+    transition: all 0.2s ease;
+}
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.drag-handle {
+    cursor: grab;
+}
+.glassmorphism {
+    background: rgba(31, 41, 55, 0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+@keyframes pulse-green {
+    0%, 100% { color: rgb(34, 197, 94); }
+    50% { color: rgb(16, 185, 129); }
+}
+.pulse-animation {
+    animation: pulse-green 2s infinite;
+}
+.priority-badge {
+    position: relative;
+    overflow: hidden;
+}
+.priority-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2));
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+}
+
+/* === Confetti Animation === */
+.confetti-container {
+    position: relative; /* Or absolute/fixed depending on where it's used */
+    overflow: hidden; /* To contain confetti bits if they fly too far */
+}
+
+.confetti-container.confetti-active::before,
+.confetti-container.confetti-active::after,
+.confetti-container.confetti-active i::before,
+.confetti-container.confetti-active i::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 15px;
+    background-color: #f00; /* Red */
+    opacity: 0;
+    animation: confetti-fall 1.5s ease-out forwards;
+    z-index: 100; /* Ensure confetti is on top */
+}
+
+/* Create multiple 'confetti pieces' using pseudo-elements of a child <i> tag if needed, or just on container */
+/* This example uses up to 4 pieces on the container itself and its potential <i> child */
+/* Adjust as needed based on where it will be applied */
+
+.confetti-container.confetti-active::before {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(0deg);
+    background-color: #ff0; /* Yellow */
+    animation-delay: 0s;
+}
+
+.confetti-container.confetti-active::after {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    background-color: #0f0; /* Green */
+    animation-delay: 0.1s;
+}
+
+/* If you want more pieces, you can add an empty <i></i> inside .confetti-container */
+/* and style its pseudo-elements too, or add more pseudo-elements with different selectors */
+.confetti-container.confetti-active i::before {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    background-color: #00f; /* Blue */
+    animation-delay: 0.2s;
+}
+
+.confetti-container.confetti-active i::after {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    background-color: #f0f; /* Magenta */
+    animation-delay: 0.3s;
+}
+
+/* Add more pieces with different delays and transform origins for variety */
+/* Example for a 5th piece using a more complex selector if needed */
+.confetti-container.confetti-active > span.confetti-piece:nth-child(1) {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    background-color: #ffa500; /* Orange */
+    border-radius: 50%;
+    opacity: 0;
+    animation: confetti-fall-circle 1.5s ease-out 0.05s forwards;
+}
+ .confetti-container.confetti-active > span.confetti-piece:nth-child(2) {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 20px;
+    background-color: #add8e6; /* Light Blue */
+    opacity: 0;
+    animation: confetti-fall 1.5s ease-out 0.15s forwards;
+    transform: translate(-50%, -50%) rotate(20deg);
+}
+.confetti-container.confetti-active > span.confetti-piece:nth-child(3) {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    background-color: #ffd700; /* Gold */
+    opacity: 0;
+    animation: confetti-fall-circle 1.5s ease-out 0.25s forwards;
+    transform: translate(-50%, -50%) rotate(70deg);
+}
+
+
+@keyframes confetti-fall {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) rotate(0deg) translateY(0px) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -100vh) rotate(360deg) translateY(200px) scale(0); /* Fall downwards */
+    }
+}
+
+@keyframes confetti-fall-circle {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, 150px) scale(0); /* Different fall for circles */
+    }
+}
