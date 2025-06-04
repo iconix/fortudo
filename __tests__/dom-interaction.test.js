@@ -43,7 +43,7 @@ describe('DOM Handler Interaction Tests', () => {
                     </div>
                     <div class="form-group">
                         <input type="number" name="duration-hours" min="0" value="1" />
-                        <input type="number" name="duration-minutes" min="0" max="59" value="0" />
+                        <input type="number" name="duration-minutes" min="0" max="59" value="00" />
                     </div>
                     <button type="submit">Add Task</button>
                 </form>
@@ -218,8 +218,8 @@ describe('DOM Handler Interaction Tests', () => {
             {
                 description: 'Task 3',
                 startDateTime: timeToDateTime('11:30', testDate),
-                endDateTime: calculateEndDateTime(timeToDateTime('11:30', testDate), 30),
-                duration: 30,
+                endDateTime: calculateEndDateTime(timeToDateTime('11:30', testDate), 5),
+                duration: 5,
                 status: 'incomplete',
                 editing: true,
                 confirmingDelete: false
@@ -266,6 +266,12 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Description input not found or not an input element');
             }
             expect(descriptionInput.value).toBe('Task 3');
+
+            const durationMinutesInput = task3Form.querySelector('input[name="duration-minutes"]');
+            if (!(durationMinutesInput instanceof HTMLInputElement)) {
+                throw new Error('Duration minutes input not found or not an input element');
+            }
+            expect(durationMinutesInput.value).toBe('05');
         });
 
         test('attaches event listeners for view mode tasks', () => {

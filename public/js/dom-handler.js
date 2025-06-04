@@ -8,10 +8,12 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 
+import { getTaskState } from './task-manager.js';
+
 // Global event callbacks storage for event delegation
 let globalScheduledTaskCallbacks = null;
 let globalUnscheduledTaskCallbacks = null;
-let globalModalCallbacks = null;
+let globalAppCallbacks = null; // Added for app-level callbacks like deleteAll
 let dragSrcEl = null; // For drag and drop
 
 // Auto-update state for start time field
@@ -31,11 +33,24 @@ const customAlertMessage = document.getElementById('custom-alert-message');
 const closeCustomAlertButton = document.getElementById('close-custom-alert-modal');
 const okCustomAlertButton = document.getElementById('ok-custom-alert-modal');
 
+function setModalTheme(modal, title, button, theme = 'indigo') {
+    const isIndigo = theme === 'indigo';
+    // Update title color
+    if (title) {
+        title.className = `text-xl font-normal ${isIndigo ? 'text-indigo-400' : 'text-teal-400'}`;
+    }
+    // Update button gradient
+    if (button) {
+        button.className = `bg-gradient-to-r ${isIndigo ? 'from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300' : 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300'} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
+    }
+}
+
 export function hideCustomAlert() { if (customAlertModal) customAlertModal.classList.add('hidden'); }
-export function showCustomAlert(title, message) {
-    if (customAlertTitle && customAlertMessage && customAlertModal) {
+export function showCustomAlert(title, message, theme = 'indigo') {
+    if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
         customAlertTitle.textContent = title;
         customAlertMessage.textContent = message;
+        setModalTheme(customAlertModal, customAlertTitle, okCustomAlertButton, theme);
         customAlertModal.classList.remove('hidden');
     } else {
         logger.error('Custom alert modal elements not found. Falling back to window.alert.');
@@ -50,24 +65,41 @@ const customConfirmTitle = document.getElementById('custom-confirm-title');
 const customConfirmMessage = document.getElementById('custom-confirm-message');
 
 export function hideCustomConfirm() { if (customConfirmModal) customConfirmModal.classList.add('hidden'); }
-export function showCustomConfirm(title, message) {
-    let okBtn = document.getElementById('ok-custom-confirm-modal');
-    let cancelBtn = document.getElementById('cancel-custom-confirm-modal');
-    let closeBtn = document.getElementById('close-custom-confirm-modal');
-    if (customConfirmTitle && customConfirmMessage && customConfirmModal && okBtn && cancelBtn && closeBtn) {
+export function showCustomConfirm(title, message, buttonLabels = { ok: 'OK', cancel: 'Cancel' }, theme = 'indigo') {
+    const okBtnElement = document.getElementById('ok-custom-confirm-modal');
+    const cancelBtnElement = document.getElementById('cancel-custom-confirm-modal');
+    const closeBtnElement = document.getElementById('close-custom-confirm-modal');
+
+    if (customConfirmTitle && customConfirmMessage && customConfirmModal && okBtnElement instanceof HTMLElement && cancelBtnElement instanceof HTMLElement && closeBtnElement instanceof HTMLElement) {
         customConfirmTitle.textContent = title;
         customConfirmMessage.textContent = message;
+
         return new Promise((resolve) => {
-            const newOkBtn = okBtn.cloneNode(true); okBtn.parentNode.replaceChild(newOkBtn, okBtn); okBtn = newOkBtn;
-            const newCancelBtn = cancelBtn.cloneNode(true); cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn); cancelBtn = newCancelBtn;
-            const newCloseBtn = closeBtn.cloneNode(true); closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn); closeBtn = newCloseBtn;
-            okBtn.onclick = () => { hideCustomConfirm(); resolve(true); };
-            cancelBtn.onclick = () => { hideCustomConfirm(); resolve(false); };
-            closeBtn.onclick = () => { hideCustomConfirm(); resolve(false); };
+            const newOkBtn = okBtnElement.cloneNode(true);
+            const newCancelBtn = cancelBtnElement.cloneNode(true);
+            const newCloseBtn = closeBtnElement.cloneNode(true);
+
+            if (okBtnElement.parentNode) okBtnElement.parentNode.replaceChild(newOkBtn, okBtnElement);
+            if (cancelBtnElement.parentNode) cancelBtnElement.parentNode.replaceChild(newCancelBtn, cancelBtnElement);
+            if (closeBtnElement.parentNode) closeBtnElement.parentNode.replaceChild(newCloseBtn, closeBtnElement);
+
+            if (newOkBtn instanceof HTMLElement) {
+                newOkBtn.textContent = buttonLabels.ok;
+                newOkBtn.onclick = () => { hideCustomConfirm(); resolve(true); };
+            }
+            if (newCancelBtn instanceof HTMLElement) {
+                newCancelBtn.textContent = buttonLabels.cancel;
+                newCancelBtn.onclick = () => { hideCustomConfirm(); resolve(false); };
+            }
+            if (newCloseBtn instanceof HTMLElement) {
+                newCloseBtn.onclick = () => { hideCustomConfirm(); resolve(false); };
+            }
+
+            setModalTheme(customConfirmModal, customConfirmTitle, newOkBtn, theme);
             customConfirmModal.classList.remove('hidden');
         });
     } else {
-        logger.error('Custom confirm modal elements not found. Falling back to window.confirm.');
+        logger.error('Custom confirm modal elements not found or not HTMLElements.');
         return Promise.resolve(window.confirm(`${title}: ${message}`));
     }
 }
@@ -80,118 +112,204 @@ const closeScheduleModalButton = document.getElementById('close-schedule-modal')
 const cancelScheduleModalButton = document.getElementById('cancel-schedule-modal');
 const scheduleModalForm = document.getElementById('schedule-modal-form');
 const modalStartTimeInput = scheduleModalForm ? scheduleModalForm.querySelector('input[name="modal-start-time"]') : null;
+const modalDurationHoursInput = scheduleModalForm ? scheduleModalForm.querySelector('input[name="modal-duration-hours"]') : null;
+const modalDurationMinutesInput = scheduleModalForm ? scheduleModalForm.querySelector('input[name="modal-duration-minutes"]') : null;
 
 export function hideScheduleModal() { if (scheduleModal) scheduleModal.classList.add('hidden'); }
 export function showScheduleModal(taskName, taskEstDurationText, taskId) {
-    if (scheduleModalTaskName && scheduleModalDuration && modalStartTimeInput && scheduleModal && scheduleModalForm) {
+    if (scheduleModalTaskName && scheduleModalDuration && modalStartTimeInput && scheduleModal && scheduleModalForm instanceof HTMLFormElement) {
         scheduleModalTaskName.textContent = taskName;
         scheduleModalDuration.textContent = taskEstDurationText;
         scheduleModalForm.dataset.taskId = taskId;
-        modalStartTimeInput.value = '';
+
+        // Get the task from the state to access its estimated duration
+        const task = getTaskState().find(t => t.id === taskId);
+        if (task && task.estDuration) {
+            const durationObject = calculateHoursAndMinutes(task.estDuration, true);
+            if (typeof durationObject === 'object' && durationObject !== null &&
+                typeof durationObject.hours === 'number' && typeof durationObject.minutes === 'number' &&
+                modalDurationHoursInput instanceof HTMLInputElement &&
+                modalDurationMinutesInput instanceof HTMLInputElement) {
+                modalDurationHoursInput.value = durationObject.hours.toString();
+                modalDurationMinutesInput.value = durationObject.minutes.toString().padStart(2, '0');
+            }
+        }
+
+        if (modalStartTimeInput instanceof HTMLInputElement) {
+            modalStartTimeInput.value = '';
+            modalStartTimeInput.focus();
+        } else if (modalStartTimeInput) {
+            logger.warn('modalStartTimeInput is not an HTMLInputElement for focus/value');
+        }
         scheduleModal.classList.remove('hidden');
-        if(modalStartTimeInput) modalStartTimeInput.focus();
     } else {
-        logger.error('Schedule modal elements not found.');
+        logger.error('Schedule modal elements not found or form is not an HTMLFormElement.');
     }
 }
 if (closeScheduleModalButton) closeScheduleModalButton.addEventListener('click', hideScheduleModal);
 if (cancelScheduleModalButton) cancelScheduleModalButton.addEventListener('click', hideScheduleModal);
 
-// Edit Unscheduled Task Modal
-const editUnscheduledTaskModal = document.getElementById('edit-unscheduled-task-modal');
-const editUnscheduledModalTitle = document.getElementById('edit-unscheduled-modal-title'); // Though title is static
-const editUnscheduledTaskForm = document.getElementById('edit-unscheduled-task-form');
-const editUnscheduledDescriptionInput = editUnscheduledTaskForm ? editUnscheduledTaskForm.querySelector('input[name="edit-unscheduled-description"]') : null;
-const editEstDurationHoursInput = editUnscheduledTaskForm ? editUnscheduledTaskForm.querySelector('input[name="edit-est-duration-hours"]') : null;
-const editEstDurationMinutesInput = editUnscheduledTaskForm ? editUnscheduledTaskForm.querySelector('input[name="edit-est-duration-minutes"]') : null;
-const closeEditUnscheduledModalButton = document.getElementById('close-edit-unscheduled-modal');
-const cancelEditUnscheduledModalButton = document.getElementById('cancel-edit-unscheduled-modal');
+export function initializeModalEventListeners(unscheduledTaskCallbacks, appCallbacks) { // Modified signature
+    globalUnscheduledTaskCallbacks = unscheduledTaskCallbacks; // Store for potential use if any modal still needs it
+    globalAppCallbacks = appCallbacks; // Store for app-level callbacks
 
-export function hideEditUnscheduledModal() {
-    if (editUnscheduledTaskModal) {
-        editUnscheduledTaskModal.classList.add('hidden');
-    }
-}
-
-export function showEditUnscheduledModal(task) {
-    if (editUnscheduledTaskModal && editUnscheduledTaskForm && editUnscheduledDescriptionInput && editEstDurationHoursInput && editEstDurationMinutesInput) {
-        editUnscheduledTaskForm.dataset.taskId = task.id;
-        editUnscheduledDescriptionInput.value = task.description;
-
-        const { hours, minutes } = calculateHoursAndMinutes(task.estDuration, true); // Get as object
-        editEstDurationHoursInput.value = hours;
-        editEstDurationMinutesInput.value = minutes;
-
-        // Set priority radio button
-        const priorityRadios = editUnscheduledTaskForm.querySelectorAll('input[name="edit-priority"]');
-        priorityRadios.forEach(radio => {
-            if (radio.value === task.priority) {
-                radio.checked = true;
-            } else {
-                radio.checked = false;
-            }
-        });
-
-        editUnscheduledTaskModal.classList.remove('hidden');
-        editUnscheduledDescriptionInput.focus();
-    } else {
-        logger.error('Edit unscheduled task modal elements not found.');
-    }
-}
-if(closeEditUnscheduledModalButton) closeEditUnscheduledModalButton.addEventListener('click', hideEditUnscheduledModal);
-if(cancelEditUnscheduledModalButton) cancelEditUnscheduledModalButton.addEventListener('click', hideEditUnscheduledModal);
-
-
-export function initializeModalEventListeners(callbacks) {
-    globalModalCallbacks = callbacks;
-    if (scheduleModalForm) {
+    if (scheduleModalForm instanceof HTMLFormElement) {
         scheduleModalForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const taskId = scheduleModalForm.dataset.taskId;
-            const startTime = modalStartTimeInput ? modalStartTimeInput.value : '';
-            if (taskId && startTime && globalModalCallbacks && globalModalCallbacks.onConfirmScheduleTask) {
-                globalModalCallbacks.onConfirmScheduleTask(taskId, startTime);
+            let startTime = '';
+            if (modalStartTimeInput instanceof HTMLInputElement) {
+                startTime = modalStartTimeInput.value;
             } else {
-                logger.error("Could not submit schedule modal form.", {taskId, startTime});
+                logger.warn('modalStartTimeInput in scheduleModalForm submit is not an HTMLInputElement');
+            }
+
+            // Get duration from the inputs
+            let duration = null;
+            if (modalDurationHoursInput instanceof HTMLInputElement && modalDurationMinutesInput instanceof HTMLInputElement) {
+                const hours = parseInt(modalDurationHoursInput.value) || 0;
+                const minutes = parseInt(modalDurationMinutesInput.value) || 0;
+                if (hours < 0 || minutes < 0 || minutes > 59) {
+                    showAlert("Please enter valid numbers for duration (HH >= 0, 0 <= MM <= 59).", 'teal');
+                    return;
+                }
+                duration = (hours * 60) + minutes;
+                if (duration <= 0) {
+                    showAlert("Duration must be greater than 0.", 'teal');
+                    return;
+                }
+            }
+
+            if (taskId && startTime && duration !== null && globalUnscheduledTaskCallbacks && globalUnscheduledTaskCallbacks.onConfirmScheduleTask) {
+                globalUnscheduledTaskCallbacks.onConfirmScheduleTask(taskId, startTime, duration);
+            } else {
+                logger.error("Could not submit schedule modal form due to missing taskId, startTime, duration, or callback.", {taskId, startTime, duration});
             }
             hideScheduleModal();
         });
     } else {
-        logger.error("Schedule Modal Form not found.");
-    }
-
-    if (editUnscheduledTaskForm) {
-        editUnscheduledTaskForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const taskId = editUnscheduledTaskForm.dataset.taskId;
-            const description = editUnscheduledDescriptionInput ? editUnscheduledDescriptionInput.value : '';
-
-            let priority = 'medium';
-            const selectedPriority = editUnscheduledTaskForm.querySelector('input[name="edit-priority"]:checked');
-            if (selectedPriority) {
-                priority = selectedPriority.value;
-            }
-
-            const hours = editEstDurationHoursInput ? parseInt(editEstDurationHoursInput.value) || 0 : 0;
-            const minutes = editEstDurationMinutesInput ? parseInt(editEstDurationMinutesInput.value) || 0 : 0;
-            const estDuration = calculateMinutes(`${hours}:${minutes}`);
-
-            if (taskId && globalModalCallbacks && globalModalCallbacks.onConfirmEditUnscheduledTask) {
-                globalModalCallbacks.onConfirmEditUnscheduledTask(taskId, { description, priority, estDuration });
-            } else {
-                 logger.error("Could not submit edit unscheduled modal form.", {taskId});
-            }
-            hideEditUnscheduledModal();
-        });
-    } else {
-        logger.error("Edit Unscheduled Task Form not found.");
+        logger.error("Schedule Modal Form not found or not an HTMLFormElement.");
     }
 }
 
+// --- Inline Edit Functions for Unscheduled Tasks ---
+export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
+    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    if (!taskCardElement) {
+        logger.error("populateUnscheduledTaskInlineEditForm: Task card element not found for ID", taskId);
+        return;
+    }
+    const form = taskCardElement.querySelector('.inline-edit-unscheduled-form form');
+    if (!(form instanceof HTMLFormElement)) {
+        logger.error("populateUnscheduledTaskInlineEditForm: Inline edit form not found in task card", taskCardElement);
+        return;
+    }
+
+    const descriptionInput = form.querySelector('input[name="inline-edit-description"]');
+    const hoursInput = form.querySelector('input[name="inline-edit-est-duration-hours"]');
+    const minutesInput = form.querySelector('input[name="inline-edit-est-duration-minutes"]');
+    const priorityRadios = form.querySelectorAll('input[name="inline-edit-priority"]');
+
+    if (descriptionInput instanceof HTMLInputElement) descriptionInput.value = taskData.description;
+    else logger.warn("Description input not found for inline edit form", form);
+
+    const durationObject = calculateHoursAndMinutes(taskData.estDuration, true);
+    if (hoursInput instanceof HTMLInputElement && minutesInput instanceof HTMLInputElement) {
+        if (typeof durationObject === 'object' && durationObject !== null && typeof durationObject.hours === 'number' && typeof durationObject.minutes === 'number') {
+            hoursInput.value = durationObject.hours.toString();
+            minutesInput.value = durationObject.minutes.toString().padStart(2, '0');
+        } else {
+            hoursInput.value = '0';
+            minutesInput.value = '00';
+        }
+    } else {
+        logger.warn("Duration inputs not found for inline edit form", form);
+    }
+
+    priorityRadios.forEach(radioNode => {
+        if (radioNode instanceof HTMLInputElement && radioNode.value === taskData.priority) {
+            radioNode.checked = true;
+        } else if (radioNode instanceof HTMLInputElement) {
+            radioNode.checked = false;
+        }
+    });
+}
+
+export function getUnscheduledTaskInlineFormData(taskId) {
+    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    if (!taskCardElement) {
+        logger.error("getUnscheduledTaskInlineFormData: Task card element not found for ID", taskId);
+        return null;
+    }
+    const form = taskCardElement.querySelector('.inline-edit-unscheduled-form form');
+    if (!(form instanceof HTMLFormElement)) {
+        logger.error("getUnscheduledTaskInlineFormData: Inline edit form not found.", taskCardElement);
+        return null;
+    }
+
+    const descriptionInput = form.querySelector('input[name="inline-edit-description"]');
+    const hoursInput = form.querySelector('input[name="inline-edit-est-duration-hours"]');
+    const minutesInput = form.querySelector('input[name="inline-edit-est-duration-minutes"]');
+    const selectedPriorityElement = form.querySelector('input[name="inline-edit-priority"]:checked');
+
+    let description = '';
+    if (descriptionInput instanceof HTMLInputElement) description = descriptionInput.value.trim();
+    if (!description) {
+        showAlert("Task description cannot be empty.", 'teal');
+        if (descriptionInput instanceof HTMLInputElement) descriptionInput.focus();
+        return null;
+    }
+
+    let hours = 0;
+    if (hoursInput instanceof HTMLInputElement) hours = parseInt(hoursInput.value) || 0;
+    let minutes = 0;
+    if (minutesInput instanceof HTMLInputElement) minutes = parseInt(minutesInput.value) || 0;
+
+    if (hours < 0 || minutes < 0 || minutes > 59) {
+        showAlert("Please enter valid numbers for estimated duration (HH >= 0, 0 <= MM <= 59).", 'teal');
+        if (hours < 0 && hoursInput instanceof HTMLInputElement) hoursInput.focus();
+        else if ((minutes < 0 || minutes > 59) && minutesInput instanceof HTMLInputElement) minutesInput.focus();
+        return null;
+    }
+    const estDuration = (hours * 60) + minutes;
+
+    let priority = 'medium'; // Default if somehow not found
+    if (selectedPriorityElement instanceof HTMLInputElement) {
+        priority = selectedPriorityElement.value;
+    }
+
+    return { description, priority, estDuration };
+}
+
+export function toggleUnscheduledTaskInlineEdit(taskId, showEditForm, taskData) {
+    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    if (!taskCardElement) {
+        logger.error("toggleUnscheduledTaskInlineEdit: Task card element not found for ID", taskId);
+        return;
+    }
+    const viewPart = taskCardElement.querySelector('.flex.justify-between.items-start.w-full'); // The main display row
+    const editFormPart = taskCardElement.querySelector('.inline-edit-unscheduled-form');
+
+    if (!viewPart || !editFormPart) {
+        logger.error("Could not find view or edit form parts in task card for toggling.", taskCardElement);
+        return;
+    }
+
+    if (showEditForm) {
+        if (taskData) { // taskData is only passed when initially showing the form
+            populateUnscheduledTaskInlineEditForm(taskId, taskData);
+        }
+        viewPart.classList.add('hidden');
+        editFormPart.classList.remove('hidden');
+        const descInput = editFormPart.querySelector('input[name="inline-edit-description"]');
+        if (descInput instanceof HTMLInputElement) descInput.focus();
+    } else {
+        viewPart.classList.remove('hidden');
+        editFormPart.classList.add('hidden');
+    }
+}
 
 // --- Rendering Functions ---
-// ... (renderDateTime, startRealTimeClock, initializeTaskTypeToggle, renderEditTaskHTML, renderViewTaskHTML, renderUnscheduledTasks, getPriorityClasses, all event listener initializers and handlers for task lists remain the same) ...
-// ... (getScheduledTaskListElement, etc. also remain the same) ...
 
 export function renderDateTime() {
     const now = new Date();
@@ -208,113 +326,477 @@ export function initializeTaskTypeToggle() {
     const unscheduledRadio = document.getElementById('unscheduled');
     const timeInputs = document.getElementById('time-inputs');
     const priorityInput = document.getElementById('priority-input');
-    if (scheduledRadio && unscheduledRadio && timeInputs && priorityInput) {
+    const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+    const descriptionInput = document.querySelector('input[name="description"]');
+
+    if (scheduledRadio instanceof HTMLInputElement && unscheduledRadio instanceof HTMLInputElement &&
+        timeInputs instanceof HTMLElement && priorityInput instanceof HTMLElement &&
+        addTaskButton instanceof HTMLElement && descriptionInput instanceof HTMLElement) {
+
         const toggleVisibility = () => {
             if (scheduledRadio.checked) {
                 timeInputs.classList.remove('hidden');
                 priorityInput.classList.add('hidden');
+                addTaskButton.className = 'shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                descriptionInput.className = 'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all';
             } else {
                 timeInputs.classList.add('hidden');
                 priorityInput.classList.remove('hidden');
+                addTaskButton.className = 'shrink-0 bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                descriptionInput.className = 'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all';
             }
         };
         scheduledRadio.addEventListener('change', toggleVisibility);
         unscheduledRadio.addEventListener('change', toggleVisibility);
-        toggleVisibility();
+        toggleVisibility(); // Initial call
     } else {
-        logger.error('DOM elements for task type toggle not found.');
+        logger.error('DOM elements for task type toggle not found or not of expected types.');
     }
 }
 
 function renderEditTaskHTML(task, index) {
     const displayStartTime = task.startDateTime ? extractTimeFromDateTime(new Date(task.startDateTime)) : '';
-    return `<form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="mb-4 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
-        <div class="mb-4"> <input type="text" name="description" value="${task.description}" class="bg-gray-700 p-2 rounded w-full" required> </div>
-        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
-            <label class="flex items-center w-full sm:w-auto"> <span class="text-gray-400">Start Time</span> <input type="time" name="start-time" value="${displayStartTime}" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required> </label>
-            <label class="flex items-center w-full sm:w-auto"> <span class="mr-2 text-gray-400">Duration</span> <div class="flex space-x-2 w-full sm:w-auto"> <input type="number" name="duration-hours" value="${Math.floor(task.duration / 60)}" min="0" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]"> <input type="number" name="duration-minutes" value="${task.duration % 60}" min="0" max="59" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]"> </div> </label>
-            <div class="flex space-x-2"> <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full sm:w-auto font-semibold btn-save-edit" data-task-index="${index}">Edit</button> <button type="button" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded w-full sm:w-auto font-semibold btn-edit-cancel" data-task-index="${index}">Cancel</button> </div>
-        </div>
-    </form>`;
+    const durationHours = task.duration ? Math.floor(task.duration / 60) : 0;
+    const durationMinutes = task.duration ? task.duration % 60 : 0;
+
+    return `
+        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 shadow-lg text-left space-y-4">
+            <input type="hidden" name="task-type" value="scheduled">
+
+            <!-- Description Row -->
+            <div class="relative">
+                <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                <input type="text" name="description" value="${task.description}" placeholder="What needs to be done?"
+                    class="bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+            </div>
+
+            <!-- Time, Duration, and Buttons Row -->
+            <div class="flex items-center gap-x-4">
+                <!-- Start Time -->
+                <div class="relative min-w-[160px]">
+                    <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                    <input type="time" name="start-time" value="${displayStartTime}"
+                        class="bg-gray-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+                </div>
+
+                <!-- Duration -->
+                <div class="flex items-center gap-2 min-w-[140px]">
+                    <div class="relative flex-1">
+                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                        <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
+                            class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                    </div>
+                    <span class="text-gray-400 text-lg">:</span>
+                    <div class="relative flex-1">
+                        <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
+                            class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-2 ml-auto">
+                    <button type="button" class="btn-edit-cancel px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
+                        <i class="fa-solid fa-xmark mr-2"></i>Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
+                        <i class="fa-solid fa-check mr-2"></i>Save
+                    </button>
+                </div>
+            </div>
+        </form>
+    `;
 }
 
 function renderViewTaskHTML(task, index, isActiveTask) {
     const isCompleted = task.status === 'completed';
-    const checkboxDisabled = isCompleted;
-    let activeTaskColorClass = 'text-white';
+    const checkboxDisabled = isCompleted || !isActiveTask;
+    let activeTaskColorClass = 'text-slate-200';
     if (isActiveTask && !isCompleted && task.type === 'scheduled') {
         const isLate = isTaskRunningLate(task);
-        activeTaskColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
+        activeTaskColorClass = isLate ? 'text-amber-300' : 'text-teal-400';
     }
     const displayStartTime = task.startDateTime ? extractTimeFromDateTime(new Date(task.startDateTime)) : '';
     const displayEndTime = task.endDateTime ? extractTimeFromDateTime(new Date(task.endDateTime)) : '';
-    const durationText = task.duration ? calculateHoursAndMinutes(task.duration) : '';
+    const durationText = calculateHoursAndMinutes(task.duration);
 
-    return `<div id="view-task-${task.id}" class="confetti-container flex items-center justify-between space-x-2 p-2 border-b border-gray-700" data-task-index="${index}" data-task-id="${task.id}">
+    return `<div id="view-task-${task.id}" class="flex items-center justify-between p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative" data-task-index="${index}" data-task-id="${task.id}">
+        <div class="celebration-container hidden">
+            <span class="celebration-emoji">🎉</span>
+            <span class="celebration-emoji">🌟</span>
+            <span class="celebration-emoji">✨</span>
+            <span class="celebration-emoji">🎊</span>
+            <span class="celebration-emoji">🏆</span>
+            <span class="celebration-emoji">💫</span>
+            <span class="celebration-emoji">💪🏾</span>
+        </div>
         <div class="flex items-center space-x-4">
-            <label for="task-checkbox-${task.id}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}"> <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i> </label>
-            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
-            <div class="${isCompleted ? 'line-through' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'}">
-                <div class="${activeTaskColorClass}">${task.description}</div>
-                <div class="${activeTaskColorClass}">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
+            <label for="task-checkbox-${task.id}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
+                <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-xl"></i>
+            </label>
+            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked' : ''} ${checkboxDisabled ? 'disabled' : ''}>
+            <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'}">
+                <div class="${isCompleted ? 'text-white font-medium' : activeTaskColorClass + ' font-medium'}">${task.description}</div>
+                <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-sm">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>
-        <div>
-            <button class="${isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-yellow-500'} btn-edit p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}"><i class="far fa-pen"></i></button>
-            <button class="${task.confirmingDelete ? 'text-red-500' : isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-red-500'} btn-delete p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}"><i class="far ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i></button>
+        <div class="flex space-x-1">
+            <button class="text-slate-400 hover:text-teal-400 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-lock" title="${task.locked ? 'Unlock task' : 'Lock task'}" data-task-id="${task.id}" data-task-index="${index}">
+                <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open'}"></i>
+            </button>
+            <button class="text-slate-400 hover:text-indigo-400 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-unschedule" title="Unschedule task" data-task-id="${task.id}" data-task-index="${index}">
+                <i class="fa-regular fa-calendar-xmark"></i>
+            </button>
+            <button class="text-slate-400 hover:text-amber-300 p-2 hover:bg-slate-700 rounded-lg transition-colors btn-edit" title="Edit task">
+                <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition-colors'} btn-delete p-2" title="Delete task">
+                <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
+            </button>
         </div>
-        <i class="confetti-particles" aria-hidden="true"></i>
-        <span class="confetti-piece"></span><span class="confetti-piece"></span><span class="confetti-piece"></span>
     </div>`;
 }
 
 export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
-    const unscheduledTaskListElement = document.getElementById('unscheduled-task-list');
-    if (!unscheduledTaskListElement) { logger.error('Unscheduled task list element not found.'); return; }
-    if (!globalUnscheduledTaskCallbacks) { initializeUnscheduledTaskListEventListeners(eventCallbacks); }
-    else { globalUnscheduledTaskCallbacks = eventCallbacks; }
+    globalUnscheduledTaskCallbacks = eventCallbacks; // Store for event delegation
+    const unscheduledTaskList = document.getElementById('unscheduled-task-list');
+    if (!unscheduledTaskList) {
+        logger.error('Unscheduled task list element not found.');
+        return;
+    }
+    unscheduledTaskList.innerHTML = ''; // Clear existing tasks
 
-    unscheduledTaskListElement.innerHTML = unscheduledTasks.map(task => {
-        const formattedEstDuration = calculateHoursAndMinutes(task.estDuration);
-        let { priorityBorderClass, priorityCheckboxClass, priorityFocusRingColor, priorityBadgeBgClass, priorityBadgeTextClass, priorityIconClass, priorityText } = getPriorityClasses(task.priority);
-        return `
-        <div class="task-card bg-gray-800 bg-opacity-60 border-l-4 ${priorityBorderClass} p-4 rounded-lg flex justify-between items-start shadow-lg" draggable="true" data-task-id="${task.id}" data-task-name="${task.description}" data-task-est-duration="${formattedEstDuration}">
-            <div class="flex items-start space-x-3">
-                <input type="checkbox" class="mt-1 h-5 w-5 rounded border-gray-600 ${priorityCheckboxClass} focus:ring-${priorityFocusRingColor}" data-task-id="${task.id}" ${task.status === 'completed' ? 'checked disabled' : ''}>
-                <div> <div class="font-medium ${task.status === 'completed' ? 'line-through text-gray-500' : 'text-white'}">${task.description}</div> <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2"> <span class="priority-badge inline-flex items-center ${priorityBadgeBgClass} ${priorityBadgeTextClass} px-2 py-1 rounded-full text-xs"> <i class="far ${priorityIconClass} mr-1"></i>${priorityText} </span> <span class="inline-flex items-center text-gray-400"> <i class="far fa-hourglass mr-1"></i>Est: ${formattedEstDuration} </span> </div> </div>
-            </div>
+    if (unscheduledTasks.length === 0) {
+        unscheduledTaskList.innerHTML = '<p class="text-gray-500 text-sm italic px-2">No unscheduled tasks yet. Add some using the form above!</p>';
+        return;
+    }
+
+    unscheduledTasks.forEach(task => {
+        const priorityClasses = getPriorityClasses(task.priority);
+        const isCompleted = task.status === 'completed';
+
+        const durationDetailsOrString = calculateHoursAndMinutes(task.estDuration, true);
+        let durationText = '0m'; // Default value
+        if (typeof durationDetailsOrString === 'object' && durationDetailsOrString !== null && typeof durationDetailsOrString.text === 'string') {
+            durationText = durationDetailsOrString.text;
+        } else if (typeof durationDetailsOrString === 'string') {
+            durationText = durationDetailsOrString;
+            logger.warn('calculateHoursAndMinutes returned string unexpectedly when object was expected', task.estDuration);
+        }
+
+        const taskCard = document.createElement('div');
+        taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-4 rounded-lg shadow-lg flex flex-col`;
+        taskCard.dataset.taskId = task.id;
+        taskCard.dataset.taskName = task.description;
+        taskCard.dataset.taskEstDuration = durationText;
+
+        const taskDisplayPart = document.createElement('div');
+        taskDisplayPart.className = 'flex justify-between items-start w-full';
+
+        taskDisplayPart.innerHTML = `
+                <div class="flex items-start space-x-3">
+                <label class="task-checkbox-unscheduled mt-1 ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${isCompleted ? 'Task already completed' : 'Toggle complete status'}">
+                    <i class="fa-regular ${isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500'} text-xl"></i>
+                </label>
+                    <div>
+                    <div class="font-medium text-white ${isCompleted ? 'line-through opacity-70' : ''}">${task.description}</div>
+                        <div class="text-xs text-gray-400 mt-2 flex items-center flex-wrap gap-2 ${isCompleted ? 'opacity-70' : ''}">
+                        <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-2 py-1 rounded-full text-xs">
+                            <i class="${priorityClasses.icon} mr-1"></i>${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
+                            </span>
+                            <span class="inline-flex items-center text-gray-400">
+                            <i class="fa-regular fa-hourglass mr-1"></i>Est: ${durationText}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             <div class="flex space-x-1">
-                <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule this task" data-task-id="${task.id}"><i class="far fa-calendar-plus"></i></button>
-                <button class="text-gray-400 hover:text-yellow-500 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled" title="Edit task" data-task-id="${task.id}"><i class="far fa-pen"></i></button>
-                <button class="text-gray-400 hover:text-red-500 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-delete-unscheduled" title="Delete task" data-task-id="${task.id}"><i class="far fa-trash-can"></i></button>
-                <span class="text-gray-600 drag-handle p-2 hover:bg-gray-700 rounded-lg transition-colors" title="Drag to reorder" data-task-id="${task.id}"><i class="fas fa-grip-lines"></i></span>
-            </div>
-        </div>`;
-    }).join('');
+                    <button class="text-gray-400 hover:text-teal-400 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule task" data-task-id="${task.id}" ${isCompleted ? 'disabled class="opacity-50 cursor-not-allowed"' : ''}>
+                        <i class="fa-regular fa-calendar-plus"></i>
+                    </button>
+                <button class="text-gray-400 hover:text-amber-300 p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled" title="Edit task" data-task-id="${task.id}">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-gray-400 hover:text-rose-500 hover:bg-gray-700 rounded-lg transition-colors'} btn-delete-unscheduled p-2" title="Delete task" data-task-id="${task.id}">
+                    <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
+                    </button>
+                </div>
+        `;
+        taskCard.appendChild(taskDisplayPart);
+
+        // Inline Edit Form (hidden by default)
+        const editFormContainer = document.createElement('div');
+        editFormContainer.className = 'inline-edit-unscheduled-form hidden mt-4 pt-4 border-t border-gray-700 w-full';
+        editFormContainer.innerHTML = `
+            <form class="space-y-4">
+                <!-- Description Row -->
+                <div class="relative">
+                    <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
+                    <input type="text" id="inline-edit-description-${task.id}" name="inline-edit-description"
+                        placeholder="What needs to be done?"
+                        class="task-edit-description bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all" required>
+                </div>
+
+                <!-- Priority, Duration, and Buttons Row -->
+                <div class="flex items-center gap-x-4">
+                    <!-- Priority -->
+                    <div class="flex items-center gap-2 min-w-[200px]">
+                        <label class="flex-1">
+                            <input type="radio" name="inline-edit-priority" value="high" class="hidden peer" ${task.priority === 'high' ? 'checked' : ''}>
+                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                                peer-checked:bg-rose-500 peer-checked:bg-opacity-20
+                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                <i class="fa-solid fa-bars text-rose-400"></i>
+                                <span class="ml-1">High</span>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="inline-edit-priority" value="medium" class="hidden peer" ${task.priority === 'medium' ? 'checked' : ''}>
+                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                                peer-checked:bg-amber-400 peer-checked:bg-opacity-20
+                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                <i class="fa-regular fa-equals text-amber-400"></i>
+                                <span class="ml-1">Med</span>
+                            </div>
+                        </label>
+                        <label class="flex-1">
+                            <input type="radio" name="inline-edit-priority" value="low" class="hidden peer" ${task.priority === 'low' ? 'checked' : ''}>
+                            <div class="task-edit-priority-option text-center py-2 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                                peer-checked:bg-teal-500 peer-checked:bg-opacity-20
+                                hover:bg-opacity-50 cursor-pointer transition-all">
+                                <i class="fa-solid fa-minus text-teal-400"></i>
+                                <span class="ml-1">Low</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Estimated Duration -->
+                    <div class="flex items-center gap-2 min-w-[140px]">
+                        <div class="relative flex-1">
+                            <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
+                            <input type="number" name="inline-edit-est-duration-hours" placeholder="HH" min="0"
+                                class="task-edit-duration-hours bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all">
+                        </div>
+                        <span class="text-gray-400 text-lg">:</span>
+                        <div class="relative flex-1">
+                            <input type="number" name="inline-edit-est-duration-minutes" placeholder="MM" min="0" max="59"
+                                class="task-edit-duration-minutes bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all">
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center gap-2 ml-auto">
+                        <button type="button" class="btn-cancel-inline-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600">
+                            <i class="fa-solid fa-xmark mr-2"></i>Cancel
+                        </button>
+                        <button type="button" class="btn-save-inline-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400">
+                            <i class="fa-regular fa-save mr-2"></i>Save
+                        </button>
+                    </div>
+                </div>
+            </form>
+        `;
+        taskCard.appendChild(editFormContainer);
+        unscheduledTaskList.appendChild(taskCard);
+
+        // After appending, if task is in edit mode, toggle visibility
+        if (task.isEditingInline) {
+            toggleUnscheduledTaskInlineEdit(task.id, true, task);
+        }
+    });
 }
 
 function getPriorityClasses(priority) {
-    let priorityBorderClass = 'border-gray-500', priorityCheckboxClass = 'text-gray-500', priorityFocusRingColor = 'gray-500',
-        priorityBadgeBgClass = 'bg-gray-500 bg-opacity-20', priorityBadgeTextClass = 'text-gray-400',
+    let priorityBorderClass = 'border-slate-500', priorityCheckboxClass = 'text-teal-700', priorityFocusRingColor = 'slate-500',
+        priorityBadgeBgClass = 'bg-slate-500 bg-opacity-20', priorityBadgeTextClass = 'text-slate-400',
         priorityIconClass = 'fa-minus', priorityText = 'Medium Priority';
     if (priority === 'high') {
-        priorityBorderClass = 'border-red-500'; priorityCheckboxClass = 'text-red-500'; priorityFocusRingColor = 'red-500';
-        priorityBadgeBgClass = 'bg-red-500 bg-opacity-20'; priorityBadgeTextClass = 'text-red-400';
+        priorityBorderClass = 'border-rose-400'; priorityCheckboxClass = 'text-teal-700'; priorityFocusRingColor = 'rose-400';
+        priorityBadgeBgClass = 'bg-rose-400 bg-opacity-20'; priorityBadgeTextClass = 'text-rose-300';
         priorityIconClass = 'fa-arrow-up'; priorityText = 'High Priority';
     } else if (priority === 'low') {
-        priorityBorderClass = 'border-green-500'; priorityCheckboxClass = 'text-green-500'; priorityFocusRingColor = 'green-500';
-        priorityBadgeBgClass = 'bg-green-500 bg-opacity-20'; priorityBadgeTextClass = 'text-green-400';
+        priorityBorderClass = 'border-pink-400'; priorityCheckboxClass = 'text-teal-700'; priorityFocusRingColor = 'pink-400';
+        priorityBadgeBgClass = 'bg-pink-400 bg-opacity-20'; priorityBadgeTextClass = 'text-pink-300';
         priorityIconClass = 'fa-arrow-down'; priorityText = 'Low Priority';
     } else if (priority === 'medium') {
-        priorityBorderClass = 'border-yellow-500'; priorityCheckboxClass = 'text-yellow-500'; priorityFocusRingColor = 'yellow-500';
-        priorityBadgeBgClass = 'bg-yellow-500 bg-opacity-20'; priorityBadgeTextClass = 'text-yellow-400';
+        priorityBorderClass = 'border-indigo-400'; priorityCheckboxClass = 'text-teal-700'; priorityFocusRingColor = 'indigo-300';
+        priorityBadgeBgClass = 'bg-indigo-400 bg-opacity-20'; priorityBadgeTextClass = 'text-indigo-300';
         priorityIconClass = 'fa-equals'; priorityText = 'Medium Priority';
     }
-    return { priorityBorderClass, priorityCheckboxClass, priorityFocusRingColor, priorityBadgeBgClass, priorityBadgeTextClass, priorityIconClass, priorityText };
+    return { priorityBorderClass, checkbox: priorityCheckboxClass, priorityFocusRingColor, priorityBadgeBgClass, priorityBadgeTextClass, priorityIconClass, priorityText };
 }
 
+function handleScheduledTaskListClick(event) {
+    if (!globalScheduledTaskCallbacks) {
+        logger.warn("handleScheduledTaskListClick: globalScheduledTaskCallbacks not initialized");
+        return;
+    }
+    const target = /** @type {HTMLElement} */ (event.target);
 
-function initializeScheduledTaskListEventListeners(eventCallbacks) {
+    // Check for Cancel button first
+    const cancelButtonElement = target.closest('.btn-edit-cancel');
+    if (cancelButtonElement instanceof HTMLElement) {
+        const cancelButton = /** @type {HTMLElement} */ (cancelButtonElement);
+        event.preventDefault();
+        const editFormElement = cancelButton.closest('form');
+        if (editFormElement instanceof HTMLFormElement && editFormElement.id && editFormElement.id.startsWith('edit-task-')) {
+            const editForm = /** @type {HTMLFormElement} */ (editFormElement);
+            const taskId = editForm.dataset.taskId;
+            const taskIndexStr = cancelButton.dataset.taskIndex; // Index is on the button
+
+            if (taskId && taskIndexStr !== undefined && globalScheduledTaskCallbacks.onCancelEdit) {
+                globalScheduledTaskCallbacks.onCancelEdit(taskId, parseInt(taskIndexStr, 10));
+            } else {
+                logger.warn('Cancel button: taskId, taskIndexStr or onCancelEdit cb missing.', { taskId, taskIndexStr });
+            }
+        } else {
+            logger.warn('Cancel button found, but not within an expected edit form.', { cancelButton });
+        }
+        return; // Processed cancel
+    }
+
+    // For other clicks (checkbox, edit pencil, delete button on view task)
+    let taskElementContextSource = target.closest('.task-item'); // General task container if view mode
+    if (!taskElementContextSource) { // If not in a .task-item, try any [data-task-id] (like the form itself)
+        taskElementContextSource = target.closest('[data-task-id]');
+    }
+
+    if (!(taskElementContextSource instanceof HTMLElement)) {
+        return; // Click was not on a recognized task-related element
+    }
+    const taskElementContext = /** @type {HTMLElement} */ (taskElementContextSource);
+
+    const taskId = taskElementContext.dataset.taskId;
+    const taskIndexStr = taskElementContext.dataset.taskIndex;
+
+    if (!taskId || taskIndexStr === undefined) {
+        logger.warn("handleScheduledTaskListClick: Click on task-like element, but taskId or taskIndex missing.", { taskId, taskIndexStr, taskElementContext });
+        return;
+    }
+
+    const taskIndex = parseInt(taskIndexStr, 10);
+
+    if (target.closest('.checkbox')) {
+        event.preventDefault();
+        // Get all tasks and find the first uncompleted one (active task)
+        const allTasks = getTaskState().filter(t => t.type === 'scheduled');
+        const activeTask = allTasks.find(t => t.status !== 'completed');
+
+        // Only allow completion if this is the active task
+        if (activeTask && activeTask.id === taskId && globalScheduledTaskCallbacks.onCompleteTask) {
+            globalScheduledTaskCallbacks.onCompleteTask(taskId, taskIndex);
+        } else {
+            logger.warn("Attempted to complete a non-active task:", taskId);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-edit')) { // "pencil" icon on view task
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onEditTask) {
+            globalScheduledTaskCallbacks.onEditTask(taskId, taskIndex);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-lock')) {
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onLockTask) {
+            globalScheduledTaskCallbacks.onLockTask(taskId, taskIndex);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-unschedule')) {
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onUnscheduleTask) {
+            globalScheduledTaskCallbacks.onUnscheduleTask(taskId, taskIndex);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-delete')) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (globalScheduledTaskCallbacks.onDeleteTask) {
+            globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
+        }
+        return;
+    }
+}
+
+function handleScheduledTaskListSubmit(event) {
+    if (!globalScheduledTaskCallbacks) return;
+    const targetForm = /** @type {HTMLFormElement} */ (event.target);
+    if (targetForm.id && targetForm.id.startsWith('edit-task-')) {
+        event.preventDefault();
+        const taskId = targetForm.dataset.taskId;
+        const taskIndexStr = targetForm.dataset.taskIndex;
+        if (taskId && taskIndexStr !== undefined && globalScheduledTaskCallbacks.onSaveTaskEdit) {
+            globalScheduledTaskCallbacks.onSaveTaskEdit(taskId, targetForm, parseInt(taskIndexStr, 10));
+        }
+    }
+}
+
+function handleUnscheduledTaskListClick(event) {
+    const target = /** @type {HTMLElement} */ (event.target);
+    const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+
+    const taskId = taskCard.dataset.taskId;
+
+    if (target.closest('.btn-schedule-task')) {
+        if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
+            const taskName = taskCard.dataset.taskName || 'Task';
+            const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
+            const task = getTaskState().find(t => t.id === taskId); // Check if task is completed
+            if (task && task.status !== 'completed') { // Only schedule if not completed
+                globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask(taskId, taskName, estDurationText);
+            }
+        }
+    } else if (target.closest('.btn-edit-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask && taskId) {
+            logger.debug(`Edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.btn-delete-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.task-checkbox-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask(taskId);
+        } else {
+            logger.warn('onToggleCompleteUnscheduledTask callback not found or taskId missing for unscheduled task checkbox.');
+        }
+    } else if (target.closest('.btn-save-inline-edit')) { // Handle save from inline form
+        if (globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit && taskId) {
+            logger.debug(`Save inline edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
+        }
+    } else if (target.closest('.btn-cancel-inline-edit')) { // Handle cancel from inline form
+        if (globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit && taskId) {
+            logger.debug(`Cancel inline edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit(taskId);
+        }
+    }
+}
+
+function handleUnscheduledTaskListSubmit(event) {
+    event.preventDefault(); // Always prevent default form submission
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+
+    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+
+    const taskId = taskCard.dataset.taskId;
+    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
+        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
+    }
+}
+
+export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     const taskListElement = getScheduledTaskListElement();
     if (!taskListElement) { logger.error('Scheduled task list element not found.'); return; }
     taskListElement.removeEventListener('click', handleScheduledTaskListClick);
@@ -324,72 +806,17 @@ function initializeScheduledTaskListEventListeners(eventCallbacks) {
     taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
 }
 
-function handleScheduledTaskListClick(event) {
-    if (!globalScheduledTaskCallbacks) return;
-    const target = /** @type {HTMLElement} */ (event.target);
-    const taskElement = target.closest('[data-task-id]');
-    if (!taskElement) return;
-    const taskId = taskElement.dataset.taskId;
-    const taskIndex = taskElement.dataset.taskIndex;
-
-    if (target.closest('.checkbox')) {
-        event.preventDefault();
-        if (taskId) globalScheduledTaskCallbacks.onCompleteTask(taskId, taskIndex);
-        return;
-    }
-    if (target.closest('.btn-edit')) {
-        event.preventDefault();
-        if (taskId) globalScheduledTaskCallbacks.onEditTask(taskId, taskIndex);
-        return;
-    }
-    if (target.closest('.btn-delete')) {
-        event.preventDefault(); event.stopPropagation();
-        if (taskId) globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
-        return;
-    }
-}
-
-function handleScheduledTaskListSubmit(event) {
-    if (!globalScheduledTaskCallbacks) return;
-    const target = /** @type {HTMLFormElement} */ (event.target);
-    if (target.id && target.id.startsWith('edit-task-')) {
-        event.preventDefault();
-        const taskId = target.dataset.taskId;
-        const taskIndex = target.dataset.taskIndex;
-        const formData = new FormData(target);
-        if (taskId) globalScheduledTaskCallbacks.onSaveTaskEdit(taskId, formData, taskIndex);
-    }
-}
-
 export function initializeUnscheduledTaskListEventListeners(callbacks) {
-    const unscheduledTaskListElement = document.getElementById('unscheduled-task-list');
-    if (!unscheduledTaskListElement) { logger.error('Unscheduled task list element not found.'); return; }
-    unscheduledTaskListElement.removeEventListener('click', handleUnscheduledTaskListClick);
     globalUnscheduledTaskCallbacks = callbacks;
-    unscheduledTaskListElement.addEventListener('click', handleUnscheduledTaskListClick);
-}
-
-function handleUnscheduledTaskListClick(event) {
-    if (!globalUnscheduledTaskCallbacks) return;
-    const target = /** @type {HTMLElement} */ (event.target);
-    const taskCard = target.closest('.task-card');
-    if (!taskCard) return;
-    const taskId = taskCard.dataset.taskId;
-    if (!taskId) return;
-
-    if (target.closest('.btn-schedule-task')) {
-        event.preventDefault();
-        const taskName = taskCard.dataset.taskName;
-        const estDurationText = taskCard.dataset.taskEstDuration;
-        if (taskName && estDurationText && globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask) {
-            globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask(taskName, estDurationText, taskId);
-        } else logger.warn('Task data missing for scheduling.');
-    } else if (target.closest('.btn-edit-unscheduled')) {
-        event.preventDefault();
-        if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask) globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
-    } else if (target.closest('.btn-delete-unscheduled')) {
-        event.preventDefault();
-        if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask) globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
+    const unscheduledTaskList = document.getElementById('unscheduled-task-list');
+    if (unscheduledTaskList) {
+        // Remove existing listeners to prevent duplicates if re-initialized
+        unscheduledTaskList.removeEventListener('click', handleUnscheduledTaskListClick);
+        unscheduledTaskList.removeEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.addEventListener('click', handleUnscheduledTaskListClick);
+        unscheduledTaskList.addEventListener('submit', handleUnscheduledTaskListSubmit);
+    } else {
+        logger.error('Unscheduled task list element not found for event listeners.');
     }
 }
 
@@ -397,14 +824,63 @@ export function initializeDragAndDropUnscheduled(callbacks) {
     const taskList = document.getElementById('unscheduled-task-list');
     if (!taskList) return;
 
-    taskList.addEventListener('dragstart', (e) => { /* ... (same as before) ... */ });
-    taskList.addEventListener('dragend', (e) => { /* ... (same as before) ... */ });
-    taskList.addEventListener('dragover', (e) => { /* ... (same as before) ... */ });
-    taskList.addEventListener('dragenter', (e) => { /* ... (same as before) ... */ });
-    taskList.addEventListener('dragleave', (e) => { /* ... (same as before) ... */ });
-    taskList.addEventListener('drop', (e) => { /* ... (same as before, calls callbacks.onDropUnscheduledTask) ... */ });
-}
+    let dragSrcEl = null;
 
+    taskList.addEventListener('dragstart', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        target.style.opacity = '0.4';
+        dragSrcEl = target;
+        e.dataTransfer?.setData('text/html', target.innerHTML);
+    });
+
+    taskList.addEventListener('dragend', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        target.style.opacity = '1';
+    });
+
+    taskList.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        return false;
+    });
+
+    taskList.addEventListener('dragenter', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (taskCard) {
+            taskCard.classList.add('bg-gray-700');
+        }
+    });
+
+    taskList.addEventListener('dragleave', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (taskCard) {
+            taskCard.classList.remove('bg-gray-700');
+        }
+    });
+
+    taskList.addEventListener('drop', (e) => {
+        e.stopPropagation();
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (!taskCard || !dragSrcEl) return;
+
+        taskCard.classList.remove('bg-gray-700');
+
+        if (dragSrcEl !== taskCard) {
+            const draggedTaskId = dragSrcEl.dataset.taskId;
+            const targetTaskId = taskCard.dataset.taskId;
+            if (draggedTaskId && targetTaskId && callbacks.onDropUnscheduledTask) {
+                callbacks.onDropUnscheduledTask(draggedTaskId, targetTaskId);
+            }
+        }
+    });
+}
 
 export function renderTasks(tasksToRender, eventCallbacks) {
     const taskListElement = getScheduledTaskListElement();
@@ -421,10 +897,101 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     }).join('');
 }
 
-export function updateStartTimeField(suggestedTime, forceUpdate = false) { /* ... */ }
-export function refreshStartTimeField() { /* ... */ }
+export function updateStartTimeField(suggestedTime /*: string */, forceUpdate = false) {
+    logger.info('updateStartTimeField called with:', { suggestedTime, forceUpdate });
+    const taskForm = getTaskFormElement();
+    if (!taskForm) {
+        logger.warn('Task form not found in updateStartTimeField.');
+        return;
+    }
+    const startTimeInput = taskForm.querySelector('input[name="start-time"]');
+    logger.info('updateStartTimeField - startTimeInput found?:', startTimeInput);
+
+    if (startTimeInput instanceof HTMLInputElement) {
+        const now = new Date(); // This is a Date object
+
+        if (forceUpdate) {
+            startTimeInput.value = suggestedTime;
+            logger.info('updateStartTimeField - FORCED value to:', startTimeInput.value);
+            // If the forced suggestedTime is a "special" calculation (not just the current rounded time),
+            // disable auto-update so it doesn't get immediately overwritten by refreshStartTimeField.
+            if (suggestedTime !== getCurrentTimeRounded()) {
+                startTimeAutoUpdate.disable();
+                logger.debug('Start time field updated (forced with special value), auto-update disabled:', suggestedTime);
+            } else {
+                startTimeAutoUpdate.enable(suggestedTime, now); // now is a Date object
+                logger.debug('Start time field updated (forced with current time), auto-update enabled:', suggestedTime);
+            }
+        } else if (startTimeAutoUpdate.isEnabled()) {
+            if (startTimeAutoUpdate.hasDateChanged(now)) { // now is a Date object
+                startTimeAutoUpdate.disable();
+                logger.info('Start time auto-update disabled due to date change.');
+            } else {
+                startTimeInput.value = suggestedTime; // suggestedTime is a string like HH:MM
+                logger.debug('Start time field updated (auto):', suggestedTime);
+            }
+        }
+    } else {
+        logger.warn('Start time input not found or not an HTMLInputElement in updateStartTimeField.');
+    }
+}
+
+export function refreshStartTimeField() {
+    if (startTimeAutoUpdate.isEnabled()) {
+        const currentTimeString = getCurrentTimeRounded(); // This returns a string like HH:MM
+        updateStartTimeField(currentTimeString, false);
+    }
+}
+
 export function disableStartTimeAutoUpdate() { startTimeAutoUpdate.disable(); }
-export function initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement) { /* ... */ }
+
+export function initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement) {
+    if (!(taskFormElement instanceof HTMLFormElement)) {
+        logger.error('Task form element not found or not an HTMLFormElement for initializePageEventListeners.');
+    } else {
+        taskFormElement.addEventListener('submit', (event) => {
+            event.preventDefault(); // Prevent default form submission (page reload)
+            if (appCallbacks && appCallbacks.onTaskFormSubmit) {
+                appCallbacks.onTaskFormSubmit(taskFormElement);
+            } else {
+                logger.error('onTaskFormSubmit callback not provided to initializePageEventListeners');
+            }
+        });
+        logger.debug('Submit event listener added to task form.');
+
+        // Add listener to disable auto-update on manual input
+        const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
+        if (startTimeInput instanceof HTMLInputElement) {
+            startTimeInput.addEventListener('input', () => {
+                logger.debug('User manually changed start time input, disabling auto-update.');
+                disableStartTimeAutoUpdate();
+            });
+        } else {
+            logger.warn('Start time input not found in task form for attaching input event listener during page init.');
+        }
+    }
+
+    if (!(deleteAllButtonElement instanceof HTMLButtonElement)) {
+        logger.error('Delete all button not found or not an HTMLButtonElement for initializePageEventListeners.');
+    } else {
+        deleteAllButtonElement.addEventListener('click', () => {
+            if (appCallbacks && appCallbacks.onDeleteAllTasks) {
+                appCallbacks.onDeleteAllTasks();
+            } else {
+                logger.error('onDeleteAllTasks callback not provided to initializePageEventListeners');
+            }
+        });
+        logger.debug('Click event listener added to delete all button.');
+    }
+
+    // Optional: Global click listener to reset flags (from V1, consider if still needed for V2)
+    document.addEventListener('click', (event) => {
+        if (appCallbacks && appCallbacks.onGlobalClick) {
+            appCallbacks.onGlobalClick(event);
+        }
+    });
+}
+
 export function getTaskFormElement() { return /** @type {HTMLFormElement|null} */ (document.getElementById('task-form')); }
 export function getScheduledTaskListElement() { return document.getElementById('scheduled-task-list'); }
 export function getCurrentTimeElement() { return document.getElementById('current-time'); }
@@ -432,10 +999,168 @@ export function getCurrentDateElement() { return document.getElementById('curren
 export function getDeleteAllButtonElement() { return /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all')); }
 export function getTaskViewElement(taskId) { return document.getElementById(`view-task-${taskId}`); }
 export function getTaskEditFormElement(taskId) { return /** @type {HTMLFormElement|null} */ (document.getElementById(`edit-task-${taskId}`));}
-export function focusTaskDescriptionInput() { /* ... */ }
-export function showAlert(message) { showCustomAlert('Alert', message); }
-export function askConfirmation(message) { return showCustomConfirm('Confirmation', message); }
-export function extractTaskFormData(formData) { /* ... */ }
-export function resetEventDelegation() { /* ... */ }
-export function refreshActiveTaskColor(tasks, now = new Date()) { /* ... */ }
-export function triggerConfettiAnimation(taskId) { /* ... */ }
+export function focusTaskDescriptionInput() {
+    const taskForm = getTaskFormElement();
+    if (taskForm) {
+        const descriptionInput = taskForm.querySelector('input[name="description"]');
+        if (descriptionInput instanceof HTMLInputElement) {
+            descriptionInput.focus();
+        } else {
+            logger.warn('Description input not found or not an HTMLInputElement in focusTaskDescriptionInput.');
+        }
+    } else {
+        logger.warn('Task form not found in focusTaskDescriptionInput.');
+    }
+}
+export function showAlert(message, theme = 'indigo') { showCustomAlert('Alert', message, theme); }
+/**
+ * Show a confirmation dialog with customizable button labels
+ * @param {string} message - The message to display
+ * @param {{ok: string, cancel: string}=} buttonLabels - Optional custom labels for the buttons
+ * @param {string=} theme - The theme to use ('indigo' or 'teal')
+ * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
+ */
+export function askConfirmation(message, buttonLabels, theme = 'indigo') { return showCustomConfirm('Confirmation', message, buttonLabels, theme); }
+
+/**
+ * Extracts task data from the main task form.
+ * Handles both scheduled and unscheduled task types.
+ * @param {HTMLFormElement} formElement - The task form element.
+ * @returns {object|null} Task data object or null if form is invalid.
+ */
+export function extractTaskFormData(formElement) {
+    logger.debug('extractTaskFormData called', formElement);
+    const formData = new FormData(formElement);
+    const description = formData.get('description')?.toString().trim();
+    const taskType = formData.get('task-type')?.toString();
+    logger.debug('Extracted description and taskType:', { description, taskType });
+
+    if (!description) {
+        logger.warn('Description is empty');
+        showAlert('Task description cannot be empty.', taskType === 'scheduled' ? 'teal' : 'indigo');
+        return null;
+    }
+
+    let taskData = {
+        description,
+        taskType,
+    };
+
+    if (taskType === 'scheduled') {
+        const startTime = formData.get('start-time')?.toString();
+        const durationHours = parseInt(formData.get('duration-hours')?.toString() || '0');
+        const durationMinutes = parseInt(formData.get('duration-minutes')?.toString() || '0');
+        const duration = durationHours * 60 + durationMinutes;
+        logger.debug('Scheduled task details:', { startTime, durationHours, durationMinutes, duration });
+
+        if (!startTime) {
+            logger.warn('Start time missing for scheduled task');
+            showAlert('Start time is required for scheduled tasks.', 'teal');
+            return null;
+        }
+        if (duration <= 0) {
+            logger.warn('Invalid duration for scheduled task:', duration);
+            showAlert('Duration must be greater than 0 for scheduled tasks.', 'teal');
+            return null;
+        }
+        taskData = { ...taskData, startTime, duration };
+    } else if (taskType === 'unscheduled') {
+        const priority = formData.get('priority')?.toString() || 'medium';
+        const estDurationHours = parseInt(formData.get('est-duration-hours')?.toString() || '0');
+        const estDurationMinutes = parseInt(formData.get('est-duration-minutes')?.toString() || '0');
+        const estDuration = estDurationHours * 60 + estDurationMinutes;
+        logger.debug('Unscheduled task details:', { priority, estDurationHours, estDurationMinutes, estDuration });
+
+        if (estDuration <= 0 && (formData.get('est-duration-hours')?.toString() || formData.get('est-duration-minutes')?.toString())) {
+            logger.warn('Invalid estDuration for unscheduled task (explicitly set to <=0):', estDuration);
+            showAlert('Estimated duration must be greater than 0 for unscheduled tasks if specified.', 'indigo');
+            return null;
+        }
+        if (estDuration < 0) {
+            logger.warn('Invalid negative estDuration for unscheduled task:', estDuration);
+            showAlert('Invalid estimated duration.', 'indigo');
+            return null;
+        }
+        taskData = { ...taskData, priority, estDuration: estDuration > 0 ? estDuration : null };
+    } else {
+        logger.warn('Invalid task type selected:', taskType);
+        showAlert('Invalid task type selected.', 'indigo');
+        return null;
+    }
+    logger.debug('Returning taskData:', taskData);
+    return taskData;
+}
+
+export function resetEventDelegation() {
+    logger.debug('Resetting global event callbacks.');
+    globalScheduledTaskCallbacks = null;
+    globalUnscheduledTaskCallbacks = null;
+    globalAppCallbacks = null;
+    // Note: This doesn't remove listeners from DOM elements directly,
+    // but prevents old callbacks from being used if new ones are set up.
+}
+export function refreshActiveTaskColor(tasks, now = new Date()) {
+    const taskListElement = getScheduledTaskListElement();
+    if (!taskListElement) return;
+
+    let activeTaskFound = false;
+    const scheduledTasksToConsider = tasks.filter(task => task.type === 'scheduled');
+
+    scheduledTasksToConsider.forEach(task => {
+        const taskViewElement = getTaskViewElement(task.id);
+        if (taskViewElement && task.status !== 'completed') {
+            const descriptionDiv = taskViewElement.querySelector('.text-slate-200, .text-teal-400, .text-amber-300');
+            const timeDiv = taskViewElement.querySelectorAll('.text-slate-200, .text-teal-400, .text-amber-300')[1];
+
+            let newColorClass = 'text-slate-200';
+            let isActive = false;
+
+            if (!activeTaskFound) {
+                activeTaskFound = true;
+                isActive = true;
+            }
+
+            if (isActive) {
+                const isLate = isTaskRunningLate(task, now);
+                newColorClass = isLate ? 'text-amber-300' : 'text-teal-400';
+            }
+
+            if (descriptionDiv) {
+                descriptionDiv.classList.remove('text-slate-200', 'text-teal-400', 'text-amber-300');
+                descriptionDiv.classList.add(newColorClass);
+            }
+            if (timeDiv) {
+                timeDiv.classList.remove('text-slate-200', 'text-teal-400', 'text-amber-300');
+                timeDiv.classList.add(newColorClass);
+            }
+        }
+    });
+}
+export function triggerConfettiAnimation(taskId) {
+    const taskElement = document.getElementById(`view-task-${taskId}`);
+    if (taskElement) {
+        const celebrationContainer = taskElement.querySelector('.celebration-container');
+        if (celebrationContainer) {
+            logger.debug(`Celebration container FOUND for task ID: ${taskId}`);
+            celebrationContainer.classList.remove('hidden');
+
+            // Reset animation by removing and re-adding emojis
+            const emojis = celebrationContainer.querySelectorAll('.celebration-emoji');
+            emojis.forEach(emoji => {
+                if (emoji.parentNode) {
+                    const clone = emoji.cloneNode(true);
+                    emoji.parentNode.replaceChild(clone, emoji);
+                }
+            });
+
+            setTimeout(() => {
+                logger.debug(`setTimeout CALLED to hide celebration for task ID: ${taskId}`);
+                celebrationContainer.classList.add('hidden');
+            }, 2500); // Match the new 2.5s animation duration
+        } else {
+            logger.warn(`Celebration container NOT FOUND for task ID: ${taskId}`, taskElement);
+        }
+    } else {
+        logger.warn(`Task element not found for celebration: ${taskId}`);
+    }
+}

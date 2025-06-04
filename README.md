@@ -55,7 +55,10 @@ run tests:
 - [x] on-add/form validation
 - [x] "tap again to delete"
 - [x] if task is running late, switch to yellow text as warning
-- [ ] move away from browser alerts to custom modals
-- [ ] automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
-- [ ] confetti burst animation when you check off a task
-- [ ] add a lock function (🔒) that prevents a task from being auto-rescheduled
+- [x] (v2) move away from browser alerts to custom modals
+- [ ] (v2) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+- [x] (v2) confetti burst animation when you check off a task
+- [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
+- [ ] (v2) publish preview link under a https://www.interweb.wtf/ shortener link
+- [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
+- [ ] (v2) clear all scheduled tasks only (drop down on main clear all button?)

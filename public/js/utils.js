@@ -73,26 +73,42 @@ export function calculateMinutes(time24Hour) {
 }
 
 /**
- * Format minutes as hours and minutes string
- * @param {number} minutes - Total minutes
- * @returns {string} - Formatted time string
+ * Format minutes as hours and minutes string, or return as an object.
+ * @param {number} minutesInput - Total minutes.
+ * @param {boolean} [returnAsObject=false] - If true, returns {hours, minutes, text} object.
+ * @returns {string | {hours: number, minutes: number, text: string}} - Formatted time string or object.
  */
-export function calculateHoursAndMinutes(minutes) {
+export function calculateHoursAndMinutes(minutesInput, returnAsObject = false) {
+    const totalMinutes = Number(minutesInput);
     let timeStr = '';
 
-    const hours = Math.floor(minutes / 60);
+    if (isNaN(totalMinutes)) {
+        logger.warn('calculateHoursAndMinutes received NaN:', minutesInput);
+        timeStr = '0m';
+        if (returnAsObject) {
+            return { hours: 0, minutes: 0, text: timeStr };
+        }
+        return timeStr;
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+
     if (hours > 0) {
         timeStr += `${hours}h `;
     }
-
-    const remMinutes = minutes % 60;
-    if (remMinutes > 0) {
-        timeStr += `${remMinutes}m`;
+    if (remainingMinutes > 0) {
+        timeStr += `${remainingMinutes}m`;
     } else if (timeStr === '') {
         timeStr = '0m';
     }
+    timeStr = timeStr.trim();
 
-    return timeStr.trim();
+    if (returnAsObject) {
+        return { hours, minutes: remainingMinutes, text: timeStr };
+    }
+
+    return timeStr;
 }
 
 /**
@@ -165,7 +181,9 @@ export function getCurrentTimeRounded(now = new Date()) {
     roundedDate.setSeconds(0, 0);
     roundedDate.setMinutes(minutes); // note: this automatically handles >= 60
 
-    return roundedDate.toTimeString().substring(0, 5);
+    const result = roundedDate.toTimeString().substring(0, 5);
+    logger.info('getCurrentTimeRounded returns:', result);
+    return result;
 }
 
 /**
@@ -173,12 +191,35 @@ export function getCurrentTimeRounded(now = new Date()) {
  */
 export const logger = {
     /**
+     * Get caller file name and line number
+     * @private
+     * @returns {string} - Formatted caller info
+     */
+    _getCallerInfo() {
+        try {
+            const error = new Error();
+            if (!error.stack) return '[unknown]';
+            const stack = error.stack.split('\n');
+            // Get the caller's info (index 3 since 0=Error, 1=_getCallerInfo, 2=log method)
+            const caller = (stack[3] || '').match(/(?:at\s+)(?:.*\s+\()?(?:(.+?):(\d+):(\d+))/);
+            if (!caller) return '[unknown]';
+            // Extract just the filename from the full path
+            const fileName = caller[1].split('/').pop();
+            const lineNumber = caller[2];
+            return `[${fileName}:${lineNumber}]`;
+        } catch (err) {
+            return '[unknown]';
+        }
+    },
+
+    /**
      * Log an error message
      * @param {string} message - The error message to log
      * @param {...*} args - Additional arguments to log
      */
     error: (message, ...args) => {
-        console.error(`[💪🏾 ERROR] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.error(`[💪🏾 ERROR] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -187,7 +228,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     warn: (message, ...args) => {
-        console.warn(`[💪🏾 WARNING] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.warn(`[💪🏾 WARNING] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -196,7 +238,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     info: (message, ...args) => {
-        console.info(`[💪🏾 INFO] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.info(`[💪🏾 INFO] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -205,7 +248,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     debug: (message, ...args) => {
-        console.debug(`[💪🏾 DEBUG] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.debug(`[💪🏾 DEBUG] ${callerInfo} ${message}`, ...args);
     }
 };
 

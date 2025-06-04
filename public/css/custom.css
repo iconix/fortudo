@@ -2,8 +2,8 @@
     transition: all 0.2s ease;
 }
 .task-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 .drag-handle {
     cursor: grab;
@@ -14,11 +14,18 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 @keyframes pulse-green {
-    0%, 100% { color: rgb(34, 197, 94); }
-    50% { color: rgb(16, 185, 129); }
+    0%, 100% { color: rgb(13, 148, 136); }  /* teal-600 */
+    50% { color: rgb(20, 184, 166); }       /* teal-500 */
 }
 .pulse-animation {
     animation: pulse-green 2s infinite;
+}
+@keyframes pulse-indigo {
+    0%, 100% { color: rgb(165, 180, 252); }  /* indigo-300 */
+    50% { color: rgb(129, 140, 248); }       /* indigo-400 */
+}
+.pulse-animation-indigo {
+    animation: pulse-indigo 2s infinite;
 }
 .priority-badge {
     position: relative;
@@ -36,122 +43,147 @@
     transition: transform 0.5s ease;
 }
 
-/* === Confetti Animation === */
-.confetti-container {
-    position: relative; /* Or absolute/fixed depending on where it's used */
-    overflow: hidden; /* To contain confetti bits if they fly too far */
-}
-
-.confetti-container.confetti-active::before,
-.confetti-container.confetti-active::after,
-.confetti-container.confetti-active i::before,
-.confetti-container.confetti-active i::after {
-    content: '';
+/* === Celebration Animation === */
+.celebration-container {
     position: absolute;
-    width: 8px;
-    height: 15px;
-    background-color: #f00; /* Red */
-    opacity: 0;
-    animation: confetti-fall 1.5s ease-out forwards;
-    z-index: 100; /* Ensure confetti is on top */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+    overflow: hidden;
 }
 
-/* Create multiple 'confetti pieces' using pseudo-elements of a child <i> tag if needed, or just on container */
-/* This example uses up to 4 pieces on the container itself and its potential <i> child */
-/* Adjust as needed based on where it will be applied */
-
-.confetti-container.confetti-active::before {
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%) rotate(0deg);
-    background-color: #ff0; /* Yellow */
-    animation-delay: 0s;
-}
-
-.confetti-container.confetti-active::after {
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%) rotate(45deg);
-    background-color: #0f0; /* Green */
-    animation-delay: 0.1s;
-}
-
-/* If you want more pieces, you can add an empty <i></i> inside .confetti-container */
-/* and style its pseudo-elements too, or add more pseudo-elements with different selectors */
-.confetti-container.confetti-active i::before {
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%) rotate(-45deg);
-    background-color: #00f; /* Blue */
-    animation-delay: 0.2s;
-}
-
-.confetti-container.confetti-active i::after {
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    background-color: #f0f; /* Magenta */
-    animation-delay: 0.3s;
-}
-
-/* Add more pieces with different delays and transform origins for variety */
-/* Example for a 5th piece using a more complex selector if needed */
-.confetti-container.confetti-active > span.confetti-piece:nth-child(1) {
-    content: '';
+.celebration-emoji {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    background-color: #ffa500; /* Orange */
-    border-radius: 50%;
+    font-size: 1.75rem;
     opacity: 0;
-    animation: confetti-fall-circle 1.5s ease-out 0.05s forwards;
-}
- .confetti-container.confetti-active > span.confetti-piece:nth-child(2) {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 6px;
-    height: 20px;
-    background-color: #add8e6; /* Light Blue */
-    opacity: 0;
-    animation: confetti-fall 1.5s ease-out 0.15s forwards;
-    transform: translate(-50%, -50%) rotate(20deg);
-}
-.confetti-container.confetti-active > span.confetti-piece:nth-child(3) {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 12px;
-    height: 12px;
-    background-color: #ffd700; /* Gold */
-    opacity: 0;
-    animation: confetti-fall-circle 1.5s ease-out 0.25s forwards;
-    transform: translate(-50%, -50%) rotate(70deg);
+    bottom: 25%;
 }
 
+/* First row of emojis */
+.celebration-emoji:nth-child(1) {
+    left: 15%;
+    animation: emoji-float-left 2.5s ease-out forwards;
+}
 
-@keyframes confetti-fall {
+.celebration-emoji:nth-child(2) {
+    left: 50%;
+    animation: emoji-float-up 2.5s ease-out forwards;
+}
+
+.celebration-emoji:nth-child(3) {
+    left: 85%;
+    animation: emoji-float-right 2.5s ease-out forwards;
+}
+
+/* Second row of emojis with delay */
+.celebration-emoji:nth-child(4) {
+    left: 30%;
+    animation: emoji-float-left 2.5s ease-out 0.2s forwards;
+}
+
+.celebration-emoji:nth-child(5) {
+    left: 70%;
+    animation: emoji-float-right 2.5s ease-out 0.2s forwards;
+}
+
+/* Last emoji with extra delay */
+.celebration-emoji:nth-child(6) {
+    left: 50%;
+    animation: emoji-float-special 2.5s ease-out 0.4s forwards;
+}
+
+/* Signature flexed biceps emoji */
+.celebration-emoji:nth-child(7) {
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    animation: emoji-float-flex 2.5s cubic-bezier(0.25, 0.1, 0.25, 1) 0.6s forwards;
+}
+
+@keyframes emoji-float-left {
     0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
         opacity: 1;
-        transform: translate(-50%, -50%) rotate(0deg) translateY(0px) scale(1);
+        transform: translate(-15px, -20px) scale(1.2);
     }
     100% {
         opacity: 0;
-        transform: translate(-50%, -100vh) rotate(360deg) translateY(200px) scale(0); /* Fall downwards */
+        transform: translate(-45px, -100px) scale(1);
     }
 }
 
-@keyframes confetti-fall-circle {
+@keyframes emoji-float-up {
     0% {
+        opacity: 0;
+        transform: translateY(0) scale(0.5);
+    }
+    15% {
         opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
+        transform: translateY(-30px) scale(1.2);
     }
     100% {
         opacity: 0;
-        transform: translate(-50%, 150px) scale(0); /* Different fall for circles */
+        transform: translateY(-120px) scale(1);
+    }
+}
+
+@keyframes emoji-float-right {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(15px, -20px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(45px, -100px) scale(1);
+    }
+}
+
+@keyframes emoji-float-special {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(0, -40px) scale(1.3);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(0, -140px) rotate(360deg) scale(1);
+    }
+}
+
+@keyframes emoji-float-flex {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.1);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.5);
+    }
+    60% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(2);
+    }
+    80% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(4);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(8) rotate(15deg);
+        filter: blur(10px);
     }
 }
