@@ -182,7 +182,7 @@ export function getCurrentTimeRounded(now = new Date()) {
     roundedDate.setMinutes(minutes); // note: this automatically handles >= 60
 
     const result = roundedDate.toTimeString().substring(0, 5);
-    logger.info('getCurrentTimeRounded returns:', result);
+    logger.debug('getCurrentTimeRounded returns:', result);
     return result;
 }
 

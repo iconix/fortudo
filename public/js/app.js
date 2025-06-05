@@ -425,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Start Time field
     const suggested = getSuggestedStartTime();
-    logger.info('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);
+    logger.debug('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
@@ -434,23 +434,6 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshActiveTaskColor(getTaskState());
         refreshStartTimeField();
     }, 1000);
-
-    // Setup event listener for the task form
-    const taskForm = getTaskFormElement();
-    if (taskForm) {
-        taskForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const formData = extractTaskFormData(taskForm);
-            if (formData) {
-                await handleAddTaskProcess(
-                    taskForm,
-                    formData,
-                    scheduledTaskEventCallbacks,
-                    unscheduledTaskEventCallbacks
-                );
-            }
-        });
-    }
 
     // Setup event listener for the "Clear All Tasks" (main part of split button)
     const deleteAllButton = getDeleteAllButtonElement();

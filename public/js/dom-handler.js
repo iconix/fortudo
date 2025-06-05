@@ -1109,21 +1109,20 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 }
 
 export function updateStartTimeField(suggestedTime /*: string */, forceUpdate = false) {
-    logger.info('updateStartTimeField called with:', { suggestedTime, forceUpdate });
+    logger.debug('updateStartTimeField called with:', { suggestedTime, forceUpdate });
     const taskForm = getTaskFormElement();
     if (!taskForm) {
         logger.warn('Task form not found in updateStartTimeField.');
         return;
     }
     const startTimeInput = taskForm.querySelector('input[name="start-time"]');
-    logger.info('updateStartTimeField - startTimeInput found?:', startTimeInput);
 
     if (startTimeInput instanceof HTMLInputElement) {
         const now = new Date(); // This is a Date object
 
         if (forceUpdate) {
             startTimeInput.value = suggestedTime;
-            logger.info('updateStartTimeField - FORCED value to:', startTimeInput.value);
+            logger.debug('updateStartTimeField - FORCED value to:', startTimeInput.value);
             // If the forced suggestedTime is a "special" calculation (not just the current rounded time),
             // disable auto-update so it doesn't get immediately overwritten by refreshStartTimeField.
             if (suggestedTime !== getCurrentTimeRounded()) {
@@ -1167,11 +1166,7 @@ export function disableStartTimeAutoUpdate() {
     startTimeAutoUpdate.disable();
 }
 
-export function initializePageEventListeners(
-    appCallbacks,
-    taskFormElement,
-    deleteAllButtonElement
-) {
+export function initializePageEventListeners(appCallbacks, taskFormElement) {
     if (!(taskFormElement instanceof HTMLFormElement)) {
         logger.error(
             'Task form element not found or not an HTMLFormElement for initializePageEventListeners.'
@@ -1203,23 +1198,6 @@ export function initializePageEventListeners(
         }
     }
 
-    if (!(deleteAllButtonElement instanceof HTMLButtonElement)) {
-        logger.error(
-            'Delete all button not found or not an HTMLButtonElement for initializePageEventListeners.'
-        );
-    } else {
-        deleteAllButtonElement.addEventListener('click', () => {
-            if (appCallbacks && appCallbacks.onDeleteAllTasks) {
-                appCallbacks.onDeleteAllTasks();
-            } else {
-                logger.error(
-                    'onDeleteAllTasks callback not provided to initializePageEventListeners'
-                );
-            }
-        });
-        logger.debug('Click event listener added to delete all button.');
-    }
-
     // Optional: Global click listener to reset flags (from V1, consider if still needed for V2)
     document.addEventListener('click', (event) => {
         if (appCallbacks && appCallbacks.onGlobalClick) {
@@ -1241,10 +1219,9 @@ export function getCurrentDateElement() {
     return document.getElementById('current-date');
 }
 export function getDeleteAllButtonElement() {
-    return document.getElementById('delete-all'); // This is now the main "Clear All Tasks" button
+    return document.getElementById('delete-all');
 }
 export function getClearOptionsDropdownTriggerButtonElement() {
-    // New function
     return document.getElementById('clear-options-dropdown-trigger-btn');
 }
 export function getClearTasksDropdownMenuElement() {
