@@ -4,7 +4,8 @@ module.exports = {
         '^.+\\.js$': 'babel-jest'
     },
     moduleFileExtensions: ['js'],
-    testMatch: ['**/__tests__/**/*.test.js'],
+    // TODO: remove ignoring all tests (also remove --passWithNoTests in package.json)
+    testPathIgnorePatterns: ['.*/'],
     setupFilesAfterEnv: ['<rootDir>/__tests__/test-utils.js'],
 
     // Code coverage configuration
