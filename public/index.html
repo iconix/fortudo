@@ -42,24 +42,75 @@
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center">
-                <!-- Start Time -->
-                <div class="flex-1 min-w-0">
-                    <div class="relative">
-                        <i class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
-                        <input type="time" name="start-time" class="bg-slate-700 pl-9 pr-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
-                    </div>
-                </div>
-
-                <!-- Duration -->
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1 sm:gap-2">
-                        <div class="relative flex-1">
-                            <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
-                            <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+                <div class="flex-grow flex flex-col gap-2 sm:gap-4">
+                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                        <!-- Start Time -->
+                        <div class="flex-1 min-w-0">
+                            <div class="relative">
+                                <i class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
+                                <input type="time" name="start-time" class="bg-slate-700 pl-9 pr-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
+                            </div>
                         </div>
-                        <span class="text-slate-400 text-lg">:</span>
-                        <div class="relative flex-1">
-                            <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+
+                        <!-- Duration -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <div class="relative flex-1">
+                                    <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
+                                    <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+                                </div>
+                                <span class="text-slate-400 text-lg">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="priority-input" class="hidden flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                        <!-- Priority -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <span class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center">
+                                    <i class="fa-solid fa-signal text-indigo-400/75 mr-1.5"></i>Priority
+                                </span>
+                                <div class="flex flex-grow space-x-1 sm:space-x-2">
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="high" class="hidden peer">
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-rose-500/20 peer-checked:border-rose-500/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-solid fa-bars text-rose-400 sm:mr-1"></i><span class="hidden sm:inline">High</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="medium" class="hidden peer" checked>
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-amber-400/20 peer-checked:border-amber-400/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-regular fa-equals text-amber-400 sm:mr-1"></i><span class="hidden sm:inline">Med</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="low" class="hidden peer">
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-teal-500/20 peer-checked:border-teal-500/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-solid fa-minus text-teal-400 sm:mr-1"></i><span class="hidden sm:inline">Low</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Est. Duration -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <span class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center">
+                                    <i class="fa-regular fa-hourglass text-indigo-400/75 mr-1.5"></i>Est. Dur
+                                </span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="est-duration-hours" placeholder="HH" min="0" class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
+                                </div>
+                                <span class="text-slate-400 text-lg sm:text-base">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="est-duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
