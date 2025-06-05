@@ -625,7 +625,8 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
         taskCard.dataset.taskEstDuration = durationText;
 
         const taskDisplayPart = document.createElement('div');
-        taskDisplayPart.className = 'flex flex-col sm:flex-row justify-between items-start w-full gap-2 sm:gap-0';
+        taskDisplayPart.className =
+            'flex flex-col sm:flex-row justify-between items-start w-full gap-2 sm:gap-0';
 
         taskDisplayPart.innerHTML = `
             <div class="flex items-start space-x-3 min-w-0 flex-1">
