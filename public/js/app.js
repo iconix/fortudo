@@ -24,7 +24,8 @@ import {
     unscheduleTask,
     toggleLockState,
     isScheduledTask,
-    deleteAllScheduledTasks
+    deleteAllScheduledTasks,
+    deleteCompletedTasks
 } from './task-manager.js';
 import {
     renderTasks,
@@ -51,6 +52,7 @@ import {
     getClearTasksDropdownMenuElement,
     getClearScheduledOptionElement,
     getClearOptionsDropdownTriggerButtonElement,
+    getClearCompletedOptionElement,
     toggleClearTasksDropdown,
     closeClearTasksDropdown
 } from './dom-handler.js';
@@ -525,6 +527,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateStartTimeField(getSuggestedStartTime(), true);
                 } else {
                     showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                }
+            }
+            closeClearTasksDropdown();
+        });
+    }
+
+    // Setup event listener for the "Clear Completed Tasks" dropdown option
+    const clearCompletedOption = getClearCompletedOptionElement();
+    if (clearCompletedOption) {
+        clearCompletedOption.addEventListener('click', async (event) => {
+            event.preventDefault(); // It's an <a> tag
+            const completedTasksExist = getTaskState().some((task) => task.status === 'completed');
+            if (!completedTasksExist) {
+                showAlert('There are no completed tasks to clear.', 'indigo');
+                closeClearTasksDropdown();
+                return;
+            }
+
+            if (
+                await askConfirmation(
+                    'Are you sure you want to clear all completed tasks? This will remove them from both scheduled and unscheduled lists.',
+                    undefined,
+                    'indigo' // Using indigo for completed, similar to unscheduled tasks theme
+                )
+            ) {
+                const result = deleteCompletedTasks();
+                if (result.success) {
+                    showAlert(result.message || 'All completed tasks have been cleared.', 'indigo');
+                    const currentTasks = getTaskState(); // Get the updated list
+                    renderTasks(
+                        currentTasks.filter((t) => t.type === 'scheduled'),
+                        scheduledTaskEventCallbacks
+                    );
+                    renderUnscheduledTasks(
+                        getSortedUnscheduledTasks(),
+                        unscheduledTaskEventCallbacks
+                    );
+                    updateStartTimeField(getSuggestedStartTime(), true); // Update start time in case next task shifts
+                } else {
+                    showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
                 }
             }
             closeClearTasksDropdown();

@@ -1127,7 +1127,7 @@ export function deleteAllTasks() {
     const num = tasks.length;
     updateTaskState([]);
     logger.info(`deleteAllTasks: All ${num} tasks have been deleted.`);
-    return { success: true, message: `All ${num} tasks deleted.`, tasksDeleted: num };
+    return { success: true, message: `${num} tasks deleted.`, tasksDeleted: num };
 }
 
 export function deleteAllScheduledTasks() {
@@ -1148,6 +1148,27 @@ export function deleteAllScheduledTasks() {
         success: true,
         message: `${scheduledTasksCount} scheduled tasks deleted.`,
         tasksDeleted: scheduledTasksCount
+    };
+}
+
+export function deleteCompletedTasks() {
+    const currentTasks = getTaskState();
+    const incompleteTasks = currentTasks.filter((task) => task.status !== 'completed');
+    const completedTasksCount = currentTasks.length - incompleteTasks.length;
+
+    if (completedTasksCount === 0) {
+        logger.info('deleteCompletedTasks: No completed tasks to delete.');
+        return { success: true, message: 'No completed tasks to delete.', tasksDeleted: 0 };
+    }
+
+    updateTaskState(incompleteTasks);
+    logger.info(
+        `deleteCompletedTasks: All ${completedTasksCount} completed tasks have been deleted.`
+    );
+    return {
+        success: true,
+        message: `${completedTasksCount} completed tasks deleted.`,
+        tasksDeleted: completedTasksCount
     };
 }
 

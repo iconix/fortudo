@@ -1253,6 +1253,9 @@ export function getClearTasksDropdownMenuElement() {
 export function getClearScheduledOptionElement() {
     return document.getElementById('clear-scheduled-tasks-option');
 }
+export function getClearCompletedOptionElement() {
+    return document.getElementById('clear-completed-tasks-option');
+}
 export function toggleClearTasksDropdown() {
     const dropdown = getClearTasksDropdownMenuElement();
     if (dropdown) {
