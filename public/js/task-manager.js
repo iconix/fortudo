@@ -1126,7 +1126,29 @@ export function deleteAllTasks() {
     if (tasks.length === 0) return { success: true, tasksDeleted: 0 };
     const num = tasks.length;
     updateTaskState([]);
-    return { success: true, tasksDeleted: num };
+    logger.info(`deleteAllTasks: All ${num} tasks have been deleted.`);
+    return { success: true, message: `All ${num} tasks deleted.`, tasksDeleted: num };
+}
+
+export function deleteAllScheduledTasks() {
+    const currentTasks = getTaskState();
+    const unscheduledTasks = currentTasks.filter((task) => task.type === 'unscheduled');
+    const scheduledTasksCount = currentTasks.length - unscheduledTasks.length;
+
+    if (scheduledTasksCount === 0) {
+        logger.info('deleteAllScheduledTasks: No scheduled tasks to delete.');
+        return { success: true, message: 'No scheduled tasks to delete.', tasksDeleted: 0 };
+    }
+
+    updateTaskState(unscheduledTasks);
+    logger.info(
+        `deleteAllScheduledTasks: All ${scheduledTasksCount} scheduled tasks have been deleted.`
+    );
+    return {
+        success: true,
+        message: `${scheduledTasksCount} scheduled tasks deleted.`,
+        tasksDeleted: scheduledTasksCount
+    };
 }
 
 export function scheduleUnscheduledTask(taskId, startTime, duration) {

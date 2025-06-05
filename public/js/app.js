@@ -23,7 +23,8 @@ import {
     toggleUnscheduledTaskCompleteState,
     unscheduleTask,
     toggleLockState,
-    isScheduledTask
+    isScheduledTask,
+    deleteAllScheduledTasks
 } from './task-manager.js';
 import {
     renderTasks,
@@ -46,7 +47,12 @@ import {
     triggerConfettiAnimation,
     populateUnscheduledTaskInlineEditForm,
     getUnscheduledTaskInlineFormData,
-    showScheduleModal
+    showScheduleModal,
+    getClearTasksDropdownMenuElement,
+    getClearScheduledOptionElement,
+    getClearOptionsDropdownTriggerButtonElement,
+    toggleClearTasksDropdown,
+    closeClearTasksDropdown
 } from './dom-handler.js';
 import { loadTasksFromStorage } from './storage.js';
 import {
@@ -373,32 +379,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 focusTaskDescriptionInput();
                 return;
             }
-            // Make sure to pass the callbacks defined in DOMContentLoaded scope
             await handleAddTaskProcess(
                 formElement,
                 taskData,
                 scheduledTaskEventCallbacks,
                 unscheduledTaskEventCallbacks
             );
-        },
-        onDeleteAllTasks: async () => {
-            if (
-                await askConfirmation(
-                    'Are you sure you want to delete ALL tasks? This cannot be undone.',
-                    undefined,
-                    'teal'
-                )
-            ) {
-                const result = deleteAllTasks();
-                if (result.success) {
-                    showAlert(result.message || `${result.tasksDeleted} tasks deleted.`, 'teal');
-                    updateStartTimeField(getSuggestedStartTime(), true);
-                    renderTasks([], scheduledTaskEventCallbacks);
-                    renderUnscheduledTasks([], unscheduledTaskEventCallbacks);
-                } else {
-                    showAlert(result.reason || 'Failed to delete tasks.', 'teal');
-                }
-            }
         },
         onGlobalClick: (event) => {
             const target = event.target;
@@ -424,12 +410,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const taskFormElement = getTaskFormElement();
-    const deleteAllButtonElement = getDeleteAllButtonElement();
     if (!taskFormElement) logger.error('CRITICAL: app.js could not find #task-form element.');
-    if (!deleteAllButtonElement)
-        logger.error('CRITICAL: app.js could not find #delete-all button.');
 
-    initializePageEventListeners(appCallbacks, taskFormElement, deleteAllButtonElement);
+    initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
@@ -449,6 +432,127 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshActiveTaskColor(getTaskState());
         refreshStartTimeField();
     }, 1000);
+
+    // Setup event listener for the task form
+    const taskForm = getTaskFormElement();
+    if (taskForm) {
+        taskForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = extractTaskFormData(taskForm);
+            if (formData) {
+                await handleAddTaskProcess(
+                    taskForm,
+                    formData,
+                    scheduledTaskEventCallbacks,
+                    unscheduledTaskEventCallbacks
+                );
+            }
+        });
+    }
+
+    // Setup event listener for the "Clear All Tasks" (main part of split button)
+    const deleteAllButton = getDeleteAllButtonElement();
+    if (deleteAllButton) {
+        deleteAllButton.addEventListener('click', async (event) => {
+            // This button now directly clears all tasks
+            event.stopPropagation(); // Good practice, though maybe not strictly needed if not toggling a dropdown itself
+            const tasksExist = getTaskState().length > 0;
+            if (!tasksExist) {
+                showAlert('There are no tasks to delete.', 'red');
+                return;
+            }
+            if (
+                await askConfirmation(
+                    'Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.',
+                    undefined,
+                    'red'
+                )
+            ) {
+                const result = deleteAllTasks();
+                if (result.success) {
+                    showAlert(result.message || 'All tasks have been deleted.', 'red');
+                    renderTasks([], scheduledTaskEventCallbacks);
+                    renderUnscheduledTasks([], unscheduledTaskEventCallbacks);
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
+                    showAlert(result.reason || 'Failed to delete all tasks.', 'red');
+                }
+            }
+            // No dropdown to close here, as this is a direct action button
+        });
+    }
+
+    // Setup event listener for the Caret Button (dropdown trigger part of split button)
+    const clearOptionsTriggerButton = getClearOptionsDropdownTriggerButtonElement();
+    if (clearOptionsTriggerButton) {
+        clearOptionsTriggerButton.addEventListener('click', (event) => {
+            event.stopPropagation(); // Important to prevent global click listener from closing it immediately
+            toggleClearTasksDropdown();
+        });
+    }
+
+    // Setup event listener for the "Clear Scheduled Tasks" dropdown option
+    const clearScheduledOption = getClearScheduledOptionElement();
+    if (clearScheduledOption) {
+        clearScheduledOption.addEventListener('click', async (event) => {
+            event.preventDefault(); // It's an <a> tag
+            const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
+            if (!scheduledTasksExist) {
+                showAlert('There are no scheduled tasks to clear.', 'teal');
+                closeClearTasksDropdown();
+                return;
+            }
+
+            if (
+                await askConfirmation(
+                    "Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected.",
+                    undefined,
+                    'teal'
+                )
+            ) {
+                const result = deleteAllScheduledTasks();
+                if (result.success) {
+                    showAlert(result.message || 'All scheduled tasks have been cleared.', 'teal');
+                    const currentTasks = getTaskState();
+                    renderTasks(
+                        currentTasks.filter((t) => t.type === 'scheduled'),
+                        scheduledTaskEventCallbacks
+                    );
+                    renderUnscheduledTasks(
+                        getSortedUnscheduledTasks(),
+                        unscheduledTaskEventCallbacks
+                    );
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
+                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                }
+            }
+            closeClearTasksDropdown();
+        });
+    }
+
+    // Global click listener to close dropdown when clicking outside
+    window.addEventListener('click', (event) => {
+        const dropdownTrigger = getClearOptionsDropdownTriggerButtonElement(); // Use the new caret button as trigger
+        const dropdownMenu = getClearTasksDropdownMenuElement();
+        const mainClearAllButton = getDeleteAllButtonElement(); // Get the main clear all button
+
+        if (dropdownTrigger && dropdownMenu && mainClearAllButton) {
+            const target = event.target;
+            if (target instanceof Node) {
+                const isClickInsideCaret = dropdownTrigger.contains(target);
+                const isClickInsideMenu = dropdownMenu.contains(target);
+                const isClickInsideMainButton = mainClearAllButton.contains(target); // Check if click is on main button
+
+                // Close if click is outside caret, outside menu, AND outside the main clear all button (to avoid closing when main button is clicked)
+                if (!isClickInsideCaret && !isClickInsideMenu && !isClickInsideMainButton) {
+                    closeClearTasksDropdown();
+                }
+            } else {
+                closeClearTasksDropdown();
+            }
+        }
+    });
 });
 
 // Helper function to determine the theme based on task type

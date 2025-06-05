@@ -61,4 +61,5 @@ run tests:
 - [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
 - [ ] (v2) publish preview link under a https://www.interweb.wtf/ shortener link
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
-- [ ] (v2) clear all scheduled tasks only (drop down on main clear all button?)
+- [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
+- [ ] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)

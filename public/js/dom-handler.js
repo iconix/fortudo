@@ -1086,6 +1086,13 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     }
     let activeTaskFound = false;
     const scheduledTasks = tasksToRender.filter((task) => task.type === 'scheduled');
+
+    if (scheduledTasks.length === 0) {
+        taskListElement.innerHTML =
+            '<p class="text-gray-500 text-sm italic px-2">No scheduled tasks yet. Add some using the form above or schedule a task from below!</p>';
+        return;
+    }
+
     taskListElement.innerHTML = scheduledTasks
         .map((task) => {
             const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
@@ -1234,7 +1241,29 @@ export function getCurrentDateElement() {
     return document.getElementById('current-date');
 }
 export function getDeleteAllButtonElement() {
-    return /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all'));
+    return document.getElementById('delete-all'); // This is now the main "Clear All Tasks" button
+}
+export function getClearOptionsDropdownTriggerButtonElement() {
+    // New function
+    return document.getElementById('clear-options-dropdown-trigger-btn');
+}
+export function getClearTasksDropdownMenuElement() {
+    return document.getElementById('clear-tasks-dropdown'); // This is the dropdown for the single "Clear Scheduled" option
+}
+export function getClearScheduledOptionElement() {
+    return document.getElementById('clear-scheduled-tasks-option');
+}
+export function toggleClearTasksDropdown() {
+    const dropdown = getClearTasksDropdownMenuElement();
+    if (dropdown) {
+        dropdown.classList.toggle('hidden');
+    }
+}
+export function closeClearTasksDropdown() {
+    const dropdown = getClearTasksDropdownMenuElement();
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        dropdown.classList.add('hidden');
+    }
 }
 export function getTaskViewElement(taskId) {
     return document.getElementById(`view-task-${taskId}`);
@@ -1442,4 +1471,8 @@ export function triggerConfettiAnimation(taskId) {
     } else {
         logger.warn(`Task element not found for celebration: ${taskId}`);
     }
+}
+
+export function getUnscheduledTaskListElement() {
+    return document.getElementById('unscheduled-task-list');
 }
