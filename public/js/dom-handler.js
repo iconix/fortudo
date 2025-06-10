@@ -494,16 +494,16 @@ function renderEditTaskHTML(task, index) {
             </div>
 
             <!-- Time, Duration, and Buttons Row -->
-            <div class="flex items-center gap-x-4">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                 <!-- Start Time -->
-                <div class="relative min-w-[160px]">
+                <div class="relative">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                     <input type="time" name="start-time" value="${displayStartTime}"
                         class="bg-gray-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
                 </div>
 
                 <!-- Duration -->
-                <div class="flex items-center gap-2 min-w-[140px]">
+                <div class="flex items-center gap-2">
                     <div class="relative flex-1">
                         <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                         <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
@@ -517,11 +517,11 @@ function renderEditTaskHTML(task, index) {
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex items-center gap-2 ml-auto">
-                    <button type="button" class="btn-edit-cancel px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
+                <div class="flex items-center gap-2 sm:ml-auto">
+                    <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="submit" class="px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
+                    <button type="submit" class="w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
                         <i class="fa-solid fa-check mr-2"></i>Save
                     </button>
                 </div>
