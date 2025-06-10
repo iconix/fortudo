@@ -44,7 +44,6 @@ run tests:
 - [ ] fix responsiveness on iphone
 - [x] host mvp on firebase
 - [ ] add checkbox to "make a habit" → then we can have a second list that gets injected daily
-
 - [x] on check, cross out task and enable next checkbox
 - [x] constrain available hours
 - [x] fix deleteTask is not defined on onclick event
@@ -55,11 +54,17 @@ run tests:
 - [x] on-add/form validation
 - [x] "tap again to delete"
 - [x] if task is running late, switch to yellow text as warning
+
 - [x] (v2) move away from browser alerts to custom modals
 - [ ] (v2) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [x] (v2) confetti burst animation when you check off a task
 - [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
-- [ ] (v2) publish preview link under a https://www.interweb.wtf/ shortener link
+- [x] (v2) publish preview link under a shortlink (https://tinyurl.com/fortudo-v2)
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
 - [ ] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
+- [ ] (v2) clear schedule on a new day (unschedule incomplete tasks)
+- [ ] (v2) consider highlighting gaps in a schedule in some way...
+
+- [ ] (vNext) try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt) (e.g., https://tinybase.org/demos/todo-app/todo-app-v6-collaboration/)
+  - [ ] or https://github.com/yjs/yjs / https://automerge.org/ for just the crdt part

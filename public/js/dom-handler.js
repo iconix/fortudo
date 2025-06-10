@@ -159,7 +159,7 @@ const modalDurationMinutesInput = scheduleModalForm
 export function hideScheduleModal() {
     if (scheduleModal) scheduleModal.classList.add('hidden');
 }
-export function showScheduleModal(taskName, taskEstDurationText, taskId) {
+export function showScheduleModal(taskName, taskEstDurationText, taskId, suggestedStartTime) {
     if (
         scheduleModalTaskName &&
         scheduleModalDuration &&
@@ -191,7 +191,7 @@ export function showScheduleModal(taskName, taskEstDurationText, taskId) {
         }
 
         if (modalStartTimeInput instanceof HTMLInputElement) {
-            modalStartTimeInput.value = '';
+            modalStartTimeInput.value = suggestedStartTime;
             modalStartTimeInput.focus();
         } else if (modalStartTimeInput) {
             logger.warn('modalStartTimeInput is not an HTMLInputElement for focus/value');

@@ -259,7 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 showScheduleModal(
                     task.description,
                     calculateHoursAndMinutes(task.estDuration),
-                    taskId
+                    taskId,
+                    getSuggestedStartTime()
                 );
             } else logger.error(`Task to schedule not found: ${taskId}`);
         },
@@ -709,7 +710,19 @@ async function handleAddTaskProcess(
     }
 
     if (operationResult.success) {
+        const taskType = formElement.querySelector('input[name="task-type"]:checked')?.value;
+
         formElement.reset();
+
+        if (taskType) {
+            const taskTypeRadio = formElement.querySelector(
+                `input[name="task-type"][value="${taskType}"]`
+            );
+            if (taskTypeRadio) {
+                taskTypeRadio.checked = true;
+            }
+        }
+
         initializeTaskTypeToggle();
         if (initialTaskData.taskType === 'scheduled') {
             updateStartTimeField(getSuggestedStartTime(), true);
