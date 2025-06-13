@@ -467,9 +467,24 @@ export function initializeTaskTypeToggle() {
                     'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all';
             }
         };
+
         scheduledRadio.addEventListener('change', toggleVisibility);
         unscheduledRadio.addEventListener('change', toggleVisibility);
         toggleVisibility(); // Initial call
+
+        // Add page visibility change listener to re-sync form state when user returns to tab
+        // This fixes mobile bug where radio button state and form UI can get out of sync
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                // Page became visible again, re-sync the form state
+                toggleVisibility();
+            }
+        });
+
+        // Also listen for focus events as additional safeguard for mobile browsers
+        window.addEventListener('focus', () => {
+            toggleVisibility();
+        });
     } else {
         logger.error('DOM elements for task type toggle not found or not of expected types.');
     }
