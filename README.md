@@ -59,7 +59,7 @@ run tests:
 - [ ] (v2) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [x] (v2) confetti burst animation when you check off a task
 - [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
-- [x] (v2) publish preview link under a shortlink (https://tinyurl.com/fortudo-v2)
+- [x] (v2) publish preview link under shortlink (https://tinyurl.com/fortudo-v2)
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
 - [ ] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
