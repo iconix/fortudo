@@ -128,7 +128,7 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
           projectId: fortudo
-          expires: 7d
+          expires: 28d
         env:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
 
