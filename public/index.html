@@ -5,55 +5,265 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fortu-do 💪🏾</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪🏾</text></svg>">
-    <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v6.0.0-beta2/css/all.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {},
-            },
-        }
-    </script>
+    <link rel="stylesheet" href="css/custom.css">
     <script type="module" src="js/app.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans">
-    <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-6">
-        <h1 class="lg:text-5xl text-4xl font-bold mb-6 text-yellow-500">Fortu-do 💪🏾</h1>
-        <h2 class="lg:text-lg italic mb-4 text-gray-400">A Daily Time-Blocking To-Do App. For Cristell <span class="not-italic pl-1">💜</span></h2>
-        <form id="task-form" autocomplete="off" class="mb-8 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
-            <div class="mb-4">
-                <input type="text" name="description" placeholder="Describe your task..." class="bg-gray-700 p-2 rounded w-full" required>
+<body class="bg-gradient-to-b from-slate-900 to-slate-800 text-slate-200 font-sans min-h-screen">
+    <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-4 relative">
+        <!-- App Header with subtle styling -->
+        <div class="mb-8">
+            <h1 class="lg:text-5xl text-4xl font-bold text-amber-300 mb-2">
+                Fortu-do 💪🏾
+            </h1>
+            <h2 class="lg:text-lg text-slate-400">A Daily Time-Blocking To-Do App. For Cristell<span class="not-italic pl-1 animate-pulse">💜</span></h2>
+        </div>
+
+        <!-- Task Form with refined styling -->
+        <form id="task-form" class="mb-4 sm:mb-8 p-3 sm:p-4 rounded-lg bg-slate-800/80 border border-slate-700 mx-2 text-left space-y-2 sm:space-y-3">
+            <div class="flex flex-col sm:flex-row sm:space-x-4 mb-2">
+                <div class="flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors">
+                    <input id="scheduled" type="radio" name="task-type" value="scheduled" class="mr-2 h-4 w-4 text-teal-400 focus:ring-teal-400" checked>
+                    <label for="scheduled" class="text-slate-300 flex items-center text-sm">
+                        <i class="fa-regular fa-calendar-check mr-1 text-teal-400/75"></i>Scheduled
+                    </label>
+                </div>
+                <div class="flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors">
+                    <input id="unscheduled" type="radio" name="task-type" value="unscheduled" class="mr-2 h-4 w-4 text-indigo-400 focus:ring-indigo-400">
+                    <label for="unscheduled" class="text-slate-300 flex items-center text-sm">
+                        <i class="fa-solid fa-list-ul mr-1 text-indigo-400/75"></i>Unscheduled
+                    </label>
+                </div>
             </div>
-            <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
-                <label class="flex items-center w-full sm:w-auto">
-                    <span class="text-gray-400">Start Time</span>
-                    <input type="time" name="start-time" placeholder="Start Time" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
-                </label>
-                <label class="flex items-center w-full sm:w-auto">
-                    <span class="mr-2 text-gray-400">Duration</span>
-                    <div class="flex space-x-2 w-full sm:w-auto">
-                        <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
-                        <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
+
+            <div class="mb-2 sm:mb-3">
+                <input type="text" name="description" placeholder="Describe your task..." class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center">
+                <div class="flex-grow flex flex-col gap-2 sm:gap-4">
+                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                        <!-- Start Time -->
+                        <div class="flex-1 min-w-0">
+                            <div class="relative">
+                                <i class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
+                                <input type="time" name="start-time" class="bg-slate-700 pl-9 pr-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
+                            </div>
+                        </div>
+
+                        <!-- Duration -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <div class="relative flex-1">
+                                    <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
+                                    <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+                                </div>
+                                <span class="text-slate-400 text-lg">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </label>
-                <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full sm:w-full font-semibold">Add</button>
+
+                    <div id="priority-input" class="hidden flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                        <!-- Priority -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <span class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center">
+                                    <i class="fa-solid fa-signal text-indigo-400/75 mr-1.5"></i>Priority
+                                </span>
+                                <div class="flex flex-grow space-x-1 sm:space-x-2">
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="high" class="hidden peer">
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-rose-500/20 peer-checked:border-rose-500/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-solid fa-bars text-rose-400 sm:mr-1"></i><span class="hidden sm:inline">High</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="medium" class="hidden peer" checked>
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-amber-400/20 peer-checked:border-amber-400/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-regular fa-equals text-amber-400 sm:mr-1"></i><span class="hidden sm:inline">Med</span>
+                                        </div>
+                                    </label>
+                                    <label class="flex-1">
+                                        <input type="radio" name="priority" value="low" class="hidden peer">
+                                        <div class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-teal-500/20 peer-checked:border-teal-500/70 cursor-pointer transition-all text-xs">
+                                            <i class="fa-solid fa-minus text-teal-400 sm:mr-1"></i><span class="hidden sm:inline">Low</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Est. Duration -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <span class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center">
+                                    <i class="fa-regular fa-hourglass text-indigo-400/75 mr-1.5"></i>Est. Dur
+                                </span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="est-duration-hours" placeholder="HH" min="0" class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
+                                </div>
+                                <span class="text-slate-400 text-lg sm:text-base">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="est-duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base">
+                    <i class="fa-regular fa-plus mr-2"></i>Add Task
+                </button>
             </div>
         </form>
-        <div id="task-list" class="text-left">
-            <!-- tasks will be generated here -->
+
+        <!-- Scheduled Tasks List -->
+        <div id="scheduled-tasks-container" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
+            <div class="flex justify-between items-center mb-2 sm:mb-3">
+                <h3 class="text-lg sm:text-xl font-normal text-teal-400 pl-2 flex items-center">
+                    <i class="fa-solid fa-calendar-day mr-2"></i>Today's Schedule
+                </h3>
+            </div>
+            <div id="scheduled-task-list" class="space-y-1.5">
+                <!-- tasks will be generated here by JavaScript -->
+            </div>
         </div>
-        <div id="info-panel" class="py-6">
-            <div class="flex justify-between">
-                <div id="current-datetime" class="pl-10 pr-4">
-                    <div id="current-time" class="text-left text-2xl font-semibold"></div>
-                    <div id="current-date" class="text-left font-semibold"></div>
+
+        <!-- Unscheduled Tasks Section -->
+        <div id="unscheduled-tasks" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
+            <div class="flex justify-between items-center mb-2 sm:mb-3">
+                <h3 class="text-lg sm:text-xl font-normal text-indigo-400 pl-2 flex items-center">
+                    <i class="fa-solid fa-list-ul mr-2"></i>Unscheduled Tasks
+                </h3>
+            </div>
+            <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
+                <!-- tasks will be generated here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Info Panel -->
+        <div id="info-panel" class="py-4 px-4 bg-slate-800/80 border border-slate-700 rounded-lg mt-6">
+            <div class="flex justify-between items-center">
+                <div id="current-datetime" class="pl-4">
+                    <div id="current-time" class="text-left text-3xl font-light text-slate-200"></div>
+                    <div id="current-date" class="text-left text-slate-400"></div>
                 </div>
-                <div class="text-right pt-2 pr-2">
-                    <button id="delete-all" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded text-center font-semibold">Clear Tasks</button>
+                <div class="relative text-right pt-2 pr-2">
+                    <div class="inline-flex rounded-lg shadow-sm">
+                        <button id="delete-all" type="button" class="px-4 py-2 text-sm font-medium text-slate-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-l-lg focus:z-10 focus:ring-2 focus:ring-red-500 focus:bg-red-500/20 transition-all duration-300 flex items-center">
+                            <i class="fa-regular fa-trash-can mr-2"></i>Clear All
+                        </button>
+                        <button id="clear-options-dropdown-trigger-btn" type="button" class="px-3 py-2 text-sm font-medium text-slate-200 bg-red-500/10 hover:bg-red-500/20 border-t border-b border-r border-red-500/30 rounded-r-lg focus:z-10 focus:ring-2 focus:ring-red-500 focus:bg-red-500/20 transition-all duration-300 flex items-center">
+                            <i class="fa-solid fa-caret-down"></i>
+                        </button>
+                    </div>
+                    <div id="clear-tasks-dropdown" class="hidden absolute right-0 mt-2 min-w-max rounded-md shadow-lg bg-slate-700 ring-1 ring-black ring-opacity-5 z-10">
+                        <div class="py-1" role="menu" aria-orientation="vertical" aria-labelledby="clear-options-dropdown-trigger-btn">
+                            <a href="#" id="clear-scheduled-tasks-option" class="block px-4 py-2 text-sm text-slate-200 hover:bg-slate-600 hover:text-white" role="menuitem">
+                                <i class="fa-regular fa-calendar-xmark mr-2"></i>Clear Schedule
+                            </a>
+                            <a href="#" id="clear-completed-tasks-option" class="block px-4 py-2 text-sm text-slate-200 hover:bg-slate-600 hover:text-white" role="menuitem">
+                                <i class="fa-solid fa-check-double mr-2"></i>Clear Completed
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <footer class="text-sm italic pt-4">© 2025 R-F Incorporated.</footer>
+        <footer class="text-sm pt-6 pb-4 text-slate-500">© 2023-2025 R-F Incorporated.</footer>
+    </div>
+
+    <!-- Schedule Modal -->
+    <div id="schedule-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-normal text-indigo-400">Schedule Task</h3>
+                <button id="close-schedule-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <p class="mb-6 text-slate-400">Schedule "<span id="schedule-modal-task-name" class="text-slate-200 font-medium">Finish project proposal</span>" for today:</p>
+
+            <form id="schedule-modal-form" class="space-y-6">
+                <div class="space-y-4">
+                    <label class="flex flex-col space-y-2">
+                        <span class="text-slate-400 flex items-center">
+                            <i class="fa-regular fa-clock text-indigo-400/75 mr-2"></i>Start Time
+                        </span>
+                        <input type="time" name="modal-start-time" class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                    </label>
+
+                    <div class="flex flex-col space-y-2">
+                        <span class="text-slate-400 flex items-center">
+                            <i class="fa-regular fa-hourglass text-indigo-400/75 mr-2"></i>Duration
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <div class="relative flex-1">
+                                <input type="number" name="modal-duration-hours" placeholder="HH" min="0"
+                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                            </div>
+                            <span class="text-slate-400 text-lg">:</span>
+                            <div class="relative flex-1">
+                                <input type="number" name="modal-duration-minutes" placeholder="MM" min="0" max="59"
+                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <div class="text-slate-400 mb-2 flex items-center">
+                            <i class="fa-solid fa-circle-info text-blue-300/75 mr-2"></i>Estimated Duration: <span id="schedule-modal-duration" class="ml-2 text-slate-200">1 h 30 m</span>
+                        </div>
+                        <div class="text-sm text-slate-500">Task will be scheduled from selected start time for the duration specified above. The original estimated duration is shown for reference.</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button id="cancel-schedule-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">Cancel</button>
+                    <button type="submit" class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center">
+                        <i class="fa-regular fa-calendar-check mr-2"></i>Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-alert-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-sm w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="custom-alert-title" class="text-xl font-normal">Alert</h3>
+                <button id="close-custom-alert-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <p id="custom-alert-message" class="mb-6 text-slate-400">This is a sample alert message.</p>
+            <div class="flex justify-end space-x-3">
+                <button id="ok-custom-alert-modal" class="px-5 py-2 rounded-lg text-white font-normal transition-colors">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="custom-confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-sm w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="custom-confirm-title" class="text-xl font-normal">Confirm Action</h3>
+                <button id="close-custom-confirm-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <p id="custom-confirm-message" class="mb-6 text-slate-400">Are you sure you want to proceed?</p>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-custom-confirm-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">No</button>
+                <button id="ok-custom-confirm-modal" class="px-5 py-2 rounded-lg text-white font-normal transition-colors">Yes</button>
+            </div>
+        </div>
     </div>
 </body>
 </html>

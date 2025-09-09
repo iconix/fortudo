@@ -1,159 +1,159 @@
 name: CI/CD Pipeline
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main, develop]
 
 jobs:
-  check_for_code_changes:
-    name: Check for Code Changes
-    runs-on: ubuntu-latest
-    outputs:
-      has_code_changes: ${{ steps.filter.outputs.src }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0 # Required for accurate change detection
+    check_for_code_changes:
+        name: Check for Code Changes
+        runs-on: ubuntu-latest
+        outputs:
+            has_code_changes: ${{ steps.filter.outputs.src }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0 # Required for accurate change detection
 
-      - name: Detect changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          # Base branch to compare against.
-          # For PRs, this is the base branch. For pushes, it's the previous commit.
-          # This option is ignored if action is triggered by pull_request event.
-          base: ${{ github.event_name == 'push' && github.event.before || '' }}
-          # List of paths to ignore (e.g., documentation, CI/CD workflows)
-          filters: |
-            src:
-              - '!**/*.md'
-              - '!.gitignore'
-              - '!LICENSE'
-              - '!.github/**'
-          predicate-quantifier: 'every'
+            - name: Detect changes
+              uses: dorny/paths-filter@v3
+              id: filter
+              with:
+                  # Base branch to compare against.
+                  # For PRs, this is the base branch. For pushes, it's the previous commit.
+                  # This option is ignored if action is triggered by pull_request event.
+                  base: ${{ github.event_name == 'push' && github.event.before || '' }}
+                  # List of paths to ignore (e.g., documentation, CI/CD workflows)
+                  filters: |
+                      src:
+                        - '!**/*.md'
+                        - '!.gitignore'
+                        - '!LICENSE'
+                        - '!.github/**'
+                  predicate-quantifier: 'every'
 
-  test:
-    name: Test & Lint
-    runs-on: ubuntu-latest
+    test:
+        name: Test & Lint
+        runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
+        strategy:
+            matrix:
+                node-version: [18.x, 20.x]
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+            - name: Setup Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Run linting
-        run: npm run lint
+            - name: Run linting
+              run: npm run lint
 
-      - name: Check code formatting
-        run: npm run format:check
+            - name: Check code formatting
+              run: npm run format:check
 
-      - name: Run tests
-        run: npm run test:coverage
+            - name: Run tests
+              run: npm run test:coverage
 
-      - name: Upload coverage reports
-        if: matrix.node-version == '20.x'
-        uses: codecov/codecov-action@v5
-        with:
-          file: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
+            - name: Upload coverage reports
+              if: matrix.node-version == '20.x'
+              uses: codecov/codecov-action@v5
+              with:
+                  file: ./coverage/lcov.info
+                  flags: unittests
+                  name: codecov-umbrella
+                  fail_ci_if_error: false
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: test
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+        needs: test
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20.x'
+                  cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Build application
-        run: |
-          # Since this is a static site, we'll just verify the public directory exists
-          # and run any build steps if they exist in the future
-          echo "Verifying build artifacts..."
-          ls -la public/
+            - name: Build application
+              run: |
+                  # Since this is a static site, we'll just verify the public directory exists
+                  # and run any build steps if they exist in the future
+                  echo "Verifying build artifacts..."
+                  ls -la public/
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-files
-          path: public/
-          retention-days: 1
+            - name: Upload build artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: build-files
+                  path: public/
+                  retention-days: 1
 
-  deploy-preview:
-    name: Deploy Preview
-    runs-on: ubuntu-latest
-    needs: [test, build, check_for_code_changes]
-    if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
+    deploy-preview:
+        name: Deploy Preview
+        runs-on: ubuntu-latest
+        needs: [test, build, check_for_code_changes]
+        if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v5
-        with:
-          name: build-files
-          path: public/
+            - name: Download build artifacts
+              uses: actions/download-artifact@v5
+              with:
+                  name: build-files
+                  path: public/
 
-      - name: Deploy to Firebase Hosting (Preview)
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
-          projectId: fortudo
-          expires: 7d
-        env:
-          FIREBASE_CLI_EXPERIMENTS: webframeworks
+            - name: Deploy to Firebase Hosting (Preview)
+              uses: FirebaseExtended/action-hosting-deploy@v0
+              with:
+                  repoToken: ${{ secrets.GITHUB_TOKEN }}
+                  firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
+                  projectId: fortudo
+                  expires: 30d
+              env:
+                  FIREBASE_CLI_EXPERIMENTS: webframeworks
 
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [test, build, check_for_code_changes]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
+    deploy-production:
+        name: Deploy to Production
+        runs-on: ubuntu-latest
+        needs: [test, build, check_for_code_changes]
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v5
-        with:
-          name: build-files
-          path: public/
+            - name: Download build artifacts
+              uses: actions/download-artifact@v5
+              with:
+                  name: build-files
+                  path: public/
 
-      - name: Deploy to Firebase Hosting (Production)
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
-          channelId: live
-          projectId: fortudo
-        env:
-          FIREBASE_CLI_EXPERIMENTS: webframeworks
+            - name: Deploy to Firebase Hosting (Production)
+              uses: FirebaseExtended/action-hosting-deploy@v0
+              with:
+                  repoToken: ${{ secrets.GITHUB_TOKEN }}
+                  firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
+                  channelId: live
+                  projectId: fortudo
+              env:
+                  FIREBASE_CLI_EXPERIMENTS: webframeworks
