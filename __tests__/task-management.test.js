@@ -78,13 +78,16 @@ describe('Task Management Functions (task-manager.js)', () => {
         const endDateTime = calculateEndDateTime(startDateTime, duration);
 
         return {
+            id: `test-task-${Date.now()}-${Math.random()}`,
+            type: 'scheduled',
             description,
             startDateTime,
             endDateTime,
             duration,
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         };
     }
 
@@ -191,35 +194,90 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('isValidTaskData', () => {
-        test('should return valid for correct data', () => {
-            expect(isValidTaskData('Test Task', 30)).toEqual({ isValid: true });
+        test('should return valid for correct scheduled task data', () => {
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '09:00')).toEqual({ isValid: true });
+        });
+
+        test('should return valid for correct unscheduled task data', () => {
+            expect(isValidTaskData('Test Task', 'unscheduled', undefined, undefined, 30)).toEqual({
+                isValid: true
+            });
         });
 
         test('should return invalid if description is empty', () => {
-            expect(isValidTaskData('', 30)).toEqual({
+            expect(isValidTaskData('', 'scheduled', 30, '09:00')).toEqual({
                 isValid: false,
-                reason: 'Description cannot be empty.'
+                reason: 'Task description is required.'
             });
-            expect(isValidTaskData('   ', 30)).toEqual({
+            expect(isValidTaskData('   ', 'scheduled', 30, '09:00')).toEqual({
                 isValid: false,
-                reason: 'Description cannot be empty.'
+                reason: 'Task description is required.'
             });
         });
 
-        test('should return invalid if duration is zero or negative', () => {
-            expect(isValidTaskData('Test Task', 0)).toEqual({
+        test('should return invalid if taskType is missing or invalid', () => {
+            expect(isValidTaskData('Test Task', null, 30, '09:00')).toEqual({
                 isValid: false,
-                reason: 'Duration must be a positive number.'
+                reason: 'Invalid task type.'
             });
-            expect(isValidTaskData('Test Task', -10)).toEqual({
+            expect(isValidTaskData('Test Task', 'invalid-type', 30, '09:00')).toEqual({
                 isValid: false,
-                reason: 'Duration must be a positive number.'
+                reason: 'Invalid task type.'
             });
         });
-        test('should return invalid if duration is NaN', () => {
-            expect(isValidTaskData('Test Task', NaN)).toEqual({
+
+        test('should allow zero duration and reject negative duration for scheduled tasks', () => {
+            // Zero duration is valid (e.g., milestone tasks)
+            expect(isValidTaskData('Test Task', 'scheduled', 0, '09:00')).toEqual({
+                isValid: true
+            });
+            // Negative duration is invalid
+            expect(isValidTaskData('Test Task', 'scheduled', -10, '09:00')).toEqual({
                 isValid: false,
-                reason: 'Duration must be a positive number.'
+                reason: 'Duration must be a non-negative number for scheduled tasks.'
+            });
+        });
+
+        test('should return invalid if scheduled task duration is NaN', () => {
+            expect(isValidTaskData('Test Task', 'scheduled', NaN, '09:00')).toEqual({
+                isValid: false,
+                reason: 'Duration must be a non-negative number for scheduled tasks.'
+            });
+        });
+
+        test('should return invalid if scheduled task is missing start time', () => {
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '')).toEqual({
+                isValid: false,
+                reason: 'Start time is required for scheduled tasks.'
+            });
+        });
+
+        test('should return invalid if scheduled task has invalid time format', () => {
+            // Hours > 23 are invalid
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '25:00')).toEqual({
+                isValid: false,
+                reason: 'Start time must be in HH:MM format.'
+            });
+            // Minutes > 59 are invalid
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '12:60')).toEqual({
+                isValid: false,
+                reason: 'Start time must be in HH:MM format.'
+            });
+            // Invalid format (missing colon)
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '1200')).toEqual({
+                isValid: false,
+                reason: 'Start time must be in HH:MM format.'
+            });
+        });
+
+        test('should return invalid if unscheduled task has invalid estimated duration', () => {
+            expect(isValidTaskData('Test Task', 'unscheduled', undefined, undefined, -10)).toEqual({
+                isValid: false,
+                reason: 'Estimated duration must be a non-negative number for unscheduled tasks.'
+            });
+            expect(isValidTaskData('Test Task', 'unscheduled', undefined, undefined, NaN)).toEqual({
+                isValid: false,
+                reason: 'Estimated duration must be a non-negative number for unscheduled tasks.'
             });
         });
     });
@@ -312,12 +370,12 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('Sorted Tasks Caching', () => {
         test('should maintain sort order when accessing tasks multiple times', () => {
             // Add tasks in non-sorted order
-            addTask({ description: 'Task C', startTime: '11:00', duration: 60 });
-            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
-            addTask({ description: 'Task B', startTime: '10:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task C', startTime: '11:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task A', startTime: '09:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task B', startTime: '10:00', duration: 60 });
 
-            const tasks1 = getTaskState();
-            const tasks2 = getTaskState();
+            const tasks1 = getTaskState().filter((t) => t.type === 'scheduled');
+            const tasks2 = getTaskState().filter((t) => t.type === 'scheduled');
 
             // Verify tasks are sorted consistently
             expect(tasks1[0].description).toBe('Task A'); // 09:00
@@ -331,15 +389,16 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should update sort order when tasks are modified', () => {
             // Add tasks
-            addTask({ description: 'Task A', startTime: '09:00', duration: 60 });
-            addTask({ description: 'Task B', startTime: '10:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task A', startTime: '09:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task B', startTime: '10:00', duration: 60 });
 
-            let tasks = getTaskState();
+            let tasks = getTaskState().filter((t) => t.type === 'scheduled');
             expect(tasks[0].description).toBe('Task A'); // 09:00
             expect(tasks[1].description).toBe('Task B'); // 10:00
 
             // Update Task A to start later than Task B
-            updateTask(0, { startTime: '11:00' });
+            const taskAIndex = getTaskState().findIndex((t) => t.description === 'Task A');
+            updateTask(taskAIndex, { startTime: '11:00', duration: 60 });
 
             tasks = getTaskState();
             expect(tasks[0].description).toBe('Task B'); // 10:00
@@ -491,7 +550,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should add a task, call performReschedule, sort, and save when no overlap occurs', () => {
-            addTask({ description: 'Task 1', startTime: '10:00', duration: 60 }); // 10:00 - 11:00
+            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '10:00', duration: 60 }); // 10:00 - 11:00
             const taskData = { description: 'Task 2', startTime: '09:00', duration: 30 }; // 09:00 - 09:30
             const result = addTask(taskData);
 
@@ -507,7 +566,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should require confirmation if adding a task creates an overlap', () => {
-            addTask({ description: 'Existing Task', startTime: '09:00', duration: 60 }); // 09:00 - 10:00
+            addTask({ taskType: 'scheduled', description: 'Existing Task', startTime: '09:00', duration: 60 }); // 09:00 - 10:00
             mockSaveTasks.mockClear();
 
             const taskData = { description: 'Overlapping Task', startTime: '09:30', duration: 60 };
@@ -524,7 +583,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should not add an invalid task and not save', () => {
-            const result = addTask({ description: '', startTime: '10:00', duration: 0 });
+            const result = addTask({ taskType: 'scheduled', description: '', startTime: '10:00', duration: 0 });
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Description cannot be empty.');
             expect(getTaskState().length).toBe(0);
@@ -843,8 +902,8 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('deleteTask', () => {
         beforeEach(() => {
-            addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
-            addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '09:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task 2', startTime: '10:00', duration: 60 });
             mockSaveTasks.mockClear();
         });
 
@@ -868,7 +927,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('editTask / cancelEdit', () => {
         beforeEach(() => {
-            addTask({ description: 'Test Task', startTime: '09:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Test Task', startTime: '09:00', duration: 60 });
             mockSaveTasks.mockClear();
         });
 
@@ -892,8 +951,8 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('deleteAllTasks', () => {
         beforeEach(() => {
-            addTask({ description: 'Task 1', startTime: '09:00', duration: 60 });
-            addTask({ description: 'Task 2', startTime: '10:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '09:00', duration: 60 });
+            addTask({ taskType: 'scheduled', description: 'Task 2', startTime: '10:00', duration: 60 });
             mockSaveTasks.mockClear();
         });
 

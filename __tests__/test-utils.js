@@ -293,6 +293,8 @@ function createTaskWithDateTime({
     status = 'incomplete',
     editing = false,
     confirmingDelete = false,
+    locked = false,
+    id = null,
     date
 }) {
     if (!date) {
@@ -303,13 +305,16 @@ function createTaskWithDateTime({
     const endDateTime = calculateEndDateTime(startDateTime, duration);
 
     return {
+        id: id || `test-task-${Date.now()}-${Math.random()}`,
+        type: 'scheduled',
         description,
         startDateTime,
         endDateTime,
         duration,
         status,
         editing,
-        confirmingDelete
+        confirmingDelete,
+        locked
     };
 }
 
