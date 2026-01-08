@@ -38,17 +38,38 @@ describe('DOM Handler Interaction Tests', () => {
                     <div class="form-group">
                         <input type="text" name="description" placeholder="Task description" required />
                     </div>
-                    <div class="form-group">
-                        <input type="time" name="start-time" required />
+                    <div class="task-type-toggle">
+                        <input type="radio" id="scheduled" name="task-type" value="scheduled" checked />
+                        <label for="scheduled">Scheduled</label>
+                        <input type="radio" id="unscheduled" name="task-type" value="unscheduled" />
+                        <label for="unscheduled">Unscheduled</label>
                     </div>
-                    <div class="form-group">
-                        <input type="number" name="duration-hours" min="0" value="1" />
-                        <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                    <div id="time-inputs">
+                        <div class="form-group">
+                            <input type="time" name="start-time" required />
+                        </div>
+                        <div class="form-group">
+                            <input type="number" name="duration-hours" min="0" value="1" />
+                            <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                        </div>
+                    </div>
+                    <div id="priority-input" style="display: none;">
+                        <select name="priority">
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                        </select>
+                        <input type="number" name="est-duration" placeholder="Est. minutes" />
                     </div>
                     <button type="submit">Add Task</button>
                 </form>
-                <div id="task-list" class="task-list"></div>
+                <div id="scheduled-task-list" class="task-list"></div>
+                <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
                 <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
+                <div id="clear-tasks-dropdown" style="display: none;">
+                    <button id="clear-scheduled-tasks-option">Clear Scheduled</button>
+                    <button id="clear-completed-tasks-option">Clear Completed</button>
+                </div>
             </div>
         `;
 
@@ -80,7 +101,8 @@ describe('DOM Handler Interaction Tests', () => {
 
         // Ensure all required elements exist
         expect(taskForm).not.toBeNull();
-        expect(document.getElementById('task-list')).not.toBeNull();
+        expect(document.getElementById('scheduled-task-list')).not.toBeNull();
+        expect(document.getElementById('unscheduled-task-list')).not.toBeNull();
         expect(deleteAllBtn).not.toBeNull();
         expect(document.getElementById('current-time')).not.toBeNull();
         expect(document.getElementById('current-date')).not.toBeNull();
@@ -198,45 +220,54 @@ describe('DOM Handler Interaction Tests', () => {
         const testDate = '2025-01-01'; // Use a fixed date for consistency
         const sampleTasks = [
             {
+                id: 'test-task-1',
+                type: 'scheduled',
                 description: 'Task 1',
                 startDateTime: timeToDateTime('09:00', testDate),
                 endDateTime: calculateEndDateTime(timeToDateTime('09:00', testDate), 60),
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
-                confirmingDelete: false
+                confirmingDelete: false,
+                locked: false
             },
             {
+                id: 'test-task-2',
+                type: 'scheduled',
                 description: 'Task 2',
                 startDateTime: timeToDateTime('10:30', testDate),
                 endDateTime: calculateEndDateTime(timeToDateTime('10:30', testDate), 30),
                 duration: 30,
                 status: 'completed',
                 editing: false,
-                confirmingDelete: false
+                confirmingDelete: false,
+                locked: false
             },
             {
+                id: 'test-task-3',
+                type: 'scheduled',
                 description: 'Task 3',
                 startDateTime: timeToDateTime('11:30', testDate),
                 endDateTime: calculateEndDateTime(timeToDateTime('11:30', testDate), 5),
                 duration: 5,
                 status: 'incomplete',
                 editing: true,
-                confirmingDelete: false
+                confirmingDelete: false,
+                locked: false
             }
         ];
 
         test('renders tasks correctly (view and edit modes)', () => {
             renderTasks(sampleTasks, mockTaskEventCallbacks);
-            const taskListElement = document.getElementById('task-list');
+            const taskListElement = document.getElementById('scheduled-task-list');
             if (!taskListElement) {
-                throw new Error('Task list element not found');
+                throw new Error('Scheduled task list element not found');
             }
 
             expect(taskListElement.children.length).toBe(sampleTasks.length);
 
             // Check Task 1 (view mode)
-            const task1Element = taskListElement.querySelector('#view-task-0');
+            const task1Element = taskListElement.querySelector('[data-task-id="test-task-1"]');
             if (!task1Element) {
                 throw new Error('Task 1 element not found');
             }
@@ -245,7 +276,7 @@ describe('DOM Handler Interaction Tests', () => {
             expect(task1Text).toContain(convertTo12HourTime('09:00'));
 
             // Check Task 2 (view mode, completed)
-            const task2Element = taskListElement.querySelector('#view-task-1');
+            const task2Element = taskListElement.querySelector('[data-task-id="test-task-2"]');
             if (!task2Element) {
                 throw new Error('Task 2 element not found');
             }
@@ -257,9 +288,13 @@ describe('DOM Handler Interaction Tests', () => {
             expect(checkboxIcon?.classList.contains('fa-check-square')).toBe(true);
 
             // Check Task 3 (edit mode)
-            const task3Form = taskListElement.querySelector('#edit-task-2');
+            const task3Element = taskListElement.querySelector('[data-task-id="test-task-3"]');
+            if (!task3Element) {
+                throw new Error('Task 3 element not found');
+            }
+            const task3Form = task3Element.querySelector('form.edit-task-form');
             if (!task3Form) {
-                throw new Error('Task 3 form not found');
+                throw new Error('Task 3 edit form not found');
             }
             const descriptionInput = task3Form.querySelector('input[name="description"]');
             if (!(descriptionInput instanceof HTMLInputElement)) {
@@ -271,13 +306,18 @@ describe('DOM Handler Interaction Tests', () => {
             if (!(durationMinutesInput instanceof HTMLInputElement)) {
                 throw new Error('Duration minutes input not found or not an input element');
             }
-            expect(durationMinutesInput.value).toBe('05');
+            expect(durationMinutesInput.value).toBe('5');
         });
 
         test('attaches event listeners for view mode tasks', () => {
             renderTasks([sampleTasks[0]], mockTaskEventCallbacks); // Only Task 1 (view mode)
 
-            const task1Element = document.getElementById('view-task-0');
+            const taskListElement = document.getElementById('scheduled-task-list');
+            if (!taskListElement) {
+                throw new Error('Scheduled task list element not found');
+            }
+
+            const task1Element = taskListElement.querySelector('[data-task-id="test-task-1"]');
             if (!task1Element) {
                 throw new Error('Task 1 element not found');
             }
@@ -287,34 +327,46 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Checkbox not found');
             }
             checkbox.dispatchEvent(new Event('click', { bubbles: true }));
-            expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith(0);
+            expect(mockTaskEventCallbacks.onCompleteTask).toHaveBeenCalledWith('test-task-1', 0);
 
             const editButton = task1Element.querySelector('.btn-edit');
             if (!editButton) {
                 throw new Error('Edit button not found');
             }
             editButton.dispatchEvent(new Event('click', { bubbles: true }));
-            expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith(0);
+            expect(mockTaskEventCallbacks.onEditTask).toHaveBeenCalledWith('test-task-1', 0);
 
             const deleteButton = task1Element.querySelector('.btn-delete');
             if (!deleteButton) {
                 throw new Error('Delete button not found');
             }
             deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(0);
+            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith('test-task-1', 0);
         });
 
         test('attaches event listeners for edit mode tasks', () => {
             renderTasks([sampleTasks[2]], mockTaskEventCallbacks);
-            const task3Form = document.getElementById('edit-task-0');
+
+            const taskListElement = document.getElementById('scheduled-task-list');
+            if (!taskListElement) {
+                throw new Error('Scheduled task list element not found');
+            }
+
+            const task3Element = taskListElement.querySelector('[data-task-id="test-task-3"]');
+            if (!task3Element) {
+                throw new Error('Task 3 element not found');
+            }
+
+            const task3Form = task3Element.querySelector('form.edit-task-form');
             if (!task3Form) {
                 throw new Error('Task 3 form not found');
             }
 
             task3Form.dispatchEvent(new Event('submit', { bubbles: true }));
             expect(mockTaskEventCallbacks.onSaveTaskEdit).toHaveBeenCalledWith(
-                0,
-                expect.any(FormData)
+                'test-task-3',
+                task3Form,
+                0
             );
 
             const cancelButton = task3Form.querySelector('.btn-edit-cancel');
@@ -322,7 +374,7 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Cancel button not found');
             }
             cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
-            expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith(0);
+            expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith('test-task-3', 0);
         });
     });
 
