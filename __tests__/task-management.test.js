@@ -256,17 +256,17 @@ describe('Task Management Functions (task-manager.js)', () => {
             // Hours > 23 are invalid
             expect(isValidTaskData('Test Task', 'scheduled', 30, '25:00')).toEqual({
                 isValid: false,
-                reason: 'Start time must be in HH:MM format.'
+                reason: 'Invalid start time format. Use HH:MM format.'
             });
             // Minutes > 59 are invalid
             expect(isValidTaskData('Test Task', 'scheduled', 30, '12:60')).toEqual({
                 isValid: false,
-                reason: 'Start time must be in HH:MM format.'
+                reason: 'Invalid start time format. Use HH:MM format.'
             });
             // Invalid format (missing colon)
             expect(isValidTaskData('Test Task', 'scheduled', 30, '1200')).toEqual({
                 isValid: false,
-                reason: 'Start time must be in HH:MM format.'
+                reason: 'Invalid start time format. Use HH:MM format.'
             });
         });
 
