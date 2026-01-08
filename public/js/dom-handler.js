@@ -758,46 +758,39 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
 }
 
 function getPriorityClasses(priority) {
-    let priorityBorderClass = 'border-slate-500',
-        priorityCheckboxClass = 'text-teal-700',
-        priorityFocusRingColor = 'slate-500',
-        priorityBadgeBgClass = 'bg-slate-500 bg-opacity-20',
-        priorityBadgeTextClass = 'text-slate-400',
-        priorityIconClass = 'fa-minus',
-        priorityText = 'Medium Priority';
-    if (priority === 'high') {
-        priorityBorderClass = 'border-rose-400';
-        priorityCheckboxClass = 'text-teal-700';
-        priorityFocusRingColor = 'rose-400';
-        priorityBadgeBgClass = 'bg-rose-400 bg-opacity-20';
-        priorityBadgeTextClass = 'text-rose-300';
-        priorityIconClass = 'fa-arrow-up';
-        priorityText = 'High Priority';
-    } else if (priority === 'low') {
-        priorityBorderClass = 'border-pink-400';
-        priorityCheckboxClass = 'text-teal-700';
-        priorityFocusRingColor = 'pink-400';
-        priorityBadgeBgClass = 'bg-pink-400 bg-opacity-20';
-        priorityBadgeTextClass = 'text-pink-300';
-        priorityIconClass = 'fa-arrow-down';
-        priorityText = 'Low Priority';
-    } else if (priority === 'medium') {
-        priorityBorderClass = 'border-indigo-400';
-        priorityCheckboxClass = 'text-teal-700';
-        priorityFocusRingColor = 'indigo-300';
-        priorityBadgeBgClass = 'bg-indigo-400 bg-opacity-20';
-        priorityBadgeTextClass = 'text-indigo-300';
-        priorityIconClass = 'fa-equals';
-        priorityText = 'Medium Priority';
-    }
+    const priorityConfig = {
+        high: {
+            border: 'border-rose-400',
+            bg: 'bg-rose-400 bg-opacity-20',
+            text: 'text-rose-300',
+            icon: 'fa-arrow-up',
+            focusRing: 'rose-400'
+        },
+        medium: {
+            border: 'border-indigo-400',
+            bg: 'bg-indigo-400 bg-opacity-20',
+            text: 'text-indigo-300',
+            icon: 'fa-equals',
+            focusRing: 'indigo-300'
+        },
+        low: {
+            border: 'border-pink-400',
+            bg: 'bg-pink-400 bg-opacity-20',
+            text: 'text-pink-300',
+            icon: 'fa-arrow-down',
+            focusRing: 'pink-400'
+        }
+    };
+
+    const config = priorityConfig[priority] || priorityConfig.medium;
+
     return {
-        priorityBorderClass,
-        checkbox: priorityCheckboxClass,
-        priorityFocusRingColor,
-        priorityBadgeBgClass,
-        priorityBadgeTextClass,
-        priorityIconClass,
-        priorityText
+        border: config.border,
+        bg: config.bg,
+        text: config.text,
+        icon: config.icon,
+        focusRing: config.focusRing,
+        checkbox: 'text-teal-700'
     };
 }
 

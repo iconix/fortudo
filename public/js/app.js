@@ -431,10 +431,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     focusTaskDescriptionInput();
 
-    setInterval(() => {
+    // Store interval IDs for cleanup
+    const activeTaskColorInterval = setInterval(() => {
         refreshActiveTaskColor(getTaskState());
         refreshStartTimeField();
     }, 1000);
+
+    // Cleanup intervals on page unload
+    window.addEventListener('beforeunload', () => {
+        clearInterval(activeTaskColorInterval);
+    });
 
     // Setup event listener for the "Clear All Tasks" (main part of split button)
     const deleteAllButton = getDeleteAllButtonElement();

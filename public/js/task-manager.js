@@ -434,14 +434,16 @@ export function checkOverlap(taskToCompare, existingTasks) {
     );
 }
 export function performReschedule(actualTask) {
-    if (
-        actualTask.type !== 'scheduled' ||
-        !actualTask.startDateTime ||
-        !actualTask.endDateTime ||
-        typeof actualTask.duration !== 'number'
-    ) {
+    // Validate task has all required properties for rescheduling
+    const missingFields = [];
+    if (actualTask.type !== 'scheduled') missingFields.push('type !== "scheduled"');
+    if (!actualTask.startDateTime) missingFields.push('startDateTime');
+    if (!actualTask.endDateTime) missingFields.push('endDateTime');
+    if (typeof actualTask.duration !== 'number') missingFields.push('duration (must be number)');
+
+    if (missingFields.length > 0) {
         logger.warn(
-            'performReschedule: Invalid task, missing datetime fields, or duration not a number',
+            `performReschedule: Invalid task. Missing or invalid: ${missingFields.join(', ')}`,
             actualTask
         );
         return;

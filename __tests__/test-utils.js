@@ -326,3 +326,12 @@ export {
     getEditFormForTask,
     setCurrentTimeInDOM
 };
+
+// Dummy test to satisfy Jest's requirement that test files contain at least one test
+describe('test-utils', () => {
+    it('exports utility functions', () => {
+        expect(typeof setupIntegrationTestEnvironment).toBe('function');
+        expect(typeof setupDOM).toBe('function');
+        expect(typeof setupMockLocalStorage).toBe('function');
+    });
+});
