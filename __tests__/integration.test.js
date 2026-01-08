@@ -81,14 +81,14 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Add Task with Reschedule Confirmation', () => {
-        const getInitialTask = () => ({
+        const getInitialTask = () => createTaskWithDateTime({
             description: 'Initial Task',
             startTime: '09:00',
             duration: 60,
-            endTime: '10:00',
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         });
 
         const setupInitialStateAndApp = async () => {
@@ -128,7 +128,7 @@ describe('User Confirmation Flows', () => {
             await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(confirmSpy.mock.calls[0][0]).toContain('Adding this task will overlap');
+            expect(confirmSpy.mock.calls[0][0]).toContain('will overlap other tasks');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -190,23 +190,23 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Update Task with Reschedule Confirmation', () => {
-        const getTaskAData = () => ({
+        const getTaskAData = () => createTaskWithDateTime({
             description: 'Task A',
             startTime: '09:00',
             duration: 60,
-            endTime: '10:00',
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         });
-        const getTaskBData = () => ({
+        const getTaskBData = () => createTaskWithDateTime({
             description: 'Task B',
             startTime: '10:00',
             duration: 60,
-            endTime: '11:00',
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         });
 
         const setupInitialStateAndApp = async () => {
@@ -314,23 +314,23 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Complete Task Late with Schedule Update Confirmation', () => {
-        const getTaskToComplete = () => ({
+        const getTaskToComplete = () => createTaskWithDateTime({
             description: 'Task To Complete',
             startTime: '09:00',
             duration: 60,
-            endTime: '10:00',
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         });
-        const getSubsequentTask = () => ({
+        const getSubsequentTask = () => createTaskWithDateTime({
             description: 'Subsequent Task',
             startTime: '10:00',
             duration: 30,
-            endTime: '10:30',
             status: 'incomplete',
             editing: false,
-            confirmingDelete: false
+            confirmingDelete: false,
+            locked: false
         });
 
         const setupInitialStateAndApp = async (initialTasks = []) => {
@@ -361,7 +361,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'update your schedule to show you finished at 10:30 AM'
+                'Do you want to update your schedule to show you finished at 10:30 AM'
             );
 
             const tasks = getRenderedTasksDOM();
@@ -474,7 +474,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'update your schedule to show you finished at 10:30 AM'
+                'Do you want to update your schedule to show you finished at 10:30 AM'
             );
 
             // Verify start time field was force updated (should have changed from the original value)
@@ -548,7 +548,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete all tasks?'
+                'Are you sure you want to delete ALL tasks'
             );
 
             const tasks = getRenderedTasksDOM();
@@ -645,7 +645,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete all tasks?'
+                'Are you sure you want to delete ALL tasks'
             );
 
             // Verify all tasks are deleted
