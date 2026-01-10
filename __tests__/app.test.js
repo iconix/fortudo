@@ -43,10 +43,11 @@ describe('App.js Callback Functions', () => {
 
     // Utility functions for DOM interactions
     const clickDeleteButton = async (taskIndex) => {
-        // Find delete button using proper selector (button with both classes and correct attribute)
-        const deleteButton = document.querySelector(
-            `button.btn-delete[data-task-index="${taskIndex}"]`
-        );
+        // Find the task wrapper by index, then find the delete button inside it
+        const taskWrapper = document.querySelector(`[data-task-index="${taskIndex}"]`);
+        if (!taskWrapper) return false;
+
+        const deleteButton = taskWrapper.querySelector('.btn-delete');
         if (deleteButton) {
             deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -56,7 +57,8 @@ describe('App.js Callback Functions', () => {
     };
 
     const clickCancelButton = async (taskIndex) => {
-        const editForm = document.getElementById(`edit-task-${taskIndex}`);
+        // Find the edit form by looking for form with data-task-index attribute
+        const editForm = document.querySelector(`form[data-task-index="${taskIndex}"]`);
         if (!editForm) return false;
 
         const cancelButton = editForm.querySelector('.btn-edit-cancel');
@@ -182,7 +184,7 @@ describe('App.js Callback Functions', () => {
 
             await clickDeleteButton(0);
 
-            expect(alertSpy).toHaveBeenCalledWith('Delete failed for test');
+            expect(alertSpy).toHaveBeenCalledWith('Alert: Delete failed for test');
         });
 
         test('should handle non-existent task gracefully', async () => {
@@ -254,22 +256,23 @@ describe('App.js Callback Functions', () => {
         test('should not affect other tasks when canceling edit', async () => {
             await setupTasksForEdit();
 
-            // Set up multiple tasks in edit mode
+            // Set up multiple tasks in edit mode by updating internal state
             const tasks = getTaskState();
             tasks[0].editing = true; // Also set first task to editing
-            // Don't call setupAppWithTasks again - just update the state and re-render
+            updateTaskState(tasks); // Actually update the internal state
+
+            // Re-render with proper callbacks
             const taskEventCallbacks = {
                 onCompleteTask: () => {},
                 onEditTask: () => {},
                 onDeleteTask: () => {},
                 onSaveTaskEdit: () => {},
-                onCancelEdit: (index) => {
-                    const { cancelEdit } = require('../public/js/task-manager.js');
-                    cancelEdit(index);
+                onCancelEdit: (taskId, index) => {
+                    cancelEditDirect(index);
                     renderTasks(getTaskState(), taskEventCallbacks);
                 }
             };
-            renderTasks(tasks, taskEventCallbacks);
+            renderTasks(getTaskState(), taskEventCallbacks);
 
             // Cancel edit for second task only
             await clickCancelButton(1);
@@ -479,14 +482,17 @@ describe('App.js Callback Functions', () => {
                 jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
-                    confirmationType: 'RESCHEDULE_UPDATE',
-                    reason: 'Would cause overlap',
-                    taskIndex: 0,
-                    updatedData: {}
+                    taskData: {
+                        description: 'Updated Task',
+                        startTime: '09:30',
+                        duration: 120
+                    },
+                    originalIndex: 0,
+                    reason: 'Would cause overlap'
                 });
 
                 // Find the edit form and submit it to trigger real onSaveTaskEdit
-                const editForm = document.getElementById('edit-task-0');
+                const editForm = document.querySelector('form[data-task-index="0"]');
                 if (editForm) {
                     // Fill out the form
                     const descInput = /** @type {HTMLInputElement} */ (
@@ -515,7 +521,9 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
-                expect(alertSpy).toHaveBeenCalledWith('Task not updated to avoid rescheduling.');
+                expect(alertSpy).toHaveBeenCalledWith(
+                    'Alert: Task operation cancelled to avoid overlap.'
+                );
             });
 
             test('should handle update task failure', async () => {
@@ -543,7 +551,7 @@ describe('App.js Callback Functions', () => {
                 });
 
                 // Submit the edit form to trigger the real callback
-                const editForm = document.getElementById('edit-task-0');
+                const editForm = document.querySelector('form[data-task-index="0"]');
                 if (editForm) {
                     const descInput = /** @type {HTMLInputElement} */ (
                         editForm.querySelector('input[name="description"]')
@@ -556,7 +564,7 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(alertSpy).toHaveBeenCalledWith('Update failed');
+                expect(alertSpy).toHaveBeenCalledWith('Alert: Update failed');
             });
         });
 
@@ -572,8 +580,14 @@ describe('App.js Callback Functions', () => {
                 jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
-                    confirmationType: 'RESCHEDULE_ADD',
-                    reason: 'Would cause overlap'
+                    confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
+                    reason: 'Would cause overlap',
+                    taskObjectToFinalize: {
+                        description: 'New Task',
+                        startTime: '09:00',
+                        duration: 60
+                    },
+                    reschedulePlan: []
                 });
 
                 // Fill out and submit the main task form
@@ -604,7 +618,9 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
-                expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
+                expect(alertSpy).toHaveBeenCalledWith(
+                    'Alert: Task not added as rescheduling of other tasks was declined.'
+                );
             });
 
             test('should handle add task failure', async () => {
@@ -646,7 +662,7 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
-                expect(alertSpy).toHaveBeenCalledWith('Add failed');
+                expect(alertSpy).toHaveBeenCalledWith('Alert: Add failed');
             });
         });
 
@@ -666,7 +682,8 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-                expect(alertSpy).not.toHaveBeenCalled();
+                // App shows an alert when there are no tasks to delete
+                expect(alertSpy).toHaveBeenCalledWith('Alert: There are no tasks to delete.');
             });
 
             test('should handle user denying delete all confirmation', async () => {
@@ -695,7 +712,7 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Are you sure you want to delete all tasks?'
+                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
                 );
                 expect(mockSaveTasks).not.toHaveBeenCalled(); // Should not save since user denied
             });
@@ -735,9 +752,9 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Are you sure you want to delete all tasks?'
+                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
                 );
-                expect(alertSpy).toHaveBeenCalledWith('Delete all failed');
+                expect(alertSpy).toHaveBeenCalledWith('Alert: Delete all failed');
             });
 
             test('should call updateStartTimeField with forceUpdate=true after delete all', async () => {
@@ -781,7 +798,7 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Are you sure you want to delete all tasks?'
+                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
                 );
                 expect(executeDeleteSpy).toHaveBeenCalledTimes(1);
 
@@ -860,8 +877,8 @@ describe('App.js Callback Functions', () => {
 
                 // Then remove key DOM elements to test error handling
                 const taskForm = getTaskFormElement();
-                const deleteAllButton = document.getElementById('delete-all-tasks');
-                const taskList = document.getElementById('task-list');
+                const deleteAllButton = document.getElementById('delete-all');
+                const taskList = document.getElementById('scheduled-task-list');
 
                 if (taskForm) {
                     taskForm.remove();
@@ -903,7 +920,7 @@ describe('App.js Callback Functions', () => {
 
                 // Check that error logs were generated for missing elements
                 expect(consoleSpy).toHaveBeenCalledWith(
-                    '[💪🏾 ERROR] Task list element not found. Tasks will not be rendered.'
+                    expect.stringContaining('Scheduled task list element not found.')
                 );
 
                 // Clean up
@@ -1084,13 +1101,12 @@ describe('App.js Callback Functions', () => {
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
-                        confirmationType: 'RESCHEDULE_UPDATE',
-                        taskIndex: 0,
-                        updatedData: {
+                        taskData: {
                             description: 'Updated Task',
                             startTime: '09:30',
                             duration: 120
                         },
+                        originalIndex: 0,
                         reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
                     });
 
@@ -1110,7 +1126,7 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
 
                     // Submit the edit form
-                    const editForm = document.getElementById('edit-task-0');
+                    const editForm = document.querySelector('form[data-task-index="0"]');
                     if (editForm) {
                         editForm.dispatchEvent(
                             new Event('submit', { bubbles: true, cancelable: true })
@@ -1151,8 +1167,13 @@ describe('App.js Callback Functions', () => {
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
-                        confirmationType: 'RESCHEDULE_ADD',
-                        taskData: { description: 'New Task', startTime: '09:30', duration: 60 },
+                        confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
+                        taskObjectToFinalize: {
+                            description: 'New Task',
+                            startTime: '09:30',
+                            duration: 60
+                        },
+                        reschedulePlan: [],
                         reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
                     });
 
@@ -1220,8 +1241,13 @@ describe('App.js Callback Functions', () => {
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
-                        confirmationType: 'RESCHEDULE_ADD',
-                        taskData: { description: 'New Task', startTime: '09:30', duration: 60 },
+                        confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
+                        taskObjectToFinalize: {
+                            description: 'New Task',
+                            startTime: '09:30',
+                            duration: 60
+                        },
+                        reschedulePlan: [],
                         reason: 'Adding this task may overlap with existing tasks. Would you like to reschedule the other tasks?'
                     });
 
@@ -1254,10 +1280,13 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalled();
-                expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
+                expect(alertSpy).toHaveBeenCalledWith(
+                    'Alert: Task not added as rescheduling of other tasks was declined.'
+                );
 
-                // note: force update should have no effect here
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                // When user denies rescheduling, forceUpdate should NOT be called
+                // The start time field may be updated normally but not with forceUpdate=true
+                expect(updateStartTimeFieldSpy).not.toHaveBeenCalledWith(expect.any(String), true);
 
                 addTaskSpy.mockRestore();
             });

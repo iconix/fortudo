@@ -665,7 +665,7 @@ async function handleAddTaskProcess(
             );
             if (userConfirmedReschedule && operationResult.taskObjectToFinalize) {
                 operationResult = confirmAddTaskAndReschedule({
-                    taskObject: operationResult.taskObjectToFinalize
+                    taskObjectToFinalize: operationResult.taskObjectToFinalize
                 });
             } else {
                 showAlert(
@@ -675,33 +675,6 @@ async function handleAddTaskProcess(
                 const currentAllTasksOnDeclineReschedule = getTaskState();
                 renderTasks(
                     currentAllTasksOnDeclineReschedule.filter(isScheduledTask),
-                    localScheduledTaskEventCallbacks
-                );
-                renderUnscheduledTasks(
-                    getSortedUnscheduledTasks(),
-                    localUnscheduledTaskEventCallbacks
-                );
-                return;
-            }
-        } else if (operationResult.confirmationType === 'RESCHEDULE_ADD') {
-            // Handle legacy/original simple overlap if necessary
-            const userConfirmedLegacy = await askConfirmation(
-                operationResult.reason,
-                undefined,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-            );
-            if (userConfirmedLegacy && operationResult.taskObject) {
-                operationResult = confirmAddTaskAndReschedule({
-                    taskObject: operationResult.taskObject
-                });
-            } else {
-                showAlert(
-                    'Task not added to avoid overlap.',
-                    initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-                );
-                const currentAllTasksOnDeclineLegacy = getTaskState();
-                renderTasks(
-                    currentAllTasksOnDeclineLegacy.filter(isScheduledTask),
                     localScheduledTaskEventCallbacks
                 );
                 renderUnscheduledTasks(

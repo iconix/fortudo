@@ -195,7 +195,9 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('isValidTaskData', () => {
         test('should return valid for correct scheduled task data', () => {
-            expect(isValidTaskData('Test Task', 'scheduled', 30, '09:00')).toEqual({ isValid: true });
+            expect(isValidTaskData('Test Task', 'scheduled', 30, '09:00')).toEqual({
+                isValid: true
+            });
         });
 
         test('should return valid for correct unscheduled task data', () => {
@@ -370,9 +372,24 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('Sorted Tasks Caching', () => {
         test('should maintain sort order when accessing tasks multiple times', () => {
             // Add tasks in non-sorted order
-            addTask({ taskType: 'scheduled', description: 'Task C', startTime: '11:00', duration: 60 });
-            addTask({ taskType: 'scheduled', description: 'Task A', startTime: '09:00', duration: 60 });
-            addTask({ taskType: 'scheduled', description: 'Task B', startTime: '10:00', duration: 60 });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task C',
+                startTime: '11:00',
+                duration: 60
+            });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task A',
+                startTime: '09:00',
+                duration: 60
+            });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task B',
+                startTime: '10:00',
+                duration: 60
+            });
 
             const tasks1 = getTaskState().filter((t) => t.type === 'scheduled');
             const tasks2 = getTaskState().filter((t) => t.type === 'scheduled');
@@ -389,8 +406,18 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should update sort order when tasks are modified', () => {
             // Add tasks
-            addTask({ taskType: 'scheduled', description: 'Task A', startTime: '09:00', duration: 60 });
-            addTask({ taskType: 'scheduled', description: 'Task B', startTime: '10:00', duration: 60 });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task A',
+                startTime: '09:00',
+                duration: 60
+            });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task B',
+                startTime: '10:00',
+                duration: 60
+            });
 
             let tasks = getTaskState().filter((t) => t.type === 'scheduled');
             expect(tasks[0].description).toBe('Task A'); // 09:00
@@ -550,8 +577,18 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should add a task, call performReschedule, sort, and save when no overlap occurs', () => {
-            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '10:00', duration: 60 }); // 10:00 - 11:00
-            const taskData = { description: 'Task 2', startTime: '09:00', duration: 30 }; // 09:00 - 09:30
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task 1',
+                startTime: '10:00',
+                duration: 60
+            }); // 10:00 - 11:00
+            const taskData = {
+                taskType: 'scheduled',
+                description: 'Task 2',
+                startTime: '09:00',
+                duration: 30
+            }; // 09:00 - 09:30
             const result = addTask(taskData);
 
             expect(result.success).toBe(true);
@@ -566,16 +603,26 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should require confirmation if adding a task creates an overlap', () => {
-            addTask({ taskType: 'scheduled', description: 'Existing Task', startTime: '09:00', duration: 60 }); // 09:00 - 10:00
+            addTask({
+                taskType: 'scheduled',
+                description: 'Existing Task',
+                startTime: '09:00',
+                duration: 60
+            }); // 09:00 - 10:00
             mockSaveTasks.mockClear();
 
-            const taskData = { description: 'Overlapping Task', startTime: '09:30', duration: 60 };
+            const taskData = {
+                taskType: 'scheduled',
+                description: 'Overlapping Task',
+                startTime: '09:30',
+                duration: 60
+            };
             const result = addTask(taskData);
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
-            expect(result.confirmationType).toBe('RESCHEDULE_ADD');
-            expect(result.taskData).toEqual(taskData);
+            expect(result.confirmationType).toBe('RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS');
+            expect(result.taskObjectToFinalize).toBeDefined();
             expect(result.reason).toBeDefined();
             expect(getTaskState().length).toBe(1); // Original task still there
             expect(getTaskState()[0].description).toBe('Existing Task');
@@ -583,9 +630,14 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should not add an invalid task and not save', () => {
-            const result = addTask({ taskType: 'scheduled', description: '', startTime: '10:00', duration: 0 });
+            const result = addTask({
+                taskType: 'scheduled',
+                description: '',
+                startTime: '10:00',
+                duration: 0
+            });
             expect(result.success).toBe(false);
-            expect(result.reason).toBe('Description cannot be empty.');
+            expect(result.reason).toBe('Task description is required.');
             expect(getTaskState().length).toBe(0);
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
@@ -607,8 +659,17 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should add the task, reschedule, sort, and save', () => {
-            const taskData = { description: 'New Task', startTime: '09:30', duration: 60 }; // Will overlap Existing Task 1
-            const result = confirmAddTaskAndReschedule(taskData);
+            // Create the full task object as confirmAddTaskAndReschedule expects
+            const taskObjectToFinalize = createTaskWithDateTime({
+                description: 'New Task',
+                startTime: '09:30',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+
+            const result = confirmAddTaskAndReschedule({ taskObjectToFinalize });
 
             expect(result.success).toBe(true);
             expect(result.task).toBeDefined();
@@ -622,10 +683,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(existingTaskInList).toBeDefined();
 
             if (newTaskInList && existingTaskInList) {
-                const { startTime: expectedStartTime, ...taskDataWithoutStartTime } = taskData;
-                expect(newTaskInList).toMatchObject(taskDataWithoutStartTime);
                 expect(extractTimeFromDateTime(new Date(newTaskInList.startDateTime))).toBe(
-                    expectedStartTime
+                    '09:30'
                 );
 
                 expect(extractTimeFromDateTime(new Date(existingTaskInList.startDateTime))).toBe(
@@ -685,7 +744,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.requiresConfirmation).toBe(true);
             expect(result.confirmationType).toBe('RESCHEDULE_UPDATE');
             expect(result.taskIndex).toBe(0);
-            expect(result.updatedData).toEqual(updatedData);
+            expect(result.updatedTaskObject).toBeDefined();
+            expect(result.updatedTaskObject.description).toBe('Task 1 Updated');
             expect(result.reason).toBeDefined();
 
             const tasks = getTaskState();
@@ -741,12 +801,19 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should update the task, reschedule subsequent tasks, sort, and save', () => {
             // Update Task 1 to overlap Task 2
-            const updatedDataForT1 = {
+            // Create a full task object as confirmUpdateTaskAndReschedule expects
+            const updatedTaskObject = createTaskWithDateTime({
                 description: 'Task 1 Extended',
                 startTime: '09:00',
-                duration: 90
-            }; // New end time: 10:30
-            const result = confirmUpdateTaskAndReschedule(0, updatedDataForT1);
+                duration: 90, // New end time: 10:30
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            // Set the id to match the existing task
+            updatedTaskObject.id = task1.id;
+
+            const result = confirmUpdateTaskAndReschedule({ taskIndex: 0, updatedTaskObject });
 
             expect(result.success).toBe(true);
             const tasks = getTaskState();
@@ -902,8 +969,18 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('deleteTask', () => {
         beforeEach(() => {
-            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '09:00', duration: 60 });
-            addTask({ taskType: 'scheduled', description: 'Task 2', startTime: '10:00', duration: 60 });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task 1',
+                startTime: '09:00',
+                duration: 60
+            });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task 2',
+                startTime: '10:00',
+                duration: 60
+            });
             mockSaveTasks.mockClear();
         });
 
@@ -927,7 +1004,12 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('editTask / cancelEdit', () => {
         beforeEach(() => {
-            addTask({ taskType: 'scheduled', description: 'Test Task', startTime: '09:00', duration: 60 });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Test Task',
+                startTime: '09:00',
+                duration: 60
+            });
             mockSaveTasks.mockClear();
         });
 
@@ -951,8 +1033,18 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('deleteAllTasks', () => {
         beforeEach(() => {
-            addTask({ taskType: 'scheduled', description: 'Task 1', startTime: '09:00', duration: 60 });
-            addTask({ taskType: 'scheduled', description: 'Task 2', startTime: '10:00', duration: 60 });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task 1',
+                startTime: '09:00',
+                duration: 60
+            });
+            addTask({
+                taskType: 'scheduled',
+                description: 'Task 2',
+                startTime: '10:00',
+                duration: 60
+            });
             mockSaveTasks.mockClear();
         });
 

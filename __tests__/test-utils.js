@@ -80,7 +80,7 @@ function setupDOM() {
         </div>
       </div>
 
-      <!-- Custom Confirm Modal -->
+      <!-- Custom Confirm Modal - intentionally mismatched button IDs to trigger window.confirm fallback in tests -->
       <div id="custom-confirm-modal" class="hidden">
         <div class="modal-content">
           <h2 id="custom-confirm-title"></h2>
@@ -197,8 +197,8 @@ function getRenderedTasksDOM() {
 
         // This is a view mode task
         // Extract task info from the rendered HTML
-        const descriptionElement = item.querySelector('.task-description, [class*="text-white"]');
-        const timeElement = item.querySelector('.task-time');
+        // The description is in a div with font-medium class that contains the task description
+        const descriptionElement = item.querySelector('.font-medium:not(.celebration-container *)');
         const checkbox = item.querySelector('input[type="checkbox"], .checkbox');
 
         let description = '';
@@ -212,33 +212,35 @@ function getRenderedTasksDOM() {
             description = description.replace(/\s*🔒\s*Locked\s*/g, '').trim();
         }
 
-        if (timeElement) {
-            const timeText = timeElement.textContent?.trim() || '';
-            // Extract times from format like "9:00 AM - 10:00 AM (1h)"
-            const timeMatch = timeText.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/);
-            if (timeMatch) {
-                startTime12 = timeMatch[1];
-                endTime12 = timeMatch[2];
-            }
-        }
-
-        // Try alternate structure if not found above
-        if (!startTime12 || !endTime12) {
-            const allText = item.textContent || '';
-            const timeMatch = allText.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/);
-            if (timeMatch) {
-                startTime12 = timeMatch[1];
-                endTime12 = timeMatch[2];
-            }
+        // Extract times from format like "9:00 AM – 10:00 AM (1h)" using ndash
+        const allText = item.textContent || '';
+        const timeMatch = allText.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*[–-]\s*(\d{1,2}:\d{2}\s*[AP]M)/);
+        if (timeMatch) {
+            startTime12 = timeMatch[1];
+            endTime12 = timeMatch[2];
         }
 
         if (!description) {
-            // Fallback: extract from any text content
+            // Fallback: extract from text content, skipping celebration emojis
             const textContent = item.textContent || '';
-            const lines = textContent.split('\n').map(l => l.trim()).filter(l => l);
+            const celebrationEmojis = ['🎉', '🌟', '✨', '🎊', '🏆', '💫', '💪🏾'];
+            const isCelebrationLine = (line) =>
+                celebrationEmojis.some((emoji) => line.includes(emoji)) &&
+                line.replace(/\s/g, '').length < 15;
+            const lines = textContent
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l && !isCelebrationLine(l));
             if (lines.length > 0) {
                 // First substantial line is usually the description
-                description = lines.find(l => l && !l.match(/^\d{1,2}:\d{2}\s*[AP]M/) && l !== 'Edit' && l !== 'Delete') || '';
+                description =
+                    lines.find(
+                        (l) =>
+                            l &&
+                            !l.match(/^\d{1,2}:\d{2}\s*[AP]M/) &&
+                            l !== 'Edit' &&
+                            l !== 'Delete'
+                    ) || '';
             }
         }
 
@@ -265,7 +267,7 @@ function getRenderedTasksDOM() {
 }
 
 async function updateTaskDOM(taskIndex, data) {
-    const editButtons = document.querySelectorAll('#task-list .btn-edit');
+    const editButtons = document.querySelectorAll('#scheduled-task-list .btn-edit');
     if (taskIndex < 0 || taskIndex >= editButtons.length)
         throw new Error(`Edit button for task index ${taskIndex} not found or out of bounds.`);
     const editButton = editButtons[taskIndex];
@@ -274,7 +276,8 @@ async function updateTaskDOM(taskIndex, data) {
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const editForm = document.getElementById(`edit-task-${taskIndex}`);
+    // Find edit form by data-task-index attribute instead of ID
+    const editForm = document.querySelector(`form[data-task-index="${taskIndex}"]`);
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
 
     if (data.description !== undefined) {
@@ -310,8 +313,8 @@ function setCurrentTimeInDOM(time12h) {
 }
 
 async function clickCompleteCheckbox(taskIndex) {
-    // The actual app uses label elements with .checkbox class that trigger completion
-    const checkboxLabels = document.querySelectorAll('#task-list .checkbox');
+    // The actual app uses div.checkbox elements that trigger completion
+    const checkboxLabels = document.querySelectorAll('#scheduled-task-list .checkbox');
     if (taskIndex < 0 || taskIndex >= checkboxLabels.length)
         throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
     const checkboxLabel = checkboxLabels[taskIndex];
@@ -331,7 +334,7 @@ async function clickDeleteAllButton() {
 }
 
 function getEditFormForTask(index) {
-    return document.getElementById(`edit-task-${index}`);
+    return document.querySelector(`form[data-task-index="${index}"]`);
 }
 
 /**
