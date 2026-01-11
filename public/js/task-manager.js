@@ -6,10 +6,21 @@ import {
     calculateEndDateTime,
     extractTimeFromDateTime,
     getTaskDates,
-    extractDateFromDateTime,
-    convertTo12HourTime
+    extractDateFromDateTime
 } from './utils.js';
 import { saveTasks } from './storage.js';
+
+// Import from new modules
+import {
+    checkOverlap,
+    checkAndAdjustForLockedTasks,
+    calculateReschedulePlan,
+    validateReschedulePlan,
+    generateLockedConflictMessage,
+    executeReschedule
+} from './reschedule-engine.js';
+
+import { isValidTaskData, isScheduledTask } from './task-validators.js';
 
 /**
  * @typedef {Object} BaseTaskProps
@@ -59,20 +70,6 @@ import { saveTasks } from './storage.js';
  * @property {string} [newEndTime] - New end time for late completion
  * @property {number} [newDuration] - New duration for late completion
  */
-
-/**
- * Type guard to check if a task is a scheduled task
- * @param {Task} task - Task to check
- * @returns {task is ScheduledTask} True if task is a scheduled task
- */
-export function isScheduledTask(task) {
-    return (
-        task.type === 'scheduled' &&
-        typeof task.startDateTime === 'string' &&
-        typeof task.endDateTime === 'string' &&
-        typeof task.duration === 'number'
-    );
-}
 
 // ============================================================================
 // MIGRATION UTILITIES
@@ -193,71 +190,6 @@ const sortScheduledTasks = (tasksToSort) => {
     );
 };
 
-// NEW HELPER FUNCTION
-function checkAndAdjustForLockedTasks(taskToAdjust, allScheduledTasks) {
-    if (
-        taskToAdjust.type !== 'scheduled' ||
-        !taskToAdjust.startDateTime ||
-        !taskToAdjust.duration
-    ) {
-        logger.debug('checkAndAdjustForLockedTasks: Task not adjustable or invalid', taskToAdjust);
-        return taskToAdjust; // Not a schedulable task or invalid
-    }
-
-    const adjustedTask = { ...taskToAdjust }; // Work with a copy
-
-    const sortedLockedTasks = allScheduledTasks
-        .filter(
-            (t) =>
-                t.id !== adjustedTask.id &&
-                t.type === 'scheduled' &&
-                t.locked &&
-                t.status !== 'completed'
-        )
-        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
-
-    if (sortedLockedTasks.length === 0) {
-        return adjustedTask; // No relevant locked tasks to consider
-    }
-
-    let hasBeenAdjustedInLoop;
-    let iterations = 0; // Safety break for infinite loops
-    const MAX_ITERATIONS = sortedLockedTasks.length * 2; // Heuristic limit
-
-    do {
-        hasBeenAdjustedInLoop = false;
-        iterations++;
-        if (iterations > MAX_ITERATIONS) {
-            logger.warn(
-                'checkAndAdjustForLockedTasks: Max iterations reached, potential infinite loop. Returning task as is.',
-                adjustedTask
-            );
-            return taskToAdjust; // Return original to prevent broken state
-        }
-
-        for (const lockedTask of sortedLockedTasks) {
-            if (tasksOverlap(adjustedTask, lockedTask)) {
-                logger.debug(
-                    'checkAndAdjustForLockedTasks: Adjusting task',
-                    adjustedTask.description,
-                    'due to locked task',
-                    lockedTask.description
-                );
-                adjustedTask.startDateTime = lockedTask.endDateTime;
-                adjustedTask.endDateTime = calculateEndDateTime(
-                    adjustedTask.startDateTime,
-                    adjustedTask.duration
-                );
-                hasBeenAdjustedInLoop = true;
-                break; // Restart checks with the new position
-            }
-        }
-    } while (hasBeenAdjustedInLoop);
-
-    logger.debug('checkAndAdjustForLockedTasks: Final adjusted task', adjustedTask);
-    return adjustedTask;
-}
-
 const getSortedScheduledTasks = () => {
     if (sortedScheduledTasksCache && sortedScheduledTasksCacheVersion === currentTasksVersion)
         return sortedScheduledTasksCache;
@@ -313,64 +245,40 @@ const finalizeTaskModification = () => {
     saveTasks(tasks);
 };
 
-// ============================================================================
-// VALIDATION
-// ============================================================================
 /**
- * Validate task data before creation or update
- * @param {string} description - Task description
- * @param {string} taskType - Task type ('scheduled' or 'unscheduled')
- * @param {number} [duration] - Task duration in minutes (for scheduled tasks)
- * @param {string} [startTime] - Task start time (for scheduled tasks)
- * @param {number} [estDuration] - Estimated duration in minutes (for unscheduled tasks)
- * @returns {{isValid: boolean, reason?: string}} Validation result
+ * Reorganizes the tasks array: sorts scheduled tasks by time, then appends unscheduled
+ * Modifies the global tasks array in place
  */
-export function isValidTaskData(description, taskType, duration, startTime, estDuration) {
-    // Validate common fields
-    if (!description || description.trim() === '') {
-        return { isValid: false, reason: 'Task description is required.' };
+const reorganizeTaskArray = () => {
+    const scheduled = tasks.filter(isScheduledTask);
+    const unscheduled = tasks.filter((t) => t.type === 'unscheduled');
+    sortScheduledTasks(scheduled);
+    tasks = [...scheduled, ...unscheduled];
+};
+
+/**
+ * Validates a reschedule plan and returns error info if it would create locked conflicts
+ * @param {ScheduledTask} taskObject - The task being scheduled/updated
+ * @param {ScheduledTask[]} otherTasks - Other scheduled tasks to check against
+ * @returns {{valid: boolean, error?: string}} Validation result
+ */
+const validateScheduledTaskReschedule = (taskObject, otherTasks) => {
+    const plan = calculateReschedulePlan(taskObject, otherTasks);
+    const validationResult = validateReschedulePlan(plan);
+    if (!validationResult.success) {
+        return { valid: false, error: generateLockedConflictMessage(taskObject, validationResult) };
     }
+    return { valid: true };
+};
 
-    if (!taskType || !['scheduled', 'unscheduled'].includes(taskType)) {
-        return { isValid: false, reason: 'Invalid task type.' };
-    }
-
-    // Validate scheduled task fields
-    if (taskType === 'scheduled') {
-        if (duration === undefined || duration === null || isNaN(duration) || duration < 0) {
-            return {
-                isValid: false,
-                reason: 'Duration must be a non-negative number for scheduled tasks.'
-            };
-        }
-
-        if (!startTime || startTime.trim() === '') {
-            return { isValid: false, reason: 'Start time is required for scheduled tasks.' };
-        }
-
-        // Validate time format (HH:MM)
-        const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-        if (!timeRegex.test(startTime)) {
-            return { isValid: false, reason: 'Invalid start time format. Use HH:MM format.' };
-        }
-    }
-
-    // Validate unscheduled task fields
-    if (taskType === 'unscheduled') {
-        if (
-            estDuration !== undefined &&
-            estDuration !== null &&
-            (isNaN(estDuration) || estDuration < 0)
-        ) {
-            return {
-                isValid: false,
-                reason: 'Estimated duration must be a non-negative number for unscheduled tasks.'
-            };
-        }
-    }
-
-    return { isValid: true };
-}
+/**
+ * Performs reschedule for a task and reorganizes the task array
+ * @param {ScheduledTask} triggerTask - The task that triggers rescheduling
+ */
+const performRescheduleAndReorganize = (triggerTask) => {
+    performReschedule(triggerTask);
+    reorganizeTaskArray();
+};
 
 // ============================================================================
 // UI STATE
@@ -402,320 +310,10 @@ export function resetAllEditingFlags() {
 }
 
 // ============================================================================
-// OVERLAP & SCHEDULING (Scheduled Tasks Only)
+// RESCHEDULING
 // ============================================================================
-export function tasksOverlap(task1, task2) {
-    if (
-        task1.type !== 'scheduled' ||
-        task2.type !== 'scheduled' ||
-        !task1.startDateTime ||
-        !task1.endDateTime ||
-        !task2.startDateTime ||
-        !task2.endDateTime
-    )
-        return false;
-    const start1 = new Date(task1.startDateTime);
-    const end1 = new Date(task1.endDateTime);
-    const start2 = new Date(task2.startDateTime);
-    const end2 = new Date(task2.endDateTime);
-    return start1 < end2 && start2 < end1;
-}
-export function checkOverlap(taskToCompare, existingTasks) {
-    if (taskToCompare.type !== 'scheduled') return [];
-    // Sort tasks by start time to ensure we check in chronological order
-    const sortedTasks = [...existingTasks]
-        .filter((task) => task.type === 'scheduled')
-        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
-    return sortedTasks.filter(
-        (task) =>
-            task.id !== taskToCompare.id &&
-            task.status !== 'completed' &&
-            !task.editing &&
-            tasksOverlap(taskToCompare, task)
-    );
-}
-/**
- * Calculates the reschedule plan for a task without executing it
- * Returns what tasks would be shifted and where they would move to
- * @param {Object} taskToPlace - The task being added/updated
- * @param {Array} otherScheduledTasks - All other scheduled tasks (excluding taskToPlace)
- * @returns {Object} Plan object with effectiveEndTime, tasksToShift, shiftedTaskPlan, lockedTasks
- */
-function calculateReschedulePlan(taskToPlace, otherScheduledTasks) {
-    // Calculate effective end time (including locked tasks that overlap with taskToPlace)
-    let effectiveEndTimeForBlock = new Date(taskToPlace.endDateTime);
-    for (const otherTask of otherScheduledTasks) {
-        if (
-            otherTask.locked &&
-            otherTask.status !== 'completed' &&
-            tasksOverlap(taskToPlace, otherTask)
-        ) {
-            const otherTaskEnd = new Date(otherTask.endDateTime);
-            if (otherTaskEnd > effectiveEndTimeForBlock) {
-                effectiveEndTimeForBlock = otherTaskEnd;
-            }
-        }
-    }
-    const effectiveEndTimeStr = effectiveEndTimeForBlock.toISOString();
-
-    // Get all shiftable tasks that could potentially be affected by the trigger task
-    // This includes tasks that overlap with the trigger OR could be cascaded into
-    const triggerStart = new Date(taskToPlace.startDateTime);
-    const triggerEnd = new Date(effectiveEndTimeStr);
-
-    const shiftableTasks = otherScheduledTasks
-        .filter((t) => {
-            if (t.status === 'completed' || t.editing || t.locked) return false;
-            if (!t.startDateTime || typeof t.duration !== 'number') {
-                logger.warn('calculateReschedulePlan: Skipping invalid task', t);
-                return false;
-            }
-            // Include tasks that:
-            // 1. Overlap with the trigger task, OR
-            // 2. Start at or after the trigger (could be cascaded into)
-            const taskStart = new Date(t.startDateTime);
-            const taskEnd = new Date(t.endDateTime);
-            const overlapsWithTrigger = taskStart < triggerEnd && taskEnd > triggerStart;
-            const startsAtOrAfterTrigger = taskStart >= triggerStart;
-            return overlapsWithTrigger || startsAtOrAfterTrigger;
-        })
-        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
-
-    // Calculate shifted positions with cascading - a task needs to shift if it starts
-    // before the current push point
-    const shiftedTaskPlan = [];
-    let currentPushPoint = effectiveEndTimeStr;
-
-    for (const task of shiftableTasks) {
-        const taskStart = new Date(task.startDateTime);
-        const pushPoint = new Date(currentPushPoint);
-
-        // If task starts before the current push point, it needs to shift
-        if (taskStart < pushPoint) {
-            const newStartDateTime = currentPushPoint;
-            const newEndDateTime = calculateEndDateTime(newStartDateTime, task.duration);
-            shiftedTaskPlan.push({
-                task: task,
-                originalStart: task.startDateTime,
-                originalEnd: task.endDateTime,
-                newStart: newStartDateTime,
-                newEnd: newEndDateTime
-            });
-            currentPushPoint = newEndDateTime;
-        } else {
-            // Task doesn't need to shift, but update push point if it would push further
-            const taskEnd = new Date(task.endDateTime);
-            if (taskEnd > pushPoint) {
-                currentPushPoint = task.endDateTime;
-            }
-        }
-    }
-
-    // tasksToShift is now derived from shiftedTaskPlan
-    const tasksToShift = shiftedTaskPlan.map((sp) => sp.task);
-
-    // Get all locked tasks for validation
-    const lockedTasks = otherScheduledTasks.filter((t) => t.locked && t.status !== 'completed');
-
-    return {
-        effectiveEndTime: effectiveEndTimeStr,
-        tasksToShift,
-        shiftedTaskPlan,
-        lockedTasks
-    };
-}
-
-/**
- * Validates that a reschedule plan won't create overlaps with locked tasks
- * @param {Object} plan - Plan from calculateReschedulePlan()
- * @returns {Object} {success: boolean, conflicts?: Array}
- */
-function validateReschedulePlan(plan) {
-    const { shiftedTaskPlan, lockedTasks } = plan;
-    const conflicts = [];
-
-    for (const shiftedTask of shiftedTaskPlan) {
-        const simulatedTask = {
-            ...shiftedTask.task,
-            startDateTime: shiftedTask.newStart,
-            endDateTime: shiftedTask.newEnd
-        };
-
-        // Check if this shifted task would overlap any locked task
-        for (const lockedTask of lockedTasks) {
-            if (tasksOverlap(simulatedTask, lockedTask)) {
-                conflicts.push({
-                    shiftedTask: shiftedTask.task,
-                    lockedTask: lockedTask,
-                    simulatedStart: shiftedTask.newStart,
-                    simulatedEnd: shiftedTask.newEnd
-                });
-            }
-        }
-    }
-
-    if (conflicts.length > 0) {
-        return { success: false, conflicts, lockedTasks };
-    }
-
-    return { success: true };
-}
-
-/**
- * Finds gaps between locked tasks where a new task could fit
- * @param {Array} lockedTasks - Array of locked scheduled tasks
- * @param {number} requiredDuration - Duration in minutes needed for the new task
- * @returns {Array} Array of gap objects with {start, end, durationMinutes}
- */
-function findGapsBetweenLockedTasks(lockedTasks, requiredDuration) {
-    if (lockedTasks.length === 0) return [];
-
-    const sortedLocked = [...lockedTasks].sort(
-        (a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
-    );
-
-    const gaps = [];
-    const dayStart = timeToDateTime('00:00', extractDateFromDateTime(new Date()));
-    const dayEnd = timeToDateTime('23:59', extractDateFromDateTime(new Date()));
-
-    // Gap before first locked task
-    if (sortedLocked.length > 0) {
-        const firstLockedStart = new Date(sortedLocked[0].startDateTime);
-        const gapDuration = (firstLockedStart - new Date(dayStart)) / 60000; // minutes
-        if (gapDuration >= requiredDuration) {
-            gaps.push({
-                start: dayStart,
-                end: sortedLocked[0].startDateTime,
-                durationMinutes: Math.floor(gapDuration)
-            });
-        }
-    }
-
-    // Gaps between locked tasks
-    for (let i = 0; i < sortedLocked.length - 1; i++) {
-        const gapStart = sortedLocked[i].endDateTime;
-        const gapEnd = sortedLocked[i + 1].startDateTime;
-        const gapDuration = (new Date(gapEnd) - new Date(gapStart)) / 60000; // minutes
-
-        if (gapDuration >= requiredDuration) {
-            gaps.push({
-                start: gapStart,
-                end: gapEnd,
-                durationMinutes: Math.floor(gapDuration)
-            });
-        }
-    }
-
-    // Gap after last locked task
-    if (sortedLocked.length > 0) {
-        const lastLockedEnd = new Date(sortedLocked[sortedLocked.length - 1].endDateTime);
-        const gapDuration = (new Date(dayEnd) - lastLockedEnd) / 60000; // minutes
-        if (gapDuration >= requiredDuration) {
-            gaps.push({
-                start: sortedLocked[sortedLocked.length - 1].endDateTime,
-                end: dayEnd,
-                durationMinutes: Math.floor(gapDuration)
-            });
-        }
-    }
-
-    return gaps;
-}
-
-/**
- * Generates a helpful error message when rescheduling would create locked conflicts
- * @param {Object} newTask - The task being added
- * @param {Object} validationResult - Result from validateReschedulePlan()
- * @returns {string} Formatted error message
- */
-function generateLockedConflictMessage(newTask, validationResult) {
-    const { conflicts, lockedTasks } = validationResult;
-
-    const lines = [];
-    lines.push(`Can't fit this task - rescheduling would create conflicts with locked tasks:`);
-    lines.push('');
-
-    // Show which locked tasks are causing problems
-    const problematicLocked = new Set(conflicts.map((c) => c.lockedTask.id));
-    for (const lockedTask of lockedTasks) {
-        if (problematicLocked.has(lockedTask.id)) {
-            const startTime = extractTimeFromDateTime(new Date(lockedTask.startDateTime));
-            const endTime = extractTimeFromDateTime(new Date(lockedTask.endDateTime));
-            lines.push(
-                `  • ${lockedTask.description} (locked) at ${convertTo12HourTime(startTime)} - ${convertTo12HourTime(endTime)}`
-            );
-        }
-    }
-
-    lines.push('');
-
-    // Find available gaps
-    const gaps = findGapsBetweenLockedTasks(lockedTasks, newTask.duration);
-
-    if (gaps.length > 0) {
-        lines.push('Available time slots:');
-        for (const gap of gaps) {
-            const gapStart = extractTimeFromDateTime(new Date(gap.start));
-            const gapEnd = extractTimeFromDateTime(new Date(gap.end));
-            lines.push(
-                `  • ${convertTo12HourTime(gapStart)} - ${convertTo12HourTime(gapEnd)} (${gap.durationMinutes} min available)`
-            );
-        }
-    } else {
-        lines.push('No gaps large enough to fit this task.');
-    }
-
-    lines.push('');
-    lines.push('To add this task:');
-    lines.push('  1. Unlock one of the conflicting tasks, OR');
-    if (gaps.length > 0) {
-        lines.push('  2. Choose a time in an available slot, OR');
-    }
-    lines.push(`  ${gaps.length > 0 ? '3' : '2'}. Delete tasks to make space`);
-
-    return lines.join('\n');
-}
-
 export function performReschedule(actualTask) {
-    // Validate task has all required properties for rescheduling
-    const missingFields = [];
-    if (actualTask.type !== 'scheduled') missingFields.push('type !== "scheduled"');
-    if (!actualTask.startDateTime) missingFields.push('startDateTime');
-    if (!actualTask.endDateTime) missingFields.push('endDateTime');
-    if (typeof actualTask.duration !== 'number') missingFields.push('duration (must be number)');
-
-    if (missingFields.length > 0) {
-        logger.warn(
-            `performReschedule: Invalid task. Missing or invalid: ${missingFields.join(', ')}`,
-            actualTask
-        );
-        return;
-    }
-
-    const originalEditingState = actualTask.editing;
-    actualTask.editing = false; // Temporarily set to false for overlap checks and consistency
-
-    // Get all other scheduled tasks, sorted by their current start times
-    const otherScheduledTasks = getSortedScheduledTasks().filter((t) => t.id !== actualTask.id);
-
-    // Calculate the reschedule plan using shared logic
-    const plan = calculateReschedulePlan(actualTask, otherScheduledTasks);
-
-    // Execute the plan: shift tasks to their new positions
-    for (const shiftedTask of plan.shiftedTaskPlan) {
-        shiftedTask.task.startDateTime = shiftedTask.newStart;
-        shiftedTask.task.endDateTime = shiftedTask.newEnd;
-
-        logger.debug('Rescheduling task:', {
-            taskId: shiftedTask.task.id,
-            description: shiftedTask.task.description,
-            newStart: shiftedTask.newStart,
-            newEnd: shiftedTask.newEnd
-        });
-    }
-
-    actualTask.editing = originalEditingState; // Restore original editing state
-    // Note: finalizeTaskModification() is called by the functions that call performReschedule.
+    executeReschedule(actualTask, getSortedScheduledTasks());
 }
 export function getSuggestedStartTime() {
     const currentTimeRounded = getCurrentTimeRounded();
@@ -897,19 +495,13 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
         }
 
         // VALIDATION: Check if reschedule would create locked task conflicts
-        const plan = calculateReschedulePlan(taskObject, allCurrentScheduledTasks);
-        const validationResult = validateReschedulePlan(plan);
-
-        if (!validationResult.success) {
-            logger.info(
-                'addTask: Rescheduling would create locked task conflicts.',
-                validationResult
-            );
-            const errorMessage = generateLockedConflictMessage(taskObject, validationResult);
-            return {
-                success: false,
-                reason: errorMessage
-            };
+        const rescheduleValidation = validateScheduledTaskReschedule(
+            taskObject,
+            allCurrentScheduledTasks
+        );
+        if (!rescheduleValidation.valid) {
+            logger.info('addTask: Rescheduling would create locked task conflicts.');
+            return { success: false, reason: rescheduleValidation.error };
         }
 
         const unlockedOverlappingTasks = checkOverlap(
@@ -928,29 +520,15 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
             );
         }
 
-        // --- If we reach here: No (more) confirmations needed for this taskObject ---
-        // It was either clear of locked tasks initially, OR user confirmed its shift,
-        // AND it's clear of unlocked tasks, OR user confirmed rescheduling unlocked tasks (via confirmAddTaskAndReschedule).
-        // The last case (OVERLAPS_UNLOCKED_OTHERS confirmed) is handled by confirmAddTaskAndReschedule directly adding and then calling performReschedule.
-        // This block is for:
-        //    1. Initial add, no locked conflicts, no unlocked conflicts.
-        //    2. Resubmitted add (after NEEDS_SHIFT_DUE_TO_LOCKED was confirmed), and this adjusted task had no unlocked conflicts.
-
-        const currentScheduledForAdd = tasks.filter(isScheduledTask);
-        const currentUnscheduledForAdd = tasks.filter((t) => t.type === 'unscheduled');
-        if (!currentScheduledForAdd.find((t) => t.id === taskObject.id)) {
-            currentScheduledForAdd.push(taskObject);
-            sortScheduledTasks(currentScheduledForAdd);
+        // No confirmations needed - add task and reschedule
+        if (!tasks.find((t) => t.id === taskObject.id)) {
+            tasks.push(taskObject);
         }
-        tasks = [...currentScheduledForAdd, ...currentUnscheduledForAdd];
+        reorganizeTaskArray();
 
-        const taskInArrayForAdd = tasks.find((t) => t.id === taskObject.id);
-        if (taskInArrayForAdd && isScheduledTask(taskInArrayForAdd)) {
-            performReschedule(taskInArrayForAdd);
-            const sch = tasks.filter(isScheduledTask);
-            const unsch = tasks.filter((t) => t.type === 'unscheduled');
-            sortScheduledTasks(sch);
-            tasks = [...sch, ...unsch];
+        const taskInArray = tasks.find((t) => t.id === taskObject.id);
+        if (taskInArray && isScheduledTask(taskInArray)) {
+            performRescheduleAndReorganize(taskInArray);
         }
         finalizeTaskModification();
         logger.info('addTask: Scheduled task added and processed.');
@@ -981,36 +559,23 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
     if (taskToAdd.type === 'scheduled') {
         // VALIDATION: Before adding, check if reschedule would create locked conflicts
         const allCurrentScheduledTasks = getSortedScheduledTasks();
-        const plan = calculateReschedulePlan(taskToAdd, allCurrentScheduledTasks);
-        const validationResult = validateReschedulePlan(plan);
-
-        if (!validationResult.success) {
-            logger.info(
-                'confirmAddTaskAndReschedule: Rescheduling would create locked task conflicts.',
-                validationResult
-            );
-            const errorMessage = generateLockedConflictMessage(taskToAdd, validationResult);
-            return {
-                success: false,
-                reason: errorMessage
-            };
+        const rescheduleValidation = validateScheduledTaskReschedule(
+            taskToAdd,
+            allCurrentScheduledTasks
+        );
+        if (!rescheduleValidation.valid) {
+            logger.info('confirmAddTaskAndReschedule: Locked task conflicts.');
+            return { success: false, reason: rescheduleValidation.error };
         }
 
-        const currentScheduledConfirm = tasks.filter(isScheduledTask);
-        const currentUnscheduledConfirm = tasks.filter((t) => t.type === 'unscheduled');
-        if (!currentScheduledConfirm.find((t) => t.id === taskToAdd.id)) {
-            currentScheduledConfirm.push(taskToAdd);
-            sortScheduledTasks(currentScheduledConfirm);
+        if (!tasks.find((t) => t.id === taskToAdd.id)) {
+            tasks.push(taskToAdd);
         }
-        tasks = [...currentScheduledConfirm, ...currentUnscheduledConfirm];
+        reorganizeTaskArray();
 
-        const taskInArrayConfirm = tasks.find((t) => t.id === taskToAdd.id);
-        if (taskInArrayConfirm && isScheduledTask(taskInArrayConfirm)) {
-            performReschedule(taskInArrayConfirm);
-            const sch = tasks.filter(isScheduledTask);
-            const unsch = tasks.filter((t) => t.type === 'unscheduled');
-            sortScheduledTasks(sch);
-            tasks = [...sch, ...unsch];
+        const taskInArray = tasks.find((t) => t.id === taskToAdd.id);
+        if (taskInArray && isScheduledTask(taskInArray)) {
+            performRescheduleAndReorganize(taskInArray);
         }
         finalizeTaskModification();
     } else {
@@ -1082,43 +647,28 @@ export function updateTask(index, taskData) {
         updatedProposedDetails = taskAfterLockedCheck;
 
         // VALIDATION: Check if update would create locked task conflicts
-        const plan = calculateReschedulePlan(updatedProposedDetails, allOtherScheduledTasks);
-        const validationResult = validateReschedulePlan(plan);
-
-        if (!validationResult.success) {
-            logger.info(
-                'updateTask: Rescheduling would create locked task conflicts.',
-                validationResult
-            );
-            const errorMessage = generateLockedConflictMessage(
-                updatedProposedDetails,
-                validationResult
-            );
-            return {
-                success: false,
-                reason: errorMessage
-            };
+        const rescheduleValidation = validateScheduledTaskReschedule(
+            updatedProposedDetails,
+            allOtherScheduledTasks
+        );
+        if (!rescheduleValidation.valid) {
+            logger.info('updateTask: Rescheduling would create locked task conflicts.');
+            return { success: false, reason: rescheduleValidation.error };
         }
 
-        // This block should be INSIDE the scheduled type check
+        // Check for unlocked overlaps
         const allOverlappingTasks = checkOverlap(
             updatedProposedDetails,
             tasks.filter((t) => t.id !== existingTask.id && t.type === 'scheduled')
         );
-        unlockedOverlappingTasks = allOverlappingTasks.filter((t) => !t.locked); // Assign to the wider scoped variable
+        unlockedOverlappingTasks = allOverlappingTasks.filter((t) => !t.locked);
 
         if (unlockedOverlappingTasks.length > 0) {
             if (wasShiftedByLocked) {
-                logger.info(
-                    'updateTask: Updated task (shifted by locked) overlaps unlocked. Auto-rescheduling.'
-                );
+                logger.info('updateTask: Auto-rescheduling after locked shift.');
                 tasks[index] = { ...existingTask, ...updatedProposedDetails };
                 if (isScheduledTask(tasks[index])) {
-                    performReschedule(tasks[index]);
-                    const sch = tasks.filter(isScheduledTask);
-                    const unsch = tasks.filter((t) => t.type === 'unscheduled');
-                    sortScheduledTasks(sch);
-                    tasks = [...sch, ...unsch];
+                    performRescheduleAndReorganize(tasks[index]);
                 }
                 finalizeTaskModification();
                 return {
@@ -1128,9 +678,7 @@ export function updateTask(index, taskData) {
                         'Task updated. Adjusted for locked tasks and automatically rescheduled others.'
                 };
             } else {
-                logger.info(
-                    'updateTask: Updated task (not shifted by locked) overlaps unlocked. Confirmation needed.'
-                );
+                logger.info('updateTask: Confirmation needed for overlap.');
                 return createOverlapConfirmation(
                     'UPDATE',
                     { taskIndex: index, updatedTaskObject: updatedProposedDetails },
@@ -1138,7 +686,6 @@ export function updateTask(index, taskData) {
                 );
             }
         }
-        // If no unlockedOverlappingTasks, logic continues to the end of the function
     } else {
         updatedProposedDetails.priority = taskData.priority || 'medium';
         updatedProposedDetails.estDuration = taskData.estDuration;
@@ -1162,20 +709,15 @@ export function updateTask(index, taskData) {
 
     tasks[index] = { ...existingTask, ...updatedProposedDetails };
     if (isScheduledTask(tasks[index])) {
-        performReschedule(tasks[index]);
-        const sch = tasks.filter(isScheduledTask);
-        const unsch = tasks.filter((t) => t.type === 'unscheduled');
-        sortScheduledTasks(sch);
-        tasks = [...sch, ...unsch];
+        performRescheduleAndReorganize(tasks[index]);
     }
     finalizeTaskModification();
-    let message = 'Task updated.';
-    if (wasShiftedByLocked) {
-        message = 'Task updated. It was adjusted for locked tasks.';
-    }
-    const RtnMessage =
-        wasShiftedByLocked && unlockedOverlappingTasks.length === 0 ? message : undefined;
-    return { success: true, task: tasks[index], autoRescheduledMessage: RtnMessage };
+
+    const autoMessage =
+        wasShiftedByLocked && unlockedOverlappingTasks.length === 0
+            ? 'Task updated. It was adjusted for locked tasks.'
+            : undefined;
+    return { success: true, task: tasks[index], autoRescheduledMessage: autoMessage };
 }
 
 export function updateUnscheduledTask(taskId, newData) {
@@ -1205,9 +747,7 @@ export function updateUnscheduledTask(taskId, newData) {
 }
 
 export function confirmUpdateTaskAndReschedule(confirmedPayload) {
-    // confirmedPayload is expected to be { taskIndex: index, updatedTaskObject: updatedDetailsObject }
-    const index = confirmedPayload.taskIndex;
-    const updatedTaskObject = confirmedPayload.updatedTaskObject;
+    const { taskIndex: index, updatedTaskObject } = confirmedPayload;
 
     if (index === undefined || index < 0 || index >= tasks.length || !updatedTaskObject) {
         logger.error('confirmUpdateTaskAndReschedule: Invalid payload.', confirmedPayload);
@@ -1221,29 +761,20 @@ export function confirmUpdateTaskAndReschedule(confirmedPayload) {
         const allOtherScheduledTasks = tasks.filter(
             (t) => t.type === 'scheduled' && t.id !== existingTask.id
         );
-        const plan = calculateReschedulePlan(updatedTaskObject, allOtherScheduledTasks);
-        const validationResult = validateReschedulePlan(plan);
-
-        if (!validationResult.success) {
-            logger.info(
-                'confirmUpdateTaskAndReschedule: Rescheduling would create locked task conflicts.',
-                validationResult
-            );
-            const errorMessage = generateLockedConflictMessage(updatedTaskObject, validationResult);
-            return {
-                success: false,
-                reason: errorMessage
-            };
+        const rescheduleValidation = validateScheduledTaskReschedule(
+            updatedTaskObject,
+            allOtherScheduledTasks
+        );
+        if (!rescheduleValidation.valid) {
+            logger.info('confirmUpdateTaskAndReschedule: Locked task conflicts.');
+            return { success: false, reason: rescheduleValidation.error };
         }
     }
 
-    // Merge, ensuring updatedTaskObject properties overwrite existingTask properties correctly.
-    // Properties like id, status (if not completed by update), etc., from updatedTaskObject should be primary.
     tasks[index] = { ...existingTask, ...updatedTaskObject };
 
     if (isScheduledTask(tasks[index])) {
-        const taskInArray = tasks[index]; // Already the correct reference
-        performReschedule(taskInArray);
+        performRescheduleAndReorganize(tasks[index]);
     }
     finalizeTaskModification();
     return { success: true, task: tasks[index] };
@@ -1506,19 +1037,13 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     tempScheduledTask = adjustedTask;
 
     // Step 2: Validate that rescheduling won't create locked conflicts
-    const plan = calculateReschedulePlan(tempScheduledTask, allScheduledTasks);
-    const validationResult = validateReschedulePlan(plan);
-
-    if (!validationResult.success) {
-        logger.info(
-            'scheduleUnscheduledTask: Rescheduling would create locked task conflicts.',
-            validationResult
-        );
-        const errorMessage = generateLockedConflictMessage(tempScheduledTask, validationResult);
-        return {
-            success: false,
-            reason: errorMessage
-        };
+    const rescheduleValidation = validateScheduledTaskReschedule(
+        tempScheduledTask,
+        allScheduledTasks
+    );
+    if (!rescheduleValidation.valid) {
+        logger.info('scheduleUnscheduledTask: Locked task conflicts.');
+        return { success: false, reason: rescheduleValidation.error };
     }
 
     // Step 3: Check for unlocked overlaps
@@ -1542,15 +1067,10 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     tasks.splice(taskIndex, 1); // Remove the original unscheduled task
 
     const newScheduledTask = createTaskObject(newScheduledTaskData);
+    tasks.push(newScheduledTask);
+    reorganizeTaskArray();
 
-    // Add the new scheduled task and re-sort the main tasks array
-    const scheduledTasks = tasks.filter((t) => t.type === 'scheduled');
-    const unscheduledTasks = tasks.filter((t) => t.type === 'unscheduled');
-    scheduledTasks.push(newScheduledTask);
-    sortScheduledTasks(scheduledTasks);
-    tasks = [...scheduledTasks, ...unscheduledTasks];
-
-    performReschedule(newScheduledTask);
+    performRescheduleAndReorganize(newScheduledTask);
     finalizeTaskModification();
     return { success: true, task: newScheduledTask };
 }
@@ -1566,36 +1086,26 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
 
     // VALIDATION: Check if rescheduling would create locked task conflicts
     const allScheduledTasks = tasks.filter((t) => t.type === 'scheduled');
-    const plan = calculateReschedulePlan(newScheduledTask, allScheduledTasks);
-    const validationResult = validateReschedulePlan(plan);
-
-    if (!validationResult.success) {
-        logger.info(
-            'confirmScheduleUnscheduledTask: Rescheduling would create locked task conflicts.',
-            validationResult
-        );
-        const errorMessage = generateLockedConflictMessage(newScheduledTask, validationResult);
-        return {
-            success: false,
-            reason: errorMessage
-        };
+    const rescheduleValidation = validateScheduledTaskReschedule(
+        newScheduledTask,
+        allScheduledTasks
+    );
+    if (!rescheduleValidation.valid) {
+        logger.info('confirmScheduleUnscheduledTask: Locked task conflicts.');
+        return { success: false, reason: rescheduleValidation.error };
     }
 
     // Validation passed - now remove the unscheduled task
     if (taskIndex !== -1) {
-        tasks.splice(taskIndex, 1); // Remove the original unscheduled task
+        tasks.splice(taskIndex, 1);
     } else {
         logger.warn(`Unscheduled task ID ${unscheduledTaskId} not found for confirmation.`);
     }
 
-    // Add the new scheduled task and re-sort the main tasks array
-    const scheduledTasks = tasks.filter((t) => t.type === 'scheduled');
-    const unscheduledTasks = tasks.filter((t) => t.type === 'unscheduled');
-    scheduledTasks.push(newScheduledTask);
-    sortScheduledTasks(scheduledTasks);
-    tasks = [...scheduledTasks, ...unscheduledTasks];
+    tasks.push(newScheduledTask);
+    reorganizeTaskArray();
 
-    performReschedule(newScheduledTask);
+    performRescheduleAndReorganize(newScheduledTask);
     finalizeTaskModification();
     return { success: true, task: newScheduledTask };
 }

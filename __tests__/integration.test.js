@@ -18,8 +18,7 @@ import {
 } from './test-utils.js';
 
 import { resetEventDelegation } from '../public/js/dom-handler.js';
-
-import * as domHandler from '../public/js/dom-handler.js';
+import { refreshActiveTaskColor } from '../public/js/scheduled-task-renderer.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
 
@@ -714,7 +713,7 @@ describe('User Confirmation Flows', () => {
             const beforeEndTime = new Date(`${date}T14:20:00`);
 
             // Update the active task color
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTime);
+            refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTime);
 
             // Find all colored divs and verify they are green
             let coloredDivs = findColoredTaskDivs();
@@ -730,7 +729,7 @@ describe('User Confirmation Flows', () => {
             const afterEndTime = new Date(`${date}T14:40:00`);
 
             // Update the active task color again
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), afterEndTime);
+            refreshActiveTaskColor(taskManager.getTaskState(), afterEndTime);
 
             // Find all colored divs and verify they are now yellow
             coloredDivs = findColoredTaskDivs();
@@ -746,7 +745,7 @@ describe('User Confirmation Flows', () => {
             const beforeEndTimeAgain = new Date(`${date}T14:20:00`);
 
             // Update the active task color one more time
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTimeAgain);
+            refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTimeAgain);
 
             // Find all colored divs and verify they are green again
             coloredDivs = findColoredTaskDivs();
@@ -780,12 +779,8 @@ describe('User Confirmation Flows', () => {
             await setupInitialStateAndApp([completedTask1, completedTask2]);
 
             // Trigger the refreshActiveTaskColor function
-            // Call the function with proper type checking
-            if (
-                'refreshActiveTaskColor' in domHandler &&
-                typeof domHandler.refreshActiveTaskColor === 'function'
-            ) {
-                domHandler.refreshActiveTaskColor(taskManager.getTaskState());
+            if (typeof refreshActiveTaskColor === 'function') {
+                refreshActiveTaskColor(taskManager.getTaskState());
             }
 
             // Verify no tasks have active styling
@@ -832,9 +827,9 @@ describe('User Confirmation Flows', () => {
 
             // Test that the refreshActiveTaskColor function works with no active tasks
             // Function should exist and be callable even with no active tasks
-            expect(typeof domHandler.refreshActiveTaskColor).toBe('function');
+            expect(typeof refreshActiveTaskColor).toBe('function');
             expect(() => {
-                domHandler.refreshActiveTaskColor(taskManager.getTaskState());
+                refreshActiveTaskColor(taskManager.getTaskState());
             }).not.toThrow();
 
             // Verify completed tasks don't have active styling

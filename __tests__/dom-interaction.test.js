@@ -10,14 +10,12 @@ import {
     renderTasks,
     updateStartTimeField,
     initializePageEventListeners,
-    getTaskFormElement,
-    focusTaskDescriptionInput,
-    showAlert,
-    askConfirmation,
     resetEventDelegation,
     refreshStartTimeField,
     disableStartTimeAutoUpdate
 } from '../public/js/dom-handler.js';
+import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
+import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
 import { convertTo12HourTime, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
 import { updateTaskState } from '../public/js/task-manager.js';
 
@@ -25,7 +23,6 @@ describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;
     let mockTaskEventCallbacks;
     let alertSpy;
-    let confirmSpy;
 
     beforeEach(() => {
         // Set up a complete HTML structure that matches the actual app
@@ -90,7 +87,7 @@ describe('DOM Handler Interaction Tests', () => {
         };
 
         alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-        confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
+        jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
         // Get references to form and delete button
         const taskForm = /** @type {HTMLFormElement|null} */ (getTaskFormElement());

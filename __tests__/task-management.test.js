@@ -15,15 +15,14 @@ import {
     editTask,
     cancelEdit,
     deleteAllTasks,
-    isValidTaskData,
-    checkOverlap,
     performReschedule,
     confirmAddTaskAndReschedule,
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
-    getSuggestedStartTime,
-    tasksOverlap
+    getSuggestedStartTime
 } from '../public/js/task-manager.js';
+import { isValidTaskData } from '../public/js/task-validators.js';
+import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
 import {
     calculateEndDateTime,
     extractDateFromDateTime,

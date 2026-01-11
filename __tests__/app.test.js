@@ -13,7 +13,8 @@ import {
     getTaskState,
     cancelEdit as cancelEditDirect
 } from '../public/js/task-manager.js';
-import { resetEventDelegation, renderTasks, getTaskFormElement } from '../public/js/dom-handler.js';
+import { resetEventDelegation, renderTasks } from '../public/js/dom-handler.js';
+import { getTaskFormElement } from '../public/js/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
