@@ -122,17 +122,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         getThemeForTask(taskToComplete)
                     )
                 ) {
-                    confirmCompleteLate(
+                    const lateResult = confirmCompleteLate(
                         originalIndexForTaskManager,
                         result.newEndTime,
                         result.newDuration
                     );
-                    updateStartTimeField(getSuggestedStartTime(), true);
+                    if (lateResult.success) {
+                        updateStartTimeField(getSuggestedStartTime(), true);
+                        taskActuallyCompleted = true;
+                    } else {
+                        // Late completion failed (e.g., locked task conflicts)
+                        // Fall back to completing without time extension
+                        completeTask(originalIndexForTaskManager);
+                        taskActuallyCompleted = true;
+                        showAlert(
+                            `Completed the task, but couldn't extend the end time: ${lateResult.reason}`,
+                            getThemeForTask(taskToComplete)
+                        );
+                    }
                 } else {
                     // If user declines late completion update, just mark it as completed normally
                     completeTask(originalIndexForTaskManager);
+                    taskActuallyCompleted = true;
                 }
-                taskActuallyCompleted = true; // Task is considered completed even if they say no to late update for confetti purposes
             }
             // Handle normal completion case
             else if (result.success) {

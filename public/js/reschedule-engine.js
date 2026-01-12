@@ -177,7 +177,43 @@ export function calculateReschedulePlan(taskToPlace, otherScheduledTasks) {
         })
         .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
 
-    // Calculate shifted positions with cascading
+    // Get incomplete locked tasks for flow-around logic
+    const incompleteLockedTasks = otherScheduledTasks
+        .filter((t) => t.locked && t.status !== 'completed')
+        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
+
+    // Helper: find the next available start time that doesn't overlap with locked tasks
+    const findNextAvailableStart = (proposedStart, duration) => {
+        let start = new Date(proposedStart);
+        let end = new Date(calculateEndDateTime(start.toISOString(), duration));
+
+        // Keep pushing past locked tasks until we find a clear slot
+        let iterations = 0;
+        const maxIterations = incompleteLockedTasks.length + 1;
+
+        while (iterations < maxIterations) {
+            let conflictFound = false;
+            for (const lockedTask of incompleteLockedTasks) {
+                const lockedStart = new Date(lockedTask.startDateTime);
+                const lockedEnd = new Date(lockedTask.endDateTime);
+
+                // Check if proposed slot overlaps with this locked task
+                if (start < lockedEnd && end > lockedStart) {
+                    // Conflict! Push to after this locked task
+                    start = lockedEnd;
+                    end = new Date(calculateEndDateTime(start.toISOString(), duration));
+                    conflictFound = true;
+                    break; // Restart the check with new position
+                }
+            }
+            if (!conflictFound) break;
+            iterations++;
+        }
+
+        return start.toISOString();
+    };
+
+    // Calculate shifted positions with cascading (flowing around locked tasks)
     const shiftedTaskPlan = [];
     let currentPushPoint = effectiveEndTimeStr;
 
@@ -186,7 +222,8 @@ export function calculateReschedulePlan(taskToPlace, otherScheduledTasks) {
         const pushPoint = new Date(currentPushPoint);
 
         if (taskStart < pushPoint) {
-            const newStartDateTime = currentPushPoint;
+            // Task needs to be pushed - find next available slot that avoids locked tasks
+            const newStartDateTime = findNextAvailableStart(currentPushPoint, task.duration);
             const newEndDateTime = calculateEndDateTime(newStartDateTime, task.duration);
             shiftedTaskPlan.push({
                 task,

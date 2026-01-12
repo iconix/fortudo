@@ -314,17 +314,22 @@ describe('Reschedule Engine Tests', () => {
             expect(result.validation.success).toBe(true);
         });
 
-        test('returns error message for invalid reschedule', () => {
-            // Create a scenario where rescheduling would push a task into a locked slot
+        test('flows around locked tasks instead of failing', () => {
+            // With "flow around" logic, tasks get pushed past locked tasks instead of failing
             // Locked task at 12:00-13:00, shiftable at 11:00-12:00
-            // New task at 10:00-12:00 would push shiftable to 12:00 which conflicts with locked
+            // New task at 10:00-12:00 would push shiftable - it flows around to after locked
             const newTask = createTask('new', '10:00', 120); // 10:00 - 12:00
-            const shiftable = createTask('1', '11:00', 60); // 11:00 - 12:00, would be pushed to 12:00
+            const shiftable = createTask('1', '11:00', 60); // 11:00 - 12:00, flows around locked
             const locked = createTask('locked', '12:00', 60, { locked: true }); // 12:00 - 13:00
 
             const result = validateAndGetReschedulePlan(newTask, [shiftable, locked]);
-            expect(result.error).not.toBeNull();
-            expect(result.validation.success).toBe(false);
+            expect(result.error).toBeNull();
+            expect(result.validation.success).toBe(true);
+            // Verify the shiftable task was pushed to after the locked task ends
+            expect(result.plan.shiftedTaskPlan).toHaveLength(1);
+            const shiftedStart = new Date(result.plan.shiftedTaskPlan[0].newStart);
+            const lockedEnd = new Date(locked.endDateTime);
+            expect(shiftedStart.getTime()).toBeGreaterThanOrEqual(lockedEnd.getTime());
         });
     });
 

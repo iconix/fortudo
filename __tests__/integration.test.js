@@ -461,6 +461,83 @@ describe('User Confirmation Flows', () => {
             // Clean up the spy
             getCurrentTimeRoundedSpy.mockRestore();
         });
+
+        test('Late completion flows around locked tasks instead of failing', async () => {
+            // Scenario: Completing a task late would push subsequent tasks into a locked task
+            // The reschedule should flow around the locked task
+            const taskToComplete = createTaskWithDateTime({
+                description: 'Task To Complete',
+                startTime: '09:00',
+                duration: 60, // 9:00-10:00
+                status: 'incomplete'
+            });
+            const shiftableTask = createTaskWithDateTime({
+                description: 'Shiftable Task',
+                startTime: '10:00',
+                duration: 60, // 10:00-11:00, will be pushed
+                status: 'incomplete'
+            });
+            const lockedTask = createTaskWithDateTime({
+                description: 'Locked Meeting',
+                startTime: '11:00',
+                duration: 60, // 11:00-12:00, locked - can't be moved
+                status: 'incomplete',
+                locked: true
+            });
+            const afterLockedTask = createTaskWithDateTime({
+                description: 'After Locked',
+                startTime: '12:00',
+                duration: 30, // 12:00-12:30
+                status: 'incomplete'
+            });
+
+            await setupInitialStateAndApp([
+                taskToComplete,
+                shiftableTask,
+                lockedTask,
+                afterLockedTask
+            ]);
+
+            // Complete at 10:45 - this would push shiftableTask to 10:45-11:45
+            // which conflicts with locked 11:00-12:00
+            // With flow-around, shiftableTask should jump to 12:00-13:00
+            setCurrentTimeInDOM('10:45 AM');
+            confirmSpy.mockReturnValueOnce(true);
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(4);
+
+            const completedTaskDOM = tasks.find((t) => t.description === 'Task To Complete');
+            const shiftableTaskDOM = tasks.find((t) => t.description === 'Shiftable Task');
+            const lockedTaskDOM = tasks.find((t) => t.description === 'Locked Meeting');
+
+            // Task should be completed with extended end time
+            expect(completedTaskDOM).toBeDefined();
+            if (completedTaskDOM) {
+                expect(completedTaskDOM.isCompleted).toBe(true);
+                expect(completedTaskDOM.endTime12).toBe('10:45 AM');
+            }
+
+            // Locked task should not have moved
+            expect(lockedTaskDOM).toBeDefined();
+            if (lockedTaskDOM) {
+                expect(lockedTaskDOM.startTime12).toBe('11:00 AM');
+                expect(lockedTaskDOM.endTime12).toBe('12:00 PM');
+            }
+
+            // Shiftable task should have flowed around locked to start at 12:00
+            expect(shiftableTaskDOM).toBeDefined();
+            if (shiftableTaskDOM) {
+                expect(shiftableTaskDOM.startTime12).toBe('12:00 PM');
+                expect(shiftableTaskDOM.endTime12).toBe('1:00 PM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe('Delete All Tasks with Confirmation', () => {
