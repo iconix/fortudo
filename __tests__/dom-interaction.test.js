@@ -764,4 +764,193 @@ describe('DOM Handler Interaction Tests', () => {
             jest.useRealTimers();
         });
     });
+
+    describe('Unscheduled Task List Event Handling', () => {
+        const testDate = '2025-01-01';
+        let mockUnscheduledTaskCallbacks;
+
+        beforeEach(() => {
+            mockUnscheduledTaskCallbacks = {
+                onToggleCompleteUnscheduledTask: jest.fn(),
+                onEditUnscheduledTask: jest.fn(),
+                onDeleteUnscheduledTask: jest.fn(),
+                onScheduleUnscheduledTask: jest.fn(),
+                onSaveUnscheduledTaskEdit: jest.fn(),
+                onCancelUnscheduledTaskEdit: jest.fn()
+            };
+        });
+
+        function setupUnscheduledTask(taskId, isCompleted = false) {
+            const unscheduledTaskList = document.getElementById('unscheduled-task-list');
+            unscheduledTaskList.innerHTML = `
+                <div class="task-card" data-task-id="${taskId}" data-task-name="Test Task" data-task-est-duration="1h">
+                    <div class="task-display-view">
+                        <label class="task-checkbox-unscheduled">
+                            <i class="fa-regular ${isCompleted ? 'fa-check-square' : 'fa-square'}"></i>
+                        </label>
+                        <span>Test Task</span>
+                        <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
+                        <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
+                        <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
+                    </div>
+                    <div class="inline-edit-unscheduled-form hidden">
+                        <form>
+                            <input name="inline-edit-description" value="Test Task" />
+                            <button class="btn-save-inline-edit">Save</button>
+                            <button class="btn-cancel-inline-edit">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            // Update task state
+            const task = {
+                id: taskId,
+                type: 'unscheduled',
+                description: 'Test Task',
+                priority: 'medium',
+                estDuration: 60,
+                status: isCompleted ? 'completed' : 'incomplete'
+            };
+            updateTaskState([task]);
+
+            // Import and call the initialization function
+            const {
+                initializeUnscheduledTaskListEventListeners
+            } = require('../public/js/dom-handler.js');
+            initializeUnscheduledTaskListEventListeners(mockUnscheduledTaskCallbacks);
+        }
+
+        test('schedule button calls onScheduleUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const scheduleBtn = document.querySelector('.btn-schedule-task');
+            scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onScheduleUnscheduledTask).toHaveBeenCalledWith(
+                'unsched-1',
+                'Test Task',
+                '1h'
+            );
+        });
+
+        test('schedule button does not call callback for completed task', () => {
+            setupUnscheduledTask('unsched-1', true);
+
+            const scheduleBtn = document.querySelector('.btn-schedule-task');
+            scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onScheduleUnscheduledTask).not.toHaveBeenCalled();
+        });
+
+        test('edit button calls onEditUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const editBtn = document.querySelector('.btn-edit-unscheduled');
+            editBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onEditUnscheduledTask).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('delete button calls onDeleteUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const deleteBtn = document.querySelector('.btn-delete-unscheduled');
+            deleteBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onDeleteUnscheduledTask).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('checkbox calls onToggleCompleteUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const checkbox = document.querySelector('.task-checkbox-unscheduled');
+            checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(
+                mockUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask
+            ).toHaveBeenCalledWith('unsched-1');
+        });
+
+        test('save button calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const saveBtn = document.querySelector('.btn-save-inline-edit');
+            saveBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('cancel button calls onCancelUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const cancelBtn = document.querySelector('.btn-cancel-inline-edit');
+            cancelBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('form submit calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const form = document.querySelector('.inline-edit-unscheduled-form form');
+            form.dispatchEvent(new Event('submit', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+    });
+
+    describe('Task Type Toggle', () => {
+        beforeEach(() => {
+            // Initialize the task type toggle which sets up the event listeners
+            const { initializeTaskTypeToggle } = require('../public/js/dom-handler.js');
+            initializeTaskTypeToggle();
+        });
+
+        test('switching to unscheduled hides time inputs and shows priority', () => {
+            const unscheduledRadio = document.getElementById('unscheduled');
+            if (!(unscheduledRadio instanceof HTMLInputElement)) {
+                throw new Error('Unscheduled radio not found');
+            }
+
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const timeInputs = document.getElementById('time-inputs');
+            const priorityInput = document.getElementById('priority-input');
+
+            expect(timeInputs.classList.contains('hidden')).toBe(true);
+            expect(priorityInput.classList.contains('hidden')).toBe(false);
+        });
+
+        test('switching to scheduled shows time inputs and hides priority', () => {
+            const { initializeTaskTypeToggle } = require('../public/js/dom-handler.js');
+
+            // First switch to unscheduled
+            const unscheduledRadio = document.getElementById('unscheduled');
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Then switch back to scheduled
+            const scheduledRadio = document.getElementById('scheduled');
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const timeInputs = document.getElementById('time-inputs');
+            const priorityInput = document.getElementById('priority-input');
+
+            expect(timeInputs.classList.contains('hidden')).toBe(false);
+            expect(priorityInput.classList.contains('hidden')).toBe(true);
+        });
+    });
 });
