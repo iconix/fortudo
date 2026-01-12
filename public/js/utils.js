@@ -112,6 +112,40 @@ export function calculateHoursAndMinutes(minutesInput, returnAsObject = false) {
 }
 
 /**
+ * Parse and validate duration from hours and minutes inputs
+ * @param {number|string} hours - Hours value
+ * @param {number|string} minutes - Minutes value
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.allowZero=false] - Whether to allow zero duration
+ * @returns {{valid: boolean, duration: number, error?: string}}
+ */
+export function parseDuration(hours, minutes, options = {}) {
+    const { allowZero = false } = options;
+    const h = parseInt(hours) || 0;
+    const m = parseInt(minutes) || 0;
+
+    if (h < 0 || m < 0 || m > 59) {
+        return {
+            valid: false,
+            duration: 0,
+            error: 'Please enter valid numbers for duration (HH >= 0, 0 <= MM <= 59).'
+        };
+    }
+
+    const duration = h * 60 + m;
+
+    if (!allowZero && duration <= 0) {
+        return {
+            valid: false,
+            duration: 0,
+            error: 'Duration must be greater than 0.'
+        };
+    }
+
+    return { valid: true, duration };
+}
+
+/**
  * Convert minutes to 24-hour time format
  * @param {number} minutes - Total minutes
  * @returns {string} - Time in 24-hour format (HH:MM)
@@ -260,6 +294,23 @@ export const logger = {
  * @returns {boolean} - True if the task is running late
  */
 export function isTaskRunningLate(task, now = new Date()) {
-    // A task is late if the current time 'now' is past its calculated 'endDate'.
     return now > new Date(task.endDateTime);
+}
+
+/**
+ * Get the theme color for a task type
+ * @param {Object|null} task - The task object (or null)
+ * @returns {'teal'|'indigo'} - Theme color name
+ */
+export function getThemeForTask(task) {
+    return task?.type === 'scheduled' ? 'teal' : 'indigo';
+}
+
+/**
+ * Get the theme color from a task type string
+ * @param {'scheduled'|'unscheduled'|string} taskType - The task type
+ * @returns {'teal'|'indigo'} - Theme color name
+ */
+export function getThemeForTaskType(taskType) {
+    return taskType === 'scheduled' ? 'teal' : 'indigo';
 }

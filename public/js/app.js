@@ -23,32 +23,35 @@ import {
     toggleUnscheduledTaskCompleteState,
     unscheduleTask,
     toggleLockState,
-    isScheduledTask,
     deleteAllScheduledTasks,
     deleteCompletedTasks
 } from './task-manager.js';
+import { isScheduledTask } from './task-validators.js';
+import {
+    showAlert,
+    askConfirmation,
+    showScheduleModal,
+    initializeModalEventListeners
+} from './modal-manager.js';
+import {
+    extractTaskFormData,
+    getTaskFormElement,
+    focusTaskDescriptionInput,
+    populateUnscheduledTaskInlineEditForm,
+    getUnscheduledTaskInlineFormData
+} from './form-utils.js';
+import { refreshActiveTaskColor, triggerConfettiAnimation } from './scheduled-task-renderer.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
     updateStartTimeField,
     initializePageEventListeners,
-    initializeModalEventListeners,
-    showAlert,
-    askConfirmation,
-    getTaskFormElement,
     getCurrentTimeElement,
     getDeleteAllButtonElement,
-    focusTaskDescriptionInput,
-    extractTaskFormData,
-    refreshActiveTaskColor,
     refreshStartTimeField,
     initializeTaskTypeToggle,
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners,
-    triggerConfettiAnimation,
-    populateUnscheduledTaskInlineEditForm,
-    getUnscheduledTaskInlineFormData,
-    showScheduleModal,
     getClearTasksDropdownMenuElement,
     getClearScheduledOptionElement,
     getClearOptionsDropdownTriggerButtonElement,
@@ -61,7 +64,9 @@ import {
     convertTo24HourTime,
     convertTo12HourTime,
     logger,
-    calculateHoursAndMinutes
+    calculateHoursAndMinutes,
+    getThemeForTask,
+    getThemeForTaskType
 } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -419,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeTaskTypeToggle();
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
-    initializeModalEventListeners(unscheduledTaskEventCallbacks, appCallbacks);
+    initializeModalEventListeners(unscheduledTaskEventCallbacks);
 
     renderTasks(scheduledTasks, scheduledTaskEventCallbacks);
     renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
@@ -431,10 +436,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     focusTaskDescriptionInput();
 
-    setInterval(() => {
+    // Store interval IDs for cleanup
+    const activeTaskColorInterval = setInterval(() => {
         refreshActiveTaskColor(getTaskState());
         refreshStartTimeField();
     }, 1000);
+
+    // Cleanup intervals on page unload
+    window.addEventListener('beforeunload', () => {
+        clearInterval(activeTaskColorInterval);
+    });
 
     // Setup event listener for the "Clear All Tasks" (main part of split button)
     const deleteAllButton = getDeleteAllButtonElement();
@@ -581,12 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Helper function to determine the theme based on task type
-function getThemeForTask(task) {
-    return task?.type === 'scheduled' ? 'teal' : 'indigo';
-}
-
-// Helper function to determine the theme based on task type from task ID
+// Helper function to determine the theme based on task ID
 function getThemeForTaskId(taskId) {
     const task = getTaskState().find((t) => t.id === taskId);
     return getThemeForTask(task);
@@ -616,102 +622,58 @@ async function handleAddTaskProcess(
     localScheduledTaskEventCallbacks,
     localUnscheduledTaskEventCallbacks
 ) {
+    const theme = getThemeForTaskType(initialTaskData.taskType);
+
+    // Helper to refresh both task lists
+    const refreshTaskLists = () => {
+        const currentAllTasks = getTaskState();
+        renderTasks(currentAllTasks.filter(isScheduledTask), localScheduledTaskEventCallbacks);
+        renderUnscheduledTasks(getSortedUnscheduledTasks(), localUnscheduledTaskEventCallbacks);
+    };
+
     let operationResult = addTask(initialTaskData);
 
-    if (operationResult.requiresConfirmation) {
-        if (operationResult.confirmationType === 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED') {
-            const userConfirmedShift = await askConfirmation(
-                operationResult.reason,
-                undefined,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
+    // First confirmation stage: locked task shift
+    if (
+        operationResult.requiresConfirmation &&
+        operationResult.confirmationType === 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED'
+    ) {
+        const userConfirmedShift = await askConfirmation(operationResult.reason, undefined, theme);
+        if (userConfirmedShift && operationResult.adjustedTaskDataForResubmission) {
+            operationResult = addTask(operationResult.adjustedTaskDataForResubmission, true);
+        } else {
+            showAlert(
+                'Task not added as the proposed shift due to a locked task was declined.',
+                theme
             );
-            if (userConfirmedShift && operationResult.adjustedTaskDataForResubmission) {
-                // User confirmed the shift, resubmit with adjusted data
-                operationResult = addTask(operationResult.adjustedTaskDataForResubmission, true);
-            } else {
-                showAlert(
-                    'Task not added as the proposed shift due to a locked task was declined.',
-                    initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-                );
-                // End processing for this task addition attempt
-                const currentAllTasksOnDeclineShift = getTaskState();
-                renderTasks(
-                    currentAllTasksOnDeclineShift.filter(isScheduledTask),
-                    localScheduledTaskEventCallbacks
-                );
-                renderUnscheduledTasks(
-                    getSortedUnscheduledTasks(),
-                    localUnscheduledTaskEventCallbacks
-                );
-                return;
-            }
+            refreshTaskLists();
+            return;
         }
-        // Removed the 'else' here to allow falling through to the next confirmation stage if the first wasn't 'NEEDS_SHIFT'
     }
 
-    // Second stage of confirmation if needed (e.g., after a shift, it now overlaps others, or if initial overlap was with unlocked)
-    if (operationResult.requiresConfirmation) {
-        if (operationResult.confirmationType === 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS') {
-            const userConfirmedReschedule = await askConfirmation(
-                operationResult.reason,
-                undefined,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-            );
-            if (userConfirmedReschedule && operationResult.taskObjectToFinalize) {
-                operationResult = confirmAddTaskAndReschedule({
-                    taskObject: operationResult.taskObjectToFinalize
-                });
-            } else {
-                showAlert(
-                    'Task not added as rescheduling of other tasks was declined.',
-                    initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-                );
-                const currentAllTasksOnDeclineReschedule = getTaskState();
-                renderTasks(
-                    currentAllTasksOnDeclineReschedule.filter(isScheduledTask),
-                    localScheduledTaskEventCallbacks
-                );
-                renderUnscheduledTasks(
-                    getSortedUnscheduledTasks(),
-                    localUnscheduledTaskEventCallbacks
-                );
-                return;
-            }
-        } else if (operationResult.confirmationType === 'RESCHEDULE_ADD') {
-            // Handle legacy/original simple overlap if necessary
-            const userConfirmedLegacy = await askConfirmation(
-                operationResult.reason,
-                undefined,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-            );
-            if (userConfirmedLegacy && operationResult.taskObject) {
-                operationResult = confirmAddTaskAndReschedule({
-                    taskObject: operationResult.taskObject
-                });
-            } else {
-                showAlert(
-                    'Task not added to avoid overlap.',
-                    initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-                );
-                const currentAllTasksOnDeclineLegacy = getTaskState();
-                renderTasks(
-                    currentAllTasksOnDeclineLegacy.filter(isScheduledTask),
-                    localScheduledTaskEventCallbacks
-                );
-                renderUnscheduledTasks(
-                    getSortedUnscheduledTasks(),
-                    localUnscheduledTaskEventCallbacks
-                );
-                return;
-            }
+    // Second confirmation stage: unlocked task overlap
+    if (
+        operationResult.requiresConfirmation &&
+        operationResult.confirmationType === 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS'
+    ) {
+        const userConfirmedReschedule = await askConfirmation(
+            operationResult.reason,
+            undefined,
+            theme
+        );
+        if (userConfirmedReschedule && operationResult.taskObjectToFinalize) {
+            operationResult = confirmAddTaskAndReschedule({
+                taskObjectToFinalize: operationResult.taskObjectToFinalize
+            });
+        } else {
+            showAlert('Task not added as rescheduling of other tasks was declined.', theme);
+            refreshTaskLists();
+            return;
         }
-        // If there are other confirmation types not handled, operationResult might still be requiresConfirmation=true
-        // but without a path to make it success=true.
     }
 
     if (operationResult.success) {
         const taskType = formElement.querySelector('input[name="task-type"]:checked')?.value;
-
         formElement.reset();
 
         if (taskType) {
@@ -728,36 +690,22 @@ async function handleAddTaskProcess(
             updateStartTimeField(getSuggestedStartTime(), true);
         }
         focusTaskDescriptionInput();
+
         if (operationResult.autoRescheduledMessage) {
-            showAlert(
-                operationResult.autoRescheduledMessage,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-            );
+            showAlert(operationResult.autoRescheduledMessage, theme);
         } else if (operationResult.message) {
-            showAlert(
-                operationResult.message,
-                initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-            );
+            showAlert(operationResult.message, theme);
         }
     } else if (operationResult.reason) {
-        showAlert(
-            operationResult.reason,
-            initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-        );
+        showAlert(operationResult.reason, theme);
         focusTaskDescriptionInput();
     } else if (!operationResult.processed && !operationResult.success) {
-        // Fallback for unhandled confirmation or silent failure
         logger.warn(
             "[app.js] handleAddTaskProcess: Operation did not succeed and had no specific reason or wasn't processed after confirmation.",
             operationResult
         );
-        showAlert(
-            'Could not process the task at this time.',
-            initialTaskData.taskType === 'scheduled' ? 'teal' : 'indigo'
-        );
+        showAlert('Could not process the task at this time.', theme);
     }
 
-    const currentAllTasks = getTaskState();
-    renderTasks(currentAllTasks.filter(isScheduledTask), localScheduledTaskEventCallbacks);
-    renderUnscheduledTasks(getSortedUnscheduledTasks(), localUnscheduledTaskEventCallbacks);
+    refreshTaskLists();
 }
