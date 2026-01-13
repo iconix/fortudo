@@ -11,7 +11,8 @@ import {
     validateAndGetReschedulePlan,
     findGapsBetweenLockedTasks,
     generateLockedConflictMessage,
-    executeReschedule
+    executeReschedule,
+    findAdjustableTask
 } from '../public/js/reschedule-engine.js';
 import { timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
 
@@ -131,6 +132,89 @@ describe('Reschedule Engine Tests', () => {
             expect(overlapping[0].id).toBe('1');
             expect(overlapping[1].id).toBe('2');
             expect(overlapping[2].id).toBe('3');
+        });
+    });
+
+    describe('findAdjustableTask', () => {
+        test('finds incomplete task that started before given time', () => {
+            const testDate = '2025-01-15';
+            const runningTask = createTask('1', '09:00', 60); // 9:00 - 10:00
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [runningTask]);
+            expect(result).not.toBeNull();
+            expect(result.id).toBe('1');
+        });
+
+        test('returns earliest task when multiple qualify', () => {
+            const testDate = '2025-01-15';
+            const task1 = createTask('1', '09:00', 30); // earliest
+            const task2 = createTask('2', '09:30', 30);
+            const task3 = createTask('3', '10:00', 30);
+            const newTaskStart = timeToDateTime('10:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [task2, task1, task3]);
+            expect(result).not.toBeNull();
+            expect(result.id).toBe('1');
+        });
+
+        test('returns null when no task started before given time', () => {
+            const testDate = '2025-01-15';
+            const futureTask = createTask('1', '11:00', 60); // starts after
+            const newTaskStart = timeToDateTime('10:00', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [futureTask]);
+            expect(result).toBeNull();
+        });
+
+        test('ignores completed tasks', () => {
+            const testDate = '2025-01-15';
+            const completedTask = createTask('1', '09:00', 60, { status: 'completed' });
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [completedTask]);
+            expect(result).toBeNull();
+        });
+
+        test('ignores tasks that start after given time', () => {
+            const testDate = '2025-01-15';
+            const laterTask = createTask('1', '10:00', 60);
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [laterTask]);
+            expect(result).toBeNull();
+        });
+
+        test('includes locked tasks as adjustable (lock protects start, not end)', () => {
+            const testDate = '2025-01-15';
+            const lockedTask = createTask('1', '09:00', 60, { locked: true });
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [lockedTask]);
+            expect(result).not.toBeNull();
+            expect(result.id).toBe('1');
+        });
+
+        test('returns null for empty task list', () => {
+            const testDate = '2025-01-15';
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, []);
+            expect(result).toBeNull();
+        });
+
+        test('ignores unscheduled tasks', () => {
+            const testDate = '2025-01-15';
+            const unscheduledTask = {
+                id: '1',
+                type: 'unscheduled',
+                priority: 'high',
+                status: 'incomplete'
+            };
+            const newTaskStart = timeToDateTime('09:30', testDate);
+
+            const result = findAdjustableTask(newTaskStart, [unscheduledTask]);
+            expect(result).toBeNull();
         });
     });
 

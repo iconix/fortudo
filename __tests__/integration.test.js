@@ -80,10 +80,11 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Add Task with Reschedule Confirmation', () => {
+        // Use future times (21:00+) to avoid triggering adjust-running-task check
         const getInitialTask = () =>
             createTaskWithDateTime({
                 description: 'Initial Task',
-                startTime: '09:00',
+                startTime: '21:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
@@ -124,7 +125,8 @@ describe('User Confirmation Flows', () => {
                 description: 'Overlapping Task',
                 duration: 60
             };
-            const startTime = '09:30';
+            // Use 21:30 to overlap with Initial Task at 21:00-22:00
+            const startTime = '21:30';
             await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -138,16 +140,16 @@ describe('User Confirmation Flows', () => {
 
             expect(initialTaskDOM).toBeDefined();
             if (initialTaskDOM) {
-                // After reschedule, the initial task should be shifted to 10:30 AM - 11:30 AM
-                expect(initialTaskDOM.startTime12).toBe('10:30 AM');
-                expect(initialTaskDOM.endTime12).toBe('11:30 AM');
+                // After reschedule, the initial task should be shifted to 10:30 PM - 11:30 PM
+                expect(initialTaskDOM.startTime12).toBe('10:30 PM');
+                expect(initialTaskDOM.endTime12).toBe('11:30 PM');
             }
 
             expect(overlappingTaskDOM).toBeDefined();
             if (overlappingTaskDOM) {
-                // The overlapping task should take the 9:30 AM - 10:30 AM slot
-                expect(overlappingTaskDOM.startTime12).toBe('9:30 AM');
-                expect(overlappingTaskDOM.endTime12).toBe('10:30 AM');
+                // The overlapping task should take the 9:30 PM - 10:30 PM slot
+                expect(overlappingTaskDOM.startTime12).toBe('9:30 PM');
+                expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
@@ -156,14 +158,14 @@ describe('User Confirmation Flows', () => {
                 extractTimeFromDateTime(
                     new Date(savedTasks.find((t) => t.description === 'Initial Task').startDateTime)
                 )
-            ).toBe('10:30');
+            ).toBe('22:30');
             expect(
                 extractTimeFromDateTime(
                     new Date(
                         savedTasks.find((t) => t.description === 'Overlapping Task').endDateTime
                     )
                 )
-            ).toBe('10:30');
+            ).toBe('22:30');
         });
 
         test('User denies reschedule: overlapping task not added', async () => {
@@ -175,7 +177,8 @@ describe('User Confirmation Flows', () => {
                 description: 'Overlapping Task',
                 duration: 60
             };
-            const startTime = '09:30';
+            // Use 21:30 to overlap with Initial Task at 21:00-22:00
+            const startTime = '21:30';
             await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -192,10 +195,11 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Update Task with Reschedule Confirmation', () => {
+        // Use future times (21:00+) to avoid triggering adjust-running-task check
         const getTaskAData = () =>
             createTaskWithDateTime({
                 description: 'Task A',
-                startTime: '09:00',
+                startTime: '21:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
@@ -205,7 +209,7 @@ describe('User Confirmation Flows', () => {
         const getTaskBData = () =>
             createTaskWithDateTime({
                 description: 'Task B',
-                startTime: '10:00',
+                startTime: '22:00',
                 duration: 60,
                 status: 'incomplete',
                 editing: false,
@@ -220,6 +224,7 @@ describe('User Confirmation Flows', () => {
 
             document.body.innerHTML = '';
             clearLocalStorage();
+
             mockLoadTasksFromStorage.mockReturnValue([taskAData, taskBData]);
             await setupIntegrationTestEnvironment();
 
@@ -238,9 +243,10 @@ describe('User Confirmation Flows', () => {
             // skips the confirmation flow and instead shows an alert with the overlap reason.
             await setupInitialStateAndApp();
 
+            // Update Task A (21:00-22:00) to be 1h30m which would overlap Task B (22:00-23:00)
             await updateTaskDOM(0, {
                 description: 'Task A Updated',
-                startTime: '09:00',
+                startTime: '21:00',
                 durationHours: '1',
                 durationMinutes: '30'
             });
@@ -261,15 +267,15 @@ describe('User Confirmation Flows', () => {
             // Task A should remain unchanged
             expect(taskADOM).toBeDefined();
             if (taskADOM) {
-                expect(taskADOM.startTime12).toBe('9:00 AM');
-                expect(taskADOM.endTime12).toBe('10:00 AM');
+                expect(taskADOM.startTime12).toBe('9:00 PM');
+                expect(taskADOM.endTime12).toBe('10:00 PM');
             }
 
             // Task B should remain unchanged
             expect(taskBDOM).toBeDefined();
             if (taskBDOM) {
-                expect(taskBDOM.startTime12).toBe('10:00 AM');
-                expect(taskBDOM.endTime12).toBe('11:00 AM');
+                expect(taskBDOM.startTime12).toBe('10:00 PM');
+                expect(taskBDOM.endTime12).toBe('11:00 PM');
             }
 
             const editFormTaskA = getEditFormForTask(0);

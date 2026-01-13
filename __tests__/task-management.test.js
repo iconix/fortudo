@@ -19,6 +19,7 @@ import {
     confirmAddTaskAndReschedule,
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
+    adjustAndCompleteTask,
     getSuggestedStartTime
 } from '../public/js/task-manager.js';
 import { isValidTaskData } from '../public/js/task-validators.js';
@@ -370,24 +371,27 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('Sorted Tasks Caching', () => {
         test('should maintain sort order when accessing tasks multiple times', () => {
-            // Add tasks in non-sorted order
+            // Add tasks in non-sorted order (use _skipAdjustCheck to avoid adjust confirmation)
             addTask({
                 taskType: 'scheduled',
                 description: 'Task C',
                 startTime: '11:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             addTask({
                 taskType: 'scheduled',
                 description: 'Task A',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             addTask({
                 taskType: 'scheduled',
                 description: 'Task B',
                 startTime: '10:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
 
             const tasks1 = getTaskState().filter((t) => t.type === 'scheduled');
@@ -404,18 +408,20 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
 
         test('should update sort order when tasks are modified', () => {
-            // Add tasks
+            // Add tasks (use _skipAdjustCheck to avoid adjust confirmation)
             addTask({
                 taskType: 'scheduled',
                 description: 'Task A',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             addTask({
                 taskType: 'scheduled',
                 description: 'Task B',
                 startTime: '10:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
 
             let tasks = getTaskState().filter((t) => t.type === 'scheduled');
@@ -606,7 +612,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 taskType: 'scheduled',
                 description: 'Existing Task',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             }); // 09:00 - 10:00
             mockSaveTasks.mockClear();
 
@@ -614,7 +621,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 taskType: 'scheduled',
                 description: 'Overlapping Task',
                 startTime: '09:30',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true // Skip adjust check to test overlap behavior
             };
             const result = addTask(taskData);
 
@@ -966,19 +974,166 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
     });
 
+    describe('adjustAndCompleteTask', () => {
+        let task1, task2;
+        beforeEach(() => {
+            task1 = createTaskWithDateTime({
+                description: 'Running Task',
+                startTime: '09:00',
+                duration: 60, // 09:00 - 10:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            task2 = createTaskWithDateTime({
+                description: 'Later Task',
+                startTime: '10:30',
+                duration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([task1, task2]);
+            mockSaveTasks.mockClear();
+        });
+
+        test('truncates task end time and marks complete', () => {
+            // Truncate from 10:00 to 09:30
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('09:30', today);
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.wasExtended).toBe(false);
+            expect(result.newDuration).toBe(30);
+
+            const tasks = getTaskState();
+            const updatedTask = tasks.find((t) => t.id === task1.id);
+            expect(updatedTask.status).toBe('completed');
+            expect(updatedTask.duration).toBe(30);
+            expect(mockSaveTasks).toHaveBeenCalled();
+        });
+
+        test('extends task end time and marks complete', () => {
+            // Extend from 10:00 to 10:15
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('10:15', today);
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.wasExtended).toBe(true);
+            expect(result.newDuration).toBe(75); // 09:00 to 10:15 = 75 min
+
+            const tasks = getTaskState();
+            const updatedTask = tasks.find((t) => t.id === task1.id);
+            expect(updatedTask.status).toBe('completed');
+            expect(updatedTask.duration).toBe(75);
+        });
+
+        test('calculates new duration correctly', () => {
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('09:45', today);
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.newDuration).toBe(45); // 09:00 to 09:45 = 45 min
+        });
+
+        test('returns wasExtended=true when extending', () => {
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('11:00', today); // Beyond original 10:00
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.wasExtended).toBe(true);
+        });
+
+        test('returns wasExtended=false when truncating', () => {
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('09:15', today); // Before original 10:00
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.wasExtended).toBe(false);
+        });
+
+        test('returns error for non-existent task', () => {
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('09:30', today);
+
+            const result = adjustAndCompleteTask('nonexistent-id', newEndDateTime);
+
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Task not found');
+        });
+
+        test('returns error when new end is before start', () => {
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('08:30', today); // Before task start 09:00
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('New end time must be after start time');
+        });
+
+        test('clears editing flag when completing', () => {
+            // Set editing flag
+            task1.editing = true;
+            updateTaskState([task1, task2]);
+
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('09:30', today);
+
+            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            const tasks = getTaskState();
+            const updatedTask = tasks.find((t) => t.id === task1.id);
+            expect(updatedTask.editing).toBe(false);
+        });
+
+        test('returns error for unscheduled task', () => {
+            const unscheduledTask = {
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Test',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            updateTaskState([unscheduledTask]);
+
+            const today = extractDateFromDateTime(new Date());
+            const newEndDateTime = timeToDateTime('10:00', today);
+
+            const result = adjustAndCompleteTask('unsched-1', newEndDateTime);
+
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Only scheduled tasks can be adjusted');
+        });
+    });
+
     describe('deleteTask', () => {
         beforeEach(() => {
             addTask({
                 taskType: 'scheduled',
                 description: 'Task 1',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             addTask({
                 taskType: 'scheduled',
                 description: 'Task 2',
                 startTime: '10:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
         });
@@ -1007,7 +1162,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 taskType: 'scheduled',
                 description: 'Test Task',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
         });
@@ -1036,13 +1192,15 @@ describe('Task Management Functions (task-manager.js)', () => {
                 taskType: 'scheduled',
                 description: 'Task 1',
                 startTime: '09:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             addTask({
                 taskType: 'scheduled',
                 description: 'Task 2',
                 startTime: '10:00',
-                duration: 60
+                duration: 60,
+                _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
         });

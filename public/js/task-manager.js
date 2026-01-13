@@ -6,7 +6,8 @@ import {
     calculateEndDateTime,
     extractTimeFromDateTime,
     getTaskDates,
-    extractDateFromDateTime
+    extractDateFromDateTime,
+    convertTo12HourTime
 } from './utils.js';
 import { saveTasks } from './storage.js';
 
@@ -17,7 +18,8 @@ import {
     calculateReschedulePlan,
     validateReschedulePlan,
     generateLockedConflictMessage,
-    executeReschedule
+    executeReschedule,
+    findAdjustableTask
 } from './reschedule-engine.js';
 
 import { isValidTaskData, isScheduledTask } from './task-validators.js';
@@ -485,6 +487,53 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
             }
         }
 
+        // Check for adjustable task (incomplete task that started before new task)
+        // Only offer when new task starts at/before current time (not scheduling future)
+        // Note: Locked tasks ARE adjustable - lock protects start time, not end time
+        if (!taskData._skipAdjustCheck) {
+            const now = new Date();
+            const newTaskStart = new Date(taskObject.startDateTime);
+            const isAddingForNowOrPast = newTaskStart <= now;
+
+            if (isAddingForNowOrPast) {
+                const adjustableTask = findAdjustableTask(
+                    taskObject.startDateTime,
+                    allCurrentScheduledTasks
+                );
+
+                if (adjustableTask) {
+                    const newEndTime = taskObject.startDateTime;
+                    const newEndTime12 = convertTo12HourTime(
+                        extractTimeFromDateTime(new Date(newEndTime))
+                    );
+                    const taskStart12 = convertTo12HourTime(
+                        extractTimeFromDateTime(new Date(adjustableTask.startDateTime))
+                    );
+                    const taskEnd12 = convertTo12HourTime(
+                        extractTimeFromDateTime(new Date(adjustableTask.endDateTime))
+                    );
+
+                    // Determine if this is a truncate or extend operation
+                    const isExtend = new Date(newEndTime) > new Date(adjustableTask.endDateTime);
+
+                    return {
+                        success: false,
+                        requiresConfirmation: true,
+                        confirmationType: 'ADJUST_RUNNING_TASK',
+                        adjustableTask,
+                        newEndTime,
+                        isExtend,
+                        taskObjectToAdd: taskObject,
+                        reason:
+                            `"${adjustableTask.description}" is scheduled ${taskStart12} - ${taskEnd12}. ` +
+                            (isExtend
+                                ? `Extend it to ${newEndTime12} and mark complete, then start "${taskObject.description}"?`
+                                : `Complete it at ${newEndTime12} and start "${taskObject.description}"?`)
+                    };
+                }
+            }
+        }
+
         // Verify taskObject is still a valid scheduled task after potential resubmission
         if (!isScheduledTask(taskObject)) {
             logger.error('addTask: Invalid scheduled task after resubmission.', taskObject);
@@ -894,6 +943,53 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
     finalizeTaskModification();
 
     return { success: true, task };
+}
+
+/**
+ * Adjust a task's end time (truncate or extend) and mark it complete
+ * Used when adding a new task that starts after an incomplete task began
+ * @param {string} taskId - ID of task to adjust
+ * @param {string} newEndDateTime - ISO datetime for new end time
+ * @returns {Object} {success, task, originalEndTime, newDuration, wasExtended}
+ */
+export function adjustAndCompleteTask(taskId, newEndDateTime) {
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+        return { success: false, reason: 'Task not found' };
+    }
+
+    const task = tasks[taskIndex];
+    if (task.type !== 'scheduled') {
+        return { success: false, reason: 'Only scheduled tasks can be adjusted' };
+    }
+
+    const originalEndTime = task.endDateTime;
+    const wasExtended = new Date(newEndDateTime) > new Date(originalEndTime);
+
+    // Calculate new duration
+    const startTime = new Date(task.startDateTime);
+    const endTime = new Date(newEndDateTime);
+    const newDuration = Math.round((endTime - startTime) / 60000); // minutes
+
+    if (newDuration <= 0) {
+        return { success: false, reason: 'New end time must be after start time' };
+    }
+
+    // Update task
+    task.endDateTime = newEndDateTime;
+    task.duration = newDuration;
+    task.status = 'completed';
+    task.editing = false;
+
+    finalizeTaskModification();
+
+    return {
+        success: true,
+        task,
+        originalEndTime,
+        newDuration,
+        wasExtended
+    };
 }
 
 export function editTask(index) {

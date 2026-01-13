@@ -58,6 +58,40 @@ export function checkOverlap(taskToCompare, existingTasks) {
 }
 
 // ============================================================================
+// ADJUSTABLE TASK DETECTION
+// ============================================================================
+
+/**
+ * Find incomplete task that started before the given time
+ * Returns the earliest one (first start time) - this is the "current" task
+ * Used to offer truncate/extend completion when adding a new task
+ * @param {string} startDateTime - ISO datetime string for new task
+ * @param {Array} scheduledTasks - Array of scheduled tasks
+ * @returns {Object|null} The adjustable task, or null if none found
+ */
+export function findAdjustableTask(startDateTime, scheduledTasks) {
+    const newStart = new Date(startDateTime);
+    let earliestMatch = null;
+    let earliestMatchStart = null;
+
+    for (const task of scheduledTasks) {
+        if (task.type !== 'scheduled' || task.status === 'completed') continue;
+
+        const taskStart = new Date(task.startDateTime);
+
+        // Task started before new task
+        if (taskStart < newStart) {
+            // Keep the earliest one (first start time) - that's the "current" task
+            if (!earliestMatch || taskStart < earliestMatchStart) {
+                earliestMatch = task;
+                earliestMatchStart = taskStart;
+            }
+        }
+    }
+    return earliestMatch;
+}
+
+// ============================================================================
 // LOCKED TASK HANDLING
 // ============================================================================
 

@@ -11,6 +11,7 @@ import {
     deleteUnscheduledTask,
     completeTask,
     confirmCompleteLate,
+    adjustAndCompleteTask,
     editTask,
     cancelEdit,
     deleteAllTasks,
@@ -644,6 +645,44 @@ async function handleAddTaskProcess(
     };
 
     let operationResult = addTask(initialTaskData);
+
+    // Handle adjust running task confirmation (truncate or extend)
+    if (
+        operationResult.requiresConfirmation &&
+        operationResult.confirmationType === 'ADJUST_RUNNING_TASK'
+    ) {
+        const buttonLabel = operationResult.isExtend
+            ? 'Yes, extend & complete'
+            : 'Yes, complete it';
+        const userConfirmed = await askConfirmation(
+            operationResult.reason,
+            { ok: buttonLabel, cancel: 'No, reschedule instead' },
+            theme
+        );
+
+        if (userConfirmed) {
+            // Adjust (truncate or extend) the running task and mark complete
+            const adjustResult = adjustAndCompleteTask(
+                operationResult.adjustableTask.id,
+                operationResult.newEndTime
+            );
+
+            if (adjustResult.success) {
+                // Trigger confetti for the completed task
+                triggerConfettiAnimation(operationResult.adjustableTask.id);
+
+                // Now add the new task (resubmit to skip adjust check)
+                operationResult = addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+            } else {
+                showAlert(`Could not complete task: ${adjustResult.reason}`, theme);
+                refreshTaskLists();
+                return;
+            }
+        } else {
+            // User chose "reschedule instead" - resubmit to trigger normal flow
+            operationResult = addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+        }
+    }
 
     // First confirmation stage: locked task shift
     if (
