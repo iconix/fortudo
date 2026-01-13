@@ -16,22 +16,22 @@ const PRIORITY_CONFIG = {
         border: 'border-rose-400',
         bg: 'bg-rose-400 bg-opacity-20',
         text: 'text-rose-300',
-        icon: 'fa-arrow-up',
+        icon: 'fa-solid fa-arrow-up',
         focusRing: 'rose-400'
     },
     medium: {
-        border: 'border-indigo-400',
-        bg: 'bg-indigo-400 bg-opacity-20',
-        text: 'text-indigo-300',
-        icon: 'fa-equals',
-        focusRing: 'indigo-300'
+        border: 'border-amber-400',
+        bg: 'bg-amber-400 bg-opacity-20',
+        text: 'text-amber-300',
+        icon: 'fa-solid fa-equals',
+        focusRing: 'amber-300'
     },
     low: {
-        border: 'border-pink-400',
-        bg: 'bg-pink-400 bg-opacity-20',
-        text: 'text-pink-300',
-        icon: 'fa-arrow-down',
-        focusRing: 'pink-400'
+        border: 'border-emerald-400',
+        bg: 'bg-emerald-400 bg-opacity-20',
+        text: 'text-emerald-300',
+        icon: 'fa-solid fa-arrow-down',
+        focusRing: 'emerald-400'
     }
 };
 

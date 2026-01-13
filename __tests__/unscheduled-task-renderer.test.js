@@ -39,31 +39,31 @@ describe('Unscheduled Task Renderer Tests', () => {
             expect(classes.border).toBe('border-rose-400');
             expect(classes.bg).toBe('bg-rose-400 bg-opacity-20');
             expect(classes.text).toBe('text-rose-300');
-            expect(classes.icon).toBe('fa-arrow-up');
+            expect(classes.icon).toBe('fa-solid fa-arrow-up');
             expect(classes.focusRing).toBe('rose-400');
         });
 
         test('returns medium priority classes', () => {
             const classes = getPriorityClasses('medium');
-            expect(classes.border).toBe('border-indigo-400');
-            expect(classes.bg).toBe('bg-indigo-400 bg-opacity-20');
-            expect(classes.text).toBe('text-indigo-300');
-            expect(classes.icon).toBe('fa-equals');
-            expect(classes.focusRing).toBe('indigo-300');
+            expect(classes.border).toBe('border-amber-400');
+            expect(classes.bg).toBe('bg-amber-400 bg-opacity-20');
+            expect(classes.text).toBe('text-amber-300');
+            expect(classes.icon).toBe('fa-solid fa-equals');
+            expect(classes.focusRing).toBe('amber-300');
         });
 
         test('returns low priority classes', () => {
             const classes = getPriorityClasses('low');
-            expect(classes.border).toBe('border-pink-400');
-            expect(classes.bg).toBe('bg-pink-400 bg-opacity-20');
-            expect(classes.text).toBe('text-pink-300');
-            expect(classes.icon).toBe('fa-arrow-down');
-            expect(classes.focusRing).toBe('pink-400');
+            expect(classes.border).toBe('border-emerald-400');
+            expect(classes.bg).toBe('bg-emerald-400 bg-opacity-20');
+            expect(classes.text).toBe('text-emerald-300');
+            expect(classes.icon).toBe('fa-solid fa-arrow-down');
+            expect(classes.focusRing).toBe('emerald-400');
         });
 
         test('defaults to medium for unknown priority', () => {
             const classes = getPriorityClasses('unknown');
-            expect(classes.border).toBe('border-indigo-400');
+            expect(classes.border).toBe('border-amber-400');
         });
 
         test('includes checkbox class', () => {
