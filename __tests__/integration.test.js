@@ -237,11 +237,11 @@ describe('User Confirmation Flows', () => {
             mockSaveTasks.mockClear();
         };
 
-        test('Update causing overlap: shows alert and cancels edit (no confirmation flow)', async () => {
-            // Note: Due to a mismatch between updateTask returning 'updatedTaskObject' and
-            // handleRescheduleConfirmation checking for 'taskData', the current behavior
-            // skips the confirmation flow and instead shows an alert with the overlap reason.
+        test('User confirms update reschedule: task updated and other tasks shifted', async () => {
             await setupInitialStateAndApp();
+
+            // Confirm the reschedule
+            confirmSpy.mockReturnValueOnce(true);
 
             // Update Task A (21:00-22:00) to be 1h30m which would overlap Task B (22:00-23:00)
             await updateTaskDOM(0, {
@@ -251,13 +251,53 @@ describe('User Confirmation Flows', () => {
                 durationMinutes: '30'
             });
 
-            // Current behavior: no confirmation is shown, just an alert with the reason
-            expect(confirmSpy).not.toHaveBeenCalled();
-            expect(alertSpy).toHaveBeenCalledWith(
-                'Alert: Updating this task may overlap. Reschedule others?'
-            );
+            // Confirmation should be shown
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain('Reschedule others?');
 
-            // Task should NOT be updated since there's no confirmation flow
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const taskADOM = tasks.find((t) => t.description === 'Task A Updated');
+            const taskBDOM = tasks.find((t) => t.description === 'Task B');
+
+            // Task A should be updated to 21:00-22:30
+            expect(taskADOM).toBeDefined();
+            if (taskADOM) {
+                expect(taskADOM.startTime12).toBe('9:00 PM');
+                expect(taskADOM.endTime12).toBe('10:30 PM');
+            }
+
+            // Task B should be rescheduled to 22:30-23:30
+            expect(taskBDOM).toBeDefined();
+            if (taskBDOM) {
+                expect(taskBDOM.startTime12).toBe('10:30 PM');
+                expect(taskBDOM.endTime12).toBe('11:30 PM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalled();
+        });
+
+        test('User denies update reschedule: edit cancelled, tasks unchanged', async () => {
+            await setupInitialStateAndApp();
+
+            // Deny the reschedule
+            confirmSpy.mockReturnValueOnce(false);
+
+            // Update Task A (21:00-22:00) to be 1h30m which would overlap Task B (22:00-23:00)
+            await updateTaskDOM(0, {
+                description: 'Task A Updated',
+                startTime: '21:00',
+                durationHours: '1',
+                durationMinutes: '30'
+            });
+
+            // Confirmation should be shown
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+            // Alert shown for cancellation
+            expect(alertSpy).toHaveBeenCalledWith('Alert: Task update cancelled to avoid overlap.');
+
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
 
@@ -277,9 +317,6 @@ describe('User Confirmation Flows', () => {
                 expect(taskBDOM.startTime12).toBe('10:00 PM');
                 expect(taskBDOM.endTime12).toBe('11:00 PM');
             }
-
-            const editFormTaskA = getEditFormForTask(0);
-            expect(editFormTaskA).toBeNull(); // Edit form should be removed when edit is cancelled
 
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });

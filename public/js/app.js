@@ -612,7 +612,30 @@ function getThemeForTaskId(taskId) {
 }
 
 async function handleRescheduleConfirmation(opResult, confirmCallback, cancelCallback) {
-    if (opResult.requiresConfirmation && opResult.taskData) {
+    // Handle UPDATE confirmation (taskIndex + updatedTaskObject)
+    if (
+        opResult.requiresConfirmation &&
+        opResult.confirmationType === 'RESCHEDULE_UPDATE' &&
+        opResult.taskIndex !== undefined &&
+        opResult.updatedTaskObject
+    ) {
+        const userConfirmed = await askConfirmation(
+            opResult.reason,
+            { ok: 'Yes, reschedule', cancel: 'No, cancel' },
+            'teal'
+        );
+        if (userConfirmed) {
+            confirmCallback({
+                taskIndex: opResult.taskIndex,
+                updatedTaskObject: opResult.updatedTaskObject
+            });
+            updateStartTimeField(getSuggestedStartTime(), true);
+        } else {
+            showAlert('Task update cancelled to avoid overlap.', 'teal');
+            if (cancelCallback) cancelCallback();
+        }
+    } else if (opResult.requiresConfirmation && opResult.taskData) {
+        // Legacy pattern for other confirmation types
         const userConfirmed = await askConfirmation(opResult.reason, undefined, 'teal');
         if (userConfirmed) {
             confirmCallback(opResult.taskData, opResult.originalIndex, opResult.conflictingTask);
