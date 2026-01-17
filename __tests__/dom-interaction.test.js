@@ -952,5 +952,52 @@ describe('DOM Handler Interaction Tests', () => {
             expect(timeInputs.classList.contains('hidden')).toBe(false);
             expect(priorityInput.classList.contains('hidden')).toBe(true);
         });
+
+        test('switching to unscheduled removes required attribute from start-time input', () => {
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            expect(startTimeInput.hasAttribute('required')).toBe(true); // Initially required
+
+            const unscheduledRadio = document.getElementById('unscheduled');
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Required should be removed so hidden input doesn't block form submission
+            expect(startTimeInput.hasAttribute('required')).toBe(false);
+        });
+
+        test('switching back to scheduled restores required attribute on start-time input', () => {
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+
+            // Switch to unscheduled first
+            const unscheduledRadio = document.getElementById('unscheduled');
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(startTimeInput.hasAttribute('required')).toBe(false);
+
+            // Switch back to scheduled
+            const scheduledRadio = document.getElementById('scheduled');
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Required should be restored
+            expect(startTimeInput.hasAttribute('required')).toBe(true);
+        });
+
+        test('can submit form multiple times in unscheduled mode without validation error', () => {
+            // This test ensures the fix for the "invalid form control not focusable" error
+            const unscheduledRadio = document.getElementById('unscheduled');
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const taskForm = document.getElementById('task-form');
+            const descriptionInput = taskForm.querySelector('input[name="description"]');
+            descriptionInput.value = 'Test task';
+
+            // Simulate multiple form submissions - should not throw validation errors
+            expect(() => {
+                taskForm.dispatchEvent(new Event('submit'));
+                taskForm.dispatchEvent(new Event('submit'));
+            }).not.toThrow();
+        });
     });
 });

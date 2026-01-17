@@ -69,6 +69,7 @@ export function initializeTaskTypeToggle() {
     const priorityInput = document.getElementById('priority-input');
     const addTaskButton = document.querySelector('#task-form button[type="submit"]');
     const descriptionInput = document.querySelector('input[name="description"]');
+    const startTimeInput = document.querySelector('input[name="start-time"]');
 
     if (
         scheduledRadio instanceof HTMLInputElement &&
@@ -82,6 +83,8 @@ export function initializeTaskTypeToggle() {
             if (scheduledRadio.checked) {
                 timeInputs.classList.remove('hidden');
                 priorityInput.classList.add('hidden');
+                // Re-enable required on start-time when showing scheduled inputs
+                if (startTimeInput) startTimeInput.setAttribute('required', '');
                 addTaskButton.className =
                     'shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
                 descriptionInput.className =
@@ -89,6 +92,8 @@ export function initializeTaskTypeToggle() {
             } else {
                 timeInputs.classList.add('hidden');
                 priorityInput.classList.remove('hidden');
+                // Remove required from start-time when hiding scheduled inputs
+                if (startTimeInput) startTimeInput.removeAttribute('required');
                 addTaskButton.className =
                     'shrink-0 bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
                 descriptionInput.className =
