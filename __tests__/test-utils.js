@@ -21,17 +21,75 @@ import {
  */
 function setupDOM() {
     document.body.innerHTML = `
-    <div id="task-list"></div>
-    <form id="task-form">
-      <input type="text" name="description" required>
-      <input type="time" name="start-time" required>
-      <input type="number" name="duration-hours" min="0">
-      <input type="number" name="duration-minutes" min="0" max="59">
-      <button type="submit">Add</button>
-    </form>
-    <div id="current-time"></div>
-    <div id="current-date"></div>
-    <button id="delete-all">Clear Tasks</button>
+    <div class="container">
+      <div class="header">
+        <div id="current-time"></div>
+        <div id="current-date"></div>
+      </div>
+      <form id="task-form">
+        <div class="form-group">
+          <input type="text" name="description" placeholder="Task description" required />
+        </div>
+        <div class="task-type-toggle">
+          <input type="radio" id="scheduled" name="task-type" value="scheduled" checked />
+          <label for="scheduled">Scheduled</label>
+          <input type="radio" id="unscheduled" name="task-type" value="unscheduled" />
+          <label for="unscheduled">Unscheduled</label>
+        </div>
+        <div id="time-inputs">
+          <div class="form-group">
+            <input type="time" name="start-time" required />
+          </div>
+          <div class="form-group">
+            <input type="number" name="duration-hours" min="0" value="1" />
+            <input type="number" name="duration-minutes" min="0" max="59" value="0" />
+          </div>
+        </div>
+        <div id="priority-input" style="display: none;">
+          <select name="priority">
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+          <input type="number" name="est-duration" placeholder="Est. minutes" />
+        </div>
+        <button type="submit">Add Task</button>
+      </form>
+      <div id="scheduled-task-list" class="task-list"></div>
+      <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
+      <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
+      <div id="clear-tasks-dropdown" style="display: none;">
+        <button id="clear-scheduled-tasks-option">Clear Scheduled</button>
+        <button id="clear-completed-tasks-option">Clear Completed</button>
+      </div>
+
+      <!-- Schedule Modal for unscheduled tasks -->
+      <div id="schedule-modal" class="hidden">
+        <div class="modal-content">
+          <h2>Schedule Task</h2>
+          <p>Task: <span id="schedule-modal-task-name"></span></p>
+          <p>Duration: <span id="schedule-modal-duration"></span></p>
+          <form id="schedule-modal-form">
+            <input type="time" name="modal-start-time" required />
+            <input type="number" name="modal-duration-hours" min="0" value="0" />
+            <input type="number" name="modal-duration-minutes" min="0" max="59" value="0" />
+            <button type="submit">Schedule</button>
+            <button type="button" id="cancel-schedule-modal">Cancel</button>
+          </form>
+          <button id="close-schedule-modal">Close</button>
+        </div>
+      </div>
+
+      <!-- Custom Confirm Modal - intentionally mismatched button IDs to trigger window.confirm fallback in tests -->
+      <div id="custom-confirm-modal" class="hidden">
+        <div class="modal-content">
+          <h2 id="custom-confirm-title"></h2>
+          <p id="custom-confirm-message"></p>
+          <button id="custom-confirm-ok">OK</button>
+          <button id="custom-confirm-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -116,13 +174,18 @@ async function addTaskDOM(description, startTime, durationHours = '0', durationM
 }
 
 function getRenderedTasksDOM() {
-    // The actual app renders tasks as div elements with id="view-task-{index}" and form elements with id="edit-task-{index}"
-    const taskItems = document.querySelectorAll('#task-list > div, #task-list > form');
-    return Array.from(taskItems).map((item, _index) => {
-        // Check if this is an edit form
-        if (item.tagName === 'FORM' && item.id.startsWith('edit-task-')) {
-            const descInput = item.querySelector('input[name="description"]');
+    // The refactored app now uses data-task-id instead of index-based IDs
+    // Tasks are in #scheduled-task-list, structured as divs with data-task-id attribute
+    const taskItems = document.querySelectorAll('#scheduled-task-list > div[data-task-id]');
+    return Array.from(taskItems).map((item) => {
+        const taskId = item.getAttribute('data-task-id');
+
+        // Check if this task is in edit mode (has edit form visible)
+        const editForm = item.querySelector('form.edit-task-form');
+        if (editForm && editForm.style.display !== 'none') {
+            const descInput = editForm.querySelector('input[name="description"]');
             return {
+                id: taskId,
                 description:
                     descInput && descInput instanceof HTMLInputElement ? descInput.value : '',
                 startTime12: null, // Edit forms don't show formatted time
@@ -132,60 +195,79 @@ function getRenderedTasksDOM() {
             };
         }
 
-        // This is a view task div
-        // The structure is: div#view-task-X > div.flex.items-center.space-x-4 > div (third child containing text) > div (description), div (time)
-        const contentContainer = item.querySelector('.flex.items-center.space-x-4');
-        if (!contentContainer) {
-            return {
-                description: '',
-                startTime12: null,
-                endTime12: null,
-                isCompleted: false,
-                isEditing: false
-            };
-        }
-
-        // Find the text container (third child after label and input)
-        const textContainer = contentContainer.children[2]; // label, input, text div
-        const checkbox = item.querySelector('input[type="checkbox"]');
+        // This is a view mode task
+        // Extract task info from the rendered HTML
+        // The description is in a div with font-medium class that contains the task description
+        const descriptionElement = item.querySelector('.font-medium:not(.celebration-container *)');
+        const checkbox = item.querySelector('input[type="checkbox"], .checkbox');
 
         let description = '';
         let startTime12 = null;
         let endTime12 = null;
 
-        if (textContainer && textContainer.children.length >= 2) {
-            const descDiv = textContainer.children[0];
-            const timeDiv = textContainer.children[1];
+        if (descriptionElement) {
+            description = descriptionElement.textContent?.trim() || '';
 
-            if (descDiv && descDiv.textContent) {
-                description = descDiv.textContent.trim();
+            // Remove "locked" badge text if present
+            description = description.replace(/\s*🔒\s*Locked\s*/g, '').trim();
+        }
+
+        // Extract times from format like "9:00 AM – 10:00 AM (1h)" using ndash
+        const allText = item.textContent || '';
+        const timeMatch = allText.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*[–-]\s*(\d{1,2}:\d{2}\s*[AP]M)/);
+        if (timeMatch) {
+            startTime12 = timeMatch[1];
+            endTime12 = timeMatch[2];
+        }
+
+        if (!description) {
+            // Fallback: extract from text content, skipping celebration emojis
+            const textContent = item.textContent || '';
+            const celebrationEmojis = ['🎉', '🌟', '✨', '🎊', '🏆', '💫', '💪🏾'];
+            const isCelebrationLine = (line) =>
+                celebrationEmojis.some((emoji) => line.includes(emoji)) &&
+                line.replace(/\s/g, '').length < 15;
+            const lines = textContent
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l && !isCelebrationLine(l));
+            if (lines.length > 0) {
+                // First substantial line is usually the description
+                description =
+                    lines.find(
+                        (l) =>
+                            l &&
+                            !l.match(/^\d{1,2}:\d{2}\s*[AP]M/) &&
+                            l !== 'Edit' &&
+                            l !== 'Delete'
+                    ) || '';
             }
+        }
 
-            if (timeDiv && timeDiv.textContent) {
-                // Extract time from format like "9:00 AM – 10:00 AM (1 h)"
-                const timeMatch = timeDiv.textContent.match(
-                    /(\d{1,2}:\d{2} (?:AM|PM))\s*[–-]\s*(\d{1,2}:\d{2} (?:AM|PM))/
-                );
-                if (timeMatch) {
-                    startTime12 = timeMatch[1];
-                    endTime12 = timeMatch[2];
-                }
+        let isCompleted = false;
+        if (checkbox) {
+            if (checkbox instanceof HTMLInputElement) {
+                isCompleted = checkbox.checked;
+            } else {
+                // It's a div.checkbox, check for fa-check-square icon
+                const icon = checkbox.querySelector('i');
+                isCompleted = icon?.classList.contains('fa-check-square') || false;
             }
         }
 
         return {
+            id: taskId,
             description,
             startTime12,
             endTime12,
-            isCompleted:
-                checkbox && checkbox instanceof HTMLInputElement ? checkbox.checked : false,
+            isCompleted,
             isEditing: false
         };
     });
 }
 
 async function updateTaskDOM(taskIndex, data) {
-    const editButtons = document.querySelectorAll('#task-list .btn-edit');
+    const editButtons = document.querySelectorAll('#scheduled-task-list .btn-edit');
     if (taskIndex < 0 || taskIndex >= editButtons.length)
         throw new Error(`Edit button for task index ${taskIndex} not found or out of bounds.`);
     const editButton = editButtons[taskIndex];
@@ -194,7 +276,8 @@ async function updateTaskDOM(taskIndex, data) {
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const editForm = document.getElementById(`edit-task-${taskIndex}`);
+    // Find edit form by data-task-index attribute instead of ID
+    const editForm = document.querySelector(`form[data-task-index="${taskIndex}"]`);
     if (!editForm) throw new Error(`Edit form for task ${taskIndex} not found.`);
 
     if (data.description !== undefined) {
@@ -230,8 +313,8 @@ function setCurrentTimeInDOM(time12h) {
 }
 
 async function clickCompleteCheckbox(taskIndex) {
-    // The actual app uses label elements with .checkbox class that trigger completion
-    const checkboxLabels = document.querySelectorAll('#task-list .checkbox');
+    // The actual app uses div.checkbox elements that trigger completion
+    const checkboxLabels = document.querySelectorAll('#scheduled-task-list .checkbox');
     if (taskIndex < 0 || taskIndex >= checkboxLabels.length)
         throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
     const checkboxLabel = checkboxLabels[taskIndex];
@@ -251,7 +334,7 @@ async function clickDeleteAllButton() {
 }
 
 function getEditFormForTask(index) {
-    return document.getElementById(`edit-task-${index}`);
+    return document.querySelector(`form[data-task-index="${index}"]`);
 }
 
 /**
@@ -293,6 +376,8 @@ function createTaskWithDateTime({
     status = 'incomplete',
     editing = false,
     confirmingDelete = false,
+    locked = false,
+    id = null,
     date
 }) {
     if (!date) {
@@ -303,13 +388,16 @@ function createTaskWithDateTime({
     const endDateTime = calculateEndDateTime(startDateTime, duration);
 
     return {
+        id: id || `test-task-${Date.now()}-${Math.random()}`,
+        type: 'scheduled',
         description,
         startDateTime,
         endDateTime,
         duration,
         status,
         editing,
-        confirmingDelete
+        confirmingDelete,
+        locked
     };
 }
 
@@ -326,3 +414,12 @@ export {
     getEditFormForTask,
     setCurrentTimeInDOM
 };
+
+// Dummy test to satisfy Jest's requirement that test files contain at least one test
+describe('test-utils', () => {
+    it('exports utility functions', () => {
+        expect(typeof setupIntegrationTestEnvironment).toBe('function');
+        expect(typeof setupDOM).toBe('function');
+        expect(typeof setupMockLocalStorage).toBe('function');
+    });
+});

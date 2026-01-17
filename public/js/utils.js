@@ -73,26 +73,76 @@ export function calculateMinutes(time24Hour) {
 }
 
 /**
- * Format minutes as hours and minutes string
- * @param {number} minutes - Total minutes
- * @returns {string} - Formatted time string
+ * Format minutes as hours and minutes string, or return as an object.
+ * @param {number} minutesInput - Total minutes.
+ * @param {boolean} [returnAsObject=false] - If true, returns {hours, minutes, text} object.
+ * @returns {string | {hours: number, minutes: number, text: string}} - Formatted time string or object.
  */
-export function calculateHoursAndMinutes(minutes) {
+export function calculateHoursAndMinutes(minutesInput, returnAsObject = false) {
+    const totalMinutes = Number(minutesInput);
     let timeStr = '';
 
-    const hours = Math.floor(minutes / 60);
+    if (isNaN(totalMinutes)) {
+        logger.warn('calculateHoursAndMinutes received NaN:', minutesInput);
+        timeStr = '0m';
+        if (returnAsObject) {
+            return { hours: 0, minutes: 0, text: timeStr };
+        }
+        return timeStr;
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+
     if (hours > 0) {
         timeStr += `${hours}h `;
     }
-
-    const remMinutes = minutes % 60;
-    if (remMinutes > 0) {
-        timeStr += `${remMinutes}m`;
+    if (remainingMinutes > 0) {
+        timeStr += `${remainingMinutes}m`;
     } else if (timeStr === '') {
         timeStr = '0m';
     }
+    timeStr = timeStr.trim();
 
-    return timeStr.trim();
+    if (returnAsObject) {
+        return { hours, minutes: remainingMinutes, text: timeStr };
+    }
+
+    return timeStr;
+}
+
+/**
+ * Parse and validate duration from hours and minutes inputs
+ * @param {number|string} hours - Hours value
+ * @param {number|string} minutes - Minutes value
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.allowZero=false] - Whether to allow zero duration
+ * @returns {{valid: boolean, duration: number, error?: string}}
+ */
+export function parseDuration(hours, minutes, options = {}) {
+    const { allowZero = false } = options;
+    const h = parseInt(hours) || 0;
+    const m = parseInt(minutes) || 0;
+
+    if (h < 0 || m < 0 || m > 59) {
+        return {
+            valid: false,
+            duration: 0,
+            error: 'Please enter valid numbers for duration (HH >= 0, 0 <= MM <= 59).'
+        };
+    }
+
+    const duration = h * 60 + m;
+
+    if (!allowZero && duration <= 0) {
+        return {
+            valid: false,
+            duration: 0,
+            error: 'Duration must be greater than 0.'
+        };
+    }
+
+    return { valid: true, duration };
 }
 
 /**
@@ -165,7 +215,9 @@ export function getCurrentTimeRounded(now = new Date()) {
     roundedDate.setSeconds(0, 0);
     roundedDate.setMinutes(minutes); // note: this automatically handles >= 60
 
-    return roundedDate.toTimeString().substring(0, 5);
+    const result = roundedDate.toTimeString().substring(0, 5);
+    logger.debug('getCurrentTimeRounded returns:', result);
+    return result;
 }
 
 /**
@@ -173,12 +225,35 @@ export function getCurrentTimeRounded(now = new Date()) {
  */
 export const logger = {
     /**
+     * Get caller file name and line number
+     * @private
+     * @returns {string} - Formatted caller info
+     */
+    _getCallerInfo() {
+        try {
+            const error = new Error();
+            if (!error.stack) return '[unknown]';
+            const stack = error.stack.split('\n');
+            // Get the caller's info (index 3 since 0=Error, 1=_getCallerInfo, 2=log method)
+            const caller = (stack[3] || '').match(/(?:at\s+)(?:.*\s+\()?(?:(.+?):(\d+):(\d+))/);
+            if (!caller) return '[unknown]';
+            // Extract just the filename from the full path
+            const fileName = caller[1].split('/').pop();
+            const lineNumber = caller[2];
+            return `[${fileName}:${lineNumber}]`;
+        } catch (err) {
+            return '[unknown]';
+        }
+    },
+
+    /**
      * Log an error message
      * @param {string} message - The error message to log
      * @param {...*} args - Additional arguments to log
      */
     error: (message, ...args) => {
-        console.error(`[💪🏾 ERROR] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.error(`[💪🏾 ERROR] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -187,7 +262,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     warn: (message, ...args) => {
-        console.warn(`[💪🏾 WARNING] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.warn(`[💪🏾 WARNING] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -196,7 +272,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     info: (message, ...args) => {
-        console.info(`[💪🏾 INFO] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.info(`[💪🏾 INFO] ${callerInfo} ${message}`, ...args);
     },
 
     /**
@@ -205,7 +282,8 @@ export const logger = {
      * @param {...*} args - Additional arguments to log
      */
     debug: (message, ...args) => {
-        console.debug(`[💪🏾 DEBUG] ${message}`, ...args);
+        const callerInfo = logger._getCallerInfo();
+        console.debug(`[💪🏾 DEBUG] ${callerInfo} ${message}`, ...args);
     }
 };
 
@@ -216,6 +294,23 @@ export const logger = {
  * @returns {boolean} - True if the task is running late
  */
 export function isTaskRunningLate(task, now = new Date()) {
-    // A task is late if the current time 'now' is past its calculated 'endDate'.
     return now > new Date(task.endDateTime);
+}
+
+/**
+ * Get the theme color for a task type
+ * @param {Object|null} task - The task object (or null)
+ * @returns {'teal'|'indigo'} - Theme color name
+ */
+export function getThemeForTask(task) {
+    return task?.type === 'scheduled' ? 'teal' : 'indigo';
+}
+
+/**
+ * Get the theme color from a task type string
+ * @param {'scheduled'|'unscheduled'|string} taskType - The task type
+ * @returns {'teal'|'indigo'} - Theme color name
+ */
+export function getThemeForTaskType(taskType) {
+    return taskType === 'scheduled' ? 'teal' : 'indigo';
 }

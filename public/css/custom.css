@@ -1,0 +1,189 @@
+.task-card {
+    transition: all 0.2s ease;
+}
+.task-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+.drag-handle {
+    cursor: grab;
+}
+.glassmorphism {
+    background: rgba(31, 41, 55, 0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+@keyframes pulse-green {
+    0%, 100% { color: rgb(13, 148, 136); }  /* teal-600 */
+    50% { color: rgb(20, 184, 166); }       /* teal-500 */
+}
+.pulse-animation {
+    animation: pulse-green 2s infinite;
+}
+@keyframes pulse-indigo {
+    0%, 100% { color: rgb(165, 180, 252); }  /* indigo-300 */
+    50% { color: rgb(129, 140, 248); }       /* indigo-400 */
+}
+.pulse-animation-indigo {
+    animation: pulse-indigo 2s infinite;
+}
+.priority-badge {
+    position: relative;
+    overflow: hidden;
+}
+.priority-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2));
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+}
+
+/* === Celebration Animation === */
+.celebration-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.celebration-emoji {
+    position: absolute;
+    font-size: 1.75rem;
+    opacity: 0;
+    bottom: 25%;
+}
+
+/* First row of emojis */
+.celebration-emoji:nth-child(1) {
+    left: 15%;
+    animation: emoji-float-left 2.5s ease-out forwards;
+}
+
+.celebration-emoji:nth-child(2) {
+    left: 50%;
+    animation: emoji-float-up 2.5s ease-out forwards;
+}
+
+.celebration-emoji:nth-child(3) {
+    left: 85%;
+    animation: emoji-float-right 2.5s ease-out forwards;
+}
+
+/* Second row of emojis with delay */
+.celebration-emoji:nth-child(4) {
+    left: 30%;
+    animation: emoji-float-left 2.5s ease-out 0.2s forwards;
+}
+
+.celebration-emoji:nth-child(5) {
+    left: 70%;
+    animation: emoji-float-right 2.5s ease-out 0.2s forwards;
+}
+
+/* Last emoji with extra delay */
+.celebration-emoji:nth-child(6) {
+    left: 50%;
+    animation: emoji-float-special 2.5s ease-out 0.4s forwards;
+}
+
+/* Signature flexed biceps emoji */
+.celebration-emoji:nth-child(7) {
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    animation: emoji-float-flex 2.5s cubic-bezier(0.25, 0.1, 0.25, 1) 0.6s forwards;
+}
+
+@keyframes emoji-float-left {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(-15px, -20px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-45px, -100px) scale(1);
+    }
+}
+
+@keyframes emoji-float-up {
+    0% {
+        opacity: 0;
+        transform: translateY(0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translateY(-30px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-120px) scale(1);
+    }
+}
+
+@keyframes emoji-float-right {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(15px, -20px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(45px, -100px) scale(1);
+    }
+}
+
+@keyframes emoji-float-special {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.5);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(0, -40px) scale(1.3);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(0, -140px) rotate(360deg) scale(1);
+    }
+}
+
+@keyframes emoji-float-flex {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.1);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.5);
+    }
+    60% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(2);
+    }
+    80% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(4);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(8) rotate(15deg);
+        filter: blur(10px);
+    }
+}

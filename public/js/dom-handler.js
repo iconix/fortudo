@@ -1,42 +1,37 @@
+import { logger, getCurrentTimeRounded } from './utils.js';
+import { getTaskState } from './task-manager.js';
+import { getTaskFormElement } from './form-utils.js';
+
+// Import from new modules
 import {
-    calculateMinutes,
-    calculateHoursAndMinutes,
-    convertTo12HourTime,
-    logger,
-    isTaskRunningLate,
-    getCurrentTimeRounded,
-    extractTimeFromDateTime
-} from './utils.js';
+    renderTasks as renderScheduledTasks,
+    getScheduledTaskListElement
+} from './scheduled-task-renderer.js';
+
+import {
+    renderUnscheduledTasks as renderUnscheduledTasksBase,
+    getUnscheduledTaskListElement
+} from './unscheduled-task-renderer.js';
 
 // Global event callbacks storage for event delegation
-let globalEventCallbacks = null;
+let globalScheduledTaskCallbacks = null;
+let globalUnscheduledTaskCallbacks = null;
 
 // Auto-update state for start time field
 const startTimeAutoUpdate = {
     trackedTime: /** @type {string|null} */ (null),
     trackedDate: /** @type {string|null} */ (null),
-
     isEnabled() {
         return this.trackedTime !== null;
     },
-
-    /**
-     * Enable automatic updating of the start time field.
-     * Used to track what time was automatically set in the start time input field.
-     * Also tracks the date to detect midnight crossings.
-     * @param {string} timeValue - The time value to track.
-     * @param {Date} [date=new Date()] - The date to track.
-     */
     enable(timeValue, date = new Date()) {
         this.trackedTime = timeValue;
         this.trackedDate = date.toDateString();
     },
-
     disable() {
         this.trackedTime = null;
         this.trackedDate = null;
     },
-
     hasDateChanged(currentDate = new Date()) {
         return this.trackedDate && this.trackedDate !== currentDate.toDateString();
     }
@@ -44,543 +39,546 @@ const startTimeAutoUpdate = {
 
 // --- Rendering Functions ---
 
-/**
- * Render current date and time in the UI.
- */
 export function renderDateTime() {
     const now = new Date();
     const currentTimeElement = getCurrentTimeElement();
     const currentDateElement = getCurrentDateElement();
-
-    if (currentTimeElement) {
+    if (currentTimeElement)
         currentTimeElement.textContent = now.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
         });
-    }
-    if (currentDateElement) {
+    if (currentDateElement)
         currentDateElement.textContent = now.toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',
             month: 'long',
             day: 'numeric'
         });
+}
+
+export function startRealTimeClock() {
+    renderDateTime();
+    setInterval(renderDateTime, 1000);
+}
+
+export function initializeTaskTypeToggle() {
+    const scheduledRadio = document.getElementById('scheduled');
+    const unscheduledRadio = document.getElementById('unscheduled');
+    const timeInputs = document.getElementById('time-inputs');
+    const priorityInput = document.getElementById('priority-input');
+    const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+    const descriptionInput = document.querySelector('input[name="description"]');
+    const startTimeInput = document.querySelector('input[name="start-time"]');
+
+    if (
+        scheduledRadio instanceof HTMLInputElement &&
+        unscheduledRadio instanceof HTMLInputElement &&
+        timeInputs instanceof HTMLElement &&
+        priorityInput instanceof HTMLElement &&
+        addTaskButton instanceof HTMLElement &&
+        descriptionInput instanceof HTMLElement
+    ) {
+        const toggleVisibility = () => {
+            if (scheduledRadio.checked) {
+                timeInputs.classList.remove('hidden');
+                priorityInput.classList.add('hidden');
+                // Re-enable required on start-time when showing scheduled inputs
+                if (startTimeInput) startTimeInput.setAttribute('required', '');
+                addTaskButton.className =
+                    'shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                descriptionInput.className =
+                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all';
+            } else {
+                timeInputs.classList.add('hidden');
+                priorityInput.classList.remove('hidden');
+                // Remove required from start-time when hiding scheduled inputs
+                if (startTimeInput) startTimeInput.removeAttribute('required');
+                addTaskButton.className =
+                    'shrink-0 bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                descriptionInput.className =
+                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all';
+            }
+        };
+
+        scheduledRadio.addEventListener('change', toggleVisibility);
+        unscheduledRadio.addEventListener('change', toggleVisibility);
+        toggleVisibility(); // Initial call
+
+        // Add page visibility change listener to re-sync form state when user returns to tab
+        // This fixes mobile bug where radio button state and form UI can get out of sync
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                // Page became visible again, re-sync the form state
+                toggleVisibility();
+            }
+        });
+
+        // Also listen for focus events as additional safeguard for mobile browsers
+        window.addEventListener('focus', () => {
+            toggleVisibility();
+        });
+    } else {
+        logger.error('DOM elements for task type toggle not found or not of expected types.');
     }
 }
 
-/**
- * Generate HTML for task edit form.
- * @param {object} task - The task to edit (using a generic object type from task-manager's perspective)
- * @param {number} index - Task index.
- * @returns {string} - HTML for edit form.
- */
-function renderEditTaskHTML(task, index) {
-    const displayStartTime = extractTimeFromDateTime(new Date(task.startDateTime));
+// --- Event Handlers ---
 
-    return `<form id="edit-task-${index}" autocomplete="off" class="mb-4 p-4 rounded border border-gray-700 bg-gray-800 mx-2 text-left space-y-4">
-        <div class="mb-4">
-            <input type="text" name="description" value="${task.description}" class="bg-gray-700 p-2 rounded w-full" required>
-        </div>
-        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
-            <label class="flex items-center w-full sm:w-auto">
-                <span class="text-gray-400">Start Time</span>
-                <input type="time" name="start-time" value="${displayStartTime}" class="bg-gray-700 p-2 rounded w-full lg:w-[10rem]" required>
-            </label>
-            <label class="flex items-center w-full sm:w-auto">
-                <span class="mr-2 text-gray-400">Duration</span>
-                <div class="flex space-x-2 w-full sm:w-auto">
-                    <input type="number" name="duration-hours" value="${Math.floor(task.duration / 60)}" min="0" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
-                    <input type="number" name="duration-minutes" value="${task.duration % 60}" min="0" max="59" class="bg-gray-700 p-2 rounded w-full lg:w-[4rem]">
-                </div>
-            </label>
-            <div class="flex space-x-2">
-                <button type="submit" class="bg-green-500 hover:bg-green-400 px-4 py-2 rounded w-full sm:w-auto font-semibold btn-save-edit" data-task-index="${index}">Edit</button>
-                <button type="button" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded w-full sm:w-auto font-semibold btn-edit-cancel" data-task-index="${index}">Cancel</button>
-            </div>
-        </div>
-    </form>`;
-}
+function handleScheduledTaskListClick(event) {
+    if (!globalScheduledTaskCallbacks) {
+        logger.warn('handleScheduledTaskListClick: globalScheduledTaskCallbacks not initialized');
+        return;
+    }
+    const target = /** @type {HTMLElement} */ (event.target);
 
-/**
- * Render a task in view mode.
- * @param {object} task - The task to render.
- * @param {number} index - The index of the task.
- * @param {boolean} isActiveTask - Whether this is the active task for styling.
- * @returns {string} - HTML for the task.
- */
-function renderViewTaskHTML(task, index, isActiveTask) {
-    const isCompleted = task.status === 'completed';
-    const checkboxDisabled = isCompleted;
+    // Check for Cancel button first
+    const cancelButtonElement = target.closest('.btn-edit-cancel');
+    if (cancelButtonElement instanceof HTMLElement) {
+        const cancelButton = /** @type {HTMLElement} */ (cancelButtonElement);
+        event.preventDefault();
+        const editFormElement = cancelButton.closest('form');
+        if (
+            editFormElement instanceof HTMLFormElement &&
+            editFormElement.id &&
+            editFormElement.id.startsWith('edit-task-')
+        ) {
+            const editForm = /** @type {HTMLFormElement} */ (editFormElement);
+            const taskId = editForm.dataset.taskId;
+            const taskIndexStr = cancelButton.dataset.taskIndex; // Index is on the button
 
-    // Determine task styling based on active status and completion
-    let activeTaskColorClass = 'text-white';
-    if (isActiveTask && !isCompleted) {
-        const isLate = isTaskRunningLate(task);
-        activeTaskColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
+            if (taskId && taskIndexStr !== undefined && globalScheduledTaskCallbacks.onCancelEdit) {
+                globalScheduledTaskCallbacks.onCancelEdit(taskId, parseInt(taskIndexStr, 10));
+            } else {
+                logger.warn('Cancel button: taskId, taskIndexStr or onCancelEdit cb missing.', {
+                    taskId,
+                    taskIndexStr
+                });
+            }
+        } else {
+            logger.warn('Cancel button found, but not within an expected edit form.', {
+                cancelButton
+            });
+        }
+        return; // Processed cancel
     }
 
-    const displayStartTime = extractTimeFromDateTime(new Date(task.startDateTime));
-    const displayEndTime = extractTimeFromDateTime(new Date(task.endDateTime));
+    // For other clicks (checkbox, edit pencil, delete button on view task)
+    let taskElementContextSource = target.closest('.task-item'); // General task container if view mode
+    if (!taskElementContextSource) {
+        // If not in a .task-item, try any [data-task-id] (like the form itself)
+        taskElementContextSource = target.closest('[data-task-id]');
+    }
 
-    return `<div id="view-task-${index}" class="flex items-center justify-between space-x-2 p-2 border-b">
-        <div class="flex items-center space-x-4">
-            <label for="task-checkbox-${index}" class="checkbox ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
-                <i class="far ${isCompleted ? 'fa-check-square text-green-700' : 'fa-square text-gray-500'}"></i>
-            </label>
-            <input type="checkbox" id="task-checkbox-${index}" class="hidden" data-task-index="${index}" ${isCompleted ? 'checked disabled' : ''}>
-            <div class="${isCompleted ? 'line-through' : ''} ${isActiveTask && !isCompleted ? '' : isCompleted ? '' : 'opacity-60'}">
-                <div class="${activeTaskColorClass}">${task.description}</div>
-                <div class="${activeTaskColorClass}">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${calculateHoursAndMinutes(task.duration)})</div>
-            </div>
-        </div>
-        <div>
-            <button class="${isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-yellow-500'} btn-edit p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}">
-                <i class="far fa-pen"></i>
-            </button>
-            <button class="${task.confirmingDelete ? 'text-red-500' : isCompleted ? 'text-gray-500 cursor-not-allowed' : 'text-red-500'} btn-delete p-1" ${isCompleted ? 'disabled' : ''} data-task-index="${index}">
-                <i class="far ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'}"></i>
-            </button>
-        </div>
-    </div>`;
-}
+    if (!(taskElementContextSource instanceof HTMLElement)) {
+        return; // Click was not on a recognized task-related element
+    }
+    const taskElementContext = /** @type {HTMLElement} */ (taskElementContextSource);
 
-/**
- * Initialize event delegation for task list interactions.
- * This sets up a single event listener on the task list container that handles all task interactions.
- * This approach prevents memory leaks and improves performance by avoiding multiple event listeners.
- * @param {object} eventCallbacks - Callbacks for task actions.
- */
-function initializeTaskListEventDelegation(eventCallbacks) {
-    const taskListElement = getTaskListElement();
-    if (!taskListElement) {
-        logger.error('Task list element not found. Event delegation cannot be initialized.');
+    const taskId = taskElementContext.dataset.taskId;
+    const taskIndexStr = taskElementContext.dataset.taskIndex;
+
+    if (!taskId || taskIndexStr === undefined) {
+        logger.warn(
+            'handleScheduledTaskListClick: Click on task-like element, but taskId or taskIndex missing.',
+            { taskId, taskIndexStr, taskElementContext }
+        );
         return;
     }
 
-    // Remove any existing event listener to prevent duplicates
-    taskListElement.removeEventListener('click', handleTaskListClick);
-    taskListElement.removeEventListener('submit', handleTaskListSubmit);
+    const taskIndex = parseInt(taskIndexStr, 10);
 
-    // Store callbacks globally for the event handlers
-    globalEventCallbacks = eventCallbacks;
-
-    // Add single delegated event listeners
-    taskListElement.addEventListener('click', handleTaskListClick);
-    taskListElement.addEventListener('submit', handleTaskListSubmit);
-}
-
-/**
- * Handle click events on the task list using event delegation.
- * @param {Event} event - The click event
- */
-function handleTaskListClick(event) {
-    if (!globalEventCallbacks) return;
-
-    const target = /** @type {HTMLElement} */ (event.target);
-    const taskIndex = getTaskIndexFromElement(target);
-
-    if (taskIndex === null) return;
-
-    // Handle checkbox clicks (task completion)
     if (target.closest('.checkbox')) {
         event.preventDefault();
-        globalEventCallbacks.onCompleteTask(taskIndex);
+        // Get all tasks and find the first uncompleted one (active task)
+        const allTasks = getTaskState().filter((t) => t.type === 'scheduled');
+        const activeTask = allTasks.find((t) => t.status !== 'completed');
+
+        // Only allow completion if this is the active task
+        if (activeTask && activeTask.id === taskId && globalScheduledTaskCallbacks.onCompleteTask) {
+            globalScheduledTaskCallbacks.onCompleteTask(taskId, taskIndex);
+        } else {
+            logger.warn('Attempted to complete a non-active task:', taskId);
+        }
         return;
     }
 
-    // Handle edit button clicks
     if (target.closest('.btn-edit')) {
+        // "pencil" icon on view task
         event.preventDefault();
-        globalEventCallbacks.onEditTask(taskIndex);
+        if (globalScheduledTaskCallbacks.onEditTask) {
+            globalScheduledTaskCallbacks.onEditTask(taskId, taskIndex);
+        }
         return;
     }
 
-    // Handle delete button clicks
+    if (target.closest('.btn-lock')) {
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onLockTask) {
+            globalScheduledTaskCallbacks.onLockTask(taskId, taskIndex);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-unschedule')) {
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onUnscheduleTask) {
+            globalScheduledTaskCallbacks.onUnscheduleTask(taskId, taskIndex);
+        }
+        return;
+    }
+
     if (target.closest('.btn-delete')) {
         event.preventDefault();
         event.stopPropagation();
-        globalEventCallbacks.onDeleteTask(taskIndex);
-        return;
-    }
-
-    // Handle cancel button clicks
-    if (target.closest('.btn-edit-cancel')) {
-        event.preventDefault();
-        globalEventCallbacks.onCancelEdit(taskIndex);
+        if (globalScheduledTaskCallbacks.onDeleteTask) {
+            globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
+        }
         return;
     }
 }
 
-/**
- * Handle form submit events on the task list using event delegation.
- * @param {Event} event - The submit event
- */
-function handleTaskListSubmit(event) {
-    if (!globalEventCallbacks) return;
+function handleScheduledTaskListSubmit(event) {
+    if (!globalScheduledTaskCallbacks) return;
+    const targetForm = /** @type {HTMLFormElement} */ (event.target);
+    if (targetForm.id && targetForm.id.startsWith('edit-task-')) {
+        event.preventDefault();
+        const taskId = targetForm.dataset.taskId;
+        const taskIndexStr = targetForm.dataset.taskIndex;
+        if (taskId && taskIndexStr !== undefined && globalScheduledTaskCallbacks.onSaveTaskEdit) {
+            globalScheduledTaskCallbacks.onSaveTaskEdit(
+                taskId,
+                targetForm,
+                parseInt(taskIndexStr, 10)
+            );
+        }
+    }
+}
 
+function handleUnscheduledTaskListClick(event) {
     const target = /** @type {HTMLElement} */ (event.target);
-    const taskIndex = getTaskIndexFromElement(target);
+    const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
 
-    if (taskIndex === null) return;
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
 
-    // Handle edit form submissions
-    if (target.id && target.id.startsWith('edit-task-')) {
-        event.preventDefault();
-        const formData = new FormData(/** @type {HTMLFormElement} */ (target));
-        globalEventCallbacks.onSaveTaskEdit(taskIndex, formData);
-        return;
-    }
-}
+    const taskId = taskCard.dataset.taskId;
 
-/**
- * Extract task index from DOM element or its data attributes.
- * @param {HTMLElement} element - The DOM element
- * @returns {number | null} - The task index or null if not found
- */
-function getTaskIndexFromElement(element) {
-    // Check for data-task-index attribute on the element or its parents
-    let current = element;
-    while (current && current !== document.body) {
-        if (current.dataset && current.dataset.taskIndex !== undefined) {
-            const index = parseInt(current.dataset.taskIndex, 10);
-            return isNaN(index) ? null : index;
-        }
-
-        // Check for edit form ID pattern
-        if (current.id && current.id.startsWith('edit-task-')) {
-            const index = parseInt(current.id.replace('edit-task-', ''), 10);
-            return isNaN(index) ? null : index;
-        }
-
-        // Check for view task ID pattern
-        if (current.id && current.id.startsWith('view-task-')) {
-            const index = parseInt(current.id.replace('view-task-', ''), 10);
-            return isNaN(index) ? null : index;
-        }
-
-        current = /** @type {HTMLElement} */ (current.parentElement);
-    }
-
-    return null;
-}
-
-/**
- * Render all tasks in the task list using optimized DOM operations.
- * Uses event delegation.
- * @param {object[]} tasksToRender - Array of tasks to render.
- * @param {object} eventCallbacks - Callbacks for task actions.
- * @param {(index: number) => void} eventCallbacks.onCompleteTask - Callback for completing a task.
- * @param {(index: number) => void} eventCallbacks.onEditTask - Callback for initiating task edit.
- * @param {(index: number) => void} eventCallbacks.onDeleteTask - Callback for deleting a task.
- * @param {(index: number, formData: FormData) => void} eventCallbacks.onSaveTaskEdit - Callback for saving an edited task.
- * @param {(index: number) => void} eventCallbacks.onCancelEdit - Callback for cancelling task edit.
- */
-export function renderTasks(tasksToRender, eventCallbacks) {
-    const taskListElement = getTaskListElement();
-    if (!taskListElement) {
-        logger.error('Task list element not found. Tasks will not be rendered.');
-        return;
-    }
-
-    // Initialize event delegation if not already done
-    if (!globalEventCallbacks) {
-        initializeTaskListEventDelegation(eventCallbacks);
-    } else {
-        // Update callbacks if they've changed
-        globalEventCallbacks = eventCallbacks;
-    }
-
-    // Render tasks efficiently using innerHTML (single DOM operation)
-    let activeTaskFound = false;
-    taskListElement.innerHTML = tasksToRender
-        .map((task, index) => {
-            let isActiveTask = false;
-            if (!activeTaskFound && task.status !== 'completed') {
-                activeTaskFound = true;
-                isActiveTask = true;
+    if (target.closest('.btn-schedule-task')) {
+        if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
+            const taskName = taskCard.dataset.taskName || 'Task';
+            const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
+            const task = getTaskState().find((t) => t.id === taskId); // Check if task is completed
+            if (task && task.status !== 'completed') {
+                // Only schedule if not completed
+                globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask(
+                    taskId,
+                    taskName,
+                    estDurationText
+                );
             }
-            return task.editing
-                ? renderEditTaskHTML(task, index)
-                : renderViewTaskHTML(task, index, isActiveTask);
-        })
-        .join('');
-}
-
-/**
- * Update the start time input field with a suggested time.
- * @param {string} suggestedTime - The suggested start time in HH:MM format.
- * @param {boolean} [forceUpdate=false] - Whether to update the field even if it has a value.
- */
-export function updateStartTimeField(suggestedTime, forceUpdate = false) {
-    const form = getTaskFormElement();
-    if (!form) return;
-    const startTimeInput = /** @type {HTMLInputElement|null} */ (
-        form.querySelector('input[name="start-time"]')
-    );
-    if (startTimeInput && (forceUpdate || !startTimeInput.value)) {
-        startTimeInput.value = suggestedTime;
-
-        // Track if we're setting it to current time rounded up
-        const currentTimeRounded = getCurrentTimeRounded();
-        if (suggestedTime === currentTimeRounded) {
-            startTimeAutoUpdate.enable(suggestedTime);
+        }
+    } else if (target.closest('.btn-edit-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask && taskId) {
+            logger.debug(`Edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.btn-delete-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.task-checkbox-unscheduled')) {
+        if (globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask(taskId);
         } else {
-            startTimeAutoUpdate.disable();
+            logger.warn(
+                'onToggleCompleteUnscheduledTask callback not found or taskId missing for unscheduled task checkbox.'
+            );
+        }
+    } else if (target.closest('.btn-save-inline-edit')) {
+        // Handle save from inline form
+        if (globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit && taskId) {
+            logger.debug(`Save inline edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
+        }
+    } else if (target.closest('.btn-cancel-inline-edit')) {
+        // Handle cancel from inline form
+        if (globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit && taskId) {
+            logger.debug(`Cancel inline edit button clicked for unscheduled task: ${taskId}`);
+            globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit(taskId);
         }
     }
 }
 
-/**
- * Check if the start time field should be updated when current time advances.
- * Updates the field if it was previously set to current time rounded up and current time has advanced.
- */
-export function refreshStartTimeField() {
-    // Only check if we previously set the field to current time rounded up
-    if (!startTimeAutoUpdate.isEnabled()) return;
+function handleUnscheduledTaskListSubmit(event) {
+    event.preventDefault(); // Always prevent default form submission
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
 
-    const form = getTaskFormElement();
-    if (!form) return;
+    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
 
-    const startTimeInput = /** @type {HTMLInputElement|null} */ (
-        form.querySelector('input[name="start-time"]')
-    );
-    if (!startTimeInput) return;
-
-    // Check if the field still has the value we set it to
-    if (startTimeInput.value !== startTimeAutoUpdate.trackedTime) {
-        // User has manually changed the field, stop tracking
-        startTimeAutoUpdate.disable();
-        return;
-    }
-
-    const currentTimeRounded = getCurrentTimeRounded();
-    const currentTimeMinutes = calculateMinutes(currentTimeRounded);
-    const fieldTimeMinutes = calculateMinutes(startTimeAutoUpdate.trackedTime);
-
-    // Check if date has changed (definitive midnight crossing) OR time has advanced
-    const dateChanged = startTimeAutoUpdate.hasDateChanged();
-    const timeAdvanced = currentTimeMinutes > fieldTimeMinutes;
-
-    if (timeAdvanced || dateChanged) {
-        startTimeInput.value = currentTimeRounded;
-        startTimeAutoUpdate.enable(currentTimeRounded);
+    const taskId = taskCard.dataset.taskId;
+    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
+        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
     }
 }
 
-/**
- * Disables automatic updating of the start time field.
- * Called when the form is reset, when the field is manually changed,
- * or when we want to stop tracking and updating the field based on current time.
- */
+// --- Event Listener Initialization ---
+
+export function initializeScheduledTaskListEventListeners(eventCallbacks) {
+    const taskListElement = getScheduledTaskListElement();
+    if (!taskListElement) {
+        logger.error('Scheduled task list element not found.');
+        return;
+    }
+    taskListElement.removeEventListener('click', handleScheduledTaskListClick);
+    taskListElement.removeEventListener('submit', handleScheduledTaskListSubmit);
+    globalScheduledTaskCallbacks = eventCallbacks;
+    taskListElement.addEventListener('click', handleScheduledTaskListClick);
+    taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
+}
+
+export function initializeUnscheduledTaskListEventListeners(callbacks) {
+    globalUnscheduledTaskCallbacks = callbacks;
+    const unscheduledTaskList = getUnscheduledTaskListElement();
+    if (unscheduledTaskList) {
+        // Remove existing listeners to prevent duplicates if re-initialized
+        unscheduledTaskList.removeEventListener('click', handleUnscheduledTaskListClick);
+        unscheduledTaskList.removeEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.addEventListener('click', handleUnscheduledTaskListClick);
+        unscheduledTaskList.addEventListener('submit', handleUnscheduledTaskListSubmit);
+    } else {
+        logger.error('Unscheduled task list element not found for event listeners.');
+    }
+}
+
+export function initializeDragAndDropUnscheduled(callbacks) {
+    const taskList = getUnscheduledTaskListElement();
+    if (!taskList) return;
+
+    let dragSrcEl = null;
+
+    taskList.addEventListener('dragstart', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        target.style.opacity = '0.4';
+        dragSrcEl = target;
+        e.dataTransfer?.setData('text/html', target.innerHTML);
+    });
+
+    taskList.addEventListener('dragend', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        target.style.opacity = '1';
+    });
+
+    taskList.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        return false;
+    });
+
+    taskList.addEventListener('dragenter', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (taskCard) {
+            taskCard.classList.add('bg-gray-700');
+        }
+    });
+
+    taskList.addEventListener('dragleave', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (taskCard) {
+            taskCard.classList.remove('bg-gray-700');
+        }
+    });
+
+    taskList.addEventListener('drop', (e) => {
+        e.stopPropagation();
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (!(target instanceof HTMLElement)) return;
+        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
+        if (!taskCard || !dragSrcEl) return;
+
+        taskCard.classList.remove('bg-gray-700');
+
+        if (dragSrcEl !== taskCard) {
+            const draggedTaskId = dragSrcEl.dataset.taskId;
+            const targetTaskId = taskCard.dataset.taskId;
+            if (draggedTaskId && targetTaskId && callbacks.onDropUnscheduledTask) {
+                callbacks.onDropUnscheduledTask(draggedTaskId, targetTaskId);
+            }
+        }
+    });
+}
+
+// --- Wrapper for Render Functions ---
+
+export function renderTasks(tasksToRender, eventCallbacks) {
+    globalScheduledTaskCallbacks = renderScheduledTasks(
+        tasksToRender,
+        eventCallbacks,
+        initializeScheduledTaskListEventListeners,
+        globalScheduledTaskCallbacks
+    );
+}
+
+export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
+    renderUnscheduledTasksBase(unscheduledTasks, eventCallbacks, (callbacks) => {
+        globalUnscheduledTaskCallbacks = callbacks;
+    });
+}
+
+// --- Start Time Field Management ---
+
+export function updateStartTimeField(suggestedTime /*: string */, forceUpdate = false) {
+    logger.debug('updateStartTimeField called with:', { suggestedTime, forceUpdate });
+    const taskForm = getTaskFormElement();
+    if (!taskForm) {
+        logger.warn('Task form not found in updateStartTimeField.');
+        return;
+    }
+    const startTimeInput = taskForm.querySelector('input[name="start-time"]');
+
+    if (startTimeInput instanceof HTMLInputElement) {
+        const now = new Date(); // This is a Date object
+
+        if (forceUpdate) {
+            startTimeInput.value = suggestedTime;
+            logger.debug('updateStartTimeField - FORCED value to:', startTimeInput.value);
+            // If the forced suggestedTime is a "special" calculation (not just the current rounded time),
+            // disable auto-update so it doesn't get immediately overwritten by refreshStartTimeField.
+            if (suggestedTime !== getCurrentTimeRounded()) {
+                startTimeAutoUpdate.disable();
+                logger.debug(
+                    'Start time field updated (forced with special value), auto-update disabled:',
+                    suggestedTime
+                );
+            } else {
+                startTimeAutoUpdate.enable(suggestedTime, now); // now is a Date object
+                logger.debug(
+                    'Start time field updated (forced with current time), auto-update enabled:',
+                    suggestedTime
+                );
+            }
+        } else if (startTimeAutoUpdate.isEnabled()) {
+            if (startTimeAutoUpdate.hasDateChanged(now)) {
+                // now is a Date object
+                startTimeAutoUpdate.disable();
+                logger.info('Start time auto-update disabled due to date change.');
+            } else {
+                startTimeInput.value = suggestedTime; // suggestedTime is a string like HH:MM
+                logger.debug('Start time field updated (auto):', suggestedTime);
+            }
+        }
+    } else {
+        logger.warn(
+            'Start time input not found or not an HTMLInputElement in updateStartTimeField.'
+        );
+    }
+}
+
+export function refreshStartTimeField() {
+    if (startTimeAutoUpdate.isEnabled()) {
+        const currentTimeString = getCurrentTimeRounded(); // This returns a string like HH:MM
+        updateStartTimeField(currentTimeString, false);
+    }
+}
+
 export function disableStartTimeAutoUpdate() {
     startTimeAutoUpdate.disable();
 }
 
-/**
- * Initialize event listeners for static page elements.
- * @param {object} appCallbacks - Callbacks for application logic.
- * @param {(formData: FormData) => void} appCallbacks.onTaskFormSubmit - Handles main task form submission.
- * @param {() => void} appCallbacks.onDeleteAllTasks - Handles delete all button click.
- * @param {(event: Event) => void} appCallbacks.onGlobalClick - Handles clicks on the document.
- * @param {HTMLFormElement | null} taskFormElement - The main task form element.
- * @param {HTMLButtonElement | null} deleteAllButtonElement - The delete all button element.
- */
-export function initializePageEventListeners(
-    appCallbacks,
-    taskFormElement,
-    deleteAllButtonElement
-) {
-    if (taskFormElement) {
-        taskFormElement.addEventListener('submit', (e) => {
-            e.preventDefault();
-            appCallbacks.onTaskFormSubmit(new FormData(taskFormElement));
-        });
+// --- Page Event Listeners ---
 
-        // Reset tracking when form is reset
-        taskFormElement.addEventListener('reset', () => {
-            disableStartTimeAutoUpdate();
+export function initializePageEventListeners(appCallbacks, taskFormElement) {
+    if (!(taskFormElement instanceof HTMLFormElement)) {
+        logger.error(
+            'Task form element not found or not an HTMLFormElement for initializePageEventListeners.'
+        );
+    } else {
+        taskFormElement.addEventListener('submit', (event) => {
+            event.preventDefault(); // Prevent default form submission (page reload)
+            if (appCallbacks && appCallbacks.onTaskFormSubmit) {
+                appCallbacks.onTaskFormSubmit(taskFormElement);
+            } else {
+                logger.error(
+                    'onTaskFormSubmit callback not provided to initializePageEventListeners'
+                );
+            }
         });
+        logger.debug('Submit event listener added to task form.');
 
-        // Reset tracking when start time field is manually changed
+        // Add listener to disable auto-update on manual input
         const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
-        if (startTimeInput) {
+        if (startTimeInput instanceof HTMLInputElement) {
             startTimeInput.addEventListener('input', () => {
+                logger.debug('User manually changed start time input, disabling auto-update.');
                 disableStartTimeAutoUpdate();
             });
+        } else {
+            logger.warn(
+                'Start time input not found in task form for attaching input event listener during page init.'
+            );
         }
-    } else {
-        logger.error('dom-handler: initializePageEventListeners received null taskFormElement.');
     }
 
-    if (deleteAllButtonElement) {
-        deleteAllButtonElement.addEventListener('click', appCallbacks.onDeleteAllTasks);
-    } else {
-        logger.error(
-            'dom-handler: initializePageEventListeners received null deleteAllButtonElement.'
-        );
-    }
-
-    document.addEventListener('click', appCallbacks.onGlobalClick);
+    // Optional: Global click listener to reset flags (from V1, consider if still needed for V2)
+    document.addEventListener('click', (event) => {
+        if (appCallbacks && appCallbacks.onGlobalClick) {
+            appCallbacks.onGlobalClick(event);
+        }
+    });
 }
 
-/**
- * Returns a reference to the main task form.
- * @returns {HTMLFormElement | null}
- */
-export function getTaskFormElement() {
-    return /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
-}
+// --- DOM Element Getters ---
 
-/**
- * Returns a reference to the task list container.
- * @returns {HTMLElement | null}
- */
-export function getTaskListElement() {
-    return document.getElementById('task-list');
-}
-
-/**
- * Returns a reference to the current time display element.
- * @returns {HTMLElement | null}
- */
 export function getCurrentTimeElement() {
     return document.getElementById('current-time');
 }
 
-/**
- * Returns a reference to the current date display element.
- * @returns {HTMLElement | null}
- */
 export function getCurrentDateElement() {
     return document.getElementById('current-date');
 }
 
-/**
- * Returns a reference to the delete all button.
- * @returns {HTMLButtonElement | null}
- */
 export function getDeleteAllButtonElement() {
-    return /** @type {HTMLButtonElement|null} */ (document.getElementById('delete-all'));
+    return document.getElementById('delete-all');
 }
 
-/**
- * Returns a reference to a specific task view element.
- * @param {number} index - The task index
- * @returns {HTMLElement | null}
- */
-export function getTaskViewElement(index) {
-    return document.getElementById(`view-task-${index}`);
+export function getClearOptionsDropdownTriggerButtonElement() {
+    return document.getElementById('clear-options-dropdown-trigger-btn');
 }
 
-/**
- * Returns a reference to a specific task edit form element.
- * @param {number} index - The task index
- * @returns {HTMLFormElement | null}
- */
-export function getTaskEditFormElement(index) {
-    return /** @type {HTMLFormElement|null} */ (document.getElementById(`edit-task-${index}`));
+export function getClearTasksDropdownMenuElement() {
+    return document.getElementById('clear-tasks-dropdown'); // This is the dropdown for the single "Clear Scheduled" option
 }
 
-/**
- * Focuses on the main task description input field.
- */
-export function focusTaskDescriptionInput() {
-    const form = getTaskFormElement();
-    const descriptionInput = form ? form.querySelector('input[name="description"]') : null;
-    if (descriptionInput instanceof HTMLInputElement) {
-        descriptionInput.focus();
+export function getClearScheduledOptionElement() {
+    return document.getElementById('clear-scheduled-tasks-option');
+}
+
+export function getClearCompletedOptionElement() {
+    return document.getElementById('clear-completed-tasks-option');
+}
+
+export function toggleClearTasksDropdown() {
+    const dropdown = getClearTasksDropdownMenuElement();
+    if (dropdown) {
+        dropdown.classList.toggle('hidden');
     }
 }
 
-/**
- * Shows an alert message to the user.
- * @param {string} message
- */
-export function showAlert(message) {
-    window.alert(message);
+export function closeClearTasksDropdown() {
+    const dropdown = getClearTasksDropdownMenuElement();
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        dropdown.classList.add('hidden');
+    }
 }
 
-/**
- * Asks for user confirmation.
- * @param {string} message
- * @returns {boolean}
- */
-export function askConfirmation(message) {
-    return window.confirm(message);
-}
-
-/**
- * Extracts task form data from a FormData object.
- * @param {FormData} formData - The form data containing task details
- * @returns {{description: string, startTime: string, duration: number}} Object containing extracted task data
- */
-export function extractTaskFormData(formData) {
-    const description = /** @type {string} */ (formData.get('description') || '');
-    const startTime = /** @type {string} */ (formData.get('start-time') || '');
-    const durationHours = formData.get('duration-hours') || '0';
-    const durationMinutes = formData.get('duration-minutes') || '0';
-    const duration = calculateMinutes(`${durationHours}:${durationMinutes}`);
-    return { description, startTime, duration };
-}
-
-/**
- * Reset event delegation state (for testing purposes).
- * This allows tests to reinitialize event delegation with fresh callbacks.
- */
 export function resetEventDelegation() {
-    globalEventCallbacks = null;
-
-    // Remove existing event listeners from task list
-    const taskListElement = getTaskListElement();
-    if (taskListElement) {
-        taskListElement.removeEventListener('click', handleTaskListClick);
-        taskListElement.removeEventListener('submit', handleTaskListSubmit);
-    }
-}
-
-/**
- * Update active task styling for late warning.
- * This function finds the first incomplete task and updates its color styling based on whether it's running late.
- * @param {object[]} tasks - Array of all tasks to check for the active task
- * @param {Date} [now] - Current date and time - defaults to the current date and time
- */
-export function refreshActiveTaskColor(tasks, now = new Date()) {
-    // Find the first incomplete task (the active task)
-    let activeTaskIndex = -1;
-    for (let i = 0; i < tasks.length; i++) {
-        if (tasks[i].status !== 'completed') {
-            activeTaskIndex = i;
-            break;
-        }
-    }
-
-    // If no active task found, nothing to update
-    if (activeTaskIndex === -1) return;
-
-    const activeTask = tasks[activeTaskIndex];
-    const isLate = isTaskRunningLate(activeTask, now);
-
-    // Find the DOM elements for this task
-    const taskElement = getTaskViewElement(activeTaskIndex);
-    if (!taskElement) return; // Task might be in edit mode or not rendered
-
-    // Find the text elements that need color updates - only those that already have color classes
-    const textElements = taskElement.querySelectorAll('div.text-green-500, div.text-yellow-500');
-
-    // Determine the target color class
-    const targetColorClass = isLate ? 'text-yellow-500' : 'text-green-500';
-    const otherColorClass = isLate ? 'text-green-500' : 'text-yellow-500';
-
-    // Update the color classes efficiently - only change if needed
-    textElements.forEach((element) => {
-        // Only update if the element doesn't already have the correct color
-        if (!element.classList.contains(targetColorClass)) {
-            // Remove the other color class if present
-            if (element.classList.contains(otherColorClass)) {
-                element.classList.remove(otherColorClass);
-            }
-            // Add the target color class
-            element.classList.add(targetColorClass);
-        }
-    });
+    logger.debug('Resetting global event callbacks.');
+    globalScheduledTaskCallbacks = null;
+    globalUnscheduledTaskCallbacks = null;
 }

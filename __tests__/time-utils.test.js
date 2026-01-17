@@ -258,4 +258,102 @@ describe('Time Utility Functions', () => {
             });
         });
     });
+
+    describe('calculateHoursAndMinutes edge cases', () => {
+        test('handles NaN input and returns 0m as string', () => {
+            expect(calculateHoursAndMinutes(NaN)).toBe('0m');
+            expect(calculateHoursAndMinutes('invalid')).toBe('0m');
+            expect(calculateHoursAndMinutes(undefined)).toBe('0m');
+        });
+
+        test('handles NaN input with returnAsObject=true', () => {
+            const result = calculateHoursAndMinutes(NaN, true);
+            expect(result).toEqual({ hours: 0, minutes: 0, text: '0m' });
+        });
+
+        test('returns object with returnAsObject=true for valid input', () => {
+            expect(calculateHoursAndMinutes(90, true)).toEqual({
+                hours: 1,
+                minutes: 30,
+                text: '1h 30m'
+            });
+            expect(calculateHoursAndMinutes(60, true)).toEqual({
+                hours: 1,
+                minutes: 0,
+                text: '1h'
+            });
+            expect(calculateHoursAndMinutes(45, true)).toEqual({
+                hours: 0,
+                minutes: 45,
+                text: '45m'
+            });
+            expect(calculateHoursAndMinutes(0, true)).toEqual({ hours: 0, minutes: 0, text: '0m' });
+        });
+    });
+
+    describe('parseDuration edge cases', () => {
+        const { parseDuration } = require('../public/js/utils.js');
+
+        test('allows zero duration when allowZero is true', () => {
+            const result = parseDuration(0, 0, { allowZero: true });
+            expect(result.valid).toBe(true);
+            expect(result.duration).toBe(0);
+        });
+
+        test('rejects zero duration when allowZero is false', () => {
+            const result = parseDuration(0, 0, { allowZero: false });
+            expect(result.valid).toBe(false);
+        });
+
+        test('rejects negative hours', () => {
+            const result = parseDuration(-1, 30);
+            expect(result.valid).toBe(false);
+        });
+
+        test('rejects negative minutes', () => {
+            const result = parseDuration(1, -1);
+            expect(result.valid).toBe(false);
+        });
+
+        test('rejects minutes greater than 59', () => {
+            const result = parseDuration(1, 60);
+            expect(result.valid).toBe(false);
+        });
+
+        test('handles string inputs', () => {
+            const result = parseDuration('2', '30');
+            expect(result.valid).toBe(true);
+            expect(result.duration).toBe(150);
+        });
+
+        test('handles empty string inputs', () => {
+            const result = parseDuration('', '', { allowZero: true });
+            expect(result.valid).toBe(true);
+            expect(result.duration).toBe(0);
+        });
+    });
+
+    describe('getThemeForTask and getThemeForTaskType', () => {
+        const { getThemeForTask, getThemeForTaskType } = require('../public/js/utils.js');
+
+        test('getThemeForTask returns teal for scheduled task', () => {
+            expect(getThemeForTask({ type: 'scheduled' })).toBe('teal');
+        });
+
+        test('getThemeForTask returns indigo for unscheduled task', () => {
+            expect(getThemeForTask({ type: 'unscheduled' })).toBe('indigo');
+        });
+
+        test('getThemeForTask returns indigo for null task', () => {
+            expect(getThemeForTask(null)).toBe('indigo');
+        });
+
+        test('getThemeForTaskType returns teal for scheduled type', () => {
+            expect(getThemeForTaskType('scheduled')).toBe('teal');
+        });
+
+        test('getThemeForTaskType returns indigo for unscheduled type', () => {
+            expect(getThemeForTaskType('unscheduled')).toBe('indigo');
+        });
+    });
 });

@@ -4,7 +4,7 @@ module.exports = {
         '^.+\\.js$': 'babel-jest'
     },
     moduleFileExtensions: ['js'],
-    testMatch: ['**/__tests__/**/*.test.js'],
+    testPathIgnorePatterns: ['/node_modules/'],
     setupFilesAfterEnv: ['<rootDir>/__tests__/test-utils.js'],
 
     // Code coverage configuration

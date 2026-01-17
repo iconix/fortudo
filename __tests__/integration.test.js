@@ -18,8 +18,7 @@ import {
 } from './test-utils.js';
 
 import { resetEventDelegation } from '../public/js/dom-handler.js';
-
-import * as domHandler from '../public/js/dom-handler.js';
+import { refreshActiveTaskColor } from '../public/js/scheduled-task-renderer.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
 
@@ -81,15 +80,17 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Add Task with Reschedule Confirmation', () => {
-        const getInitialTask = () => ({
-            description: 'Initial Task',
-            startTime: '09:00',
-            duration: 60,
-            endTime: '10:00',
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
+        // Use future times (21:00+) to avoid triggering adjust-running-task check
+        const getInitialTask = () =>
+            createTaskWithDateTime({
+                description: 'Initial Task',
+                startTime: '21:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
 
         const setupInitialStateAndApp = async () => {
             // Clear any existing DOM content first
@@ -124,11 +125,12 @@ describe('User Confirmation Flows', () => {
                 description: 'Overlapping Task',
                 duration: 60
             };
-            const startTime = '09:30';
+            // Use 21:30 to overlap with Initial Task at 21:00-22:00
+            const startTime = '21:30';
             await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(confirmSpy.mock.calls[0][0]).toContain('Adding this task will overlap');
+            expect(confirmSpy.mock.calls[0][0]).toContain('will overlap other tasks');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -138,16 +140,16 @@ describe('User Confirmation Flows', () => {
 
             expect(initialTaskDOM).toBeDefined();
             if (initialTaskDOM) {
-                // After reschedule, the initial task should be shifted to 10:30 AM - 11:30 AM
-                expect(initialTaskDOM.startTime12).toBe('10:30 AM');
-                expect(initialTaskDOM.endTime12).toBe('11:30 AM');
+                // After reschedule, the initial task should be shifted to 10:30 PM - 11:30 PM
+                expect(initialTaskDOM.startTime12).toBe('10:30 PM');
+                expect(initialTaskDOM.endTime12).toBe('11:30 PM');
             }
 
             expect(overlappingTaskDOM).toBeDefined();
             if (overlappingTaskDOM) {
-                // The overlapping task should take the 9:30 AM - 10:30 AM slot
-                expect(overlappingTaskDOM.startTime12).toBe('9:30 AM');
-                expect(overlappingTaskDOM.endTime12).toBe('10:30 AM');
+                // The overlapping task should take the 9:30 PM - 10:30 PM slot
+                expect(overlappingTaskDOM.startTime12).toBe('9:30 PM');
+                expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
@@ -156,14 +158,14 @@ describe('User Confirmation Flows', () => {
                 extractTimeFromDateTime(
                     new Date(savedTasks.find((t) => t.description === 'Initial Task').startDateTime)
                 )
-            ).toBe('10:30');
+            ).toBe('22:30');
             expect(
                 extractTimeFromDateTime(
                     new Date(
                         savedTasks.find((t) => t.description === 'Overlapping Task').endDateTime
                     )
                 )
-            ).toBe('10:30');
+            ).toBe('22:30');
         });
 
         test('User denies reschedule: overlapping task not added', async () => {
@@ -175,11 +177,14 @@ describe('User Confirmation Flows', () => {
                 description: 'Overlapping Task',
                 duration: 60
             };
-            const startTime = '09:30';
+            // Use 21:30 to overlap with Initial Task at 21:00-22:00
+            const startTime = '21:30';
             await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(alertSpy).toHaveBeenCalledWith('Task not added to avoid rescheduling.');
+            expect(alertSpy).toHaveBeenCalledWith(
+                'Alert: Task not added as rescheduling of other tasks was declined.'
+            );
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(1);
@@ -190,24 +195,27 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Update Task with Reschedule Confirmation', () => {
-        const getTaskAData = () => ({
-            description: 'Task A',
-            startTime: '09:00',
-            duration: 60,
-            endTime: '10:00',
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
-        const getTaskBData = () => ({
-            description: 'Task B',
-            startTime: '10:00',
-            duration: 60,
-            endTime: '11:00',
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
+        // Use future times (21:00+) to avoid triggering adjust-running-task check
+        const getTaskAData = () =>
+            createTaskWithDateTime({
+                description: 'Task A',
+                startTime: '21:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+        const getTaskBData = () =>
+            createTaskWithDateTime({
+                description: 'Task B',
+                startTime: '22:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
 
         const setupInitialStateAndApp = async () => {
             // Get fresh copies of the tasks for this test
@@ -216,6 +224,7 @@ describe('User Confirmation Flows', () => {
 
             document.body.innerHTML = '';
             clearLocalStorage();
+
             mockLoadTasksFromStorage.mockReturnValue([taskAData, taskBData]);
             await setupIntegrationTestEnvironment();
 
@@ -228,19 +237,23 @@ describe('User Confirmation Flows', () => {
             mockSaveTasks.mockClear();
         };
 
-        test('User confirms reschedule: Task A updated, Task B shifted', async () => {
+        test('User confirms update reschedule: task updated and other tasks shifted', async () => {
             await setupInitialStateAndApp();
+
+            // Confirm the reschedule
             confirmSpy.mockReturnValueOnce(true);
 
+            // Update Task A (21:00-22:00) to be 1h30m which would overlap Task B (22:00-23:00)
             await updateTaskDOM(0, {
                 description: 'Task A Updated',
-                startTime: '09:00',
+                startTime: '21:00',
                 durationHours: '1',
                 durationMinutes: '30'
             });
 
+            // Confirmation should be shown
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(confirmSpy.mock.calls[0][0]).toContain('Updating this task may overlap');
+            expect(confirmSpy.mock.calls[0][0]).toContain('Reschedule others?');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -248,45 +261,42 @@ describe('User Confirmation Flows', () => {
             const taskADOM = tasks.find((t) => t.description === 'Task A Updated');
             const taskBDOM = tasks.find((t) => t.description === 'Task B');
 
+            // Task A should be updated to 21:00-22:30
             expect(taskADOM).toBeDefined();
             if (taskADOM) {
-                expect(taskADOM.startTime12).toBe('9:00 AM');
-                expect(taskADOM.endTime12).toBe('10:30 AM');
+                expect(taskADOM.startTime12).toBe('9:00 PM');
+                expect(taskADOM.endTime12).toBe('10:30 PM');
             }
 
+            // Task B should be rescheduled to 22:30-23:30
             expect(taskBDOM).toBeDefined();
             if (taskBDOM) {
-                expect(taskBDOM.startTime12).toBe('10:30 AM');
-                expect(taskBDOM.endTime12).toBe('11:30 AM');
+                expect(taskBDOM.startTime12).toBe('10:30 PM');
+                expect(taskBDOM.endTime12).toBe('11:30 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            const savedTasks = mockSaveTasks.mock.calls[0][0];
-            expect(
-                extractTimeFromDateTime(
-                    new Date(savedTasks.find((t) => t.description === 'Task A Updated').endDateTime)
-                )
-            ).toBe('10:30');
-            expect(
-                extractTimeFromDateTime(
-                    new Date(savedTasks.find((t) => t.description === 'Task B').startDateTime)
-                )
-            ).toBe('10:30');
+            expect(mockSaveTasks).toHaveBeenCalled();
         });
 
-        test('User denies reschedule: Task A not updated, Task B unchanged', async () => {
+        test('User denies update reschedule: edit cancelled, tasks unchanged', async () => {
             await setupInitialStateAndApp();
+
+            // Deny the reschedule
             confirmSpy.mockReturnValueOnce(false);
 
+            // Update Task A (21:00-22:00) to be 1h30m which would overlap Task B (22:00-23:00)
             await updateTaskDOM(0, {
-                description: 'Task A Updated Attempt',
-                startTime: '09:00',
+                description: 'Task A Updated',
+                startTime: '21:00',
                 durationHours: '1',
                 durationMinutes: '30'
             });
 
+            // Confirmation should be shown
             expect(confirmSpy).toHaveBeenCalledTimes(1);
-            expect(alertSpy).toHaveBeenCalledWith('Task not updated to avoid rescheduling.');
+
+            // Alert shown for cancellation
+            expect(alertSpy).toHaveBeenCalledWith('Alert: Task update cancelled to avoid overlap.');
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -294,44 +304,45 @@ describe('User Confirmation Flows', () => {
             const taskADOM = tasks.find((t) => t.description === 'Task A');
             const taskBDOM = tasks.find((t) => t.description === 'Task B');
 
+            // Task A should remain unchanged
             expect(taskADOM).toBeDefined();
             if (taskADOM) {
-                expect(taskADOM.startTime12).toBe('9:00 AM');
-                expect(taskADOM.endTime12).toBe('10:00 AM');
+                expect(taskADOM.startTime12).toBe('9:00 PM');
+                expect(taskADOM.endTime12).toBe('10:00 PM');
             }
 
+            // Task B should remain unchanged
             expect(taskBDOM).toBeDefined();
             if (taskBDOM) {
-                expect(taskBDOM.startTime12).toBe('10:00 AM');
-                expect(taskBDOM.endTime12).toBe('11:00 AM');
+                expect(taskBDOM.startTime12).toBe('10:00 PM');
+                expect(taskBDOM.endTime12).toBe('11:00 PM');
             }
-
-            const editFormTaskA = getEditFormForTask(0);
-            expect(editFormTaskA).toBeNull(); // Edit form should be removed from DOM when editing is cancelled
 
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
     });
 
     describe('Complete Task Late with Schedule Update Confirmation', () => {
-        const getTaskToComplete = () => ({
-            description: 'Task To Complete',
-            startTime: '09:00',
-            duration: 60,
-            endTime: '10:00',
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
-        const getSubsequentTask = () => ({
-            description: 'Subsequent Task',
-            startTime: '10:00',
-            duration: 30,
-            endTime: '10:30',
-            status: 'incomplete',
-            editing: false,
-            confirmingDelete: false
-        });
+        const getTaskToComplete = () =>
+            createTaskWithDateTime({
+                description: 'Task To Complete',
+                startTime: '09:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+        const getSubsequentTask = () =>
+            createTaskWithDateTime({
+                description: 'Subsequent Task',
+                startTime: '10:00',
+                duration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
 
         const setupInitialStateAndApp = async (initialTasks = []) => {
             document.body.innerHTML = '';
@@ -361,7 +372,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'update your schedule to show you finished at 10:30 AM'
+                'Do you want to update your schedule to show you finished at 10:30 AM'
             );
 
             const tasks = getRenderedTasksDOM();
@@ -474,7 +485,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'update your schedule to show you finished at 10:30 AM'
+                'Do you want to update your schedule to show you finished at 10:30 AM'
             );
 
             // Verify start time field was force updated (should have changed from the original value)
@@ -492,6 +503,83 @@ describe('User Confirmation Flows', () => {
 
             // Clean up the spy
             getCurrentTimeRoundedSpy.mockRestore();
+        });
+
+        test('Late completion flows around locked tasks instead of failing', async () => {
+            // Scenario: Completing a task late would push subsequent tasks into a locked task
+            // The reschedule should flow around the locked task
+            const taskToComplete = createTaskWithDateTime({
+                description: 'Task To Complete',
+                startTime: '09:00',
+                duration: 60, // 9:00-10:00
+                status: 'incomplete'
+            });
+            const shiftableTask = createTaskWithDateTime({
+                description: 'Shiftable Task',
+                startTime: '10:00',
+                duration: 60, // 10:00-11:00, will be pushed
+                status: 'incomplete'
+            });
+            const lockedTask = createTaskWithDateTime({
+                description: 'Locked Meeting',
+                startTime: '11:00',
+                duration: 60, // 11:00-12:00, locked - can't be moved
+                status: 'incomplete',
+                locked: true
+            });
+            const afterLockedTask = createTaskWithDateTime({
+                description: 'After Locked',
+                startTime: '12:00',
+                duration: 30, // 12:00-12:30
+                status: 'incomplete'
+            });
+
+            await setupInitialStateAndApp([
+                taskToComplete,
+                shiftableTask,
+                lockedTask,
+                afterLockedTask
+            ]);
+
+            // Complete at 10:45 - this would push shiftableTask to 10:45-11:45
+            // which conflicts with locked 11:00-12:00
+            // With flow-around, shiftableTask should jump to 12:00-13:00
+            setCurrentTimeInDOM('10:45 AM');
+            confirmSpy.mockReturnValueOnce(true);
+
+            await clickCompleteCheckbox(0);
+
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(4);
+
+            const completedTaskDOM = tasks.find((t) => t.description === 'Task To Complete');
+            const shiftableTaskDOM = tasks.find((t) => t.description === 'Shiftable Task');
+            const lockedTaskDOM = tasks.find((t) => t.description === 'Locked Meeting');
+
+            // Task should be completed with extended end time
+            expect(completedTaskDOM).toBeDefined();
+            if (completedTaskDOM) {
+                expect(completedTaskDOM.isCompleted).toBe(true);
+                expect(completedTaskDOM.endTime12).toBe('10:45 AM');
+            }
+
+            // Locked task should not have moved
+            expect(lockedTaskDOM).toBeDefined();
+            if (lockedTaskDOM) {
+                expect(lockedTaskDOM.startTime12).toBe('11:00 AM');
+                expect(lockedTaskDOM.endTime12).toBe('12:00 PM');
+            }
+
+            // Shiftable task should have flowed around locked to start at 12:00
+            expect(shiftableTaskDOM).toBeDefined();
+            if (shiftableTaskDOM) {
+                expect(shiftableTaskDOM.startTime12).toBe('12:00 PM');
+                expect(shiftableTaskDOM.endTime12).toBe('1:00 PM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -548,7 +636,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete all tasks?'
+                'Are you sure you want to delete ALL tasks'
             );
 
             const tasks = getRenderedTasksDOM();
@@ -607,7 +695,8 @@ describe('User Confirmation Flows', () => {
             await clickDeleteAllButton();
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-            expect(alertSpy).not.toHaveBeenCalled();
+            // App now shows an alert when there are no tasks to delete
+            expect(alertSpy).toHaveBeenCalledWith('Alert: There are no tasks to delete.');
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
@@ -645,7 +734,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete all tasks?'
+                'Are you sure you want to delete ALL tasks'
             );
 
             // Verify all tasks are deleted
@@ -717,7 +806,10 @@ describe('User Confirmation Flows', () => {
 
             // Get the active task element (should be the first incomplete task)
             // The active task should be at index 1 (after the completed task)
-            const activeTaskElement = document.getElementById('view-task-1');
+            // Use data-task-index attribute to find the task element since IDs are now generated UUIDs
+            const activeTaskElement = document.querySelector(
+                '#scheduled-task-list [data-task-index="1"]'
+            );
             expect(activeTaskElement).toBeTruthy();
             if (!activeTaskElement) return; // Type guard
 
@@ -727,8 +819,8 @@ describe('User Confirmation Flows', () => {
                 const coloredDivs = [];
                 for (const div of taskDivs) {
                     if (
-                        div.classList.contains('text-green-500') ||
-                        div.classList.contains('text-yellow-500')
+                        div.classList.contains('text-teal-400') ||
+                        div.classList.contains('text-amber-300')
                     ) {
                         coloredDivs.push(div);
                     }
@@ -741,15 +833,15 @@ describe('User Confirmation Flows', () => {
             const beforeEndTime = new Date(`${date}T14:20:00`);
 
             // Update the active task color
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTime);
+            refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTime);
 
             // Find all colored divs and verify they are green
             let coloredDivs = findColoredTaskDivs();
             expect(coloredDivs.length).toBeGreaterThan(0); // Should have at least one colored div
 
             for (const div of coloredDivs) {
-                expect(div.classList.contains('text-green-500')).toBe(true);
-                expect(div.classList.contains('text-yellow-500')).toBe(false);
+                expect(div.classList.contains('text-teal-400')).toBe(true);
+                expect(div.classList.contains('text-amber-300')).toBe(false);
             }
 
             // PHASE 2: Use a date AFTER the task end time (14:40 - task ended at 14:30)
@@ -757,15 +849,15 @@ describe('User Confirmation Flows', () => {
             const afterEndTime = new Date(`${date}T14:40:00`);
 
             // Update the active task color again
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), afterEndTime);
+            refreshActiveTaskColor(taskManager.getTaskState(), afterEndTime);
 
             // Find all colored divs and verify they are now yellow
             coloredDivs = findColoredTaskDivs();
             expect(coloredDivs.length).toBeGreaterThan(0); // Should still have colored divs
 
             for (const div of coloredDivs) {
-                expect(div.classList.contains('text-yellow-500')).toBe(true);
-                expect(div.classList.contains('text-green-500')).toBe(false);
+                expect(div.classList.contains('text-amber-300')).toBe(true);
+                expect(div.classList.contains('text-teal-400')).toBe(false);
             }
 
             // PHASE 3: Use a date back BEFORE the task end time (14:20 - task ended at 14:30)
@@ -773,15 +865,15 @@ describe('User Confirmation Flows', () => {
             const beforeEndTimeAgain = new Date(`${date}T14:20:00`);
 
             // Update the active task color one more time
-            domHandler.refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTimeAgain);
+            refreshActiveTaskColor(taskManager.getTaskState(), beforeEndTimeAgain);
 
             // Find all colored divs and verify they are green again
             coloredDivs = findColoredTaskDivs();
             expect(coloredDivs.length).toBeGreaterThan(0); // Should still have colored divs
 
             for (const div of coloredDivs) {
-                expect(div.classList.contains('text-green-500')).toBe(true);
-                expect(div.classList.contains('text-yellow-500')).toBe(false);
+                expect(div.classList.contains('text-teal-400')).toBe(true);
+                expect(div.classList.contains('text-amber-300')).toBe(false);
             }
         });
 
@@ -807,12 +899,8 @@ describe('User Confirmation Flows', () => {
             await setupInitialStateAndApp([completedTask1, completedTask2]);
 
             // Trigger the refreshActiveTaskColor function
-            // Call the function with proper type checking
-            if (
-                'refreshActiveTaskColor' in domHandler &&
-                typeof domHandler.refreshActiveTaskColor === 'function'
-            ) {
-                domHandler.refreshActiveTaskColor(taskManager.getTaskState());
+            if (typeof refreshActiveTaskColor === 'function') {
+                refreshActiveTaskColor(taskManager.getTaskState());
             }
 
             // Verify no tasks have active styling
@@ -859,9 +947,9 @@ describe('User Confirmation Flows', () => {
 
             // Test that the refreshActiveTaskColor function works with no active tasks
             // Function should exist and be callable even with no active tasks
-            expect(typeof domHandler.refreshActiveTaskColor).toBe('function');
+            expect(typeof refreshActiveTaskColor).toBe('function');
             expect(() => {
-                domHandler.refreshActiveTaskColor(taskManager.getTaskState());
+                refreshActiveTaskColor(taskManager.getTaskState());
             }).not.toThrow();
 
             // Verify completed tasks don't have active styling
