@@ -298,6 +298,22 @@ export function isTaskRunningLate(task, now = new Date()) {
 }
 
 /**
+ * Check if a task is currently active (has started, not a future task)
+ * A task is active if its start time has passed, even if it's running late.
+ * Future tasks (start time hasn't arrived yet) are NOT active.
+ * @param {Object} task - The task object with startDateTime
+ * @param {Date} [now=new Date()] - Optional date object to use as current time
+ * @returns {boolean} - True if the task has started (not a future task)
+ */
+export function isTaskCurrentlyActive(task, now = new Date()) {
+    if (!task.startDateTime) {
+        return false;
+    }
+    const start = new Date(task.startDateTime);
+    return now >= start;
+}
+
+/**
  * Get the theme color for a task type
  * @param {Object|null} task - The task object (or null)
  * @returns {'teal'|'indigo'} - Theme color name

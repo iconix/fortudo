@@ -5,7 +5,8 @@
 import {
     setupIntegrationTestEnvironment,
     getRenderedTasksDOM,
-    clearLocalStorage
+    clearLocalStorage,
+    createTaskWithDateTime
 } from './test-utils.js';
 
 import {
@@ -101,24 +102,16 @@ describe('App.js Callback Functions', () => {
     describe('onDeleteTask callback', () => {
         const setupTasksForDelete = async () => {
             const tasks = [
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
+                    duration: 60
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
+                    duration: 30
+                })
             ];
 
             await setupAppWithTasks(tasks);
@@ -206,24 +199,17 @@ describe('App.js Callback Functions', () => {
     describe('onCancelEdit callback', () => {
         const setupTasksForEdit = async () => {
             const tasks = [
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
+                    duration: 60
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
                     duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: true,
-                    confirmingDelete: false
-                }
+                    editing: true
+                })
             ];
 
             await setupAppWithTasks(tasks);
@@ -314,24 +300,17 @@ describe('App.js Callback Functions', () => {
     describe('onDeleteTask and onCancelEdit integration', () => {
         test('should not interfere with each other', async () => {
             const tasks = [
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
                     duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: true,
-                    confirmingDelete: false
-                },
-                {
+                    editing: true
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
+                    duration: 30
+                })
             ];
 
             await setupAppWithTasks(tasks);
@@ -377,15 +356,11 @@ describe('App.js Callback Functions', () => {
         describe('onCompleteTask callback coverage', () => {
             test('should handle user denying late completion confirmation (real app.js callback)', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -427,15 +402,11 @@ describe('App.js Callback Functions', () => {
         describe('onDeleteTask edge cases', () => {
             test('should handle deleting non-existent task index (real app.js callback)', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -462,15 +433,12 @@ describe('App.js Callback Functions', () => {
         describe('onSaveTaskEdit branch coverage', () => {
             test('should handle user denying reschedule during task update (real app.js callback)', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
                         duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: true,
-                        confirmingDelete: false
-                    }
+                        editing: true
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -529,15 +497,12 @@ describe('App.js Callback Functions', () => {
 
             test('should handle update task failure', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
                         duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: true,
-                        confirmingDelete: false
-                    }
+                        editing: true
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -667,6 +632,111 @@ describe('App.js Callback Functions', () => {
             });
         });
 
+        describe('ENTER key submits task form', () => {
+            test('pressing ENTER in start-time input should submit the form', async () => {
+                await setupAppWithTasks([]);
+
+                mockSaveTasks.mockClear();
+                let formSubmitted = false;
+
+                // Spy on addTask to detect form submission
+                const addTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .mockImplementation(() => {
+                        formSubmitted = true;
+                        return { success: true, task: {} };
+                    });
+
+                const taskForm = getTaskFormElement();
+                if (taskForm) {
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="description"]')
+                    );
+                    const startTimeInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="start-time"]')
+                    );
+                    const durationHoursInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-hours"]')
+                    );
+                    const durationMinutesInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-minutes"]')
+                    );
+
+                    if (descInput) descInput.value = 'Test Task';
+                    if (startTimeInput) startTimeInput.value = '09:00';
+                    if (durationHoursInput) durationHoursInput.value = '1';
+                    if (durationMinutesInput) durationMinutesInput.value = '0';
+
+                    // Press ENTER in the start-time input
+                    if (startTimeInput) {
+                        startTimeInput.dispatchEvent(
+                            new KeyboardEvent('keydown', {
+                                key: 'Enter',
+                                code: 'Enter',
+                                bubbles: true,
+                                cancelable: true
+                            })
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    }
+                }
+
+                expect(formSubmitted).toBe(true);
+                addTaskSpy.mockRestore();
+            });
+
+            test('pressing ENTER in duration-hours input should submit the form', async () => {
+                await setupAppWithTasks([]);
+
+                mockSaveTasks.mockClear();
+                let formSubmitted = false;
+
+                const addTaskSpy = jest
+                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .mockImplementation(() => {
+                        formSubmitted = true;
+                        return { success: true, task: {} };
+                    });
+
+                const taskForm = getTaskFormElement();
+                if (taskForm) {
+                    const descInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="description"]')
+                    );
+                    const startTimeInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="start-time"]')
+                    );
+                    const durationHoursInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-hours"]')
+                    );
+                    const durationMinutesInput = /** @type {HTMLInputElement} */ (
+                        taskForm.querySelector('input[name="duration-minutes"]')
+                    );
+
+                    if (descInput) descInput.value = 'Test Task';
+                    if (startTimeInput) startTimeInput.value = '09:00';
+                    if (durationHoursInput) durationHoursInput.value = '1';
+                    if (durationMinutesInput) durationMinutesInput.value = '0';
+
+                    // Press ENTER in the duration-hours input
+                    if (durationHoursInput) {
+                        durationHoursInput.dispatchEvent(
+                            new KeyboardEvent('keydown', {
+                                key: 'Enter',
+                                code: 'Enter',
+                                bubbles: true,
+                                cancelable: true
+                            })
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    }
+                }
+
+                expect(formSubmitted).toBe(true);
+                addTaskSpy.mockRestore();
+            });
+        });
+
         describe('onDeleteAllTasks branch coverage', () => {
             test('should handle deleting all tasks when no tasks exist', async () => {
                 await setupAppWithTasks([]);
@@ -689,15 +759,11 @@ describe('App.js Callback Functions', () => {
 
             test('should handle user denying delete all confirmation', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -720,15 +786,11 @@ describe('App.js Callback Functions', () => {
 
             test('should handle delete all failure with error', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -760,15 +822,11 @@ describe('App.js Callback Functions', () => {
 
             test('should call updateStartTimeField with forceUpdate=true after delete all', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -892,15 +950,11 @@ describe('App.js Callback Functions', () => {
                 }
 
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Test Task',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 // Update task state and render with missing DOM elements
@@ -947,24 +1001,16 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming late task completion', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    },
-                    {
+                        duration: 60
+                    }),
+                    createTaskWithDateTime({
                         description: 'Task 2',
                         startTime: '10:00',
-                        duration: 30,
-                        endTime: '10:30',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 30
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -1012,24 +1058,16 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after successful task deletion', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    },
-                    {
+                        duration: 60
+                    }),
+                    createTaskWithDateTime({
                         description: 'Task 2',
                         startTime: '10:00',
-                        duration: 30,
-                        endTime: '10:30',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 30
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -1071,24 +1109,16 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming task update with rescheduling', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    },
-                    {
+                        duration: 60
+                    }),
+                    createTaskWithDateTime({
                         description: 'Task 2',
                         startTime: '10:00',
-                        duration: 30,
-                        endTime: '10:30',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 30
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -1146,15 +1176,11 @@ describe('App.js Callback Functions', () => {
 
             test('should force update start time field after confirming task addition with rescheduling', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);
@@ -1220,15 +1246,11 @@ describe('App.js Callback Functions', () => {
 
             test('should not force update start time field when user denies rescheduling', async () => {
                 const tasks = [
-                    {
+                    createTaskWithDateTime({
                         description: 'Task 1',
                         startTime: '09:00',
-                        duration: 60,
-                        endTime: '10:00',
-                        status: 'incomplete',
-                        editing: false,
-                        confirmingDelete: false
-                    }
+                        duration: 60
+                    })
                 ];
 
                 await setupAppWithTasks(tasks);

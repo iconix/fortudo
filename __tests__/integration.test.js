@@ -12,7 +12,6 @@ import {
     clearLocalStorage,
     clickCompleteCheckbox,
     clickDeleteAllButton,
-    getEditFormForTask,
     setCurrentTimeInDOM,
     createTaskWithDateTime
 } from './test-utils.js';
@@ -320,6 +319,80 @@ describe('User Confirmation Flows', () => {
 
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
+
+        test('User confirms moving a locked task: locked task moved, overlapping unlocked tasks shifted', async () => {
+            // Setup with a locked task and unlocked tasks (user's bug scenario)
+            const getUnlockedTaskA = () =>
+                createTaskWithDateTime({
+                    description: 'Unlocked Task A',
+                    startTime: '21:00',
+                    duration: 60, // 21:00-22:00
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                });
+            const getLockedTask = () =>
+                createTaskWithDateTime({
+                    description: 'Locked Task',
+                    startTime: '22:30',
+                    duration: 60, // 22:30-23:30
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: true
+                });
+
+            document.body.innerHTML = '';
+            clearLocalStorage();
+
+            mockLoadTasksFromStorage.mockReturnValue([getUnlockedTaskA(), getLockedTask()]);
+            await setupIntegrationTestEnvironment();
+
+            if (alertSpy) alertSpy.mockRestore();
+            if (confirmSpy) confirmSpy.mockRestore();
+
+            alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm');
+            mockSaveTasks.mockClear();
+
+            // Confirm the reschedule
+            confirmSpy.mockReturnValueOnce(true);
+
+            // Move the locked task (22:30-23:30) to 21:15, which overlaps with Unlocked Task A (21:00-22:00)
+            await updateTaskDOM(1, {
+                description: 'Locked Task',
+                startTime: '21:15',
+                durationHours: '1',
+                durationMinutes: '0'
+            });
+
+            // Confirmation should be shown because it overlaps the unlocked task
+            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy.mock.calls[0][0]).toContain('Reschedule others?');
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const lockedTaskDOM = tasks.find((t) => t.description === 'Locked Task');
+            const unlockedTaskDOM = tasks.find((t) => t.description === 'Unlocked Task A');
+
+            // Locked Task should be moved to 21:15-22:15
+            expect(lockedTaskDOM).toBeDefined();
+            if (lockedTaskDOM) {
+                expect(lockedTaskDOM.startTime12).toBe('9:15 PM');
+                expect(lockedTaskDOM.endTime12).toBe('10:15 PM');
+            }
+
+            // Unlocked Task A should be rescheduled to after the locked task (22:15-23:15)
+            expect(unlockedTaskDOM).toBeDefined();
+            if (unlockedTaskDOM) {
+                expect(unlockedTaskDOM.startTime12).toBe('10:15 PM');
+                expect(unlockedTaskDOM.endTime12).toBe('11:15 PM');
+            }
+
+            expect(mockSaveTasks).toHaveBeenCalled();
+        });
     });
 
     describe('Complete Task Late with Schedule Update Confirmation', () => {
@@ -611,24 +684,16 @@ describe('User Confirmation Flows', () => {
 
         test('User confirms delete all: all tasks are removed', async () => {
             await setupInitialStateAndApp([
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
+                    duration: 60
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
+                    duration: 30
+                })
             ]);
             confirmSpy.mockReturnValueOnce(true);
 
@@ -648,24 +713,16 @@ describe('User Confirmation Flows', () => {
 
         test('User denies delete all: tasks remain unchanged', async () => {
             await setupInitialStateAndApp([
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
+                    duration: 60
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
+                    duration: 30
+                })
             ]);
             confirmSpy.mockReturnValueOnce(false);
 
@@ -702,24 +759,16 @@ describe('User Confirmation Flows', () => {
 
         test('Start time field is reset after all tasks are deleted', async () => {
             await setupInitialStateAndApp([
-                {
+                createTaskWithDateTime({
                     description: 'Task 1',
                     startTime: '09:00',
-                    duration: 60,
-                    endTime: '10:00',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
+                    duration: 60
+                }),
+                createTaskWithDateTime({
                     description: 'Task 2',
                     startTime: '10:00',
-                    duration: 30,
-                    endTime: '10:30',
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
+                    duration: 30
+                })
             ]);
             confirmSpy.mockReturnValueOnce(true);
 
@@ -970,6 +1019,62 @@ describe('User Confirmation Flows', () => {
                     expect(div.classList.contains('text-green-500')).toBe(false);
                     expect(div.classList.contains('text-yellow-500')).toBe(false);
                 }
+            }
+        });
+
+        test('Future task should not be highlighted in green when current time is before task start', async () => {
+            // Task scheduled for the future (15:00-16:00)
+            const futureTask = createTaskWithDateTime({
+                description: 'Future Task',
+                startTime: '15:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+
+            await setupInitialStateAndApp([futureTask]);
+
+            // Find the task element
+            const futureTaskElement = document.querySelector(
+                '#scheduled-task-list [data-task-index="0"]'
+            );
+            expect(futureTaskElement).toBeTruthy();
+            if (!futureTaskElement) return;
+
+            // Helper function to find task text divs
+            const findTaskTextDivs = () => {
+                const taskDivs = futureTaskElement.querySelectorAll('div');
+                const textDivs = [];
+                for (const div of taskDivs) {
+                    if (
+                        div.classList.contains('text-teal-400') ||
+                        div.classList.contains('text-amber-300') ||
+                        div.classList.contains('text-slate-200')
+                    ) {
+                        textDivs.push(div);
+                    }
+                }
+                return textDivs;
+            };
+
+            // Set current time to BEFORE the task starts (14:00 - task starts at 15:00)
+            const date = new Date().toISOString().split('T')[0];
+            const beforeTaskStart = new Date(`${date}T14:00:00`);
+
+            // Refresh the active task color with the simulated time
+            refreshActiveTaskColor(taskManager.getTaskState(), beforeTaskStart);
+
+            // Find all text divs and verify they are NOT green (should be slate/gray)
+            const textDivs = findTaskTextDivs();
+            expect(textDivs.length).toBeGreaterThan(0);
+
+            for (const div of textDivs) {
+                // Future tasks should NOT be highlighted in teal (green) or amber (yellow)
+                expect(div.classList.contains('text-teal-400')).toBe(false);
+                expect(div.classList.contains('text-amber-300')).toBe(false);
+                // They should be in the default slate color
+                expect(div.classList.contains('text-slate-200')).toBe(true);
             }
         });
     });

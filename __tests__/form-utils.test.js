@@ -212,11 +212,7 @@ describe('Form Utils Tests', () => {
     });
 
     describe('Unscheduled Task Inline Edit Functions', () => {
-        function createUnscheduledTaskCard(taskId, description, priority, estDuration) {
-            const { hours, minutes } = {
-                hours: Math.floor(estDuration / 60),
-                minutes: estDuration % 60
-            };
+        function createUnscheduledTaskCard(taskId, description, priority, _estDuration) {
             const checkedHigh = priority === 'high' ? 'checked' : '';
             const checkedMed = priority === 'medium' ? 'checked' : '';
             const checkedLow = priority === 'low' ? 'checked' : '';

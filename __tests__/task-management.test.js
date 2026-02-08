@@ -20,6 +20,7 @@ import {
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
     adjustAndCompleteTask,
+    truncateCompletedTask,
     getSuggestedStartTime
 } from '../public/js/task-manager.js';
 import { isValidTaskData } from '../public/js/task-validators.js';
@@ -648,6 +649,40 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState().length).toBe(0);
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
+
+        test('should require confirmation when adding a task that overlaps a completed task', () => {
+            // Scenario from user bug report:
+            // User has a completed task from 16:00-17:29
+            // User wants to add a new task in the middle (16:34-17:08)
+            // System should detect the overlap and offer to truncate the completed task
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Notes Task',
+                startTime: '16:00',
+                duration: 89, // 16:00-17:29
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([completedTask]);
+            mockSaveTasks.mockClear();
+
+            // Add a new task that overlaps the completed task
+            const result = addTask({
+                taskType: 'scheduled',
+                description: 'Break Task',
+                startTime: '16:34',
+                duration: 34 // 16:34-17:08
+            });
+
+            // Should require confirmation to truncate the completed task
+            expect(result.requiresConfirmation).toBe(true);
+            expect(result.confirmationType).toBe('TRUNCATE_COMPLETED_TASK');
+            expect(result.completedTaskToTruncate).toBeDefined();
+            expect(result.completedTaskToTruncate.description).toBe('Completed Notes Task');
+            // Task should not be added yet
+            expect(getTaskState().length).toBe(1);
+            expect(mockSaveTasks).not.toHaveBeenCalled();
+        });
     });
 
     describe('confirmAddTaskAndReschedule', () => {
@@ -841,6 +876,194 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
             expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
+        });
+
+        test('should update a locked task and reschedule overlapping unlocked tasks', () => {
+            // Reproduce user bug: moving a locked task to overlap with unlocked tasks
+            // Setup: 4 tasks, with task at 17:30 being locked
+            const taskA = createTaskWithDateTime({
+                description: 'Earlier Task',
+                startTime: '15:00',
+                duration: 60, // 15:00-16:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            const taskB = createTaskWithDateTime({
+                description: 'Another Task',
+                startTime: '16:00',
+                duration: 60, // 16:00-17:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            const lockedTask = createTaskWithDateTime({
+                description: 'Locked Task',
+                startTime: '17:30',
+                duration: 60, // 17:30-18:30
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: true
+            });
+            const taskC = createTaskWithDateTime({
+                description: 'Last Task',
+                startTime: '18:30',
+                duration: 60, // 18:30-19:30
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            updateTaskState([taskA, taskB, lockedTask, taskC]);
+            mockSaveTasks.mockClear();
+
+            // User wants to move the locked task from 17:30 to 15:15
+            // This should overlap with "Earlier Task" (15:00-16:00)
+            const updateResult = updateTask(2, {
+                description: 'Locked Task',
+                taskType: 'scheduled',
+                startTime: '15:15',
+                duration: 60,
+                locked: true
+            });
+
+            // Should require confirmation because it overlaps unlocked tasks
+            expect(updateResult.requiresConfirmation).toBe(true);
+            expect(updateResult.confirmationType).toBe('RESCHEDULE_UPDATE');
+            expect(updateResult.taskIndex).toBe(2);
+            expect(updateResult.updatedTaskObject).toBeDefined();
+
+            // User confirms the reschedule
+            const confirmResult = confirmUpdateTaskAndReschedule({
+                taskIndex: updateResult.taskIndex,
+                updatedTaskObject: updateResult.updatedTaskObject
+            });
+
+            // The confirmation should succeed
+            expect(confirmResult.success).toBe(true);
+
+            // Verify the locked task was updated to the new time
+            const tasks = getTaskState();
+            const movedLockedTask = tasks.find((t) => t.description === 'Locked Task');
+            expect(movedLockedTask).toBeDefined();
+            expect(extractTimeFromDateTime(new Date(movedLockedTask.startDateTime))).toBe('15:15');
+            expect(extractTimeFromDateTime(new Date(movedLockedTask.endDateTime))).toBe('16:15');
+
+            // Verify the overlapping unlocked tasks were rescheduled
+            const earlierTask = tasks.find((t) => t.description === 'Earlier Task');
+            expect(earlierTask).toBeDefined();
+            // Earlier Task should have been pushed to after the locked task ends (16:15)
+            expect(extractTimeFromDateTime(new Date(earlierTask.startDateTime))).toBe('16:15');
+        });
+
+        test('should resort task list after rescheduling pushes tasks past a locked task', () => {
+            // Scenario: Completing a task late pushes another task past a locked task
+            // The task list should be properly sorted after the reschedule
+            //
+            // Initial state:
+            // - Task A: 09:00-10:00 (will complete late at 10:30)
+            // - Task B: 10:00-11:00 (will be pushed, flows around locked)
+            // - Locked Task: 11:00-12:00 (cannot move)
+            // - Task C: 12:00-13:00 (will be pushed by Task B)
+            //
+            // After completing Task A at 10:30:
+            // - Task A: 09:00-10:30 (completed late)
+            // - Locked Task: 11:00-12:00 (unchanged)
+            // - Task B: 12:00-13:00 (flowed around locked task)
+            // - Task C: 13:00-14:00 (pushed by Task B)
+            const taskA = createTaskWithDateTime({
+                description: 'Task A',
+                startTime: '09:00',
+                duration: 60, // 09:00-10:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            const taskB = createTaskWithDateTime({
+                description: 'Task B',
+                startTime: '10:00',
+                duration: 60, // 10:00-11:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            const lockedTask = createTaskWithDateTime({
+                description: 'Locked Task',
+                startTime: '11:00',
+                duration: 60, // 11:00-12:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: true
+            });
+            const taskC = createTaskWithDateTime({
+                description: 'Task C',
+                startTime: '12:00',
+                duration: 60, // 12:00-13:00
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            });
+            updateTaskState([taskA, taskB, lockedTask, taskC]);
+            mockSaveTasks.mockClear();
+
+            // Complete Task A late at 10:30 (30 mins past scheduled end)
+            const completeResult = completeTask(0, '10:30');
+
+            // Should require confirmation for late completion
+            expect(completeResult.requiresConfirmation).toBe(true);
+            expect(completeResult.confirmationType).toBe('COMPLETE_LATE');
+
+            // Confirm the late completion with reschedule
+            const confirmResult = confirmCompleteLate(
+                0,
+                completeResult.newEndTime,
+                completeResult.newDuration
+            );
+            expect(confirmResult.success).toBe(true);
+
+            // Get the updated task list
+            const tasks = getTaskState();
+            const scheduledTasks = tasks.filter((t) => t.type === 'scheduled');
+
+            // Verify we still have 4 tasks
+            expect(scheduledTasks.length).toBe(4);
+
+            // Verify tasks are sorted by start time
+            for (let i = 0; i < scheduledTasks.length - 1; i++) {
+                const currentStart = new Date(scheduledTasks[i].startDateTime).getTime();
+                const nextStart = new Date(scheduledTasks[i + 1].startDateTime).getTime();
+                expect(currentStart).toBeLessThanOrEqual(nextStart);
+            }
+
+            // Verify specific task order after reschedule
+            // Task A should be first (completed)
+            expect(scheduledTasks[0].description).toBe('Task A');
+            expect(scheduledTasks[0].status).toBe('completed');
+
+            // Locked Task should be second (11:00-12:00, unchanged)
+            expect(scheduledTasks[1].description).toBe('Locked Task');
+            expect(extractTimeFromDateTime(new Date(scheduledTasks[1].startDateTime))).toBe(
+                '11:00'
+            );
+
+            // Task B should be third (flowed around to 12:00)
+            expect(scheduledTasks[2].description).toBe('Task B');
+            expect(extractTimeFromDateTime(new Date(scheduledTasks[2].startDateTime))).toBe(
+                '12:00'
+            );
+
+            // Task C should be fourth (pushed to 13:00)
+            expect(scheduledTasks[3].description).toBe('Task C');
+            expect(extractTimeFromDateTime(new Date(scheduledTasks[3].startDateTime))).toBe(
+                '13:00'
+            );
         });
     });
 
@@ -2056,6 +2279,88 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([]);
             const result = cancelEdit(0);
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('truncateCompletedTask', () => {
+        test('successfully truncates a completed task', () => {
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([completedTask]);
+
+            // Truncate to end at 10:30 instead of 11:00
+            const newEndDateTime = calculateEndDateTime(completedTask.startDateTime, 30);
+            const result = truncateCompletedTask(completedTask.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.newDuration).toBe(30);
+            expect(result.task.endDateTime).toBe(newEndDateTime);
+        });
+
+        test('returns error when task not found', () => {
+            updateTaskState([]);
+            const result = truncateCompletedTask('nonexistent', '2026-02-08T11:00:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Task not found');
+        });
+
+        test('returns error for unscheduled task', () => {
+            const unscheduledTask = {
+                id: 'unsched-1',
+                description: 'Unscheduled Task',
+                type: 'unscheduled',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            updateTaskState([unscheduledTask]);
+
+            const result = truncateCompletedTask(unscheduledTask.id, '2026-02-08T11:00:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Only scheduled tasks can be truncated');
+        });
+
+        test('returns error for incomplete task', () => {
+            const incompleteTask = createTaskWithDateTime({
+                description: 'Incomplete Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([incompleteTask]);
+
+            const newEndDateTime = calculateEndDateTime(incompleteTask.startDateTime, 30);
+            const result = truncateCompletedTask(incompleteTask.id, newEndDateTime);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Only completed tasks can be truncated');
+        });
+
+        test('returns error when new end time is before start time', () => {
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([completedTask]);
+
+            // Try to set end time before start time
+            const invalidEndTime = new Date(
+                new Date(completedTask.startDateTime).getTime() - 30 * 60000
+            ).toISOString();
+            const result = truncateCompletedTask(completedTask.id, invalidEndTime);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('New end time must be after start time');
         });
     });
 });

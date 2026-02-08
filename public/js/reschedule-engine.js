@@ -57,6 +57,36 @@ export function checkOverlap(taskToCompare, existingTasks) {
     );
 }
 
+/**
+ * Find a completed task that the new task would overlap with
+ * Used to offer truncation of the completed task when adding a retroactive task
+ * @param {Object} taskToCompare - The new task being added
+ * @param {Array} existingTasks - All existing tasks
+ * @returns {Object|null} The overlapping completed task, or null if none found
+ */
+export function findOverlappingCompletedTask(taskToCompare, existingTasks) {
+    if (taskToCompare.type !== 'scheduled') return null;
+
+    const newTaskStart = new Date(taskToCompare.startDateTime);
+
+    for (const task of existingTasks) {
+        if (
+            task.type === 'scheduled' &&
+            task.status === 'completed' &&
+            task.id !== taskToCompare.id &&
+            tasksOverlap(taskToCompare, task)
+        ) {
+            // Only offer truncation if new task starts AFTER completed task started
+            // (i.e., we're inserting a break in the middle, not before it)
+            const taskStart = new Date(task.startDateTime);
+            if (newTaskStart > taskStart) {
+                return task;
+            }
+        }
+    }
+    return null;
+}
+
 // ============================================================================
 // ADJUSTABLE TASK DETECTION
 // ============================================================================
