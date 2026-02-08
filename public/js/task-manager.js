@@ -19,7 +19,8 @@ import {
     validateReschedulePlan,
     generateLockedConflictMessage,
     executeReschedule,
-    findAdjustableTask
+    findAdjustableTask,
+    findOverlappingCompletedTask
 } from './reschedule-engine.js';
 
 import { isValidTaskData, isScheduledTask } from './task-validators.js';
@@ -74,48 +75,6 @@ import { isValidTaskData, isScheduledTask } from './task-validators.js';
  */
 
 // ============================================================================
-// MIGRATION UTILITIES
-// ============================================================================
-function migrateTasks(tasksToMigrate) {
-    const today = extractDateFromDateTime(new Date());
-    let idCounter = Date.now();
-
-    return tasksToMigrate.map((task, _index) => {
-        const migratedTask = { ...task };
-        if (!migratedTask.id) migratedTask.id = `task-${idCounter++}`;
-        if (!migratedTask.status) migratedTask.status = 'incomplete';
-        if (migratedTask.editing === undefined) migratedTask.editing = false;
-        if (migratedTask.confirmingDelete === undefined) migratedTask.confirmingDelete = false;
-        if (!migratedTask.type) migratedTask.type = 'scheduled';
-        if (migratedTask.locked === undefined) migratedTask.locked = false;
-
-        if (migratedTask.type === 'scheduled') {
-            if (!migratedTask.startDateTime && migratedTask.startTime)
-                migratedTask.startDateTime = timeToDateTime(migratedTask.startTime, today);
-            if (!migratedTask.endDateTime && migratedTask.startDateTime && migratedTask.duration)
-                migratedTask.endDateTime = calculateEndDateTime(
-                    migratedTask.startDateTime,
-                    migratedTask.duration
-                );
-            if (migratedTask.startDateTime && migratedTask.endDateTime && !migratedTask.duration) {
-                const start = new Date(migratedTask.startDateTime);
-                const end = new Date(migratedTask.endDateTime);
-                migratedTask.duration = (end.getTime() - start.getTime()) / 60000;
-            }
-        } else if (migratedTask.type === 'unscheduled') {
-            if (migratedTask.estDuration === undefined && migratedTask.duration !== undefined) {
-                migratedTask.estDuration = migratedTask.duration;
-                delete migratedTask.duration;
-            }
-            if (!migratedTask.priority) migratedTask.priority = 'medium';
-        }
-        delete migratedTask.startTime;
-        delete migratedTask.endTime;
-        return migratedTask;
-    });
-}
-
-// ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
 let tasks = [];
@@ -124,7 +83,7 @@ export function getTaskState() {
     return tasks;
 }
 export function updateTaskState(newTasks) {
-    tasks = migrateTasks(newTasks || []);
+    tasks = newTasks || [];
     if (tasks.length === 0) {
         /* Sample tasks are added in task-manager.js's updateTaskState */
     }
@@ -543,6 +502,44 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
             };
         }
 
+        // Check for overlapping completed tasks - offer to truncate instead of illegal overlap
+        if (!taskData._skipCompletedCheck) {
+            const overlappingCompletedTask = findOverlappingCompletedTask(
+                taskObject,
+                allCurrentScheduledTasks
+            );
+
+            if (overlappingCompletedTask) {
+                const newEndTime = taskObject.startDateTime;
+                const newEndTime12 = convertTo12HourTime(
+                    extractTimeFromDateTime(new Date(newEndTime))
+                );
+                const taskStart12 = convertTo12HourTime(
+                    extractTimeFromDateTime(new Date(overlappingCompletedTask.startDateTime))
+                );
+                const taskEnd12 = convertTo12HourTime(
+                    extractTimeFromDateTime(new Date(overlappingCompletedTask.endDateTime))
+                );
+
+                logger.info('addTask: Task overlaps a completed task.', {
+                    completedTask: overlappingCompletedTask.description,
+                    newTask: taskObject.description
+                });
+
+                return {
+                    success: false,
+                    requiresConfirmation: true,
+                    confirmationType: 'TRUNCATE_COMPLETED_TASK',
+                    completedTaskToTruncate: overlappingCompletedTask,
+                    newEndTime,
+                    taskObjectToAdd: taskObject,
+                    reason:
+                        `"${overlappingCompletedTask.description}" (completed) is scheduled ${taskStart12} - ${taskEnd12}. ` +
+                        `Truncate it to end at ${newEndTime12} so "${taskObject.description}" can start?`
+                };
+            }
+        }
+
         // VALIDATION: Check if reschedule would create locked task conflicts
         const rescheduleValidation = validateScheduledTaskReschedule(
             taskObject,
@@ -938,8 +935,8 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
     task.duration = newDuration;
     task.endDateTime = calculateEndDateTime(task.startDateTime, task.duration);
 
-    // Reschedule other tasks if needed
-    performReschedule(task);
+    // Reschedule other tasks if needed (and resort the task list)
+    performRescheduleAndReorganize(task);
     finalizeTaskModification();
 
     return { success: true, task };
@@ -989,6 +986,59 @@ export function adjustAndCompleteTask(taskId, newEndDateTime) {
         originalEndTime,
         newDuration,
         wasExtended
+    };
+}
+
+/**
+ * Truncates a completed task's end time to allow a new task to start
+ * @param {string} taskId - The ID of the completed task to truncate
+ * @param {string} newEndDateTime - The new end DateTime for the completed task
+ * @returns {TaskOperationResult} Result of the operation
+ */
+export function truncateCompletedTask(taskId, newEndDateTime) {
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+        return { success: false, reason: 'Task not found' };
+    }
+
+    const task = tasks[taskIndex];
+    if (task.type !== 'scheduled') {
+        return { success: false, reason: 'Only scheduled tasks can be truncated' };
+    }
+
+    if (task.status !== 'completed') {
+        return { success: false, reason: 'Only completed tasks can be truncated' };
+    }
+
+    const originalEndTime = task.endDateTime;
+
+    // Calculate new duration
+    const startTime = new Date(task.startDateTime);
+    const endTime = new Date(newEndDateTime);
+    const newDuration = Math.round((endTime - startTime) / 60000); // minutes
+
+    if (newDuration <= 0) {
+        return { success: false, reason: 'New end time must be after start time' };
+    }
+
+    // Update task
+    task.endDateTime = newEndDateTime;
+    task.duration = newDuration;
+
+    finalizeTaskModification();
+
+    logger.info('truncateCompletedTask: Truncated completed task.', {
+        taskId,
+        originalEndTime,
+        newEndDateTime,
+        newDuration
+    });
+
+    return {
+        success: true,
+        task,
+        originalEndTime,
+        newDuration
     };
 }
 

@@ -12,6 +12,7 @@ import {
     completeTask,
     confirmCompleteLate,
     adjustAndCompleteTask,
+    truncateCompletedTask,
     editTask,
     cancelEdit,
     deleteAllTasks,
@@ -704,6 +705,39 @@ async function handleAddTaskProcess(
         } else {
             // User chose "reschedule instead" - resubmit to trigger normal flow
             operationResult = addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+        }
+    }
+
+    // Handle truncate completed task confirmation
+    if (
+        operationResult.requiresConfirmation &&
+        operationResult.confirmationType === 'TRUNCATE_COMPLETED_TASK'
+    ) {
+        const userConfirmed = await askConfirmation(
+            operationResult.reason,
+            { ok: 'Yes, truncate it', cancel: 'Cancel' },
+            theme
+        );
+
+        if (userConfirmed) {
+            // Truncate the completed task
+            const truncateResult = truncateCompletedTask(
+                operationResult.completedTaskToTruncate.id,
+                operationResult.newEndTime
+            );
+
+            if (truncateResult.success) {
+                // Now add the new task (resubmit to skip completed check)
+                operationResult = addTask({ ...initialTaskData, _skipCompletedCheck: true }, false);
+            } else {
+                showAlert(`Could not truncate task: ${truncateResult.reason}`, theme);
+                refreshTaskLists();
+                return;
+            }
+        } else {
+            showAlert('Task not added.', theme);
+            refreshTaskLists();
+            return;
         }
     }
 

@@ -511,6 +511,20 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
         });
         logger.debug('Submit event listener added to task form.');
 
+        // Allow ENTER key to submit from any input field (time/number inputs don't submit by default)
+        taskFormElement.addEventListener('keydown', (event) => {
+            if (
+                event.key === 'Enter' &&
+                event.target instanceof HTMLInputElement &&
+                event.target.type !== 'submit'
+            ) {
+                event.preventDefault();
+                taskFormElement.dispatchEvent(
+                    new Event('submit', { bubbles: true, cancelable: true })
+                );
+            }
+        });
+
         // Add listener to disable auto-update on manual input
         const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
         if (startTimeInput instanceof HTMLInputElement) {

@@ -3,6 +3,7 @@ import {
     convertTo12HourTime,
     logger,
     isTaskRunningLate,
+    isTaskCurrentlyActive,
     extractTimeFromDateTime
 } from './utils.js';
 
@@ -183,7 +184,8 @@ export function renderTasks(
         .map((task) => {
             const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
             let isActiveTask = false;
-            if (!activeTaskFound && task.status !== 'completed') {
+            // Only mark as active if: first incomplete task AND current time is within its range
+            if (!activeTaskFound && task.status !== 'completed' && isTaskCurrentlyActive(task)) {
                 activeTaskFound = true;
                 isActiveTask = true;
             }
@@ -221,7 +223,8 @@ export function refreshActiveTaskColor(tasks, now = new Date()) {
             let newColorClass = 'text-slate-200';
             let isActive = false;
 
-            if (!activeTaskFound) {
+            // Only mark as active if: first incomplete task AND current time is within its range
+            if (!activeTaskFound && isTaskCurrentlyActive(task, now)) {
                 activeTaskFound = true;
                 isActive = true;
             }
