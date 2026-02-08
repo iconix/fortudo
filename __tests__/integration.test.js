@@ -12,7 +12,6 @@ import {
     clearLocalStorage,
     clickCompleteCheckbox,
     clickDeleteAllButton,
-    getEditFormForTask,
     setCurrentTimeInDOM,
     createTaskWithDateTime
 } from './test-utils.js';

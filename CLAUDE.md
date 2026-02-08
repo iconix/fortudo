@@ -57,3 +57,27 @@ Tests are in `__tests__/` with a shared `test-utils.js` for mocks and helpers. J
 - Single quotes, 4-space indentation, 100 char line width
 - `prefer-const`, `no-var`, strict equality (`===`)
 - JSDoc comments for public functions
+
+## Test-Driven Development
+
+When fixing bugs or adding features, follow strict TDD:
+
+1. **Write failing tests first** - Cover both the detection/trigger AND the execution/handler
+2. **Test all new functions** - Every new function needs unit tests, not just integration coverage
+3. **Test error paths** - Include tests for edge cases (not found, invalid input, wrong state)
+4. **Run coverage check before committing** - `npm test -- --coverage` must pass 70% threshold
+
+Example for a confirmation flow:
+
+```
+# Bug: Adding task overlapping completed task should offer truncation
+
+# Tests needed:
+1. addTask() returns requiresConfirmation when overlap detected
+2. truncateCompletedTask() successfully truncates
+3. truncateCompletedTask() returns error when task not found
+4. truncateCompletedTask() returns error when task not completed
+5. truncateCompletedTask() returns error when new end time invalid
+```
+
+**The pre-commit hook enforces both lint/format and coverage checks.** Commits will fail if coverage drops below 70%.

@@ -483,11 +483,7 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
                         newEndTime,
                         isExtend,
                         taskObjectToAdd: taskObject,
-                        reason:
-                            `"${adjustableTask.description}" is scheduled ${taskStart12} - ${taskEnd12}. ` +
-                            (isExtend
-                                ? `Extend it to ${newEndTime12} and mark complete, then start "${taskObject.description}"?`
-                                : `Complete it at ${newEndTime12} and start "${taskObject.description}"?`)
+                        reason: `"${adjustableTask.description}" is scheduled ${taskStart12} - ${taskEnd12}. ${isExtend ? `Extend it to ${newEndTime12} and mark complete, then start "${taskObject.description}"?` : `Complete it at ${newEndTime12} and start "${taskObject.description}"?`}`
                     };
                 }
             }

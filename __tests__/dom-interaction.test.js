@@ -766,7 +766,6 @@ describe('DOM Handler Interaction Tests', () => {
     });
 
     describe('Unscheduled Task List Event Handling', () => {
-        const testDate = '2025-01-01';
         let mockUnscheduledTaskCallbacks;
 
         beforeEach(() => {
@@ -934,7 +933,7 @@ describe('DOM Handler Interaction Tests', () => {
         });
 
         test('switching to scheduled shows time inputs and hides priority', () => {
-            const { initializeTaskTypeToggle } = require('../public/js/dom-handler.js');
+            require('../public/js/dom-handler.js'); // ensure module is loaded
 
             // First switch to unscheduled
             const unscheduledRadio = document.getElementById('unscheduled');

@@ -20,6 +20,7 @@ import {
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
     adjustAndCompleteTask,
+    truncateCompletedTask,
     getSuggestedStartTime
 } from '../public/js/task-manager.js';
 import { isValidTaskData } from '../public/js/task-validators.js';
@@ -2278,6 +2279,88 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([]);
             const result = cancelEdit(0);
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('truncateCompletedTask', () => {
+        test('successfully truncates a completed task', () => {
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([completedTask]);
+
+            // Truncate to end at 10:30 instead of 11:00
+            const newEndDateTime = calculateEndDateTime(completedTask.startDateTime, 30);
+            const result = truncateCompletedTask(completedTask.id, newEndDateTime);
+
+            expect(result.success).toBe(true);
+            expect(result.newDuration).toBe(30);
+            expect(result.task.endDateTime).toBe(newEndDateTime);
+        });
+
+        test('returns error when task not found', () => {
+            updateTaskState([]);
+            const result = truncateCompletedTask('nonexistent', '2026-02-08T11:00:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Task not found');
+        });
+
+        test('returns error for unscheduled task', () => {
+            const unscheduledTask = {
+                id: 'unsched-1',
+                description: 'Unscheduled Task',
+                type: 'unscheduled',
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            };
+            updateTaskState([unscheduledTask]);
+
+            const result = truncateCompletedTask(unscheduledTask.id, '2026-02-08T11:00:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Only scheduled tasks can be truncated');
+        });
+
+        test('returns error for incomplete task', () => {
+            const incompleteTask = createTaskWithDateTime({
+                description: 'Incomplete Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([incompleteTask]);
+
+            const newEndDateTime = calculateEndDateTime(incompleteTask.startDateTime, 30);
+            const result = truncateCompletedTask(incompleteTask.id, newEndDateTime);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Only completed tasks can be truncated');
+        });
+
+        test('returns error when new end time is before start time', () => {
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Task',
+                startTime: '10:00',
+                duration: 60,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            updateTaskState([completedTask]);
+
+            // Try to set end time before start time
+            const invalidEndTime = new Date(
+                new Date(completedTask.startDateTime).getTime() - 30 * 60000
+            ).toISOString();
+            const result = truncateCompletedTask(completedTask.id, invalidEndTime);
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('New end time must be after start time');
         });
     });
 });
