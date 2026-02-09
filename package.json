@@ -14,7 +14,8 @@
     "format": "prettier --write \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "format:check": "prettier --check \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "lint:format": "npm run lint:fix && npm run format",
-    "check": "npm run lint && npm run format:check"
+    "check": "npm run lint && npm run format:check",
+    "test:e2e": "python .claude/skills/webapp-testing/scripts/with_server.py --server \"python -m http.server 9847 --directory public\" --port 9847 -- python test_run_all.py"
   },
   "repository": {
     "type": "git",

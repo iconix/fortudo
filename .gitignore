@@ -68,3 +68,6 @@ node_modules/
 .claude/
 
 tmp/
+
+# Playwright E2E test artifacts
+test_screenshots/
