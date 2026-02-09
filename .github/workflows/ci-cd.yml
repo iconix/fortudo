@@ -74,6 +74,36 @@ jobs:
                   name: codecov-umbrella
                   fail_ci_if_error: false
 
+    e2e:
+        name: E2E Tests (Playwright)
+        runs-on: ubuntu-latest
+        needs: test
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.12'
+
+            - name: Install Playwright
+              run: |
+                  pip install playwright
+                  python -m playwright install chromium --with-deps
+
+            - name: Run E2E tests
+              run: npm run test:e2e
+
+            - name: Upload screenshots on failure
+              if: failure()
+              uses: actions/upload-artifact@v6
+              with:
+                  name: e2e-screenshots
+                  path: test_screenshots/
+                  retention-days: 7
+
     build:
         name: Build
         runs-on: ubuntu-latest

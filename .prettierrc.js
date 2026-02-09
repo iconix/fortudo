@@ -1,5 +1,6 @@
 module.exports = {
     // Basic formatting
+    endOfLine: 'auto',
     semi: true,
     trailingComma: 'none',
     singleQuote: true,

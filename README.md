@@ -62,7 +62,7 @@ run tests:
 - [x] (v2) publish preview link under shortlink (https://tinyurl.com/fortudo-v2)
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
-- [ ] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
+- [x] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
 - [ ] (v2) clear schedule on a new day (unschedule incomplete tasks)
 - [ ] (v2) consider highlighting gaps in a schedule in some way...
 
