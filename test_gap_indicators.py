@@ -1,5 +1,6 @@
 """E2E tests for visual gap indicators between scheduled tasks."""
 from playwright.sync_api import sync_playwright
+from datetime import datetime, timedelta
 import os
 
 PORT = 9847
@@ -9,6 +10,65 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 passed = 0
 failed = 0
 results = []
+
+# ---------------------------------------------------------------------------
+# Dynamic future schedule
+#
+# All task times are computed relative to "now" so they are always in the
+# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
+# when a task start time is in the past, which was causing the gap between
+# tasks to be silently eliminated on the CI (UTC timezone).
+# ---------------------------------------------------------------------------
+
+now = datetime.now()
+
+def fmt_time(minutes_from_now):
+    """Return HH:MM string for a time N minutes from now."""
+    t = now + timedelta(minutes=minutes_from_now)
+    return f"{t.hour:02d}:{t.minute:02d}"
+
+def duration_label(minutes):
+    """Return duration text matching the app's calculateHoursAndMinutes."""
+    h, m = divmod(minutes, 60)
+    parts = []
+    if h:
+        parts.append(f"{h}h")
+    if m:
+        parts.append(f"{m}m")
+    return " ".join(parts) or "0m"
+
+# Check how much room we have before midnight
+minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+
+# Standard layout: 1h buffer, ~2.5h total span
+# Compact layout:  10m buffer, ~50m total span (near midnight)
+if minutes_to_midnight >= 210:
+    OFFSET = 60
+    D1, D2, D3, D4 = 15, 30, 30, 30
+    GAP1 = 45   # gap between task 2 end and task 3 start
+    GAP2 = 30   # gap between task 3 end and task 4 start
+else:
+    OFFSET = min(10, max(5, minutes_to_midnight - 50))
+    D1, D2, D3, D4 = 5, 5, 5, 5
+    GAP1 = 10
+    GAP2 = 5
+
+# Task offsets from now (in minutes)
+T1_OFF = OFFSET
+T2_OFF = T1_OFF + D1                   # back-to-back with task 1
+T3_OFF = T2_OFF + D2 + GAP1            # after gap
+T4_OFF = T3_OFF + D3 + GAP2            # after second gap
+
+# Format times
+T1_TIME = fmt_time(T1_OFF)
+T2_TIME = fmt_time(T2_OFF)
+T3_TIME = fmt_time(T3_OFF)
+T4_TIME = fmt_time(T4_OFF)
+EXPECTED_GAP_LABEL = duration_label(GAP1)
+
+print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m), "
+      f"T3={T3_TIME} ({D3}m), T4={T4_TIME} ({D4}m)", flush=True)
+print(f"Expected first gap: {EXPECTED_GAP_LABEL} free", flush=True)
 
 def test(name, condition, detail=""):
     global passed, failed
@@ -64,8 +124,8 @@ with sync_playwright() as p:
     # TEST 1: No gap indicator for back-to-back tasks
     # =========================================================================
     print("\nTEST 1: No gap indicator for back-to-back tasks", flush=True)
-    add_scheduled_task(page, "Morning standup", "09:00", 0, 30)
-    add_scheduled_task(page, "Code review", "09:30", 1, 0)
+    add_scheduled_task(page, "Morning standup", T1_TIME, D1 // 60, D1 % 60)
+    add_scheduled_task(page, "Code review", T2_TIME, D2 // 60, D2 % 60)
 
     gap_elements = page.locator("#scheduled-task-list .schedule-gap")
     gap_count = gap_elements.count()
@@ -78,7 +138,7 @@ with sync_playwright() as p:
     # TEST 2: Gap indicator appears between tasks with free time
     # =========================================================================
     print("\nTEST 2: Gap indicator appears between tasks with free time", flush=True)
-    add_scheduled_task(page, "Lunch break", "12:00", 1, 0)
+    add_scheduled_task(page, "Lunch break", T3_TIME, D3 // 60, D3 % 60)
 
     gap_elements = page.locator("#scheduled-task-list .schedule-gap")
     gap_count = gap_elements.count()
@@ -91,16 +151,17 @@ with sync_playwright() as p:
     # TEST 3: Gap shows correct duration label
     # =========================================================================
     print("\nTEST 3: Gap shows correct duration label", flush=True)
-    # Code review ends at 10:30, Lunch starts at 12:00 => 1h 30m gap
     if gap_count >= 1:
         gap_text = gap_elements.nth(0).text_content()
         test("Gap shows duration with 'free' label", "free" in gap_text,
              f"Gap text: {gap_text}")
-        test("Gap shows correct duration (1h 30m)", "1h 30m" in gap_text,
+        test(f"Gap shows correct duration ({EXPECTED_GAP_LABEL})",
+             EXPECTED_GAP_LABEL in gap_text,
              f"Gap text: {gap_text}")
     else:
         test("Gap shows duration with 'free' label", False, "No gap elements found")
-        test("Gap shows correct duration (1h 30m)", False, "No gap elements found")
+        test(f"Gap shows correct duration ({EXPECTED_GAP_LABEL})", False,
+             "No gap elements found")
 
     # =========================================================================
     # TEST 4: Gap has aria-hidden for accessibility
@@ -132,11 +193,10 @@ with sync_playwright() as p:
     # TEST 6: Multiple gaps between multiple tasks
     # =========================================================================
     print("\nTEST 6: Multiple gaps between multiple tasks", flush=True)
-    add_scheduled_task(page, "Afternoon focus", "15:00", 1, 0)
+    add_scheduled_task(page, "Afternoon focus", T4_TIME, D4 // 60, D4 % 60)
 
     gap_elements = page.locator("#scheduled-task-list .schedule-gap")
     gap_count = gap_elements.count()
-    # Gaps: after Code review (10:30) -> Lunch (12:00), after Lunch (13:00) -> Afternoon (15:00)
     test("Two gaps for three non-adjacent task pairs", gap_count == 2,
          f"Expected 2 gaps, got {gap_count}")
 
@@ -190,7 +250,7 @@ with sync_playwright() as p:
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
 
-    add_scheduled_task(page, "Solo task", "10:00", 1, 0)
+    add_scheduled_task(page, "Solo task", T1_TIME, D1 // 60, D1 % 60)
 
     gap_elements = page.locator("#scheduled-task-list .schedule-gap")
     test("No gaps with single task", gap_elements.count() == 0,
@@ -207,7 +267,7 @@ with sync_playwright() as p:
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
 
-    add_scheduled_task(page, "Future task", "23:00", 0, 30)
+    add_scheduled_task(page, "Future task", T1_TIME, 0, D1)
 
     # Wait for the 1-second refreshCurrentGapHighlight() interval to fire
     page.wait_for_timeout(1500)
@@ -216,7 +276,7 @@ with sync_playwright() as p:
     test("Before-boundary marker exists", boundary_before.count() == 1,
          f"Expected 1 before-boundary, got {boundary_before.count()}")
 
-    # The "before" boundary should be visible since current time is before 23:00
+    # The "before" boundary should be visible since current time is before the task
     is_visible = boundary_before.first.is_visible()
     test("Before-boundary marker is visible for future task", is_visible,
          "Before-boundary marker should be visible when now < first task start")
