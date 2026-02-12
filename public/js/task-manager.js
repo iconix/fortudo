@@ -80,7 +80,55 @@ import { isValidTaskData, isScheduledTask } from './task-validators.js';
 let tasks = [];
 let currentTasksVersion = 0;
 export function getTaskState() {
-    return tasks;
+    return [...tasks];
+}
+
+/**
+ * Get a task by its ID
+ * @param {string} taskId - The task ID to find
+ * @returns {Task|null} The task object or null if not found
+ */
+export function getTaskById(taskId) {
+    return tasks.find((t) => t.id === taskId) || null;
+}
+
+/**
+ * Get the index of a task by its ID
+ * @param {string} taskId - The task ID to find
+ * @returns {number} The index or -1 if not found
+ */
+export function getTaskIndex(taskId) {
+    return tasks.findIndex((t) => t.id === taskId);
+}
+
+/**
+ * Set inline editing state for a task, clearing other tasks' editing state
+ * @param {string} taskId - The task ID to set editing on
+ * @param {boolean} isEditing - Whether the task should be in editing mode
+ */
+export function setTaskInlineEditing(taskId, isEditing) {
+    tasks.forEach((t) => {
+        if (t.id === taskId) {
+            t.isEditingInline = isEditing;
+        } else if (t.isEditingInline) {
+            t.isEditingInline = false;
+        }
+    });
+}
+
+/**
+ * Reset all inline editing flags on all tasks
+ * @returns {boolean} Whether any flags were changed
+ */
+export function resetAllInlineEditingFlags() {
+    let changed = false;
+    tasks.forEach((t) => {
+        if (t.isEditingInline) {
+            t.isEditingInline = false;
+            changed = true;
+        }
+    });
+    return changed;
 }
 export function updateTaskState(newTasks) {
     tasks = newTasks || [];

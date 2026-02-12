@@ -21,7 +21,11 @@ import {
     confirmCompleteLate,
     adjustAndCompleteTask,
     truncateCompletedTask,
-    getSuggestedStartTime
+    getSuggestedStartTime,
+    getTaskById,
+    getTaskIndex,
+    setTaskInlineEditing,
+    resetAllInlineEditingFlags
 } from '../public/js/task-manager.js';
 import { isValidTaskData } from '../public/js/task-validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
@@ -2361,6 +2365,174 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = truncateCompletedTask(completedTask.id, invalidEndTime);
             expect(result.success).toBe(false);
             expect(result.reason).toBe('New end time must be after start time');
+        });
+    });
+
+    describe('getTaskState immutability', () => {
+        test('returns a shallow copy, not the live array', () => {
+            const task = createTaskWithTimes('09:00', '10:00', 'Immutability Test');
+            updateTaskState([task]);
+
+            const state1 = getTaskState();
+            const state2 = getTaskState();
+            expect(state1).not.toBe(state2);
+            expect(state1).toEqual(state2);
+        });
+
+        test('pushing to returned array does not corrupt internal state', () => {
+            const task = createTaskWithTimes('09:00', '10:00', 'Original');
+            updateTaskState([task]);
+
+            const state = getTaskState();
+            state.push({ id: 'fake', description: 'Injected' });
+
+            expect(getTaskState()).toHaveLength(1);
+            expect(getTaskState()[0].description).toBe('Original');
+        });
+
+        test('splicing returned array does not remove from internal state', () => {
+            const task1 = createTaskWithTimes('09:00', '10:00', 'Task A');
+            const task2 = createTaskWithTimes('10:00', '11:00', 'Task B');
+            updateTaskState([task1, task2]);
+
+            const state = getTaskState();
+            state.splice(0, 1);
+
+            expect(getTaskState()).toHaveLength(2);
+        });
+
+        test('object references are preserved (read-through still works)', () => {
+            const task = createTaskWithTimes('09:00', '10:00', 'Ref Test');
+            updateTaskState([task]);
+
+            const fromState = getTaskState()[0];
+            expect(fromState).toBe(task);
+        });
+    });
+
+    describe('getTaskById', () => {
+        test('returns the task when found', () => {
+            const task = createTaskWithTimes('09:00', '10:00', 'Find Me');
+            updateTaskState([task]);
+
+            const found = getTaskById(task.id);
+            expect(found).not.toBeNull();
+            expect(found.description).toBe('Find Me');
+        });
+
+        test('returns null when task not found', () => {
+            updateTaskState([]);
+            expect(getTaskById('nonexistent-id')).toBeNull();
+        });
+
+        test('returns the correct task among multiple', () => {
+            const task1 = createTaskWithTimes('09:00', '10:00', 'First');
+            const task2 = createTaskWithTimes('10:00', '11:00', 'Second');
+            updateTaskState([task1, task2]);
+
+            expect(getTaskById(task2.id).description).toBe('Second');
+        });
+    });
+
+    describe('getTaskIndex', () => {
+        test('returns the index when found', () => {
+            const task1 = createTaskWithTimes('09:00', '10:00', 'First');
+            const task2 = createTaskWithTimes('10:00', '11:00', 'Second');
+            updateTaskState([task1, task2]);
+
+            expect(getTaskIndex(task1.id)).toBe(0);
+            expect(getTaskIndex(task2.id)).toBe(1);
+        });
+
+        test('returns -1 when task not found', () => {
+            updateTaskState([]);
+            expect(getTaskIndex('nonexistent-id')).toBe(-1);
+        });
+    });
+
+    describe('setTaskInlineEditing', () => {
+        test('sets editing flag on target task', () => {
+            const task1 = {
+                ...createTaskWithTimes('09:00', '10:00', 'Task A'),
+                isEditingInline: false
+            };
+            const task2 = {
+                ...createTaskWithTimes('10:00', '11:00', 'Task B'),
+                isEditingInline: false
+            };
+            updateTaskState([task1, task2]);
+
+            setTaskInlineEditing(task1.id, true);
+
+            const state = getTaskState();
+            expect(state[0].isEditingInline).toBe(true);
+            expect(state[1].isEditingInline).toBe(false);
+        });
+
+        test('clears editing flag on other tasks', () => {
+            const task1 = {
+                ...createTaskWithTimes('09:00', '10:00', 'Task A'),
+                isEditingInline: true
+            };
+            const task2 = {
+                ...createTaskWithTimes('10:00', '11:00', 'Task B'),
+                isEditingInline: false
+            };
+            updateTaskState([task1, task2]);
+
+            setTaskInlineEditing(task2.id, true);
+
+            const state = getTaskState();
+            expect(state[0].isEditingInline).toBe(false);
+            expect(state[1].isEditingInline).toBe(true);
+        });
+
+        test('sets editing to false on target task', () => {
+            const task1 = {
+                ...createTaskWithTimes('09:00', '10:00', 'Task A'),
+                isEditingInline: true
+            };
+            updateTaskState([task1]);
+
+            setTaskInlineEditing(task1.id, false);
+
+            expect(getTaskState()[0].isEditingInline).toBe(false);
+        });
+    });
+
+    describe('resetAllInlineEditingFlags', () => {
+        test('resets all editing flags and returns true when flags were set', () => {
+            const task1 = {
+                ...createTaskWithTimes('09:00', '10:00', 'Task A'),
+                isEditingInline: true
+            };
+            const task2 = {
+                ...createTaskWithTimes('10:00', '11:00', 'Task B'),
+                isEditingInline: true
+            };
+            updateTaskState([task1, task2]);
+
+            const changed = resetAllInlineEditingFlags();
+
+            expect(changed).toBe(true);
+            expect(getTaskState()[0].isEditingInline).toBe(false);
+            expect(getTaskState()[1].isEditingInline).toBe(false);
+        });
+
+        test('returns false when no flags were set', () => {
+            const task1 = {
+                ...createTaskWithTimes('09:00', '10:00', 'Task A'),
+                isEditingInline: false
+            };
+            updateTaskState([task1]);
+
+            const changed = resetAllInlineEditingFlags();
+            expect(changed).toBe(false);
+        });
+
+        test('returns false when no tasks exist', () => {
+            updateTaskState([]);
+            expect(resetAllInlineEditingFlags()).toBe(false);
         });
     });
 });

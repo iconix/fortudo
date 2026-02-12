@@ -1,5 +1,6 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
-import { getTaskState } from './task-manager.js';
+import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './task-manager.js';
+import { isScheduledTask } from './task-validators.js';
 import { getTaskFormElement } from './form-utils.js';
 
 // Import from new modules
@@ -417,18 +418,31 @@ export function initializeDragAndDropUnscheduled(callbacks) {
 // --- Wrapper for Render Functions ---
 
 export function renderTasks(tasksToRender, eventCallbacks) {
+    const callbacks = eventCallbacks || globalScheduledTaskCallbacks;
     globalScheduledTaskCallbacks = renderScheduledTasks(
         tasksToRender,
-        eventCallbacks,
+        callbacks,
         initializeScheduledTaskListEventListeners,
         globalScheduledTaskCallbacks
     );
 }
 
 export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
-    renderUnscheduledTasksBase(unscheduledTasks, eventCallbacks, (callbacks) => {
-        globalUnscheduledTaskCallbacks = callbacks;
+    const callbacks = eventCallbacks || globalUnscheduledTaskCallbacks;
+    renderUnscheduledTasksBase(unscheduledTasks, callbacks, (cb) => {
+        globalUnscheduledTaskCallbacks = cb;
     });
+}
+
+/**
+ * Re-render both task lists and update the start time field using stored state.
+ * Convenience function that replaces repeated 3-line render boilerplate.
+ */
+export function refreshUI() {
+    const tasks = getTaskState();
+    renderTasks(tasks.filter(isScheduledTask));
+    renderUnscheduledTasks(getSortedUnscheduledTasks());
+    updateStartTimeField(getSuggestedStartTime(), true);
 }
 
 // --- Start Time Field Management ---
