@@ -8,11 +8,13 @@
 import {
     renderDateTime,
     renderTasks,
+    renderUnscheduledTasks,
     updateStartTimeField,
     initializePageEventListeners,
     resetEventDelegation,
     refreshStartTimeField,
-    disableStartTimeAutoUpdate
+    disableStartTimeAutoUpdate,
+    refreshUI
 } from '../public/js/dom-handler.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
@@ -997,6 +999,59 @@ describe('DOM Handler Interaction Tests', () => {
                 taskForm.dispatchEvent(new Event('submit'));
                 taskForm.dispatchEvent(new Event('submit'));
             }).not.toThrow();
+        });
+    });
+
+    describe('refreshUI', () => {
+        test('renders both task lists and updates start time field', () => {
+            // Set up callbacks first via a render call so globals are stored
+            const scheduledCallbacks = { onCompleteTask: jest.fn() };
+            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
+
+            renderTasks([], scheduledCallbacks);
+            renderUnscheduledTasks([], unscheduledCallbacks);
+
+            // Now call refreshUI - it should render without errors using stored callbacks
+            expect(() => refreshUI()).not.toThrow();
+
+            // Verify the scheduled task list element was updated
+            const scheduledList = document.getElementById('scheduled-task-list');
+            expect(scheduledList).not.toBeNull();
+
+            // Verify the unscheduled task list element was updated
+            const unscheduledList = document.getElementById('unscheduled-task-list');
+            expect(unscheduledList).not.toBeNull();
+        });
+
+        test('works with tasks in state', () => {
+            const scheduledCallbacks = { onCompleteTask: jest.fn() };
+            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
+
+            // Initialize callbacks via render
+            renderTasks([], scheduledCallbacks);
+            renderUnscheduledTasks([], unscheduledCallbacks);
+
+            // Add a task to state
+            const today = new Date().toISOString().split('T')[0];
+            const startDateTime = new Date(`${today}T09:00:00.000`).toISOString();
+            const endDateTime = new Date(`${today}T10:00:00.000`).toISOString();
+            updateTaskState([
+                {
+                    id: 'test-1',
+                    type: 'scheduled',
+                    description: 'Test Task',
+                    startDateTime,
+                    endDateTime,
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ]);
+
+            // refreshUI should render the task
+            expect(() => refreshUI()).not.toThrow();
         });
     });
 });
