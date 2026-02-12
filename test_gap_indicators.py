@@ -209,6 +209,9 @@ with sync_playwright() as p:
 
     add_scheduled_task(page, "Future task", "23:00", 0, 30)
 
+    # Wait for the 1-second refreshCurrentGapHighlight() interval to fire
+    page.wait_for_timeout(1500)
+
     boundary_before = page.locator('#scheduled-task-list .schedule-boundary[data-boundary="before"]')
     test("Before-boundary marker exists", boundary_before.count() == 1,
          f"Expected 1 before-boundary, got {boundary_before.count()}")
