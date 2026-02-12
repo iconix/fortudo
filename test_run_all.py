@@ -5,6 +5,7 @@ scripts = [
     "test_visual_inspection.py",
     "test_functional.py",
     "test_ui_interaction.py",
+    "test_gap_indicators.py",
 ]
 
 exit_code = 0
