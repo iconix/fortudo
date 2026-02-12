@@ -198,6 +198,28 @@ with sync_playwright() as p:
 
     screenshot(page, "05_single_task_no_gap")
 
+    # =========================================================================
+    # TEST 11: Boundary marker visible when all tasks are in the future
+    # =========================================================================
+    print("\nTEST 11: Boundary marker visible when all tasks are in the future", flush=True)
+    page.evaluate("localStorage.clear()")
+    page.reload()
+    page.wait_for_load_state("load")
+    page.wait_for_timeout(2000)
+
+    add_scheduled_task(page, "Future task", "23:00", 0, 30)
+
+    boundary_before = page.locator('#scheduled-task-list .schedule-boundary[data-boundary="before"]')
+    test("Before-boundary marker exists", boundary_before.count() == 1,
+         f"Expected 1 before-boundary, got {boundary_before.count()}")
+
+    # The "before" boundary should be visible since current time is before 23:00
+    is_visible = boundary_before.first.is_visible()
+    test("Before-boundary marker is visible for future task", is_visible,
+         "Before-boundary marker should be visible when now < first task start")
+
+    screenshot(page, "06_boundary_before_future_task")
+
     # Clear localStorage for next test suite
     page.evaluate("localStorage.clear()")
 

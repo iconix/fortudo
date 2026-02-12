@@ -159,6 +159,21 @@ export function renderGapHTML(gap) {
 }
 
 /**
+ * Renders a boundary marker at the top or bottom of the schedule
+ * @param {string} boundaryTime - ISO datetime string for the boundary
+ * @param {string} position - 'before' or 'after'
+ * @returns {string} HTML string for the boundary marker
+ */
+export function renderBoundaryMarkerHTML(boundaryTime, position) {
+    return `<div class="schedule-boundary hidden flex items-center justify-center py-1 text-xs text-teal-400"
+        aria-hidden="true" data-boundary="${position}" data-boundary-time="${boundaryTime}">
+        <span class="border-t border-solid border-teal-400 flex-1"></span>
+        <span class="px-2 whitespace-nowrap">now</span>
+        <span class="border-t border-solid border-teal-400 flex-1"></span>
+    </div>`;
+}
+
+/**
  * Renders all scheduled tasks
  * @param {Array} tasksToRender - All tasks
  * @param {Object} eventCallbacks - Event callbacks for task actions
@@ -199,6 +214,7 @@ export function renderTasks(
     const gapAfterTask = new Map(gaps.map((g) => [g.afterTaskId, g]));
 
     let html = '';
+    html += renderBoundaryMarkerHTML(scheduledTasks[0].startDateTime, 'before');
     scheduledTasks.forEach((task) => {
         const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
         let isActiveTask = false;
@@ -215,6 +231,10 @@ export function renderTasks(
             html += renderGapHTML(gap);
         }
     });
+    html += renderBoundaryMarkerHTML(
+        scheduledTasks[scheduledTasks.length - 1].endDateTime,
+        'after'
+    );
     taskListElement.innerHTML = html;
 
     return updatedCallbacks;
@@ -332,6 +352,20 @@ export function refreshCurrentGapHighlight(now = new Date()) {
                 s.classList.replace('border-teal-400', 'border-slate-600');
                 s.classList.replace('border-solid', 'border-dashed');
             });
+        }
+    });
+
+    const boundaryElements = taskListElement.querySelectorAll('.schedule-boundary');
+    boundaryElements.forEach((el) => {
+        const position = el.dataset.boundary;
+        const boundaryTime = new Date(el.dataset.boundaryTime);
+        const isCurrent =
+            (position === 'before' && now < boundaryTime) ||
+            (position === 'after' && now >= boundaryTime);
+        if (isCurrent) {
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
         }
     });
 }

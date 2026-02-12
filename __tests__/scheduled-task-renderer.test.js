@@ -5,6 +5,7 @@
 import {
     getScheduledTaskListElement,
     renderGapHTML,
+    renderBoundaryMarkerHTML,
     renderTasks,
     refreshCurrentGapHighlight
 } from '../public/js/scheduled-task-renderer.js';
@@ -204,6 +205,104 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(() => {
                 refreshCurrentGapHighlight(new Date());
             }).not.toThrow();
+        });
+
+        test('"before" boundary shown when now < first task start', () => {
+            const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            // Use local time (no Z) to match timeToDateTime output
+            const beforeFirstTask = new Date('2025-01-15T08:00:00.000');
+            refreshCurrentGapHighlight(beforeFirstTask);
+
+            const beforeBoundary = document.querySelector(
+                '.schedule-boundary[data-boundary="before"]'
+            );
+            expect(beforeBoundary.classList.contains('hidden')).toBe(false);
+
+            const afterBoundary = document.querySelector(
+                '.schedule-boundary[data-boundary="after"]'
+            );
+            expect(afterBoundary.classList.contains('hidden')).toBe(true);
+        });
+
+        test('"after" boundary shown when now >= last task end', () => {
+            const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            // Use local time (no Z) to match timeToDateTime output
+            const afterLastTask = new Date('2025-01-15T13:00:00.000');
+            refreshCurrentGapHighlight(afterLastTask);
+
+            const afterBoundary = document.querySelector(
+                '.schedule-boundary[data-boundary="after"]'
+            );
+            expect(afterBoundary.classList.contains('hidden')).toBe(false);
+
+            const beforeBoundary = document.querySelector(
+                '.schedule-boundary[data-boundary="before"]'
+            );
+            expect(beforeBoundary.classList.contains('hidden')).toBe(true);
+        });
+
+        test('both boundaries hidden when now is between tasks', () => {
+            const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            // Use local time (no Z) to match timeToDateTime output
+            const betweenTasks = new Date('2025-01-15T11:15:00.000');
+            refreshCurrentGapHighlight(betweenTasks);
+
+            const boundaries = document.querySelectorAll('.schedule-boundary');
+            boundaries.forEach((el) => {
+                expect(el.classList.contains('hidden')).toBe(true);
+            });
+        });
+    });
+
+    describe('renderBoundaryMarkerHTML', () => {
+        test('contains schedule-boundary class', () => {
+            const html = renderBoundaryMarkerHTML('2025-01-15T10:00:00.000Z', 'before');
+            expect(html).toContain('schedule-boundary');
+        });
+
+        test('contains hidden class (starts hidden)', () => {
+            const html = renderBoundaryMarkerHTML('2025-01-15T10:00:00.000Z', 'before');
+            expect(html).toContain('hidden');
+        });
+
+        test('includes data-boundary and data-boundary-time attributes', () => {
+            const html = renderBoundaryMarkerHTML('2025-01-15T10:00:00.000Z', 'after');
+            expect(html).toContain('data-boundary="after"');
+            expect(html).toContain('data-boundary-time="2025-01-15T10:00:00.000Z"');
+        });
+
+        test('contains "now" text', () => {
+            const html = renderBoundaryMarkerHTML('2025-01-15T10:00:00.000Z', 'before');
+            expect(html).toContain('now');
+        });
+    });
+
+    describe('renderTasks with boundary markers', () => {
+        const mockInitListeners = jest.fn();
+        const mockCallbacks = { onCompleteTask: jest.fn() };
+
+        test('output contains boundary with data-boundary="before"', () => {
+            const tasks = [createTask('1', '10:00', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const beforeBoundary = list.querySelector('.schedule-boundary[data-boundary="before"]');
+            expect(beforeBoundary).not.toBeNull();
+        });
+
+        test('output contains boundary with data-boundary="after"', () => {
+            const tasks = [createTask('1', '10:00', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const afterBoundary = list.querySelector('.schedule-boundary[data-boundary="after"]');
+            expect(afterBoundary).not.toBeNull();
         });
     });
 });
