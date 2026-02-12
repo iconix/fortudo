@@ -64,7 +64,7 @@ run tests:
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
 - [x] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
 - [ ] (v2) clear schedule on a new day (unschedule incomplete tasks)
-- [ ] (v2) consider highlighting gaps in a schedule in some way...
+- [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
 - [ ] (vNext) add horizontal timeline bar to see schedule and gaps more easily
 - [ ] (vNext) try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt) (e.g., https://tinybase.org/demos/todo-app/todo-app-v6-collaboration/)

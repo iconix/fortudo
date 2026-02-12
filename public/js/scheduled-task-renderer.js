@@ -6,6 +6,7 @@ import {
     isTaskCurrentlyActive,
     extractTimeFromDateTime
 } from './utils.js';
+import { findScheduleGaps } from './reschedule-engine.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -144,6 +145,20 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
 }
 
 /**
+ * Renders a gap indicator between consecutive scheduled tasks
+ * @param {Object} gap - Gap object from findScheduleGaps()
+ * @returns {string} HTML string for the gap indicator
+ */
+export function renderGapHTML(gap) {
+    const durationText = calculateHoursAndMinutes(gap.durationMinutes);
+    return `<div class="schedule-gap flex items-center justify-center py-1 text-xs text-slate-500" aria-hidden="true" data-gap-start="${gap.startISO}" data-gap-end="${gap.endISO}">
+        <span class="border-t border-dashed border-slate-600 flex-1"></span>
+        <span class="px-2 whitespace-nowrap">${durationText} free</span>
+        <span class="border-t border-dashed border-slate-600 flex-1"></span>
+    </div>`;
+}
+
+/**
  * Renders all scheduled tasks
  * @param {Array} tasksToRender - All tasks
  * @param {Object} eventCallbacks - Event callbacks for task actions
@@ -180,20 +195,27 @@ export function renderTasks(
         return updatedCallbacks;
     }
 
-    taskListElement.innerHTML = scheduledTasks
-        .map((task) => {
-            const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
-            let isActiveTask = false;
-            // Only mark as active if: first incomplete task AND current time is within its range
-            if (!activeTaskFound && task.status !== 'completed' && isTaskCurrentlyActive(task)) {
-                activeTaskFound = true;
-                isActiveTask = true;
-            }
-            return task.editing
-                ? renderEditTaskHTML(task, originalIndex)
-                : renderViewTaskHTML(task, originalIndex, isActiveTask);
-        })
-        .join('');
+    const gaps = findScheduleGaps(tasksToRender);
+    const gapAfterTask = new Map(gaps.map((g) => [g.afterTaskId, g]));
+
+    let html = '';
+    scheduledTasks.forEach((task) => {
+        const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
+        let isActiveTask = false;
+        if (!activeTaskFound && task.status !== 'completed' && isTaskCurrentlyActive(task)) {
+            activeTaskFound = true;
+            isActiveTask = true;
+        }
+        html += task.editing
+            ? renderEditTaskHTML(task, originalIndex)
+            : renderViewTaskHTML(task, originalIndex, isActiveTask);
+
+        const gap = gapAfterTask.get(task.id);
+        if (gap) {
+            html += renderGapHTML(gap);
+        }
+    });
+    taskListElement.innerHTML = html;
 
     return updatedCallbacks;
 }
@@ -281,4 +303,35 @@ export function triggerConfettiAnimation(taskId) {
     } else {
         logger.warn(`Task element not found for celebration: ${taskId}`);
     }
+}
+
+/**
+ * Highlights the gap that contains the current time with teal styling
+ * @param {Date} [now] - Current time (defaults to new Date())
+ */
+export function refreshCurrentGapHighlight(now = new Date()) {
+    const taskListElement = getScheduledTaskListElement();
+    if (!taskListElement) return;
+
+    const gapElements = taskListElement.querySelectorAll('.schedule-gap');
+    gapElements.forEach((el) => {
+        const start = new Date(el.dataset.gapStart);
+        const end = new Date(el.dataset.gapEnd);
+        const isCurrent = now >= start && now < end;
+
+        const borderSpans = el.querySelectorAll('.border-t');
+        if (isCurrent) {
+            el.classList.replace('text-slate-500', 'text-teal-400');
+            borderSpans.forEach((s) => {
+                s.classList.replace('border-slate-600', 'border-teal-400');
+                s.classList.replace('border-dashed', 'border-solid');
+            });
+        } else {
+            el.classList.replace('text-teal-400', 'text-slate-500');
+            borderSpans.forEach((s) => {
+                s.classList.replace('border-teal-400', 'border-slate-600');
+                s.classList.replace('border-solid', 'border-dashed');
+            });
+        }
+    });
 }

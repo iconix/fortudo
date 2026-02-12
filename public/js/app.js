@@ -12,7 +12,7 @@ import {
     getTaskFormElement,
     focusTaskDescriptionInput
 } from './form-utils.js';
-import { refreshActiveTaskColor } from './scheduled-task-renderer.js';
+import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './scheduled-task-renderer.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Active task color refresh interval
     const activeTaskColorInterval = setInterval(() => {
         refreshActiveTaskColor(getTaskState());
+        refreshCurrentGapHighlight();
         refreshStartTimeField();
     }, 1000);
 
