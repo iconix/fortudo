@@ -775,8 +775,8 @@ describe('User Confirmation Flows', () => {
             // Set a value in the start time field before deleting all tasks
             const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
             if (startTimeInput instanceof HTMLInputElement) {
-                startTimeInput.value = '15:30'; // Set to some arbitrary time
-                expect(startTimeInput.value).toBe('15:30'); // Verify it's set
+                startTimeInput.value = '15:33'; // Not on a 5-min boundary so getCurrentTimeRounded() can never return it
+                expect(startTimeInput.value).toBe('15:33'); // Verify it's set
             }
 
             await clickDeleteAllButton();
@@ -792,7 +792,7 @@ describe('User Confirmation Flows', () => {
 
             // Verify start time field is reset (should have changed from the original value)
             if (startTimeInput instanceof HTMLInputElement) {
-                expect(startTimeInput.value).not.toBe('15:30'); // Should have changed from the original value
+                expect(startTimeInput.value).not.toBe('15:33'); // Should have changed from the original value
                 expect(startTimeInput.value).toBeTruthy(); // Should have some value (current time rounded)
                 // The exact value will depend on getCurrentTimeRounded(), but it should be a valid time format
                 expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format

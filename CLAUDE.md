@@ -12,7 +12,7 @@ Fortudo is a daily time-blocking to-do app. It runs as a single-page application
 # Testing
 npm test                    # Run Jest test suite
 npm test:watch              # Run tests in watch mode
-npm test:coverage           # Generate coverage report (70% threshold enforced)
+npm test:coverage           # Generate coverage report (80% threshold (75% for branches) enforced)
 
 # Linting & Formatting
 npm run lint                # Run ESLint
@@ -65,7 +65,7 @@ When fixing bugs or adding features, follow strict TDD:
 1. **Write failing tests first** - Cover both the detection/trigger AND the execution/handler
 2. **Test all new functions** - Every new function needs unit tests, not just integration coverage
 3. **Test error paths** - Include tests for edge cases (not found, invalid input, wrong state)
-4. **Run coverage check before committing** - `npm test -- --coverage` must pass 70% threshold
+4. **Run coverage check before committing** - `npm test -- --coverage` must pass 80% threshold (75% for branches)
 
 Example for a confirmation flow:
 
@@ -80,4 +80,4 @@ Example for a confirmation flow:
 5. truncateCompletedTask() returns error when new end time invalid
 ```
 
-**The pre-commit hook enforces both lint/format and coverage checks.** Commits will fail if coverage drops below 70%.
+**The pre-commit hook enforces both lint/format and coverage checks.** Commits will fail if coverage drops below 80% (75% for branches).

@@ -382,6 +382,32 @@ export function validateAndGetReschedulePlan(taskToPlace, otherScheduledTasks) {
  * @param {number} requiredDuration - Duration in minutes needed
  * @returns {Array} Array of gap objects with {start, end, durationMinutes}
  */
+/**
+ * Finds gaps between all consecutive scheduled tasks (regardless of lock status)
+ * @param {Array} scheduledTasks - Array of all tasks (filters to scheduled internally)
+ * @returns {Array} Array of gap objects with {afterTaskId, startISO, endISO, durationMinutes}
+ */
+export function findScheduleGaps(scheduledTasks) {
+    const sorted = [...scheduledTasks]
+        .filter((t) => t.type === 'scheduled' && t.startDateTime && t.endDateTime)
+        .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
+    const gaps = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const prevEnd = new Date(sorted[i].endDateTime);
+        const nextStart = new Date(sorted[i + 1].startDateTime);
+        const durationMinutes = Math.round((nextStart - prevEnd) / 60000);
+        if (durationMinutes > 0) {
+            gaps.push({
+                afterTaskId: sorted[i].id,
+                startISO: sorted[i].endDateTime,
+                endISO: sorted[i + 1].startDateTime,
+                durationMinutes
+            });
+        }
+    }
+    return gaps;
+}
+
 export function findGapsBetweenLockedTasks(lockedTasks, requiredDuration) {
     if (lockedTasks.length === 0) return [];
 

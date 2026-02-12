@@ -1,15 +1,61 @@
 """Visual inspection of the Fortudo app - takes screenshots in various states."""
 from playwright.sync_api import sync_playwright
+from datetime import datetime, timedelta
 import os
 
 PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# Dynamic future schedule
+#
+# All task times are computed relative to "now" so they are always in the
+# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
+# when a task start time is in the past, which was causing timeouts on the
+# CI (UTC timezone).
+# ---------------------------------------------------------------------------
+
+now = datetime.now()
+
+def fmt_time(minutes_from_now):
+    """Return HH:MM string for a time N minutes from now."""
+    t = now + timedelta(minutes=minutes_from_now)
+    return f"{t.hour:02d}:{t.minute:02d}"
+
+# Check how much room we have before midnight
+minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+
+# Standard layout: 1h buffer, ~1.5h task span
+# Compact layout:  10m buffer, ~15m task span (near midnight)
+if minutes_to_midnight >= 150:
+    OFFSET = 60
+    D1, D2 = 30, 60
+else:
+    OFFSET = min(10, max(5, minutes_to_midnight - 20))
+    D1, D2 = 5, 10
+
+T1_TIME = fmt_time(OFFSET)
+T2_TIME = fmt_time(OFFSET + D1)
+
+print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m)", flush=True)
+
 def screenshot(page, name):
     path = os.path.join(SCREENSHOTS_DIR, f"{name}.png")
     page.screenshot(path=path, full_page=True)
     print(f"  [screenshot] {name}.png", flush=True)
+
+def dismiss_modals(page):
+    """Dismiss any alert or confirm modals that may be showing."""
+    for _ in range(3):
+        confirm_modal = page.locator("#custom-confirm-modal")
+        if confirm_modal.is_visible():
+            page.locator("#ok-custom-confirm-modal").click()
+            page.wait_for_timeout(300)
+        alert_modal = page.locator("#custom-alert-modal")
+        if alert_modal.is_visible():
+            page.locator("#ok-custom-alert-modal").click()
+            page.wait_for_timeout(300)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -45,23 +91,25 @@ with sync_playwright() as p:
     page.locator("#scheduled").click()
     page.wait_for_timeout(300)
     page.fill('input[name="description"]', "Morning standup meeting")
-    page.fill('input[name="start-time"]', "09:00")
-    page.fill('input[name="duration-hours"]', "0")
-    page.fill('input[name="duration-minutes"]', "30")
+    page.fill('input[name="start-time"]', T1_TIME)
+    page.fill('input[name="duration-hours"]', str(D1 // 60))
+    page.fill('input[name="duration-minutes"]', str(D1 % 60))
     screenshot(page, "04_filled_scheduled_form")
 
     page.click('#task-form button[type="submit"]')
     page.wait_for_timeout(500)
+    dismiss_modals(page)
     screenshot(page, "05_after_adding_scheduled_task")
 
     # 5. Add a second scheduled task
     print("5. Adding a second scheduled task", flush=True)
     page.fill('input[name="description"]', "Code review session")
-    page.fill('input[name="start-time"]', "09:30")
-    page.fill('input[name="duration-hours"]', "1")
-    page.fill('input[name="duration-minutes"]', "0")
+    page.fill('input[name="start-time"]', T2_TIME)
+    page.fill('input[name="duration-hours"]', str(D2 // 60))
+    page.fill('input[name="duration-minutes"]', str(D2 % 60))
     page.click('#task-form button[type="submit"]')
     page.wait_for_timeout(500)
+    dismiss_modals(page)
     screenshot(page, "06_two_scheduled_tasks")
 
     # 6. Add an unscheduled task

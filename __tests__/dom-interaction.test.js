@@ -262,7 +262,9 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Scheduled task list element not found');
             }
 
-            expect(taskListElement.children.length).toBe(sampleTasks.length);
+            // 3 tasks + 2 gap indicators between non-adjacent tasks
+            const taskElements = taskListElement.querySelectorAll(':scope > [data-task-id]');
+            expect(taskElements.length).toBe(sampleTasks.length);
 
             // Check Task 1 (view mode)
             const task1Element = taskListElement.querySelector('[data-task-id="test-task-1"]');

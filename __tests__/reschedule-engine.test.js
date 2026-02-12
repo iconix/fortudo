@@ -10,6 +10,7 @@ import {
     validateReschedulePlan,
     validateAndGetReschedulePlan,
     findGapsBetweenLockedTasks,
+    findScheduleGaps,
     generateLockedConflictMessage,
     executeReschedule,
     findAdjustableTask
@@ -537,6 +538,83 @@ describe('Reschedule Engine Tests', () => {
             const message = generateLockedConflictMessage(newTask, validationResult);
             expect(message).toContain('Unlock');
             expect(message).toContain('Delete');
+        });
+    });
+
+    describe('findScheduleGaps', () => {
+        test('returns empty array for empty input', () => {
+            expect(findScheduleGaps([])).toEqual([]);
+        });
+
+        test('returns empty array for single task', () => {
+            const tasks = [createTask('1', '10:00', 60)];
+            expect(findScheduleGaps(tasks)).toEqual([]);
+        });
+
+        test('returns no gaps for back-to-back tasks', () => {
+            const tasks = [
+                createTask('1', '10:00', 60), // 10:00 - 11:00
+                createTask('2', '11:00', 60) // 11:00 - 12:00
+            ];
+            expect(findScheduleGaps(tasks)).toEqual([]);
+        });
+
+        test('returns one gap for two tasks with 30min gap', () => {
+            const tasks = [
+                createTask('1', '10:00', 60), // 10:00 - 11:00
+                createTask('2', '11:30', 60) // 11:30 - 12:30
+            ];
+            const gaps = findScheduleGaps(tasks);
+            expect(gaps).toHaveLength(1);
+            expect(gaps[0].afterTaskId).toBe('1');
+            expect(gaps[0].startISO).toBe(tasks[0].endDateTime);
+            expect(gaps[0].endISO).toBe(tasks[1].startDateTime);
+            expect(gaps[0].durationMinutes).toBe(30);
+        });
+
+        test('returns one gap when gap between first two but not last two', () => {
+            const tasks = [
+                createTask('1', '10:00', 60), // 10:00 - 11:00
+                createTask('2', '11:30', 30), // 11:30 - 12:00
+                createTask('3', '12:00', 60) // 12:00 - 13:00
+            ];
+            const gaps = findScheduleGaps(tasks);
+            expect(gaps).toHaveLength(1);
+            expect(gaps[0].afterTaskId).toBe('1');
+        });
+
+        test('returns two gaps when gaps between both pairs', () => {
+            const tasks = [
+                createTask('1', '10:00', 60), // 10:00 - 11:00
+                createTask('2', '11:30', 30), // 11:30 - 12:00
+                createTask('3', '13:00', 60) // 13:00 - 14:00
+            ];
+            const gaps = findScheduleGaps(tasks);
+            expect(gaps).toHaveLength(2);
+            expect(gaps[0].afterTaskId).toBe('1');
+            expect(gaps[1].afterTaskId).toBe('2');
+        });
+
+        test('skips non-scheduled tasks in mixed array', () => {
+            const tasks = [
+                createTask('1', '10:00', 60),
+                { id: '2', type: 'unscheduled', priority: 'high' },
+                createTask('3', '11:30', 60)
+            ];
+            const gaps = findScheduleGaps(tasks);
+            expect(gaps).toHaveLength(1);
+            expect(gaps[0].afterTaskId).toBe('1');
+        });
+
+        test('skips tasks missing startDateTime or endDateTime', () => {
+            const tasks = [
+                createTask('1', '10:00', 60),
+                { id: '2', type: 'scheduled', description: 'No times' },
+                createTask('3', '11:30', 60)
+            ];
+            const gaps = findScheduleGaps(tasks);
+            expect(gaps).toHaveLength(1);
+            expect(gaps[0].afterTaskId).toBe('1');
         });
     });
 

@@ -1,10 +1,60 @@
 """UI interaction tests for Fortudo app - form toggling, modals, editing, etc."""
 from playwright.sync_api import sync_playwright
+from datetime import datetime, timedelta
 import os
 
 PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Dynamic future schedule
+#
+# All task times are computed relative to "now" so they are always in the
+# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
+# when a task start time is in the past, which was causing test failures on
+# the CI (UTC timezone).
+# ---------------------------------------------------------------------------
+
+now = datetime.now()
+
+def fmt_time(minutes_from_now):
+    """Return HH:MM string for a time N minutes from now."""
+    t = now + timedelta(minutes=minutes_from_now)
+    return f"{t.hour:02d}:{t.minute:02d}"
+
+# Check how much room we have before midnight
+minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+
+# Standard layout: 1h buffer, ~3.5h total span
+# Compact layout:  10m buffer, ~45m total span (near midnight)
+if minutes_to_midnight >= 300:
+    OFFSET = 60
+    D_VAL = 60                  # validation test (task won't be created)
+    D1, D2, D3 = 60, 30, 60    # three back-to-back tasks
+    D_MODAL = 30                # schedule-via-modal task
+    MODAL_GAP = 30              # gap between T3 end and modal task start
+else:
+    OFFSET = min(10, max(5, minutes_to_midnight - 50))
+    D_VAL = 10
+    D1, D2, D3 = 10, 5, 10
+    D_MODAL = 5
+    MODAL_GAP = 10
+
+T_VAL_OFF = OFFSET
+T1_OFF = OFFSET
+T2_OFF = T1_OFF + D1
+T3_OFF = T2_OFF + D2
+T_MODAL_OFF = T3_OFF + D3 + MODAL_GAP
+
+T_VAL_TIME = fmt_time(T_VAL_OFF)
+T1_TIME = fmt_time(T1_OFF)
+T2_TIME = fmt_time(T2_OFF)
+T3_TIME = fmt_time(T3_OFF)
+T_MODAL_TIME = fmt_time(T_MODAL_OFF)
+
+print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m), "
+      f"T3={T3_TIME} ({D3}m), T_MODAL={T_MODAL_TIME} ({D_MODAL}m)", flush=True)
 
 passed = 0
 failed = 0
@@ -87,9 +137,9 @@ with sync_playwright() as p:
     # =========================================================================
     print("\nTEST 2: Form validation", flush=True)
     page.fill('input[name="description"]', "")
-    page.fill('input[name="start-time"]', "10:00")
-    page.fill('input[name="duration-hours"]', "1")
-    page.fill('input[name="duration-minutes"]', "0")
+    page.fill('input[name="start-time"]', T_VAL_TIME)
+    page.fill('input[name="duration-hours"]', str(D_VAL // 60))
+    page.fill('input[name="duration-minutes"]', str(D_VAL % 60))
     page.click('#task-form button[type="submit"]')
     page.wait_for_timeout(500)
 
@@ -104,9 +154,9 @@ with sync_playwright() as p:
     # =========================================================================
     print("\nTEST 3: Setup - adding tasks", flush=True)
     tasks_to_add = [
-        ("Morning workout", "07:00", "1", "0"),
-        ("Breakfast", "08:00", "0", "30"),
-        ("Team meeting", "08:30", "1", "0"),
+        ("Morning workout", T1_TIME, str(D1 // 60), str(D1 % 60)),
+        ("Breakfast", T2_TIME, str(D2 // 60), str(D2 % 60)),
+        ("Team meeting", T3_TIME, str(D3 // 60), str(D3 % 60)),
     ]
     for desc, start, hrs, mins in tasks_to_add:
         page.fill('input[name="description"]', desc)
@@ -261,9 +311,9 @@ with sync_playwright() as p:
         if schedule_modal.is_visible():
             screenshot(page, "08a_schedule_modal")
 
-            page.fill('input[name="modal-start-time"]', "15:00")
-            page.fill('input[name="modal-duration-hours"]', "0")
-            page.fill('input[name="modal-duration-minutes"]', "30")
+            page.fill('input[name="modal-start-time"]', T_MODAL_TIME)
+            page.fill('input[name="modal-duration-hours"]', str(D_MODAL // 60))
+            page.fill('input[name="modal-duration-minutes"]', str(D_MODAL % 60))
 
             page.locator('#schedule-modal-form button[type="submit"]').click()
             page.wait_for_timeout(500)
