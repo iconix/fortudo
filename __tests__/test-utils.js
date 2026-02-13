@@ -21,10 +21,26 @@ import {
  */
 function setupDOM() {
     document.body.innerHTML = `
+    <div id="room-entry-screen" class="hidden">
+      <form id="room-entry-form">
+        <input type="text" id="room-code-input" />
+        <button type="button" id="generate-room-btn"></button>
+        <button type="submit">Enter Room</button>
+      </form>
+      <div id="saved-rooms-list" class="hidden">
+        <div id="saved-rooms-buttons"></div>
+      </div>
+    </div>
+    <div id="main-app" class="hidden">
     <div class="container">
       <div class="header">
         <div id="current-time"></div>
         <div id="current-date"></div>
+        <span id="room-code-badge"><span id="room-code-display"></span></span>
+        <span id="sync-status-indicator">
+          <i id="sync-status-icon"></i>
+          <span id="sync-status-text"></span>
+        </span>
       </div>
       <form id="task-form">
         <div class="form-group">
@@ -90,6 +106,7 @@ function setupDOM() {
         </div>
       </div>
     </div>
+    </div>
   `;
 }
 
@@ -102,6 +119,9 @@ async function setupIntegrationTestEnvironment() {
     setupDOM();
     setupMockLocalStorage();
 
+    // Set a default room code so app.js skips the room entry screen
+    localStorageMock.setItem('fortudo-active-room', 'test-room');
+
     // Dynamically import the main app module.
     await import('../public/js/app.js');
 
@@ -113,8 +133,8 @@ async function setupIntegrationTestEnvironment() {
     });
     document.dispatchEvent(domContentLoadedEvent);
 
-    // Wait a short moment for any async operations within app.js's DOMContentLoaded if necessary,
-    await new Promise((resolve) => setTimeout(resolve, 0)); // Ensures microtask queue is flushed.
+    // Wait for async operations within app.js's DOMContentLoaded (initStorage, loadTasks).
+    await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
 // Definitions for localStorage mocks and helpers

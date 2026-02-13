@@ -23,10 +23,18 @@ import { extractTimeFromDateTime } from '../public/js/utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
+    initStorage: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
+}));
+
+// Mock sync-manager.js to prevent real sync operations
+jest.mock('../public/js/sync-manager.js', () => ({
+    onSyncStatusChange: jest.fn(() => jest.fn()),
+    initSync: jest.fn(),
+    debouncedSync: jest.fn()
 }));
 import {
     saveTasks as mockSaveTasksInternal,

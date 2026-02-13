@@ -24,16 +24,109 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-handler.js';
-import { loadTasks } from './storage.js';
+import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
 import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
 import { handleAddTaskProcess } from './handlers/add-task-handler.js';
 import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js';
+import {
+    getActiveRoom,
+    setActiveRoom,
+    addRoom,
+    generateRoomCode,
+    getSavedRooms
+} from './room-manager.js';
+import { onSyncStatusChange } from './sync-manager.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Show the room entry screen and populate saved rooms.
+ */
+function showRoomEntryScreen() {
+    const roomEntryScreen = document.getElementById('room-entry-screen');
+    const mainApp = document.getElementById('main-app');
+    if (roomEntryScreen) roomEntryScreen.classList.remove('hidden');
+    if (mainApp) mainApp.classList.add('hidden');
+
+    // Populate saved rooms
+    const savedRooms = getSavedRooms();
+    const savedRoomsList = document.getElementById('saved-rooms-list');
+    const savedRoomsButtons = document.getElementById('saved-rooms-buttons');
+    if (savedRooms.length > 0 && savedRoomsList && savedRoomsButtons) {
+        savedRoomsList.classList.remove('hidden');
+        savedRoomsButtons.innerHTML = savedRooms
+            .map(
+                (code) =>
+                    `<button type="button" class="saved-room-btn px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm text-slate-300 transition-colors" data-room="${code}">${code}</button>`
+            )
+            .join('');
+    }
+
+    // Wire up room entry form
+    const roomEntryForm = document.getElementById('room-entry-form');
+    const roomCodeInput = document.getElementById('room-code-input');
+    const generateBtn = document.getElementById('generate-room-btn');
+
+    if (generateBtn && roomCodeInput) {
+        generateBtn.addEventListener('click', () => {
+            roomCodeInput.value = generateRoomCode();
+        });
+    }
+
+    if (roomEntryForm && roomCodeInput) {
+        roomEntryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = roomCodeInput.value.trim().toLowerCase();
+            if (code) {
+                await enterRoom(code);
+            }
+        });
+    }
+
+    // Wire up saved room buttons
+    if (savedRoomsButtons) {
+        savedRoomsButtons.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.saved-room-btn');
+            if (btn) {
+                const code = btn.getAttribute('data-room');
+                if (code) {
+                    await enterRoom(code);
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Enter a room: set active, save to list, init storage, and boot the app.
+ * @param {string} roomCode
+ */
+async function enterRoom(roomCode) {
+    setActiveRoom(roomCode);
+    addRoom(roomCode);
+    await initAndBootApp(roomCode);
+}
+
+/**
+ * Initialize storage and boot the main app UI.
+ * @param {string} roomCode
+ */
+async function initAndBootApp(roomCode) {
+    // Hide room entry, show main app
+    const roomEntryScreen = document.getElementById('room-entry-screen');
+    const mainApp = document.getElementById('main-app');
+    if (roomEntryScreen) roomEntryScreen.classList.add('hidden');
+    if (mainApp) mainApp.classList.remove('hidden');
+
+    // Update room code display
+    const roomCodeDisplay = document.getElementById('room-code-display');
+    if (roomCodeDisplay) roomCodeDisplay.textContent = roomCode;
+
+    // Initialize storage
+    await initStorage(roomCode);
+
     // Load and initialize state
-    const loadedTasks = loadTasks();
+    const loadedTasks = await loadTasks();
     loadedTasks.forEach((task) => {
         if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
             task.isEditingInline = false;
@@ -79,6 +172,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
 
+    // Wire up sync status indicator
+    onSyncStatusChange((status) => {
+        updateSyncStatusUI(status);
+    });
+
+    // Wire up room code badge click to switch rooms
+    const roomCodeBadge = document.getElementById('room-code-badge');
+    if (roomCodeBadge) {
+        roomCodeBadge.addEventListener('click', () => {
+            showRoomEntryScreen();
+        });
+    }
+
     // Initial render
     const allTasks = getTaskState();
     renderTasks(
@@ -88,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
 
     const suggested = getSuggestedStartTime();
-    logger.debug('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);
+    logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
@@ -103,4 +209,40 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('beforeunload', () => {
         clearInterval(activeTaskColorInterval);
     });
+}
+
+/**
+ * Update the sync status UI indicator.
+ * @param {string} status - 'idle' | 'syncing' | 'synced' | 'error' | 'unsynced'
+ */
+function updateSyncStatusUI(status) {
+    const icon = document.getElementById('sync-status-icon');
+    const text = document.getElementById('sync-status-text');
+    if (!icon || !text) return;
+
+    const configs = {
+        idle: { icon: 'fa-solid fa-cloud', color: 'text-slate-500', label: 'Local' },
+        syncing: { icon: 'fa-solid fa-rotate fa-spin', color: 'text-blue-400', label: 'Syncing' },
+        synced: { icon: 'fa-solid fa-cloud-arrow-up', color: 'text-teal-400', label: 'Synced' },
+        error: { icon: 'fa-solid fa-cloud-exclamation', color: 'text-red-400', label: 'Error' },
+        unsynced: {
+            icon: 'fa-solid fa-cloud-arrow-up',
+            color: 'text-amber-400',
+            label: 'Pending'
+        }
+    };
+
+    const config = configs[status] || configs.idle;
+    icon.className = `${config.icon} ${config.color}`;
+    text.className = config.color;
+    text.textContent = config.label;
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const activeRoom = getActiveRoom();
+    if (!activeRoom) {
+        showRoomEntryScreen();
+        return;
+    }
+    await initAndBootApp(activeRoom);
 });
