@@ -67,6 +67,6 @@ run tests:
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
 - [ ] (vNext) add horizontal timeline bar to see schedule and gaps more easily
-- [ ] (vNext) try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt) (e.g., https://tinybase.org/demos/todo-app/todo-app-v6-collaboration/)
-  - [ ] or https://github.com/yjs/yjs / https://automerge.org/ for just the crdt part
+- [x] (vNext) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
+- [ ] (vNext) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
