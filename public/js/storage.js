@@ -1,4 +1,5 @@
 import { logger } from './utils.js';
+import { initSync, debouncedSync } from './sync-manager.js';
 
 /** @type {Object|null} PouchDB database instance */
 let db = null;
@@ -11,8 +12,9 @@ const revMap = new Map();
  * Creates/opens a PouchDB database scoped to the room.
  * @param {string} roomCode - The room identifier
  * @param {Object} [options] - PouchDB options (e.g., { adapter: 'memory' } for tests)
+ * @param {string|null} [remoteUrl] - Remote CouchDB URL for sync (null to disable)
  */
-export async function initStorage(roomCode, options = {}) {
+export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     if (db) {
         await db.close();
     }
@@ -28,6 +30,7 @@ export async function initStorage(roomCode, options = {}) {
         revMap.set(row.id, row.value.rev);
     }
 
+    initSync(db, remoteUrl);
     logger.info(`Storage initialized for room: ${roomCode}`);
 }
 
@@ -49,6 +52,7 @@ export async function putTask(task) {
 
     const result = await db.put(doc);
     revMap.set(task.id, result.rev);
+    debouncedSync();
 }
 
 /**
@@ -71,6 +75,7 @@ export async function deleteTask(id) {
         if (err.status !== 404) throw err;
         revMap.delete(id);
     }
+    debouncedSync();
 }
 
 /**
@@ -125,6 +130,15 @@ export async function saveTasks(tasks) {
             }
         }
     }
+    debouncedSync();
+}
+
+/**
+ * Get the current PouchDB database instance.
+ * @returns {Object|null}
+ */
+export function getDb() {
+    return db;
 }
 
 /**

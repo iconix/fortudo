@@ -12,6 +12,12 @@ PouchDB.plugin(require('pouchdb-adapter-memory'));
 // Set up window.PouchDB before importing storage
 window.PouchDB = PouchDB;
 
+// Mock sync-manager so storage tests don't trigger actual sync
+jest.mock('../public/js/sync-manager.js', () => ({
+    initSync: jest.fn(),
+    debouncedSync: jest.fn()
+}));
+
 import {
     initStorage,
     putTask,
