@@ -24,7 +24,7 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-handler.js';
-import { loadTasksFromStorage } from './storage.js';
+import { loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
 import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
@@ -33,7 +33,7 @@ import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js'
 
 document.addEventListener('DOMContentLoaded', () => {
     // Load and initialize state
-    const loadedTasks = loadTasksFromStorage();
+    const loadedTasks = loadTasks();
     loadedTasks.forEach((task) => {
         if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
             task.isEditingInline = false;

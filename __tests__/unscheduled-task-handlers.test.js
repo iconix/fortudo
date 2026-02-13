@@ -15,7 +15,9 @@ import { updateTaskState, getTaskState, getTaskById } from '../public/js/task-ma
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
-    loadTasksFromStorage: jest.fn(() => [])
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
+    loadTasks: jest.fn(() => [])
 }));
 
 // Mock modal-manager

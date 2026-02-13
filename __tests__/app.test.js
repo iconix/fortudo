@@ -20,14 +20,18 @@ import { getTaskFormElement } from '../public/js/form-utils.js';
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
-    loadTasksFromStorage: jest.fn(() => [])
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
+    loadTasks: jest.fn(() => [])
 }));
 import {
     saveTasks as mockSaveTasksInternal,
-    loadTasksFromStorage as mockLoadTasksFromStorageInternal
+    deleteTask as mockDeleteTaskFromStorageInternal,
+    loadTasks as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 
 describe('App.js Callback Functions', () => {
@@ -160,8 +164,8 @@ describe('App.js Callback Functions', () => {
             expect(renderedTasks).toHaveLength(1);
             expect(renderedTasks[0].description).toBe('Task 2');
 
-            // Verify saveTasks was called
-            expect(mockSaveTasks).toHaveBeenCalled();
+            // Verify deleteTaskFromStorage was called
+            expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
         });
 
         test('should show alert if delete operation fails', async () => {

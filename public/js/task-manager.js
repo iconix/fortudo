@@ -9,7 +9,7 @@ import {
     extractDateFromDateTime,
     convertTo12HourTime
 } from './utils.js';
-import { saveTasks } from './storage.js';
+import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from './storage.js';
 
 // Import from new modules
 import {
@@ -143,7 +143,7 @@ export function updateTaskState(newTasks) {
     tasks = [...scheduledTasks, ...unscheduledTasks];
 
     invalidateTaskCaches();
-    saveTasks(tasks);
+    saveTasks(tasks.map(stripUIFlags));
 }
 
 // ============================================================================
@@ -248,10 +248,20 @@ const createTaskObject = (taskData) => {
     return finalTask;
 };
 
+/**
+ * Strip UI-only flags before persisting a task.
+ * @param {Object} task - Task object
+ * @returns {Object} Task without UI flags
+ */
+const stripUIFlags = (task) => {
+    const { editing: _e, confirmingDelete: _c, isEditingInline: _i, ...persistable } = task;
+    return persistable;
+};
+
 const finalizeTaskModification = () => {
     logger.debug('Finalizing task modification (invalidate cache, save)');
     invalidateTaskCaches();
-    saveTasks(tasks);
+    saveTasks(tasks.map(stripUIFlags));
 };
 
 /**
@@ -626,7 +636,7 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
     } else {
         // Unscheduled task
         tasks.push(taskObject);
-        saveTasks(tasks);
+        putTask(stripUIFlags(taskObject));
         logger.info('addTask: Unscheduled task added.');
         return { success: true, task: taskObject };
     }
@@ -673,7 +683,7 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         if (!tasks.find((t) => t.id === taskToAdd.id)) {
             tasks.push(taskToAdd);
         }
-        saveTasks(tasks);
+        putTask(stripUIFlags(taskToAdd));
     }
     return { success: true, task: taskToAdd };
 }
@@ -924,7 +934,7 @@ export function completeTask(index, currentTime24Hour) {
         finalizeTaskModification();
     } else {
         // For unscheduled tasks, just save without invalidating caches
-        saveTasks(tasks);
+        putTask(stripUIFlags(task));
     }
 
     return {
@@ -1116,9 +1126,11 @@ export function deleteTask(index, confirmed = false) {
         return { success: false, requiresConfirmation: true, reason: 'Confirmation required.' };
     }
 
+    const taskId = taskToDelete.id;
     tasks.splice(index, 1);
     resetAllUIFlags();
-    finalizeTaskModification();
+    invalidateTaskCaches();
+    deleteTaskFromStorage(taskId);
     return { success: true };
 }
 
@@ -1254,7 +1266,9 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     }
 
     // No conflicts - proceed with scheduling
+    const unscheduledTaskId = tasks[taskIndex].id;
     tasks.splice(taskIndex, 1); // Remove the original unscheduled task
+    deleteTaskFromStorage(unscheduledTaskId);
 
     const newScheduledTask = createTaskObject(newScheduledTaskData);
     tasks.push(newScheduledTask);
@@ -1288,6 +1302,7 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     // Validation passed - now remove the unscheduled task
     if (taskIndex !== -1) {
         tasks.splice(taskIndex, 1);
+        deleteTaskFromStorage(unscheduledTaskId);
     } else {
         logger.warn(`Unscheduled task ID ${unscheduledTaskId} not found for confirmation.`);
     }
@@ -1354,7 +1369,7 @@ export function unscheduleTask(taskId) {
     // delete task.someScheduledOnlyProperty;
 
     tasks[taskIndex] = task;
-    finalizeTaskModification(); // This saves to localStorage and recalculates suggestions
+    finalizeTaskModification();
 
     logger.info('Task unscheduled:', task);
     return { success: true, task };

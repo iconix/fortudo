@@ -147,7 +147,12 @@ describe('Storage - PouchDB', () => {
     describe('saveTasks (bulk)', () => {
         test('replaces all tasks with provided array', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await putTask({ id: 'old-1', type: 'scheduled', description: 'Old', status: 'incomplete' });
+            await putTask({
+                id: 'old-1',
+                type: 'scheduled',
+                description: 'Old',
+                status: 'incomplete'
+            });
             await saveTasks([
                 { id: 'new-1', type: 'scheduled', description: 'New 1', status: 'incomplete' },
                 {
