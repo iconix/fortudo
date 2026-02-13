@@ -67,6 +67,9 @@ node_modules/
 
 .claude/
 
+# Git worktrees
+.worktrees/
+
 tmp/
 
 # Playwright E2E test artifacts
