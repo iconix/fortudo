@@ -5,7 +5,6 @@ import {
     scheduleUnscheduledTask,
     confirmScheduleUnscheduledTask,
     updateUnscheduledTask,
-    reorderUnscheduledTask,
     toggleUnscheduledTaskCompleteState,
     getSuggestedStartTime
 } from '../task-manager.js';
@@ -105,11 +104,6 @@ export function handleCancelUnscheduledTaskEdit(taskId) {
     }
 }
 
-export function handleDropUnscheduledTask(draggedTaskId, targetTaskId) {
-    reorderUnscheduledTask(draggedTaskId, targetTaskId);
-    refreshUI();
-}
-
 export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
@@ -135,7 +129,6 @@ export function createUnscheduledTaskCallbacks() {
         onConfirmScheduleTask: handleConfirmScheduleTask,
         onSaveUnscheduledTaskEdit: handleSaveUnscheduledTaskEdit,
         onCancelUnscheduledTaskEdit: handleCancelUnscheduledTaskEdit,
-        onDropUnscheduledTask: handleDropUnscheduledTask,
         onToggleCompleteUnscheduledTask: handleToggleCompleteUnscheduledTask
     };
 }

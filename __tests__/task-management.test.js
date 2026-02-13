@@ -2239,39 +2239,6 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
     });
 
-    describe('ReorderUnscheduledTask', () => {
-        const { reorderUnscheduledTask } = require('../public/js/task-manager.js');
-
-        test('reorders tasks correctly', () => {
-            const task1 = {
-                id: 'unsched-1',
-                type: 'unscheduled',
-                description: 'Task 1',
-                priority: 'high',
-                estDuration: 30,
-                status: 'incomplete'
-            };
-            const task2 = {
-                id: 'unsched-2',
-                type: 'unscheduled',
-                description: 'Task 2',
-                priority: 'high',
-                estDuration: 30,
-                status: 'incomplete'
-            };
-            updateTaskState([task1, task2]);
-
-            const result = reorderUnscheduledTask('unsched-2', 'unsched-1');
-            expect(result.success).toBe(true);
-        });
-
-        test('returns error when tasks not found', () => {
-            updateTaskState([]);
-            const result = reorderUnscheduledTask('nonexistent1', 'nonexistent2');
-            expect(result.success).toBe(false);
-        });
-    });
-
     describe('EditTask edge cases', () => {
         test('editTask with invalid index returns error object', () => {
             updateTaskState([]);

@@ -1300,32 +1300,6 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     return { success: true, task: newScheduledTask };
 }
 
-export function reorderUnscheduledTask(draggedTaskId, targetTaskId) {
-    const draggedTaskIndex = tasks.findIndex(
-        (task) => task.id === draggedTaskId && task.type === 'unscheduled'
-    );
-    const targetTaskIndex = tasks.findIndex(
-        (task) => task.id === targetTaskId && task.type === 'unscheduled'
-    );
-
-    if (draggedTaskIndex === -1 || targetTaskIndex === -1) {
-        logger.warn('Dragged or target task not found for reordering.', {
-            draggedTaskId,
-            targetTaskId
-        });
-        return { success: false, reason: 'Could not find one or both tasks to reorder.' };
-    }
-
-    const [draggedTask] = tasks.splice(draggedTaskIndex, 1);
-    tasks.splice(targetTaskIndex, 0, draggedTask);
-
-    // No need to re-sort here as it's a manual reorder.
-    // The main list 'tasks' is now updated. We just need to save.
-    finalizeTaskModification();
-    logger.info(`Task ${draggedTaskId} reordered to position of ${targetTaskId}`);
-    return { success: true };
-}
-
 export function toggleUnscheduledTaskCompleteState(taskId) {
     const taskIndex = tasks.findIndex((task) => task.id === taskId && task.type === 'unscheduled');
     if (taskIndex === -1) {

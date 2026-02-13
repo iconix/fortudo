@@ -31,7 +31,6 @@ jest.mock('../public/js/dom-handler.js', () => ({
     startRealTimeClock: jest.fn(),
     initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
-    initializeDragAndDropUnscheduled: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
     getDeleteAllButtonElement: jest.fn(),

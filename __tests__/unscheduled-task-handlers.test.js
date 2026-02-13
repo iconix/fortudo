@@ -7,7 +7,6 @@ import {
     handleEditUnscheduledTask,
     handleDeleteUnscheduledTask,
     handleCancelUnscheduledTaskEdit,
-    handleDropUnscheduledTask,
     handleToggleCompleteUnscheduledTask,
     createUnscheduledTaskCallbacks
 } from '../public/js/handlers/unscheduled-task-handlers.js';
@@ -39,7 +38,6 @@ jest.mock('../public/js/dom-handler.js', () => ({
     startRealTimeClock: jest.fn(),
     initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
-    initializeDragAndDropUnscheduled: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
     getDeleteAllButtonElement: jest.fn(),
@@ -109,7 +107,6 @@ describe('Unscheduled Task Handlers', () => {
             expect(callbacks).toHaveProperty('onConfirmScheduleTask');
             expect(callbacks).toHaveProperty('onSaveUnscheduledTaskEdit');
             expect(callbacks).toHaveProperty('onCancelUnscheduledTaskEdit');
-            expect(callbacks).toHaveProperty('onDropUnscheduledTask');
             expect(callbacks).toHaveProperty('onToggleCompleteUnscheduledTask');
         });
     });
@@ -206,18 +203,6 @@ describe('Unscheduled Task Handlers', () => {
 
             handleCancelUnscheduledTaskEdit(task.id);
             expect(refreshUI).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('handleDropUnscheduledTask', () => {
-        test('reorders tasks and refreshes UI', () => {
-            const task1 = createUnscheduledTask({ description: 'First' });
-            const task2 = createUnscheduledTask({ description: 'Second' });
-            updateTaskState([task1, task2]);
-
-            handleDropUnscheduledTask(task2.id, task1.id);
-
-            expect(refreshUI).toHaveBeenCalled();
         });
     });
 
