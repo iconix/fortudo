@@ -15,7 +15,7 @@ import {
 } from '../form-utils.js';
 import { refreshUI } from '../dom-handler.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { getThemeForTaskId } from './confirmation-helpers.js';
+import { getThemeForTaskId } from '../confirmation-helpers.js';
 
 export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);
