@@ -1329,7 +1329,7 @@ describe('App.js Callback Functions', () => {
     });
 });
 
-describe('Room Entry Screen', () => {
+describe('Room Entry Screen delegation', () => {
     beforeEach(async () => {
         document.body.innerHTML = '';
         jest.clearAllMocks();
@@ -1338,7 +1338,6 @@ describe('Room Entry Screen', () => {
     });
 
     test('shows room entry screen when no active room is set', async () => {
-        // Set up DOM with room entry screen elements but NO active room
         document.body.innerHTML = `
             <div id="room-entry-screen" class="hidden">
                 <form id="room-entry-form">
@@ -1354,7 +1353,6 @@ describe('Room Entry Screen', () => {
             </div>
         `;
 
-        // Mock localStorage to return null for active room
         Object.defineProperty(window, 'localStorage', {
             value: {
                 getItem: jest.fn(() => null),
@@ -1366,99 +1364,13 @@ describe('Room Entry Screen', () => {
             configurable: true
         });
 
-        // Import and trigger DOMContentLoaded
         await import('../public/js/app.js');
         const event = new Event('DOMContentLoaded', { bubbles: true, cancelable: true });
         document.dispatchEvent(event);
         await new Promise((resolve) => setTimeout(resolve, 50));
 
-        // Room entry screen should be visible
+        // Room entry screen should be visible (delegation to room-ui-handler)
         const roomEntryScreen = document.getElementById('room-entry-screen');
         expect(roomEntryScreen.classList.contains('hidden')).toBe(false);
-
-        // Main app should remain hidden
-        const mainApp = document.getElementById('main-app');
-        expect(mainApp.classList.contains('hidden')).toBe(true);
-    });
-
-    test('shows saved rooms when they exist', async () => {
-        document.body.innerHTML = `
-            <div id="room-entry-screen" class="hidden">
-                <form id="room-entry-form">
-                    <input type="text" id="room-code-input" />
-                    <button type="button" id="generate-room-btn"></button>
-                </form>
-                <div id="saved-rooms-list" class="hidden">
-                    <div id="saved-rooms-buttons"></div>
-                </div>
-            </div>
-            <div id="main-app" class="hidden">
-                <div id="scheduled-task-list"></div>
-            </div>
-        `;
-
-        const mockStore = {
-            'fortudo-rooms': JSON.stringify(['fox-123', 'owl-456'])
-        };
-        Object.defineProperty(window, 'localStorage', {
-            value: {
-                getItem: jest.fn((key) => mockStore[key] || null),
-                setItem: jest.fn(),
-                removeItem: jest.fn(),
-                clear: jest.fn()
-            },
-            writable: true,
-            configurable: true
-        });
-
-        await import('../public/js/app.js');
-        const event = new Event('DOMContentLoaded', { bubbles: true, cancelable: true });
-        document.dispatchEvent(event);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const savedRoomsList = document.getElementById('saved-rooms-list');
-        expect(savedRoomsList.classList.contains('hidden')).toBe(false);
-
-        const buttons = document.querySelectorAll('.saved-room-btn');
-        expect(buttons).toHaveLength(2);
-    });
-
-    test('generate button populates room code input', async () => {
-        document.body.innerHTML = `
-            <div id="room-entry-screen" class="hidden">
-                <form id="room-entry-form">
-                    <input type="text" id="room-code-input" />
-                    <button type="button" id="generate-room-btn"></button>
-                </form>
-                <div id="saved-rooms-list" class="hidden">
-                    <div id="saved-rooms-buttons"></div>
-                </div>
-            </div>
-            <div id="main-app" class="hidden">
-                <div id="scheduled-task-list"></div>
-            </div>
-        `;
-
-        Object.defineProperty(window, 'localStorage', {
-            value: {
-                getItem: jest.fn(() => null),
-                setItem: jest.fn(),
-                removeItem: jest.fn(),
-                clear: jest.fn()
-            },
-            writable: true,
-            configurable: true
-        });
-
-        await import('../public/js/app.js');
-        const event = new Event('DOMContentLoaded', { bubbles: true, cancelable: true });
-        document.dispatchEvent(event);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const generateBtn = document.getElementById('generate-room-btn');
-        const roomCodeInput = document.getElementById('room-code-input');
-
-        generateBtn.dispatchEvent(new Event('click'));
-        expect(roomCodeInput.value).toMatch(/^[a-z]+-\d{3}$/);
     });
 });
