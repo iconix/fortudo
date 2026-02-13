@@ -2,166 +2,179 @@
  * @jest-environment jsdom
  */
 
-// This file contains tests for localStorage operations in fortudo
+// PouchDB/memdown requires setImmediate which jsdom doesn't provide
+const { setImmediate } = require('timers');
+global.setImmediate = global.setImmediate || setImmediate;
 
-import { saveTasks, loadTasksFromStorage } from '../public/js/storage.js';
-import { logger } from '../public/js/utils.js';
+const PouchDB = require('pouchdb');
+PouchDB.plugin(require('pouchdb-adapter-memory'));
 
-// Mock localStorage
-let mockLocalStorage;
+// Set up window.PouchDB before importing storage
+window.PouchDB = PouchDB;
 
-beforeEach(() => {
-    // Create a complete mock of localStorage
-    mockLocalStorage = {
-        store: {},
-        getItem: jest.fn((key) => mockLocalStorage.store[key] || null),
-        setItem: jest.fn((key, value) => {
-            mockLocalStorage.store[key] = value;
-        }),
-        clear: jest.fn(() => {
-            mockLocalStorage.store = {};
-        }),
-        removeItem: jest.fn((key) => {
-            delete mockLocalStorage.store[key];
-        })
-    };
+import {
+    initStorage,
+    putTask,
+    deleteTask,
+    loadTasks,
+    saveTasks,
+    destroyStorage
+} from '../public/js/storage.js';
 
-    // Replace the global localStorage with our mock
-    Object.defineProperty(window, 'localStorage', {
-        value: mockLocalStorage,
-        writable: true
-    });
+// Use a unique DB name per test to avoid cross-contamination
+let testDbCounter = 0;
+function uniqueRoomCode() {
+    return `test-room-${testDbCounter++}-${Date.now()}`;
+}
+
+afterEach(async () => {
+    await destroyStorage();
 });
 
-// Clear mocks after each test
-afterEach(() => {
-    jest.clearAllMocks();
-});
-
-describe('Storage Functionality', () => {
-    describe('saveTasks', () => {
-        test('should save tasks to localStorage', () => {
-            const tasks = [
-                {
-                    description: 'Test Task 1',
-                    startTime: '09:00',
-                    endTime: '10:00',
-                    duration: 60,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
-                    description: 'Test Task 2',
-                    startTime: '10:00',
-                    endTime: '11:00',
-                    duration: 60,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
-            ];
-            saveTasks(tasks);
-            expect(mockLocalStorage.setItem).toHaveBeenCalledWith('tasks', JSON.stringify(tasks));
+describe('Storage - PouchDB', () => {
+    describe('initStorage', () => {
+        test('initializes without error', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         });
 
-        test('should overwrite existing tasks in localStorage', () => {
-            const oldTasks = [
-                {
-                    description: 'Old Task',
-                    startTime: '08:00',
-                    endTime: '09:00',
-                    duration: 60,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
-            ];
-            saveTasks(oldTasks); // Save initial tasks
-
-            const newTasks = [
-                {
-                    description: 'New Task',
-                    startTime: '10:00',
-                    endTime: '11:00',
-                    duration: 60,
-                    status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                }
-            ];
-            saveTasks(newTasks); // Save new tasks, overwriting old ones
-
-            expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
-                'tasks',
-                JSON.stringify(newTasks)
-            );
-            // Ensure setItem was called twice (once for oldTasks, once for newTasks)
-            expect(mockLocalStorage.setItem).toHaveBeenCalledTimes(2);
-        });
-
-        test('should save an empty array to localStorage', () => {
-            const tasks = [];
-            saveTasks(tasks);
-            expect(mockLocalStorage.setItem).toHaveBeenCalledWith('tasks', JSON.stringify([]));
+        test('creates a database scoped to room code', async () => {
+            const roomCode = uniqueRoomCode();
+            await initStorage(roomCode, { adapter: 'memory' });
+            const tasks = await loadTasks();
+            expect(tasks).toEqual([]);
         });
     });
 
-    describe('loadTasksFromStorage', () => {
-        test('should load tasks from localStorage', () => {
-            const storedTasks = [
+    describe('putTask', () => {
+        test('stores a new task and retrieves it', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const task = {
+                id: 'sched-123',
+                type: 'scheduled',
+                description: 'Test task',
+                status: 'incomplete',
+                startDateTime: '2025-01-15T09:00:00',
+                endDateTime: '2025-01-15T10:00:00',
+                duration: 60
+            };
+            await putTask(task);
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].id).toBe('sched-123');
+            expect(tasks[0].description).toBe('Test task');
+        });
+
+        test('does not expose _id or _rev to callers', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Test',
+                status: 'incomplete'
+            });
+            const tasks = await loadTasks();
+            expect(tasks[0]).not.toHaveProperty('_id');
+            expect(tasks[0]).not.toHaveProperty('_rev');
+        });
+
+        test('updates an existing task', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Original',
+                status: 'incomplete'
+            });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Updated',
+                status: 'incomplete'
+            });
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].description).toBe('Updated');
+        });
+    });
+
+    describe('deleteTask', () => {
+        test('removes a task by id', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'To delete',
+                status: 'incomplete'
+            });
+            await deleteTask('sched-1');
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(0);
+        });
+
+        test('does not error when deleting non-existent task', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await expect(deleteTask('nonexistent')).resolves.not.toThrow();
+        });
+    });
+
+    describe('loadTasks', () => {
+        test('returns empty array when no tasks exist', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const tasks = await loadTasks();
+            expect(tasks).toEqual([]);
+        });
+
+        test('returns all stored tasks', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Task 1',
+                status: 'incomplete'
+            });
+            await putTask({
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Task 2',
+                status: 'incomplete',
+                priority: 'high'
+            });
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(2);
+        });
+    });
+
+    describe('saveTasks (bulk)', () => {
+        test('replaces all tasks with provided array', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({ id: 'old-1', type: 'scheduled', description: 'Old', status: 'incomplete' });
+            await saveTasks([
+                { id: 'new-1', type: 'scheduled', description: 'New 1', status: 'incomplete' },
                 {
-                    description: 'Stored Task 1',
-                    startTime: '09:00',
-                    endTime: '10:00',
-                    duration: 60,
+                    id: 'new-2',
+                    type: 'unscheduled',
+                    description: 'New 2',
                     status: 'incomplete',
-                    editing: false,
-                    confirmingDelete: false
-                },
-                {
-                    description: 'Stored Task 2',
-                    startTime: '10:30',
-                    endTime: '11:30',
-                    duration: 60,
-                    status: 'completed',
-                    editing: false,
-                    confirmingDelete: false
+                    priority: 'low'
                 }
-            ];
-            mockLocalStorage.getItem.mockReturnValue(JSON.stringify(storedTasks));
-
-            const loadedTasks = loadTasksFromStorage();
-            expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
-            expect(loadedTasks).toEqual(storedTasks);
+            ]);
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(2);
+            const ids = tasks.map((t) => t.id).sort();
+            expect(ids).toEqual(['new-1', 'new-2']);
         });
 
-        test('should return an empty array if no tasks are in localStorage', () => {
-            mockLocalStorage.getItem.mockReturnValue(null);
-            const loadedTasks = loadTasksFromStorage();
-            expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
-            expect(loadedTasks).toEqual([]);
-        });
-
-        test('should return an empty array if localStorage contains invalid JSON', () => {
-            mockLocalStorage.getItem.mockReturnValue('invalid json');
-            // JSON.parse will throw an error, loadTasks should catch it and return []
-            // We can't directly test the catch block here without more complex mocking
-            // of JSON.parse, but we expect it to behave like 'null' or empty.
-            // For the purpose of this test, we assume it will behave like 'null' (empty array).
-            const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
-            const loadedTasks = loadTasksFromStorage();
-            expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
-            expect(loadedTasks).toEqual([]);
-            expect(loggerErrorSpy).toHaveBeenCalled(); // Verify logger.error was called
-            loggerErrorSpy.mockRestore();
-        });
-
-        test('should return an empty array if localStorage tasks are empty string', () => {
-            mockLocalStorage.getItem.mockReturnValue('');
-            const loadedTasks = loadTasksFromStorage();
-            expect(mockLocalStorage.getItem).toHaveBeenCalledWith('tasks');
-            expect(loadedTasks).toEqual([]);
+        test('clearing all tasks with empty array', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Task',
+                status: 'incomplete'
+            });
+            await saveTasks([]);
+            const tasks = await loadTasks();
+            expect(tasks).toEqual([]);
         });
     });
 });

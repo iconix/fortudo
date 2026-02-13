@@ -5,6 +5,7 @@ module.exports = {
     },
     moduleFileExtensions: ['js'],
     testPathIgnorePatterns: ['/node_modules/'],
+    transformIgnorePatterns: ['/node_modules/(?!(pouchdb|pouchdb-adapter-memory|uuid)/)'],
     setupFilesAfterEnv: ['<rootDir>/__tests__/test-utils.js'],
 
     // Code coverage configuration
