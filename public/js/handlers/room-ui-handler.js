@@ -1,10 +1,20 @@
 import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from '../room-manager.js';
 
+/** @type {AbortController|null} Tracks listeners for cleanup on re-show */
+let roomScreenAbortController = null;
+
 /**
  * Show the room entry screen and populate saved rooms.
  * @param {Function} onEnterRoom - Callback invoked with room code when user enters a room
  */
 export function showRoomEntryScreen(onEnterRoom) {
+    // Abort previous listeners to prevent accumulation
+    if (roomScreenAbortController) {
+        roomScreenAbortController.abort();
+    }
+    roomScreenAbortController = new AbortController();
+    const { signal } = roomScreenAbortController;
+
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
     if (roomEntryScreen) roomEntryScreen.classList.remove('hidden');
@@ -34,32 +44,44 @@ export function showRoomEntryScreen(onEnterRoom) {
     const generateBtn = document.getElementById('generate-room-btn');
 
     if (generateBtn && roomCodeInput) {
-        generateBtn.addEventListener('click', () => {
-            roomCodeInput.value = generateRoomCode();
-        });
+        generateBtn.addEventListener(
+            'click',
+            () => {
+                roomCodeInput.value = generateRoomCode();
+            },
+            { signal }
+        );
     }
 
     if (roomEntryForm && roomCodeInput) {
-        roomEntryForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const code = roomCodeInput.value.trim().toLowerCase();
-            if (code) {
-                await enterRoom(code, onEnterRoom);
-            }
-        });
+        roomEntryForm.addEventListener(
+            'submit',
+            async (e) => {
+                e.preventDefault();
+                const code = roomCodeInput.value.trim().toLowerCase();
+                if (code) {
+                    await enterRoom(code, onEnterRoom);
+                }
+            },
+            { signal }
+        );
     }
 
     // Wire up saved room buttons
     if (savedRoomsButtons) {
-        savedRoomsButtons.addEventListener('click', async (e) => {
-            const btn = e.target.closest('.saved-room-btn');
-            if (btn) {
-                const code = btn.getAttribute('data-room');
-                if (code) {
-                    await enterRoom(code, onEnterRoom);
+        savedRoomsButtons.addEventListener(
+            'click',
+            async (e) => {
+                const btn = e.target.closest('.saved-room-btn');
+                if (btn) {
+                    const code = btn.getAttribute('data-room');
+                    if (code) {
+                        await enterRoom(code, onEnterRoom);
+                    }
                 }
-            }
-        });
+            },
+            { signal }
+        );
     }
 }
 
@@ -101,7 +123,7 @@ export function updateSyncStatusUI(status) {
         idle: { icon: 'fa-solid fa-cloud', color: 'text-slate-500', label: 'Local' },
         syncing: { icon: 'fa-solid fa-rotate fa-spin', color: 'text-blue-400', label: 'Syncing' },
         synced: { icon: 'fa-solid fa-cloud-arrow-up', color: 'text-teal-400', label: 'Synced' },
-        error: { icon: 'fa-solid fa-cloud-exclamation', color: 'text-red-400', label: 'Error' },
+        error: { icon: 'fa-solid fa-triangle-exclamation', color: 'text-red-400', label: 'Error' },
         unsynced: {
             icon: 'fa-solid fa-cloud-arrow-up',
             color: 'text-amber-400',

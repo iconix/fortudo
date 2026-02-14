@@ -100,14 +100,6 @@ async function initAndBootApp(roomCode) {
         updateSyncStatusUI(status);
     });
 
-    // Wire up room code badge click to switch rooms
-    const roomCodeBadge = document.getElementById('room-code-badge');
-    if (roomCodeBadge) {
-        roomCodeBadge.addEventListener('click', () => {
-            showRoomEntryScreen(initAndBootApp);
-        });
-    }
-
     // Initial render
     const allTasks = getTaskState();
     renderTasks(
@@ -135,6 +127,14 @@ async function initAndBootApp(roomCode) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
+    const roomCodeBadge = document.getElementById('room-code-badge');
+    if (roomCodeBadge) {
+        roomCodeBadge.addEventListener('click', () => {
+            showRoomEntryScreen(initAndBootApp);
+        });
+    }
+
     const activeRoom = getActiveRoom();
     if (!activeRoom) {
         showRoomEntryScreen(initAndBootApp);

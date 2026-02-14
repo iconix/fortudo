@@ -1,5 +1,5 @@
 import { logger } from './utils.js';
-import { initSync, debouncedSync } from './sync-manager.js';
+import { initSync, debouncedSync, triggerSync } from './sync-manager.js';
 
 /** @type {Object|null} PouchDB database instance */
 let db = null;
@@ -31,6 +31,9 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     }
 
     initSync(db, remoteUrl);
+    if (remoteUrl) {
+        triggerSync();
+    }
     logger.info(`Storage initialized for room: ${roomCode}`);
 }
 

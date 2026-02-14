@@ -167,10 +167,10 @@ describe('User Confirmation Flows', () => {
                 expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
-            const savedTasks = mockSaveTasks.mock.calls[mockSaveTasks.mock.calls.length - 1][0];
-            const savedInitialTask = savedTasks.find((t) => t.description === 'Initial Task');
-            const savedOverlappingTask = savedTasks.find(
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedInitialTask = currentTasks.find((t) => t.description === 'Initial Task');
+            const savedOverlappingTask = currentTasks.find(
                 (t) => t.description === 'Overlapping Task'
             );
             expect(extractTimeFromDateTime(new Date(savedInitialTask.startDateTime))).toBe('22:30');
@@ -288,7 +288,7 @@ describe('User Confirmation Flows', () => {
                 expect(taskBDOM.endTime12).toBe('11:30 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('User denies update reschedule: edit cancelled, tasks unchanged', async () => {
@@ -407,7 +407,7 @@ describe('User Confirmation Flows', () => {
                 expect(unlockedTaskDOM.endTime12).toBe('11:15 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 
@@ -484,10 +484,14 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('11:00 AM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
-            const savedTasks = mockSaveTasks.mock.calls[mockSaveTasks.mock.calls.length - 1][0];
-            const savedCompletedTask = savedTasks.find((t) => t.description === 'Task To Complete');
-            const savedSubsequentTask = savedTasks.find((t) => t.description === 'Subsequent Task');
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedCompletedTask = currentTasks.find(
+                (t) => t.description === 'Task To Complete'
+            );
+            const savedSubsequentTask = currentTasks.find(
+                (t) => t.description === 'Subsequent Task'
+            );
             expect(savedCompletedTask.status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(savedCompletedTask.endDateTime))).toBe('10:30');
             expect(extractTimeFromDateTime(new Date(savedSubsequentTask.startDateTime))).toBe(
@@ -522,9 +526,11 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('10:30 AM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
-            const savedTasks = mockSaveTasks.mock.calls[mockSaveTasks.mock.calls.length - 1][0];
-            const savedCompletedTask = savedTasks.find((t) => t.description === 'Task To Complete');
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedCompletedTask = currentTasks.find(
+                (t) => t.description === 'Task To Complete'
+            );
             expect(savedCompletedTask.status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(savedCompletedTask.endDateTime))).toBe('10:00');
         });
@@ -566,7 +572,7 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toBe('11:00');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
 
             // Clean up the spy
             getCurrentTimeRoundedSpy.mockRestore();
@@ -646,7 +652,7 @@ describe('User Confirmation Flows', () => {
                 expect(shiftableTaskDOM.endTime12).toBe('1:00 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 

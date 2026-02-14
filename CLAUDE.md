@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fortudo is a daily time-blocking to-do app. It runs as a single-page application with no build step - vanilla JavaScript with ES modules served directly via Firebase Hosting.
 
+## Environment Notes
+
+- GitHub CLI (`gh`) is installed at `/c/Program Files/GitHub CLI/gh`
+
 ## Commands
 
 ```bash

@@ -617,7 +617,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks.length).toBe(2);
             expect(tasks[0].description).toBe('Task 2'); // Sorted
             expect(tasks[1].description).toBe('Task 1');
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
             // performReschedule effect: If Task 1 was 09:00-10:00 and Task 2 was 09:30-10:30, Task 2 would be shifted.
             // Here, no shift needed for Task 1 by Task 2.
         });
@@ -758,7 +758,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 
@@ -797,7 +797,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].description).toBe('Task 1 Updated');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('09:30');
             expect(tasks[1].description).toBe('Task 2'); // Task 2 remains, no reschedule needed for it in this case
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should require confirmation if updating a task creates an overlap', () => {
@@ -898,7 +898,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 expect(extractTimeFromDateTime(new Date(shiftedT3.startDateTime))).toBe('11:30'); // Shifted
                 expect(extractTimeFromDateTime(new Date(shiftedT3.endDateTime))).toBe('12:30');
             }
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
         });
 
@@ -1126,7 +1126,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Original end time
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should adjust endTime and duration if completed early, and save', () => {
@@ -1137,7 +1137,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe(currentTime);
             expect(tasks[0].duration).toBe(30); // 09:00 to 09:30
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should return requiresConfirmation if completed late, task not modified yet', () => {
@@ -1219,7 +1219,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 ); // Rescheduled
                 expect(extractTimeFromDateTime(new Date(subsequentTask.endDateTime))).toBe('10:45');
             }
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should handle invalid index', () => {
@@ -1269,7 +1269,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const updatedTask = tasks.find((t) => t.id === task1.id);
             expect(updatedTask.status).toBe('completed');
             expect(updatedTask.duration).toBe(30);
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('extends task end time and marks complete', () => {
