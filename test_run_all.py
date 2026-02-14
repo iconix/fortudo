@@ -1,4 +1,8 @@
-"""Runner: starts a local server, executes all test suites, then stops the server."""
+"""Runner: starts a local server, executes all test suites, then stops the server.
+
+If a server is already running on the target port (e.g., started by CI via
+scripts/e2e_server.py), the existing server is reused and left running.
+"""
 import subprocess, sys, os, socket, time, http.client
 
 PORT = 9847
@@ -35,28 +39,26 @@ def wait_for_server(port, timeout=10):
     return False
 
 
-# --- Pre-flight check ---
+# --- Server setup ---
+server_proc = None
+
 if is_port_in_use(PORT):
-    print(f"ERROR: Port {PORT} is already in use.", flush=True)
-    print("Kill the existing process and try again:", flush=True)
-    print(f"  netstat -ano | grep {PORT}", flush=True)
-    sys.exit(1)
+    print(f"Server already running on port {PORT}, reusing it.\n", flush=True)
+else:
+    print(f"Starting server on http://127.0.0.1:{PORT} (serving {PUBLIC_DIR})", flush=True)
+    server_proc = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(PORT), "--bind", "127.0.0.1"],
+        cwd=PUBLIC_DIR,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
-# --- Start server ---
-print(f"Starting server on http://127.0.0.1:{PORT} (serving {PUBLIC_DIR})", flush=True)
-server_proc = subprocess.Popen(
-    [sys.executable, "-m", "http.server", str(PORT), "--bind", "127.0.0.1"],
-    cwd=PUBLIC_DIR,
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-)
+    if not wait_for_server(PORT):
+        print(f"ERROR: Server failed to start on port {PORT}.", flush=True)
+        server_proc.kill()
+        sys.exit(1)
 
-if not wait_for_server(PORT):
-    print(f"ERROR: Server failed to start on port {PORT}.", flush=True)
-    server_proc.kill()
-    sys.exit(1)
-
-print(f"Server running (PID {server_proc.pid}).\n", flush=True)
+    print(f"Server running (PID {server_proc.pid}).\n", flush=True)
 
 # --- Run test suites ---
 exit_code = 0
@@ -76,14 +78,15 @@ try:
                 flush=True,
             )
 finally:
-    # --- Stop server ---
-    print(f"\nStopping server (PID {server_proc.pid})...", flush=True)
-    server_proc.terminate()
-    try:
-        server_proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        server_proc.kill()
-        server_proc.wait()
-    print("Server stopped.", flush=True)
+    # --- Stop server (only if we started it) ---
+    if server_proc:
+        print(f"\nStopping server (PID {server_proc.pid})...", flush=True)
+        server_proc.terminate()
+        try:
+            server_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_proc.kill()
+            server_proc.wait()
+        print("Server stopped.", flush=True)
 
 sys.exit(exit_code)

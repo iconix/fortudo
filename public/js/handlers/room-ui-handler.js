@@ -16,12 +16,16 @@ export function showRoomEntryScreen(onEnterRoom) {
     const savedRoomsButtons = document.getElementById('saved-rooms-buttons');
     if (savedRooms.length > 0 && savedRoomsList && savedRoomsButtons) {
         savedRoomsList.classList.remove('hidden');
-        savedRoomsButtons.innerHTML = savedRooms
-            .map(
-                (code) =>
-                    `<button type="button" class="saved-room-btn px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm text-slate-300 transition-colors" data-room="${code}">${code}</button>`
-            )
-            .join('');
+        savedRoomsButtons.replaceChildren();
+        for (const code of savedRooms) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className =
+                'saved-room-btn px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm text-slate-300 transition-colors';
+            btn.dataset.room = code;
+            btn.textContent = code;
+            savedRoomsButtons.appendChild(btn);
+        }
     }
 
     // Wire up room entry form

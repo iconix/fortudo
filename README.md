@@ -56,17 +56,18 @@ run tests:
 - [x] if task is running late, switch to yellow text as warning
 
 - [x] (v2) move away from browser alerts to custom modals
-- [ ] (v2) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [x] (v2) confetti burst animation when you check off a task
 - [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
 - [x] (v2) publish preview link under shortlink (https://tinyurl.com/fortudo-v2)
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
 - [x] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
-- [ ] (v2) clear schedule on a new day (unschedule incomplete tasks)
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
-- [ ] (vNext) add horizontal timeline bar to see schedule and gaps more easily
-- [x] (vNext) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
+- [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
+- [ ] (v3) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+- [ ] (v3) clear schedule on a new day (unschedule incomplete tasks)
+- [ ] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
+
+- [ ] (vNext) click on scheduling gap to see list of unscheduled tasks and schedule in gap
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
-- [ ] (vNext) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
