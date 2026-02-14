@@ -18,7 +18,9 @@ import { createTaskWithDateTime } from './test-utils.js';
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
-    loadTasksFromStorage: jest.fn(() => [])
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
+    loadTasks: jest.fn(() => [])
 }));
 
 // Mock modal-manager
@@ -41,7 +43,6 @@ jest.mock('../public/js/dom-handler.js', () => ({
     startRealTimeClock: jest.fn(),
     initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
-    initializeDragAndDropUnscheduled: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
     getDeleteAllButtonElement: jest.fn(),

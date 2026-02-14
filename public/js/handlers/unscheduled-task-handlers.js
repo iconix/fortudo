@@ -5,7 +5,6 @@ import {
     scheduleUnscheduledTask,
     confirmScheduleUnscheduledTask,
     updateUnscheduledTask,
-    reorderUnscheduledTask,
     toggleUnscheduledTaskCompleteState,
     getSuggestedStartTime
 } from '../task-manager.js';
@@ -16,7 +15,7 @@ import {
 } from '../form-utils.js';
 import { refreshUI } from '../dom-handler.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { getThemeForTaskId } from './confirmation-helpers.js';
+import { getThemeForTaskId } from '../confirmation-helpers.js';
 
 export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);
@@ -105,11 +104,6 @@ export function handleCancelUnscheduledTaskEdit(taskId) {
     }
 }
 
-export function handleDropUnscheduledTask(draggedTaskId, targetTaskId) {
-    reorderUnscheduledTask(draggedTaskId, targetTaskId);
-    refreshUI();
-}
-
 export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
@@ -135,7 +129,6 @@ export function createUnscheduledTaskCallbacks() {
         onConfirmScheduleTask: handleConfirmScheduleTask,
         onSaveUnscheduledTaskEdit: handleSaveUnscheduledTaskEdit,
         onCancelUnscheduledTaskEdit: handleCancelUnscheduledTaskEdit,
-        onDropUnscheduledTask: handleDropUnscheduledTask,
         onToggleCompleteUnscheduledTask: handleToggleCompleteUnscheduledTask
     };
 }

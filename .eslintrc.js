@@ -1,4 +1,5 @@
 module.exports = {
+    root: true,
     env: {
         browser: true,
         es2021: true,
@@ -19,7 +20,7 @@ module.exports = {
         'prettier/prettier': 'error',
 
         // Code quality
-        'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+        'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
         'no-console': ['warn', { allow: ['error', 'warn', 'info', 'debug'] }],
         'prefer-const': 'error',
         'no-var': 'error',

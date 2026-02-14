@@ -1,7 +1,7 @@
-import { getTaskById, getSuggestedStartTime } from '../task-manager.js';
-import { showAlert, askConfirmation } from '../modal-manager.js';
-import { updateStartTimeField } from '../dom-handler.js';
-import { getThemeForTask } from '../utils.js';
+import { getTaskById, getSuggestedStartTime } from './task-manager.js';
+import { showAlert, askConfirmation } from './modal-manager.js';
+import { updateStartTimeField } from './dom-handler.js';
+import { getThemeForTask } from './utils.js';
 
 /**
  * Determine the theme based on task ID

@@ -19,6 +19,15 @@ import {
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
 import { convertTo12HourTime, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
+
+// Mock storage.js before importing task-manager
+jest.mock('../public/js/storage.js', () => ({
+    saveTasks: jest.fn(),
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
+    loadTasks: jest.fn(() => [])
+}));
+
 import { updateTaskState } from '../public/js/task-manager.js';
 
 describe('DOM Handler Interaction Tests', () => {

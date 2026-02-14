@@ -24,16 +24,32 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-handler.js';
-import { loadTasksFromStorage } from './storage.js';
+import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
 import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
 import { handleAddTaskProcess } from './handlers/add-task-handler.js';
 import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js';
+import {
+    showRoomEntryScreen,
+    showMainApp,
+    updateSyncStatusUI
+} from './handlers/room-ui-handler.js';
+import { getActiveRoom } from './room-manager.js';
+import { onSyncStatusChange } from './sync-manager.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Initialize storage and boot the main app UI.
+ * @param {string} roomCode
+ */
+async function initAndBootApp(roomCode) {
+    showMainApp(roomCode);
+
+    // Initialize storage
+    await initStorage(roomCode);
+
     // Load and initialize state
-    const loadedTasks = loadTasksFromStorage();
+    const loadedTasks = await loadTasks();
     loadedTasks.forEach((task) => {
         if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
             task.isEditingInline = false;
@@ -79,6 +95,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
 
+    // Wire up sync status indicator
+    onSyncStatusChange((status) => {
+        updateSyncStatusUI(status);
+    });
+
     // Initial render
     const allTasks = getTaskState();
     renderTasks(
@@ -88,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
 
     const suggested = getSuggestedStartTime();
-    logger.debug('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);
+    logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
@@ -103,4 +124,21 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('beforeunload', () => {
         clearInterval(activeTaskColorInterval);
     });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
+    const roomCodeBadge = document.getElementById('room-code-badge');
+    if (roomCodeBadge) {
+        roomCodeBadge.addEventListener('click', () => {
+            showRoomEntryScreen(initAndBootApp);
+        });
+    }
+
+    const activeRoom = getActiveRoom();
+    if (!activeRoom) {
+        showRoomEntryScreen(initAndBootApp);
+        return;
+    }
+    await initAndBootApp(activeRoom);
 });
