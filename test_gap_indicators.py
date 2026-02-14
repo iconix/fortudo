@@ -7,6 +7,26 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+ROOM_CODE = "test-room"
+
+def setup_room(page):
+    """Set room code in localStorage so the app skips the room entry screen."""
+    page.evaluate(f"""() => {{
+        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
+        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
+    }}""")
+
+def clear_and_setup(page):
+    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
+    page.evaluate(f"""() => {{
+        return new Promise((resolve) => {{
+            const db = new PouchDB('fortudo-{ROOM_CODE}');
+            db.destroy().then(() => resolve()).catch(() => resolve());
+        }});
+    }}""")
+    page.evaluate("localStorage.clear()")
+    setup_room(page)
+
 passed = 0
 failed = 0
 results = []
@@ -115,7 +135,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # Clear any leftover state from prior runs
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -245,7 +265,7 @@ with sync_playwright() as p:
     # TEST 10: Single task has no gap indicators
     # =========================================================================
     print("\nTEST 10: Single task has no gap indicators", flush=True)
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -262,7 +282,7 @@ with sync_playwright() as p:
     # TEST 11: Boundary marker visible when all tasks are in the future
     # =========================================================================
     print("\nTEST 11: Boundary marker visible when all tasks are in the future", flush=True)
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
