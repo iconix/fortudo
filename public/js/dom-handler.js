@@ -133,6 +133,18 @@ function handleScheduledTaskListClick(event) {
     }
     const target = /** @type {HTMLElement} */ (event.target);
 
+    // Check for gap click
+    const gapElement = target.closest('.schedule-gap');
+    if (gapElement instanceof HTMLElement && globalScheduledTaskCallbacks.onGapClick) {
+        const gapStart = gapElement.dataset.gapStart;
+        const gapEnd = gapElement.dataset.gapEnd;
+        const durationMinutes = parseInt(gapElement.dataset.gapDuration, 10);
+        if (gapStart && gapEnd && !isNaN(durationMinutes)) {
+            globalScheduledTaskCallbacks.onGapClick(gapStart, gapEnd, durationMinutes);
+        }
+        return;
+    }
+
     // Check for Cancel button first
     const cancelButtonElement = target.closest('.btn-edit-cancel');
     if (cancelButtonElement instanceof HTMLElement) {

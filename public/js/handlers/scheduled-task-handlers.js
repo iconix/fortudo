@@ -10,13 +10,25 @@ import {
     updateTask,
     confirmUpdateTaskAndReschedule,
     cancelEdit,
-    getSuggestedStartTime
+    getSuggestedStartTime,
+    getSortedUnscheduledTasks
 } from '../task-manager.js';
-import { showAlert, askConfirmation } from '../modal-manager.js';
+import {
+    showAlert,
+    askConfirmation,
+    showGapTaskPicker,
+    showScheduleModal
+} from '../modal-manager.js';
 import { extractTaskFormData } from '../form-utils.js';
 import { refreshUI, updateStartTimeField, getCurrentTimeElement } from '../dom-handler.js';
 import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
-import { convertTo24HourTime, convertTo12HourTime, logger, getThemeForTask } from '../utils.js';
+import {
+    convertTo24HourTime,
+    convertTo12HourTime,
+    calculateHoursAndMinutes,
+    logger,
+    getThemeForTask
+} from '../utils.js';
 import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
@@ -163,6 +175,39 @@ export function handleCancelEdit(taskId, _taskIndex) {
 }
 
 /**
+ * Handle click on a schedule gap to show unscheduled task picker
+ * @param {string} gapStartISO - Gap start time in ISO format
+ * @param {string} gapEndISO - Gap end time in ISO format
+ * @param {number} durationMinutes - Gap duration in minutes
+ */
+export function handleGapClick(gapStartISO, gapEndISO, durationMinutes) {
+    const unscheduledTasks = getSortedUnscheduledTasks().filter((t) => t.status !== 'completed');
+
+    if (unscheduledTasks.length === 0) {
+        showAlert('No unscheduled tasks to schedule.', 'teal');
+        return;
+    }
+
+    showGapTaskPicker(
+        gapStartISO,
+        gapEndISO,
+        durationMinutes,
+        unscheduledTasks,
+        (taskId, gapStartTime) => {
+            const task = getTaskById(taskId);
+            if (task) {
+                showScheduleModal(
+                    task.description,
+                    task.estDuration ? calculateHoursAndMinutes(task.estDuration) : 'N/A',
+                    taskId,
+                    gapStartTime
+                );
+            }
+        }
+    );
+}
+
+/**
  * Create the scheduled task callbacks object mapping on* names to handle* functions
  * @returns {Object} Callback object for scheduled task event delegation
  */
@@ -174,6 +219,7 @@ export function createScheduledTaskCallbacks() {
         onDeleteTask: handleDeleteTask,
         onUnscheduleTask: handleUnscheduleTask,
         onSaveTaskEdit: handleSaveTaskEdit,
-        onCancelEdit: handleCancelEdit
+        onCancelEdit: handleCancelEdit,
+        onGapClick: handleGapClick
     };
 }

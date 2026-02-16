@@ -52,7 +52,7 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(html).toContain('schedule-gap');
         });
 
-        test('returns string containing aria-hidden="true"', () => {
+        test('returns string containing role="button" for clickable gap', () => {
             const gap = {
                 afterTaskId: '1',
                 startISO: '2025-01-15T11:00:00.000Z',
@@ -60,7 +60,7 @@ describe('Scheduled Task Renderer Tests', () => {
                 durationMinutes: 30
             };
             const html = renderGapHTML(gap);
-            expect(html).toContain('aria-hidden="true"');
+            expect(html).toContain('role="button"');
         });
 
         test('includes data-gap-start and data-gap-end attributes', () => {
@@ -73,6 +73,39 @@ describe('Scheduled Task Renderer Tests', () => {
             const html = renderGapHTML(gap);
             expect(html).toContain('data-gap-start="2025-01-15T11:00:00.000Z"');
             expect(html).toContain('data-gap-end="2025-01-15T11:30:00.000Z"');
+        });
+
+        test('includes data-gap-duration attribute', () => {
+            const gap = {
+                afterTaskId: '1',
+                startISO: '2025-01-15T11:00:00.000Z',
+                endISO: '2025-01-15T11:30:00.000Z',
+                durationMinutes: 30
+            };
+            const html = renderGapHTML(gap);
+            expect(html).toContain('data-gap-duration="30"');
+        });
+
+        test('includes cursor-pointer class for clickability', () => {
+            const gap = {
+                afterTaskId: '1',
+                startISO: '2025-01-15T11:00:00.000Z',
+                endISO: '2025-01-15T11:30:00.000Z',
+                durationMinutes: 30
+            };
+            const html = renderGapHTML(gap);
+            expect(html).toContain('cursor-pointer');
+        });
+
+        test('includes tabindex="0" for keyboard accessibility', () => {
+            const gap = {
+                afterTaskId: '1',
+                startISO: '2025-01-15T11:00:00.000Z',
+                endISO: '2025-01-15T11:30:00.000Z',
+                durationMinutes: 30
+            };
+            const html = renderGapHTML(gap);
+            expect(html).toContain('tabindex="0"');
         });
 
         test('formats duration correctly for 90 min gap', () => {

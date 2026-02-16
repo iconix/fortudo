@@ -10,6 +10,7 @@ import {
     handleUnscheduleTask,
     handleSaveTaskEdit,
     handleCancelEdit,
+    handleGapClick,
     createScheduledTaskCallbacks
 } from '../public/js/handlers/scheduled-task-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/task-manager.js';
@@ -26,6 +27,8 @@ jest.mock('../public/js/modal-manager.js', () => ({
     showAlert: jest.fn(),
     askConfirmation: jest.fn(() => Promise.resolve(false)),
     showScheduleModal: jest.fn(),
+    showGapTaskPicker: jest.fn(),
+    hideGapTaskPicker: jest.fn(),
     initializeModalEventListeners: jest.fn()
 }));
 
@@ -72,7 +75,7 @@ jest.mock('../public/js/form-utils.js', () => ({
 }));
 
 import { refreshUI } from '../public/js/dom-handler.js';
-import { showAlert } from '../public/js/modal-manager.js';
+import { showAlert, showGapTaskPicker, showScheduleModal } from '../public/js/modal-manager.js';
 
 describe('Scheduled Task Handlers', () => {
     beforeEach(() => {
@@ -228,6 +231,93 @@ describe('Scheduled Task Handlers', () => {
         test('does nothing for non-existent task', () => {
             handleCancelEdit('nonexistent', 0);
             expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleGapClick', () => {
+        function createUnscheduledTask(overrides = {}) {
+            return {
+                id: `unsched-${Date.now()}-${Math.random()}`,
+                type: 'unscheduled',
+                description: 'Test Unscheduled',
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                priority: 'medium',
+                estDuration: 30,
+                isEditingInline: false,
+                ...overrides
+            };
+        }
+
+        test('shows gap task picker with incomplete unscheduled tasks', () => {
+            const task1 = createUnscheduledTask({ description: 'Task A' });
+            const task2 = createUnscheduledTask({ description: 'Task B' });
+            const completedTask = createUnscheduledTask({
+                description: 'Done',
+                status: 'completed'
+            });
+            updateTaskState([task1, task2, completedTask]);
+
+            handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
+
+            expect(showGapTaskPicker).toHaveBeenCalledWith(
+                '2025-01-15T11:00:00.000Z',
+                '2025-01-15T12:00:00.000Z',
+                60,
+                expect.arrayContaining([
+                    expect.objectContaining({ description: 'Task A' }),
+                    expect.objectContaining({ description: 'Task B' })
+                ]),
+                expect.any(Function)
+            );
+            // Completed task should be filtered out
+            const passedTasks = showGapTaskPicker.mock.calls[0][3];
+            expect(passedTasks).toHaveLength(2);
+            expect(passedTasks.every((t) => t.status !== 'completed')).toBe(true);
+        });
+
+        test('shows alert when no unscheduled tasks exist', () => {
+            updateTaskState([]);
+
+            handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
+
+            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showGapTaskPicker).not.toHaveBeenCalled();
+        });
+
+        test('shows alert when only completed unscheduled tasks exist', () => {
+            const completedTask = createUnscheduledTask({ status: 'completed' });
+            updateTaskState([completedTask]);
+
+            handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
+
+            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showGapTaskPicker).not.toHaveBeenCalled();
+        });
+
+        test('onTaskSelected callback opens schedule modal with gap start time', () => {
+            const task = createUnscheduledTask({
+                description: 'My Task',
+                estDuration: 45
+            });
+            updateTaskState([task]);
+
+            handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
+
+            // Get the onTaskSelected callback that was passed to showGapTaskPicker
+            const onTaskSelected = showGapTaskPicker.mock.calls[0][4];
+
+            // Simulate user selecting a task
+            onTaskSelected(task.id, '11:00');
+
+            expect(showScheduleModal).toHaveBeenCalledWith('My Task', '45m', task.id, '11:00');
+        });
+
+        test('createScheduledTaskCallbacks includes onGapClick', () => {
+            const callbacks = createScheduledTaskCallbacks();
+            expect(callbacks).toHaveProperty('onGapClick');
+            expect(callbacks.onGapClick).toBe(handleGapClick);
         });
     });
 });

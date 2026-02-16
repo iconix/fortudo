@@ -80,6 +80,15 @@ function setupDOM() {
         </div>
       </div>
 
+      <!-- Gap Task Picker Modal -->
+      <div id="gap-task-picker-modal" class="hidden">
+        <span id="gap-picker-time-range"></span>
+        <span id="gap-picker-duration"></span>
+        <div id="gap-task-picker-list"></div>
+        <button id="close-gap-task-picker-modal">X</button>
+        <button id="cancel-gap-task-picker-modal">Cancel</button>
+      </div>
+
       <!-- Custom Confirm Modal - intentionally mismatched button IDs to trigger window.confirm fallback in tests -->
       <div id="custom-confirm-modal" class="hidden">
         <div class="modal-content">

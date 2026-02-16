@@ -1,4 +1,10 @@
-import { calculateHoursAndMinutes, parseDuration, logger } from './utils.js';
+import {
+    calculateHoursAndMinutes,
+    parseDuration,
+    logger,
+    convertTo12HourTime,
+    extractTimeFromDateTime
+} from './utils.js';
 import { getTaskState } from './task-manager.js';
 
 // --- Modal Elements ---
@@ -196,6 +202,100 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
         hideScheduleModal();
     });
 }
+
+// --- Gap Task Picker Modal ---
+const gapTaskPickerModal = document.getElementById('gap-task-picker-modal');
+const gapPickerTimeRange = document.getElementById('gap-picker-time-range');
+const gapPickerDuration = document.getElementById('gap-picker-duration');
+const gapTaskPickerList = document.getElementById('gap-task-picker-list');
+const closeGapTaskPickerButton = document.getElementById('close-gap-task-picker-modal');
+const cancelGapTaskPickerButton = document.getElementById('cancel-gap-task-picker-modal');
+
+export function hideGapTaskPicker() {
+    if (gapTaskPickerModal) gapTaskPickerModal.classList.add('hidden');
+}
+
+/**
+ * Show the gap task picker modal with a list of unscheduled tasks
+ * @param {string} gapStartISO - Gap start time in ISO format
+ * @param {string} gapEndISO - Gap end time in ISO format
+ * @param {number} durationMinutes - Gap duration in minutes
+ * @param {Array} unscheduledTasks - Incomplete unscheduled tasks to display
+ * @param {Function} onTaskSelected - Callback when a task is selected: (taskId, gapStartTime) => void
+ */
+export function showGapTaskPicker(
+    gapStartISO,
+    gapEndISO,
+    durationMinutes,
+    unscheduledTasks,
+    onTaskSelected
+) {
+    if (!gapTaskPickerModal || !gapTaskPickerList) {
+        logger.error('Gap task picker modal elements not found.');
+        return;
+    }
+
+    const startTime = extractTimeFromDateTime(new Date(gapStartISO));
+    const endTime = extractTimeFromDateTime(new Date(gapEndISO));
+
+    if (gapPickerTimeRange) {
+        gapPickerTimeRange.textContent = `${convertTo12HourTime(startTime)} \u2013 ${convertTo12HourTime(endTime)}`;
+    }
+    if (gapPickerDuration) {
+        gapPickerDuration.textContent = calculateHoursAndMinutes(durationMinutes);
+    }
+
+    if (unscheduledTasks.length === 0) {
+        gapTaskPickerList.innerHTML =
+            '<p class="text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
+    } else {
+        gapTaskPickerList.innerHTML = unscheduledTasks
+            .map((task) => {
+                const estText = task.estDuration
+                    ? calculateHoursAndMinutes(task.estDuration)
+                    : 'No estimate';
+                const fits = task.estDuration && task.estDuration <= durationMinutes;
+                const fitIndicator = task.estDuration
+                    ? fits
+                        ? '<span class="text-teal-400 text-xs whitespace-nowrap">Fits</span>'
+                        : '<span class="text-amber-300 text-xs whitespace-nowrap">Too long</span>'
+                    : '';
+                const priorityColors = {
+                    high: 'text-rose-400',
+                    medium: 'text-amber-400',
+                    low: 'text-teal-400'
+                };
+                const priorityColor = priorityColors[task.priority] || 'text-slate-400';
+                return `<div class="gap-task-option flex items-center justify-between p-3 rounded-lg border border-slate-600 hover:border-teal-400 hover:bg-slate-700/50 cursor-pointer transition-all" data-task-id="${task.id}">
+                    <div class="min-w-0 flex-1 mr-2">
+                        <div class="text-slate-200 font-medium text-sm truncate">${task.description}</div>
+                        <div class="text-slate-400 text-xs">Est: ${estText} <span class="${priorityColor}">\u2022 ${(task.priority || 'medium').charAt(0).toUpperCase() + (task.priority || 'medium').slice(1)}</span></div>
+                    </div>
+                    <div class="shrink-0">${fitIndicator}</div>
+                </div>`;
+            })
+            .join('');
+    }
+
+    // Set up click handlers on task options
+    const taskOptions = gapTaskPickerList.querySelectorAll('.gap-task-option');
+    taskOptions.forEach((option) => {
+        option.addEventListener('click', () => {
+            const taskId = option.dataset.taskId;
+            if (taskId && onTaskSelected) {
+                hideGapTaskPicker();
+                onTaskSelected(taskId, startTime);
+            }
+        });
+    });
+
+    gapTaskPickerModal.classList.remove('hidden');
+}
+
+// Initialize gap task picker modal button listeners
+if (closeGapTaskPickerButton) closeGapTaskPickerButton.addEventListener('click', hideGapTaskPicker);
+if (cancelGapTaskPickerButton)
+    cancelGapTaskPickerButton.addEventListener('click', hideGapTaskPicker);
 
 // --- Convenience Wrappers ---
 export function showAlert(message, theme = 'indigo') {

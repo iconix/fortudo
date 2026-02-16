@@ -233,6 +233,29 @@
         </div>
     </div>
 
+    <!-- Gap Task Picker Modal -->
+    <div id="gap-task-picker-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-normal text-teal-400">Schedule in Gap</h3>
+                <button id="close-gap-task-picker-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <p class="mb-4 text-slate-400">
+                <i class="fa-regular fa-clock text-teal-400/75 mr-1"></i>
+                <span id="gap-picker-time-range" class="text-slate-200"></span>
+                (<span id="gap-picker-duration" class="text-slate-200"></span>)
+            </p>
+            <div id="gap-task-picker-list" class="space-y-2 max-h-64 overflow-y-auto">
+                <!-- Unscheduled tasks will be listed here -->
+            </div>
+            <div class="flex justify-end pt-4">
+                <button id="cancel-gap-task-picker-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom Alert Modal -->
     <div id="custom-alert-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
         <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-sm w-full">

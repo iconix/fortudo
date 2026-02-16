@@ -8,6 +8,7 @@ describe('Modal Manager Tests', () => {
     let showAlert, askConfirmation, showCustomAlert, showCustomConfirm;
     let hideCustomAlert, hideCustomConfirm, hideScheduleModal, showScheduleModal;
     let initializeModalEventListeners;
+    let showGapTaskPicker, hideGapTaskPicker;
     let alertSpy, confirmSpy;
 
     beforeEach(() => {
@@ -41,6 +42,15 @@ describe('Modal Manager Tests', () => {
                     <input type="number" name="modal-duration-hours" />
                     <input type="number" name="modal-duration-minutes" />
                 </form>
+            </div>
+
+            <!-- Gap Task Picker Modal -->
+            <div id="gap-task-picker-modal" class="hidden">
+                <span id="gap-picker-time-range"></span>
+                <span id="gap-picker-duration"></span>
+                <div id="gap-task-picker-list"></div>
+                <button id="close-gap-task-picker-modal">X</button>
+                <button id="cancel-gap-task-picker-modal">Cancel</button>
             </div>
         `;
 
@@ -117,6 +127,8 @@ describe('Modal Manager Tests', () => {
             showCustomConfirm = module.showCustomConfirm;
             hideCustomAlert = module.hideCustomAlert;
             hideCustomConfirm = module.hideCustomConfirm;
+            showGapTaskPicker = module.showGapTaskPicker;
+            hideGapTaskPicker = module.hideGapTaskPicker;
             hideScheduleModal = module.hideScheduleModal;
             showScheduleModal = module.showScheduleModal;
             initializeModalEventListeners = module.initializeModalEventListeners;
@@ -373,6 +385,167 @@ describe('Modal Manager Tests', () => {
                 // Alert should show but modal stays open
                 const modal = document.getElementById('schedule-modal');
                 expect(modal.classList.contains('hidden')).toBe(false);
+            });
+        });
+
+        describe('Gap Task Picker Modal', () => {
+            const testTasks = [
+                {
+                    id: 'task-1',
+                    description: 'Short task',
+                    status: 'incomplete',
+                    priority: 'high',
+                    estDuration: 30
+                },
+                {
+                    id: 'task-2',
+                    description: 'Long task',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: 120
+                },
+                {
+                    id: 'task-3',
+                    description: 'No estimate task',
+                    status: 'incomplete',
+                    priority: 'low'
+                }
+            ];
+
+            test('showGapTaskPicker shows the modal', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const modal = document.getElementById('gap-task-picker-modal');
+                expect(modal.classList.contains('hidden')).toBe(false);
+            });
+
+            test('showGapTaskPicker displays duration', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const durationEl = document.getElementById('gap-picker-duration');
+                expect(durationEl.textContent).toBe('1h');
+            });
+
+            test('showGapTaskPicker renders task list', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const list = document.getElementById('gap-task-picker-list');
+                const options = list.querySelectorAll('.gap-task-option');
+                expect(options).toHaveLength(3);
+            });
+
+            test('showGapTaskPicker marks fitting tasks', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const list = document.getElementById('gap-task-picker-list');
+                const options = list.querySelectorAll('.gap-task-option');
+
+                // task-1 (30m) fits in 60m gap
+                expect(options[0].textContent).toContain('Fits');
+                // task-2 (120m) does not fit in 60m gap
+                expect(options[1].textContent).toContain('Too long');
+            });
+
+            test('clicking a task calls onTaskSelected and hides modal', () => {
+                const onTaskSelected = jest.fn();
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    onTaskSelected
+                );
+
+                const list = document.getElementById('gap-task-picker-list');
+                const firstOption = list.querySelector('.gap-task-option');
+                firstOption.click();
+
+                expect(onTaskSelected).toHaveBeenCalledWith('task-1', expect.any(String));
+                const modal = document.getElementById('gap-task-picker-modal');
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('hideGapTaskPicker hides the modal', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+                hideGapTaskPicker();
+
+                const modal = document.getElementById('gap-task-picker-modal');
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('close button hides gap task picker', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const closeBtn = document.getElementById('close-gap-task-picker-modal');
+                closeBtn.click();
+
+                const modal = document.getElementById('gap-task-picker-modal');
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('cancel button hides gap task picker', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const cancelBtn = document.getElementById('cancel-gap-task-picker-modal');
+                cancelBtn.click();
+
+                const modal = document.getElementById('gap-task-picker-modal');
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('showGapTaskPicker with no tasks shows empty message', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    [],
+                    jest.fn()
+                );
+
+                const list = document.getElementById('gap-task-picker-list');
+                expect(list.textContent).toContain('No unscheduled tasks available');
             });
         });
     });
