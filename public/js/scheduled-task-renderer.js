@@ -153,8 +153,7 @@ export function renderGapHTML(gap) {
     const durationText = calculateHoursAndMinutes(gap.durationMinutes);
     return `<div class="schedule-gap flex items-center justify-center py-1 text-xs text-slate-500 cursor-pointer hover:text-teal-300 transition-colors group" role="button" tabindex="0" data-gap-start="${gap.startISO}" data-gap-end="${gap.endISO}" data-gap-duration="${gap.durationMinutes}" title="Click to schedule a task in this gap">
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
-        <span class="gap-plus-icon mx-1 opacity-0 group-hover:opacity-100 transition-opacity text-teal-400">+</span>
-        <span class="px-1 whitespace-nowrap">${durationText} free</span>
+        <span class="px-2 whitespace-nowrap"><span class="gap-plus-icon">+ </span>${durationText} free</span>
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
     </div>`;
 }

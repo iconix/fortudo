@@ -86,6 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduledTaskEventCallbacks
     );
     renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+    refreshActiveTaskColor(allTasks);
+    refreshCurrentGapHighlight();
 
     const suggested = getSuggestedStartTime();
     logger.debug('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);

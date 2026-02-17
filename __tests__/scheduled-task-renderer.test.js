@@ -117,7 +117,7 @@ describe('Scheduled Task Renderer Tests', () => {
             };
             const html = renderGapHTML(gap);
             expect(html).toContain('gap-plus-icon');
-            expect(html).toContain('>+</span>');
+            expect(html).toContain('>+ </span>');
         });
 
         test('formats duration correctly for 90 min gap', () => {
