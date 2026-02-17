@@ -41,9 +41,9 @@
                 <input type="text" name="description" placeholder="Describe your task..." class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5">
                 <div class="flex-grow flex flex-col gap-2 sm:gap-4">
-                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full pb-5 sm:pb-0">
                         <!-- Start Time -->
                         <div class="flex-1 min-w-0">
                             <div class="relative">
@@ -54,7 +54,7 @@
 
                         <!-- Duration -->
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-1 sm:gap-2">
+                            <div class="relative flex items-center gap-1 sm:gap-2">
                                 <div class="relative flex-1">
                                     <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
                                     <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
@@ -63,6 +63,7 @@
                                 <div class="relative flex-1">
                                     <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
                                 </div>
+                                <span id="end-time-hint" class="absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                             </div>
                         </div>
                     </div>
@@ -202,16 +203,19 @@
                         <span class="text-slate-400 flex items-center">
                             <i class="fa-regular fa-hourglass text-indigo-400/75 mr-2"></i>Duration
                         </span>
-                        <div class="flex items-center gap-2">
-                            <div class="relative flex-1">
-                                <input type="number" name="modal-duration-hours" placeholder="HH" min="0"
-                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                        <div class="relative">
+                            <div class="flex items-center gap-2">
+                                <div class="relative flex-1">
+                                    <input type="number" name="modal-duration-hours" placeholder="HH" min="0"
+                                        class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                                </div>
+                                <span class="text-slate-400 text-lg">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="modal-duration-minutes" placeholder="MM" min="0" max="59"
+                                        class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                                </div>
                             </div>
-                            <span class="text-slate-400 text-lg">:</span>
-                            <div class="relative flex-1">
-                                <input type="number" name="modal-duration-minutes" placeholder="MM" min="0" max="59"
-                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
-                            </div>
+                            <span id="modal-end-time-hint" class="absolute top-full mt-0.5 right-0 text-xs text-indigo-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                         </div>
                     </div>
 

@@ -7,6 +7,7 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { findScheduleGaps } from './reschedule-engine.js';
+import { computeEndTimePreview } from './form-utils.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -48,7 +49,7 @@ export function renderEditTaskHTML(task, index) {
             </div>
 
             <!-- Time, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:pb-5">
                 <!-- Start Time -->
                 <div class="relative">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
@@ -57,16 +58,19 @@ export function renderEditTaskHTML(task, index) {
                 </div>
 
                 <!-- Duration -->
-                <div class="flex items-center gap-2">
-                    <div class="relative flex-1">
-                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
-                        <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
-                            class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
-                    </div>
-                    <span class="text-gray-400 text-lg">:</span>
-                    <div class="relative flex-1">
-                        <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
-                            class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                <div class="relative pb-5 sm:pb-0">
+                    <div class="relative flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                            <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
+                                class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                        </div>
+                        <span class="text-gray-400 text-lg">:</span>
+                        <div class="relative flex-1">
+                            <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
+                                class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                        </div>
+                        <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                     </div>
                 </div>
 
@@ -236,6 +240,30 @@ export function renderTasks(
         'after'
     );
     taskListElement.innerHTML = html;
+
+    // Populate end time hints for any edit forms that were just rendered
+    taskListElement.querySelectorAll('form[id^="edit-task-"]').forEach((form) => {
+        const hintEl = form.querySelector('.edit-end-time-hint');
+        const startInput = form.querySelector('input[name="start-time"]');
+        const hoursInput = form.querySelector('input[name="duration-hours"]');
+        const minutesInput = form.querySelector('input[name="duration-minutes"]');
+        if (
+            hintEl &&
+            startInput instanceof HTMLInputElement &&
+            hoursInput instanceof HTMLInputElement &&
+            minutesInput instanceof HTMLInputElement
+        ) {
+            const result = computeEndTimePreview(
+                startInput.value,
+                hoursInput.value,
+                minutesInput.value
+            );
+            if (result) {
+                hintEl.textContent = `▸ ${result}`;
+                hintEl.classList.remove('opacity-0');
+            }
+        }
+    });
 
     return updatedCallbacks;
 }

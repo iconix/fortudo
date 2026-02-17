@@ -8,7 +8,9 @@ import {
     toggleUnscheduledTaskInlineEdit,
     extractTaskFormData,
     getTaskFormElement,
-    focusTaskDescriptionInput
+    focusTaskDescriptionInput,
+    computeEndTimePreview,
+    setupEndTimeHint
 } from '../public/js/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
 
@@ -476,6 +478,135 @@ describe('Form Utils Tests', () => {
                     toggleUnscheduledTaskInlineEdit('task-1', true);
                 }).not.toThrow();
             });
+        });
+    });
+
+    describe('computeEndTimePreview', () => {
+        test('returns formatted 12-hour end time for valid inputs', () => {
+            const result = computeEndTimePreview('14:00', '1', '30');
+            expect(result).toBe('3:30 PM');
+        });
+
+        test('returns correct time for morning hours', () => {
+            const result = computeEndTimePreview('09:00', '2', '15');
+            expect(result).toBe('11:15 AM');
+        });
+
+        test('returns correct time crossing noon', () => {
+            const result = computeEndTimePreview('11:00', '2', '0');
+            expect(result).toBe('1:00 PM');
+        });
+
+        test('returns correct time crossing midnight', () => {
+            const result = computeEndTimePreview('23:00', '2', '0');
+            expect(result).toBe('1:00 AM');
+        });
+
+        test('returns null when start time is empty', () => {
+            expect(computeEndTimePreview('', '1', '30')).toBeNull();
+        });
+
+        test('returns null when hours and minutes are both empty', () => {
+            expect(computeEndTimePreview('14:00', '', '')).toBeNull();
+        });
+
+        test('returns correct time when only hours provided', () => {
+            const result = computeEndTimePreview('10:00', '2', '');
+            expect(result).toBe('12:00 PM');
+        });
+
+        test('returns correct time when only minutes provided', () => {
+            const result = computeEndTimePreview('10:00', '', '45');
+            expect(result).toBe('10:45 AM');
+        });
+
+        test('returns null when duration is zero', () => {
+            expect(computeEndTimePreview('10:00', '0', '0')).toBeNull();
+        });
+
+        test('returns null for invalid start time format', () => {
+            expect(computeEndTimePreview('invalid', '1', '0')).toBeNull();
+        });
+
+        test('handles duration of exactly 12 hours', () => {
+            const result = computeEndTimePreview('06:00', '12', '0');
+            expect(result).toBe('6:00 PM');
+        });
+    });
+
+    describe('setupEndTimeHint', () => {
+        let startTimeInput, hoursInput, minutesInput, hintElement;
+
+        beforeEach(() => {
+            document.body.innerHTML = `
+                <input type="time" id="start" value="" />
+                <input type="number" id="hours" value="" />
+                <input type="number" id="minutes" value="" />
+                <span id="hint" class="opacity-0"></span>
+            `;
+            startTimeInput = document.getElementById('start');
+            hoursInput = document.getElementById('hours');
+            minutesInput = document.getElementById('minutes');
+            hintElement = document.getElementById('hint');
+        });
+
+        test('updates hint text and opacity when all inputs are valid', () => {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+
+            startTimeInput.value = '14:00';
+            hoursInput.value = '1';
+            minutesInput.value = '30';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(hintElement.textContent).toContain('3:30 PM');
+            expect(hintElement.classList.contains('opacity-0')).toBe(false);
+        });
+
+        test('clears hint and sets opacity-0 when inputs are invalid', () => {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+
+            // First set valid values
+            startTimeInput.value = '14:00';
+            hoursInput.value = '1';
+            minutesInput.value = '0';
+            startTimeInput.dispatchEvent(new Event('input'));
+            expect(hintElement.classList.contains('opacity-0')).toBe(false);
+
+            // Then clear start time
+            startTimeInput.value = '';
+            startTimeInput.dispatchEvent(new Event('input'));
+            expect(hintElement.textContent).toBe('');
+            expect(hintElement.classList.contains('opacity-0')).toBe(true);
+        });
+
+        test('responds to hours input change', () => {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+
+            startTimeInput.value = '10:00';
+            hoursInput.value = '3';
+            hoursInput.dispatchEvent(new Event('input'));
+
+            expect(hintElement.textContent).toContain('1:00 PM');
+        });
+
+        test('responds to minutes input change', () => {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+
+            startTimeInput.value = '10:00';
+            minutesInput.value = '30';
+            minutesInput.dispatchEvent(new Event('input'));
+
+            expect(hintElement.textContent).toContain('10:30 AM');
+        });
+
+        test('includes arrow in hint text', () => {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+
+            startTimeInput.value = '10:00';
+            hoursInput.value = '1';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(hintElement.textContent).toMatch(/▸/);
         });
     });
 });

@@ -1,7 +1,7 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './task-manager.js';
 import { isScheduledTask } from './task-validators.js';
-import { getTaskFormElement } from './form-utils.js';
+import { getTaskFormElement, computeEndTimePreview } from './form-utils.js';
 
 // Import from new modules
 import {
@@ -268,6 +268,34 @@ function handleScheduledTaskListSubmit(event) {
     }
 }
 
+function handleScheduledTaskListInput(event) {
+    const target = /** @type {HTMLElement} */ (event.target);
+    const editForm = target.closest('form[id^="edit-task-"]');
+    if (!editForm) return;
+
+    const hintEl = editForm.querySelector('.edit-end-time-hint');
+    if (!hintEl) return;
+
+    const startInput = editForm.querySelector('input[name="start-time"]');
+    const hoursInput = editForm.querySelector('input[name="duration-hours"]');
+    const minutesInput = editForm.querySelector('input[name="duration-minutes"]');
+    if (
+        !(startInput instanceof HTMLInputElement) ||
+        !(hoursInput instanceof HTMLInputElement) ||
+        !(minutesInput instanceof HTMLInputElement)
+    )
+        return;
+
+    const result = computeEndTimePreview(startInput.value, hoursInput.value, minutesInput.value);
+    if (result) {
+        hintEl.textContent = `▸ ${result}`;
+        hintEl.classList.remove('opacity-0');
+    } else {
+        hintEl.textContent = '';
+        hintEl.classList.add('opacity-0');
+    }
+}
+
 function handleUnscheduledTaskListClick(event) {
     const target = /** @type {HTMLElement} */ (event.target);
     const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
@@ -346,9 +374,11 @@ export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     }
     taskListElement.removeEventListener('click', handleScheduledTaskListClick);
     taskListElement.removeEventListener('submit', handleScheduledTaskListSubmit);
+    taskListElement.removeEventListener('input', handleScheduledTaskListInput);
     globalScheduledTaskCallbacks = eventCallbacks;
     taskListElement.addEventListener('click', handleScheduledTaskListClick);
     taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
+    taskListElement.addEventListener('input', handleScheduledTaskListInput);
 }
 
 export function initializeUnscheduledTaskListEventListeners(callbacks) {

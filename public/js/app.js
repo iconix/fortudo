@@ -10,7 +10,8 @@ import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
     getTaskFormElement,
-    focusTaskDescriptionInput
+    focusTaskDescriptionInput,
+    setupEndTimeHint
 } from './form-utils.js';
 import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './scheduled-task-renderer.js';
 import {
@@ -71,6 +72,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize event listeners
     const taskFormElement = getTaskFormElement();
     if (!taskFormElement) logger.error('CRITICAL: app.js could not find #task-form element.');
+
+    // Wire up end time hint for the add task form
+    if (taskFormElement) {
+        const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
+        const hoursInput = taskFormElement.querySelector('input[name="duration-hours"]');
+        const minutesInput = taskFormElement.querySelector('input[name="duration-minutes"]');
+        const hintElement = document.getElementById('end-time-hint');
+        if (startTimeInput && hoursInput && minutesInput && hintElement) {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+        }
+    }
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();

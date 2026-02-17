@@ -1,4 +1,13 @@
-import { calculateHoursAndMinutes, parseDuration, getThemeForTaskType, logger } from './utils.js';
+import {
+    calculateHoursAndMinutes,
+    parseDuration,
+    getThemeForTaskType,
+    logger,
+    timeToDateTime,
+    calculateEndDateTime,
+    extractTimeFromDateTime,
+    convertTo12HourTime
+} from './utils.js';
 import { showAlert } from './modal-manager.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
@@ -200,6 +209,62 @@ export function extractTaskFormData(formElement) {
  */
 export function getTaskFormElement() {
     return /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+}
+
+// --- End Time Preview Functions ---
+
+/**
+ * Computes a 12-hour formatted end time from raw form input values.
+ * @param {string} startTimeValue - Start time in HH:MM format
+ * @param {string} hoursValue - Duration hours (raw input string)
+ * @param {string} minutesValue - Duration minutes (raw input string)
+ * @returns {string|null} Formatted end time (e.g. "3:30 PM") or null if inputs are invalid
+ */
+export function computeEndTimePreview(startTimeValue, hoursValue, minutesValue) {
+    if (!startTimeValue || !/^\d{1,2}:\d{2}$/.test(startTimeValue)) return null;
+
+    const h = parseInt(hoursValue) || 0;
+    const m = parseInt(minutesValue) || 0;
+    const duration = h * 60 + m;
+
+    if (duration <= 0) return null;
+
+    try {
+        const startDateTime = timeToDateTime(startTimeValue);
+        const endDateTime = calculateEndDateTime(startDateTime, duration);
+        const endTime24 = extractTimeFromDateTime(new Date(endDateTime));
+        return convertTo12HourTime(endTime24);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Sets up live end-time hint updates on a set of form inputs.
+ * @param {HTMLInputElement} startTimeInput - The start time input
+ * @param {HTMLInputElement} hoursInput - The duration hours input
+ * @param {HTMLInputElement} minutesInput - The duration minutes input
+ * @param {HTMLElement} hintElement - The element to display the hint in
+ */
+export function setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement) {
+    const update = () => {
+        const result = computeEndTimePreview(
+            startTimeInput.value,
+            hoursInput.value,
+            minutesInput.value
+        );
+        if (result) {
+            hintElement.textContent = `▸ ${result}`;
+            hintElement.classList.remove('opacity-0');
+        } else {
+            hintElement.textContent = '';
+            hintElement.classList.add('opacity-0');
+        }
+    };
+
+    startTimeInput.addEventListener('input', update);
+    hoursInput.addEventListener('input', update);
+    minutesInput.addEventListener('input', update);
 }
 
 /**

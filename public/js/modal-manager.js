@@ -6,6 +6,7 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { getTaskState } from './task-manager.js';
+import { setupEndTimeHint } from './form-utils.js';
 
 // --- Modal Elements ---
 const customAlertModal = document.getElementById('custom-alert-modal');
@@ -162,6 +163,8 @@ export function showScheduleModal(taskName, taskEstDurationText, taskId, suggest
     if (modalStartTimeInput instanceof HTMLInputElement) {
         modalStartTimeInput.value = suggestedStartTime;
         modalStartTimeInput.focus();
+        // Trigger hint update with pre-filled values
+        modalStartTimeInput.dispatchEvent(new Event('input'));
     }
     scheduleModal.classList.remove('hidden');
 }
@@ -173,6 +176,22 @@ if (cancelScheduleModalButton)
 
 export function initializeModalEventListeners(unscheduledTaskCallbacks) {
     if (!(scheduleModalForm instanceof HTMLFormElement)) return;
+
+    // Wire up end time hint for the schedule modal
+    const modalHintElement = document.getElementById('modal-end-time-hint');
+    if (
+        modalStartTimeInput instanceof HTMLInputElement &&
+        modalDurationHoursInput instanceof HTMLInputElement &&
+        modalDurationMinutesInput instanceof HTMLInputElement &&
+        modalHintElement
+    ) {
+        setupEndTimeHint(
+            modalStartTimeInput,
+            modalDurationHoursInput,
+            modalDurationMinutesInput,
+            modalHintElement
+        );
+    }
 
     scheduleModalForm.addEventListener('submit', (event) => {
         event.preventDefault();
