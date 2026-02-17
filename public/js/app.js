@@ -39,7 +39,20 @@ import {
 } from './handlers/room-ui-handler.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange } from './sync-manager.js';
-import { COUCHDB_URL } from './config.js';
+
+/**
+ * Load CouchDB URL from config.js if it exists.
+ * Returns null when config.js is absent (local-only mode).
+ * @returns {Promise<string|null>}
+ */
+async function loadCouchDbUrl() {
+    try {
+        const config = await import('./config.js');
+        return config.COUCHDB_URL || null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Initialize storage and boot the main app UI.
@@ -49,7 +62,8 @@ async function initAndBootApp(roomCode) {
     showMainApp(roomCode);
 
     // Initialize storage (with optional CouchDB sync)
-    const remoteUrl = COUCHDB_URL ? `${COUCHDB_URL}/fortudo-${roomCode}` : null;
+    const couchDbUrl = await loadCouchDbUrl();
+    const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${roomCode}` : null;
     await initStorage(roomCode, {}, remoteUrl);
 
     // Load and initialize state
