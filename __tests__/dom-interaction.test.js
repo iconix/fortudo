@@ -899,8 +899,9 @@ describe('DOM Handler Interaction Tests', () => {
                     <div class="inline-edit-unscheduled-form hidden">
                         <form>
                             <input name="inline-edit-description" value="Test Task" />
-                            <button class="btn-save-inline-edit">Save</button>
-                            <button class="btn-cancel-inline-edit">Cancel</button>
+                            <input type="number" name="inline-edit-est-duration-minutes" value="0" />
+                            <button type="button" class="btn-save-inline-edit">Save</button>
+                            <button type="button" class="btn-cancel-inline-edit">Cancel</button>
                         </form>
                     </div>
                 </div>
@@ -999,6 +1000,52 @@ describe('DOM Handler Interaction Tests', () => {
             expect(mockUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit).toHaveBeenCalledWith(
                 'unsched-1'
             );
+        });
+
+        test('Enter key on inline edit input calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(enterEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('Enter key on inline edit description input calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-description"]');
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(enterEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('non-Enter key on inline edit input does not call onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
+            const tabEvent = new KeyboardEvent('keydown', {
+                key: 'Tab',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(tabEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).not.toHaveBeenCalled();
         });
 
         test('form submit calls onSaveUnscheduledTaskEdit', () => {

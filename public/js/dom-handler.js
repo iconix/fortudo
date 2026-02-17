@@ -390,6 +390,21 @@ function handleUnscheduledTaskListClick(event) {
     }
 }
 
+function handleUnscheduledTaskListKeydown(event) {
+    if (event.key !== 'Enter') return;
+    if (!(event.target instanceof HTMLInputElement)) return;
+    const form = event.target.closest('form');
+    if (!form) return;
+    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+
+    event.preventDefault();
+    const taskId = taskCard.dataset.taskId;
+    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
+        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
+    }
+}
+
 function handleUnscheduledTaskListSubmit(event) {
     event.preventDefault(); // Always prevent default form submission
     const form = event.target;
@@ -428,8 +443,10 @@ export function initializeUnscheduledTaskListEventListeners(callbacks) {
         // Remove existing listeners to prevent duplicates if re-initialized
         unscheduledTaskList.removeEventListener('click', handleUnscheduledTaskListClick);
         unscheduledTaskList.removeEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.removeEventListener('keydown', handleUnscheduledTaskListKeydown);
         unscheduledTaskList.addEventListener('click', handleUnscheduledTaskListClick);
         unscheduledTaskList.addEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.addEventListener('keydown', handleUnscheduledTaskListKeydown);
     } else {
         logger.error('Unscheduled task list element not found for event listeners.');
     }
@@ -615,9 +632,7 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
                 event.target.type !== 'submit'
             ) {
                 event.preventDefault();
-                taskFormElement.dispatchEvent(
-                    new Event('submit', { bubbles: true, cancelable: true })
-                );
+                taskFormElement.dispatchEvent(new Event('submit'));
             }
         });
 
