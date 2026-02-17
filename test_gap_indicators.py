@@ -164,15 +164,15 @@ with sync_playwright() as p:
              "No gap elements found")
 
     # =========================================================================
-    # TEST 4: Gap has aria-hidden for accessibility
+    # TEST 4: Gap is interactive (clickable) for scheduling
     # =========================================================================
-    print("\nTEST 4: Gap has aria-hidden for accessibility", flush=True)
+    print("\nTEST 4: Gap is interactive for scheduling", flush=True)
     if gap_count >= 1:
-        aria_hidden = gap_elements.nth(0).get_attribute("aria-hidden")
-        test("Gap has aria-hidden='true'", aria_hidden == "true",
-             f"aria-hidden: {aria_hidden}")
+        role = gap_elements.nth(0).get_attribute("role")
+        test("Gap has role='button'", role == "button",
+             f"role: {role}")
     else:
-        test("Gap has aria-hidden='true'", False, "No gap elements found")
+        test("Gap has role='button'", False, "No gap elements found")
 
     # =========================================================================
     # TEST 5: Gap has data attributes for time range
@@ -203,7 +203,7 @@ with sync_playwright() as p:
     screenshot(page, "03_multiple_gaps")
 
     # =========================================================================
-    # TEST 7: Gap elements don't have data-task-id (not clickable as tasks)
+    # TEST 7: Gap elements don't have data-task-id (not treated as tasks)
     # =========================================================================
     print("\nTEST 7: Gap elements don't have data-task-id", flush=True)
     gap_elements = page.locator("#scheduled-task-list .schedule-gap")
