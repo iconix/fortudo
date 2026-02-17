@@ -108,6 +108,18 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(html).toContain('tabindex="0"');
         });
 
+        test('includes a + icon for visual add affordance', () => {
+            const gap = {
+                afterTaskId: '1',
+                startISO: '2025-01-15T11:00:00.000Z',
+                endISO: '2025-01-15T11:30:00.000Z',
+                durationMinutes: 30
+            };
+            const html = renderGapHTML(gap);
+            expect(html).toContain('gap-plus-icon');
+            expect(html).toContain('>+</span>');
+        });
+
         test('formats duration correctly for 90 min gap', () => {
             const gap = {
                 afterTaskId: '1',
