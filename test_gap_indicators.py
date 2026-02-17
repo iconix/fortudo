@@ -7,6 +7,26 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+ROOM_CODE = "test-room"
+
+def setup_room(page):
+    """Set room code in localStorage so the app skips the room entry screen."""
+    page.evaluate(f"""() => {{
+        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
+        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
+    }}""")
+
+def clear_and_setup(page):
+    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
+    page.evaluate(f"""() => {{
+        return new Promise((resolve) => {{
+            const db = new PouchDB('fortudo-{ROOM_CODE}');
+            db.destroy().then(() => resolve()).catch(() => resolve());
+        }});
+    }}""")
+    page.evaluate("localStorage.clear()")
+    setup_room(page)
+
 passed = 0
 failed = 0
 results = []
@@ -40,18 +60,29 @@ def duration_label(minutes):
 # Check how much room we have before midnight
 minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
 
-# Standard layout: 1h buffer, ~2.5h total span
-# Compact layout:  10m buffer, ~50m total span (near midnight)
-if minutes_to_midnight >= 210:
+# Pick a layout whose total span fits before midnight.
+# Total span = OFFSET + D1 + D2 + GAP1 + D3 + GAP2 + D4
+# Standard: 60 + 15 + 30 + 45 + 30 + 30 + 30 = 240 min
+# Compact:   5 +  2 +  2 +  5 +  2 +  3 +  2 =  21 min
+STANDARD_SPAN = 240
+COMPACT_SPAN = 21
+
+if minutes_to_midnight >= STANDARD_SPAN + 5:
     OFFSET = 60
     D1, D2, D3, D4 = 15, 30, 30, 30
     GAP1 = 45   # gap between task 2 end and task 3 start
     GAP2 = 30   # gap between task 3 end and task 4 start
+elif minutes_to_midnight >= COMPACT_SPAN + 5:
+    OFFSET = 5
+    D1, D2, D3, D4 = 2, 2, 2, 2
+    GAP1 = 5
+    GAP2 = 3
 else:
-    OFFSET = min(10, max(5, minutes_to_midnight - 50))
-    D1, D2, D3, D4 = 5, 5, 5, 5
-    GAP1 = 10
-    GAP2 = 5
+    print(f"SKIP: Only {minutes_to_midnight}m to midnight, need at least {COMPACT_SPAN + 5}m.",
+          flush=True)
+    print("Re-run after midnight.", flush=True)
+    import sys
+    sys.exit(0)
 
 # Task offsets from now (in minutes)
 T1_OFF = OFFSET
@@ -115,7 +146,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # Clear any leftover state from prior runs
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -245,7 +276,7 @@ with sync_playwright() as p:
     # TEST 10: Single task has no gap indicators
     # =========================================================================
     print("\nTEST 10: Single task has no gap indicators", flush=True)
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -262,7 +293,7 @@ with sync_playwright() as p:
     # TEST 11: Boundary marker visible when all tasks are in the future
     # =========================================================================
     print("\nTEST 11: Boundary marker visible when all tasks are in the future", flush=True)
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)

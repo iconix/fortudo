@@ -7,6 +7,26 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+ROOM_CODE = "test-room"
+
+def setup_room(page):
+    """Set room code in localStorage so the app skips the room entry screen."""
+    page.evaluate(f"""() => {{
+        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
+        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
+    }}""")
+
+def clear_and_setup(page):
+    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
+    page.evaluate(f"""() => {{
+        return new Promise((resolve) => {{
+            const db = new PouchDB('fortudo-{ROOM_CODE}');
+            db.destroy().then(() => resolve()).catch(() => resolve());
+        }});
+    }}""")
+    page.evaluate("localStorage.clear()")
+    setup_room(page)
+
 # ---------------------------------------------------------------------------
 # Dynamic future schedule
 #
@@ -63,6 +83,12 @@ with sync_playwright() as p:
     page.goto(f"http://127.0.0.1:{PORT}")
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)  # Let JS initialize and CDNs settle
+
+    # Clear leftover state and set up room code so the app skips the room entry screen
+    clear_and_setup(page)
+    page.reload()
+    page.wait_for_load_state("load")
+    page.wait_for_timeout(2000)
 
     # 1. Initial empty state
     print("1. Initial empty state", flush=True)

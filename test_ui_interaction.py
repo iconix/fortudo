@@ -7,6 +7,26 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+ROOM_CODE = "test-room"
+
+def setup_room(page):
+    """Set room code in localStorage so the app skips the room entry screen."""
+    page.evaluate(f"""() => {{
+        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
+        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
+    }}""")
+
+def clear_and_setup(page):
+    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
+    page.evaluate(f"""() => {{
+        return new Promise((resolve) => {{
+            const db = new PouchDB('fortudo-{ROOM_CODE}');
+            db.destroy().then(() => resolve()).catch(() => resolve());
+        }});
+    }}""")
+    page.evaluate("localStorage.clear()")
+    setup_room(page)
+
 # ---------------------------------------------------------------------------
 # Dynamic future schedule
 #
@@ -99,7 +119,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # Clear any leftover state
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -375,7 +395,7 @@ with sync_playwright() as p:
     test("Clear Schedule option exists", clear_sched_option.count() == 1)
     test("Clear Completed option exists", clear_completed_option.count() == 1)
 
-    page.locator("h1").click()
+    page.locator("#main-app h1").click()
     page.wait_for_timeout(300)
     test("Dropdown closes on outside click", dropdown.is_hidden(),
          "Dropdown still visible")

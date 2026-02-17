@@ -9,7 +9,7 @@ import {
     extractDateFromDateTime,
     convertTo12HourTime
 } from './utils.js';
-import { saveTasks } from './storage.js';
+import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from './storage.js';
 
 // Import from new modules
 import {
@@ -143,7 +143,7 @@ export function updateTaskState(newTasks) {
     tasks = [...scheduledTasks, ...unscheduledTasks];
 
     invalidateTaskCaches();
-    saveTasks(tasks);
+    saveTasks(tasks.map(stripUIFlags));
 }
 
 // ============================================================================
@@ -248,10 +248,25 @@ const createTaskObject = (taskData) => {
     return finalTask;
 };
 
-const finalizeTaskModification = () => {
+/**
+ * Strip UI-only flags before persisting a task.
+ * @param {Object} task - Task object
+ * @returns {Object} Task without UI flags
+ */
+const stripUIFlags = (task) => {
+    const { editing: _e, confirmingDelete: _c, isEditingInline: _i, ...persistable } = task;
+    return persistable;
+};
+
+const finalizeTaskModification = (changedTasks) => {
     logger.debug('Finalizing task modification (invalidate cache, save)');
     invalidateTaskCaches();
-    saveTasks(tasks);
+    if (changedTasks) {
+        const tasksToSave = Array.isArray(changedTasks) ? changedTasks : [changedTasks];
+        for (const task of tasksToSave) {
+            putTask(stripUIFlags(task));
+        }
+    }
 };
 
 /**
@@ -285,8 +300,9 @@ const validateScheduledTaskReschedule = (taskObject, otherTasks) => {
  * @param {ScheduledTask} triggerTask - The task that triggers rescheduling
  */
 const performRescheduleAndReorganize = (triggerTask) => {
-    performReschedule(triggerTask);
+    const affectedTasks = performReschedule(triggerTask);
     reorganizeTaskArray();
+    return affectedTasks;
 };
 
 // ============================================================================
@@ -322,7 +338,14 @@ export function resetAllEditingFlags() {
 // RESCHEDULING
 // ============================================================================
 export function performReschedule(actualTask) {
-    executeReschedule(actualTask, getSortedScheduledTasks());
+    const result = executeReschedule(actualTask, getSortedScheduledTasks());
+    const affectedTasks = [actualTask];
+    if (result && result.plan && result.plan.shiftedTaskPlan) {
+        for (const shifted of result.plan.shiftedTaskPlan) {
+            affectedTasks.push(shifted.task);
+        }
+    }
+    return affectedTasks;
 }
 export function getSuggestedStartTime() {
     const currentTimeRounded = getCurrentTimeRounded();
@@ -617,16 +640,17 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
         reorganizeTaskArray();
 
         const taskInArray = tasks.find((t) => t.id === taskObject.id);
+        let affectedTasks = [taskObject];
         if (taskInArray && isScheduledTask(taskInArray)) {
-            performRescheduleAndReorganize(taskInArray);
+            affectedTasks = performRescheduleAndReorganize(taskInArray);
         }
-        finalizeTaskModification();
+        finalizeTaskModification(affectedTasks);
         logger.info('addTask: Scheduled task added and processed.');
         return { success: true, task: taskObject };
     } else {
         // Unscheduled task
         tasks.push(taskObject);
-        saveTasks(tasks);
+        putTask(stripUIFlags(taskObject));
         logger.info('addTask: Unscheduled task added.');
         return { success: true, task: taskObject };
     }
@@ -664,16 +688,17 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         reorganizeTaskArray();
 
         const taskInArray = tasks.find((t) => t.id === taskToAdd.id);
+        let affectedTasks = [taskToAdd];
         if (taskInArray && isScheduledTask(taskInArray)) {
-            performRescheduleAndReorganize(taskInArray);
+            affectedTasks = performRescheduleAndReorganize(taskInArray);
         }
-        finalizeTaskModification();
+        finalizeTaskModification(affectedTasks);
     } else {
         // Unscheduled task
         if (!tasks.find((t) => t.id === taskToAdd.id)) {
             tasks.push(taskToAdd);
         }
-        saveTasks(tasks);
+        putTask(stripUIFlags(taskToAdd));
     }
     return { success: true, task: taskToAdd };
 }
@@ -757,10 +782,11 @@ export function updateTask(index, taskData) {
             if (wasShiftedByLocked) {
                 logger.info('updateTask: Auto-rescheduling after locked shift.');
                 tasks[index] = { ...existingTask, ...updatedProposedDetails };
+                let shiftAffected = [tasks[index]];
                 if (isScheduledTask(tasks[index])) {
-                    performRescheduleAndReorganize(tasks[index]);
+                    shiftAffected = performRescheduleAndReorganize(tasks[index]);
                 }
-                finalizeTaskModification();
+                finalizeTaskModification(shiftAffected);
                 return {
                     success: true,
                     task: tasks[index],
@@ -798,10 +824,11 @@ export function updateTask(index, taskData) {
     if (!validation.isValid) return { success: false, reason: validation.reason };
 
     tasks[index] = { ...existingTask, ...updatedProposedDetails };
+    let updateAffected = [tasks[index]];
     if (isScheduledTask(tasks[index])) {
-        performRescheduleAndReorganize(tasks[index]);
+        updateAffected = performRescheduleAndReorganize(tasks[index]);
     }
-    finalizeTaskModification();
+    finalizeTaskModification(updateAffected);
 
     const autoMessage =
         wasShiftedByLocked && unlockedOverlappingTasks.length === 0
@@ -832,7 +859,7 @@ export function updateUnscheduledTask(taskId, newData) {
     taskToUpdate.priority = newData.priority;
     taskToUpdate.estDuration = newData.estDuration;
 
-    finalizeTaskModification();
+    finalizeTaskModification(taskToUpdate);
     return { success: true, task: taskToUpdate };
 }
 
@@ -863,10 +890,11 @@ export function confirmUpdateTaskAndReschedule(confirmedPayload) {
 
     tasks[index] = { ...existingTask, ...updatedTaskObject };
 
+    let confirmAffected = [tasks[index]];
     if (isScheduledTask(tasks[index])) {
-        performRescheduleAndReorganize(tasks[index]);
+        confirmAffected = performRescheduleAndReorganize(tasks[index]);
     }
-    finalizeTaskModification();
+    finalizeTaskModification(confirmAffected);
     return { success: true, task: tasks[index] };
 }
 
@@ -921,10 +949,10 @@ export function completeTask(index, currentTime24Hour) {
 
     // For scheduled tasks, we need to handle rescheduling
     if (task.type === 'scheduled') {
-        finalizeTaskModification();
+        finalizeTaskModification(task);
     } else {
         // For unscheduled tasks, just save without invalidating caches
-        saveTasks(tasks);
+        putTask(stripUIFlags(task));
     }
 
     return {
@@ -980,8 +1008,8 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
     task.endDateTime = calculateEndDateTime(task.startDateTime, task.duration);
 
     // Reschedule other tasks if needed (and resort the task list)
-    performRescheduleAndReorganize(task);
-    finalizeTaskModification();
+    const lateAffected = performRescheduleAndReorganize(task);
+    finalizeTaskModification(lateAffected);
 
     return { success: true, task };
 }
@@ -1022,7 +1050,7 @@ export function adjustAndCompleteTask(taskId, newEndDateTime) {
     task.status = 'completed';
     task.editing = false;
 
-    finalizeTaskModification();
+    finalizeTaskModification(task);
 
     return {
         success: true,
@@ -1069,7 +1097,7 @@ export function truncateCompletedTask(taskId, newEndDateTime) {
     task.endDateTime = newEndDateTime;
     task.duration = newDuration;
 
-    finalizeTaskModification();
+    finalizeTaskModification(task);
 
     logger.info('truncateCompletedTask: Truncated completed task.', {
         taskId,
@@ -1116,9 +1144,11 @@ export function deleteTask(index, confirmed = false) {
         return { success: false, requiresConfirmation: true, reason: 'Confirmation required.' };
     }
 
+    const taskId = taskToDelete.id;
     tasks.splice(index, 1);
     resetAllUIFlags();
-    finalizeTaskModification();
+    invalidateTaskCaches();
+    deleteTaskFromStorage(taskId);
     return { success: true };
 }
 
@@ -1254,14 +1284,16 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     }
 
     // No conflicts - proceed with scheduling
+    const unscheduledTaskId = tasks[taskIndex].id;
     tasks.splice(taskIndex, 1); // Remove the original unscheduled task
+    deleteTaskFromStorage(unscheduledTaskId);
 
     const newScheduledTask = createTaskObject(newScheduledTaskData);
     tasks.push(newScheduledTask);
     reorganizeTaskArray();
 
-    performRescheduleAndReorganize(newScheduledTask);
-    finalizeTaskModification();
+    const schedAffected = performRescheduleAndReorganize(newScheduledTask);
+    finalizeTaskModification(schedAffected);
     return { success: true, task: newScheduledTask };
 }
 
@@ -1288,6 +1320,7 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     // Validation passed - now remove the unscheduled task
     if (taskIndex !== -1) {
         tasks.splice(taskIndex, 1);
+        deleteTaskFromStorage(unscheduledTaskId);
     } else {
         logger.warn(`Unscheduled task ID ${unscheduledTaskId} not found for confirmation.`);
     }
@@ -1295,35 +1328,9 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     tasks.push(newScheduledTask);
     reorganizeTaskArray();
 
-    performRescheduleAndReorganize(newScheduledTask);
-    finalizeTaskModification();
+    const confirmSchedAffected = performRescheduleAndReorganize(newScheduledTask);
+    finalizeTaskModification(confirmSchedAffected);
     return { success: true, task: newScheduledTask };
-}
-
-export function reorderUnscheduledTask(draggedTaskId, targetTaskId) {
-    const draggedTaskIndex = tasks.findIndex(
-        (task) => task.id === draggedTaskId && task.type === 'unscheduled'
-    );
-    const targetTaskIndex = tasks.findIndex(
-        (task) => task.id === targetTaskId && task.type === 'unscheduled'
-    );
-
-    if (draggedTaskIndex === -1 || targetTaskIndex === -1) {
-        logger.warn('Dragged or target task not found for reordering.', {
-            draggedTaskId,
-            targetTaskId
-        });
-        return { success: false, reason: 'Could not find one or both tasks to reorder.' };
-    }
-
-    const [draggedTask] = tasks.splice(draggedTaskIndex, 1);
-    tasks.splice(targetTaskIndex, 0, draggedTask);
-
-    // No need to re-sort here as it's a manual reorder.
-    // The main list 'tasks' is now updated. We just need to save.
-    finalizeTaskModification();
-    logger.info(`Task ${draggedTaskId} reordered to position of ${targetTaskId}`);
-    return { success: true };
 }
 
 export function toggleUnscheduledTaskCompleteState(taskId) {
@@ -1343,8 +1350,8 @@ export function toggleUnscheduledTaskCompleteState(taskId) {
         logger.info(`Unscheduled task '${task.description}' marked as completed.`);
     }
 
-    finalizeTaskModification(); // Saves tasks and invalidates caches
-    return { success: true, task }; // Return the modified task
+    finalizeTaskModification(task);
+    return { success: true, task };
 }
 
 export function unscheduleTask(taskId) {
@@ -1380,7 +1387,7 @@ export function unscheduleTask(taskId) {
     // delete task.someScheduledOnlyProperty;
 
     tasks[taskIndex] = task;
-    finalizeTaskModification(); // This saves to localStorage and recalculates suggestions
+    finalizeTaskModification(task);
 
     logger.info('Task unscheduled:', task);
     return { success: true, task };
@@ -1402,6 +1409,6 @@ export function toggleLockState(taskId) {
     }
 
     task.locked = !task.locked;
-    finalizeTaskModification();
+    finalizeTaskModification(task);
     return { success: true, task };
 }

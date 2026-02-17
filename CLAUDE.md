@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fortudo is a daily time-blocking to-do app. It runs as a single-page application with no build step - vanilla JavaScript with ES modules served directly via Firebase Hosting.
 
+## Environment Notes
+
+- GitHub CLI (`gh`) is installed at `/c/Program Files/GitHub CLI/gh`
+
 ## Commands
 
 ```bash
@@ -33,12 +37,15 @@ firebase deploy             # Deploy to Firebase Hosting
 
 The app uses a modular architecture in `public/js/`:
 
-- **app.js** - Main orchestrator. Initializes the app, wires up event callbacks, and coordinates between modules. All user interactions flow through callback objects defined here.
+- **app.js** - Main orchestrator. Initializes the app, wires up event callbacks, and coordinates between modules. **Keep this file thin** — it should only do orchestration (importing, wiring callbacks, calling init functions). Any DOM manipulation, event handler logic, or UI rendering belongs in `dom-handler.js` or a dedicated file in `handlers/`. If app.js grows beyond ~150 lines, extract the new logic.
 - **task-manager.js** - Central state management. All task CRUD operations, rescheduling logic, and state mutations happen here. Exports pure functions that return result objects with `success`, `reason`, and `requiresConfirmation` fields.
 - **dom-handler.js** - DOM manipulation and event delegation. Uses two container-level event listeners instead of per-element listeners.
 - **reschedule-engine.js** - Handles automatic rescheduling when tasks conflict or run late. Detects overlaps and calculates time adjustments.
 - **modal-manager.js** - Custom modal dialogs (alerts, confirmations, schedule picker) replacing browser alerts.
-- **storage.js** - localStorage persistence layer.
+- **storage.js** - PouchDB persistence layer. Each room code maps to a separate PouchDB database.
+- **room-manager.js** - Room code management (generate, get/set active, saved rooms list). Uses localStorage for room metadata.
+- **sync-manager.js** - CouchDB sync relay. Debounced bidirectional replication with status callbacks.
+- **handlers/room-ui-handler.js** - Room entry screen UI, room switching, and sync status indicator.
 
 ### Key Patterns
 

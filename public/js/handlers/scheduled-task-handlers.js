@@ -29,7 +29,7 @@ import {
     logger,
     getThemeForTask
 } from '../utils.js';
-import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
+import { getThemeForTaskId, handleRescheduleConfirmation } from '../confirmation-helpers.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
     const taskToComplete = getTaskById(taskId);
