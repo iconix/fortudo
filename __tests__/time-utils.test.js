@@ -12,6 +12,7 @@ import {
     convertTo12HourTime,
     convertTo24HourTime,
     getCurrentTimeRounded,
+    extractDateFromDateTime,
     timeToDateTime,
     calculateEndDateTime,
     isTaskRunningLate
@@ -92,6 +93,40 @@ describe('Time Utility Functions', () => {
         test('getCurrentTimeRounded handles just before midnight (e.g. 23:58 -> 00:00)', () => {
             const almostMidnight = new Date(2025, 0, 15, 23, 58, 0);
             expect(getCurrentTimeRounded(almostMidnight)).toBe('00:00');
+        });
+    });
+
+    describe('extractDateFromDateTime', () => {
+        test('returns local date when UTC and local date are the same', () => {
+            // 2pm on Jan 15 - same date in any timezone
+            const afternoon = new Date(2025, 0, 15, 14, 0, 0);
+            expect(extractDateFromDateTime(afternoon)).toBe('2025-01-15');
+        });
+
+        test('returns local date when UTC date differs from local date', () => {
+            // 11:30 PM on Feb 16 local time
+            // In EST (UTC-5), UTC would be Feb 17 04:30
+            // Should return local date Feb 16, NOT UTC date Feb 17
+            const lateNight = new Date(2026, 1, 16, 23, 30, 0);
+            expect(extractDateFromDateTime(lateNight)).toBe('2026-02-16');
+        });
+    });
+
+    describe('timeToDateTime - timezone consistency', () => {
+        test('task created at 11:30 PM should start on the same local day', () => {
+            // Simulate creating a task at 11:30 PM on Feb 16
+            // The date should be extracted from "now" (also Feb 16 local)
+            const now = new Date(2026, 1, 16, 23, 34, 0); // 11:34 PM Feb 16 local
+            const dateStr = extractDateFromDateTime(now);
+            const startDateTime = timeToDateTime('23:30', dateStr);
+
+            // The resulting ISO time should correspond to 11:30 PM local on Feb 16
+            const result = new Date(startDateTime);
+            expect(result.getFullYear()).toBe(2026);
+            expect(result.getMonth()).toBe(1); // February (0-indexed)
+            expect(result.getDate()).toBe(16);
+            expect(result.getHours()).toBe(23);
+            expect(result.getMinutes()).toBe(30);
         });
     });
 

@@ -20,6 +20,9 @@ npm run lint:fix            # Fix ESLint issues
 npm run format              # Format with Prettier
 npm run check               # Run lint + format:check (CI validation)
 
+# Local Development
+npx http-server public -p 5000 -c-1  # Serve app at http://localhost:5000
+
 # Deployment
 firebase deploy             # Deploy to Firebase Hosting
 ```
@@ -81,3 +84,29 @@ Example for a confirmation flow:
 ```
 
 **The pre-commit hook enforces both lint/format and coverage checks.** Commits will fail if coverage drops below 80% (75% for branches).
+
+## Working in Git Worktrees
+
+This repo uses `.worktrees/` for isolated feature branches. Worktrees share the same `.git` but have separate working directories and `node_modules`.
+
+### Gotchas
+
+**Always `cd` into the worktree before running commands.** Tools like `npx` resolve from `node_modules` relative to the current working directory. Running `npx http-server <worktree-path>/public` from the main repo will resolve `http-server` from the main repo's `node_modules` and may serve stale or wrong files.
+
+```bash
+# Wrong — resolves npx from main repo
+npx http-server .worktrees/schedule-tasks-in-gaps/public -p 9847
+
+# Right — cd first so npx resolves from the worktree
+cd .worktrees/schedule-tasks-in-gaps && npx http-server ./public -p 9847
+```
+
+**ESLint needs `root: true`.** Without it, ESLint traverses up and finds the main repo's config + `node_modules`, causing "couldn't determine plugin uniquely" errors. Each worktree's `.eslintrc.js` must have `root: true`.
+
+**E2E tests use port 9847.** All Playwright test files (`test_*.py`) expect the app on `http://127.0.0.1:9847`. Before running E2E tests, start a server from within the worktree:
+
+```bash
+cd .worktrees/<branch> && npx http-server ./public -p 9847 -c-1
+```
+
+**Verify what's being served.** If tests fail on element visibility or show unexpected UI, `curl -s http://127.0.0.1:<port>/ | head -15` to confirm the right `index.html` is being served.

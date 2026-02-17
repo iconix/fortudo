@@ -6,6 +6,7 @@ scripts = [
     "test_functional.py",
     "test_ui_interaction.py",
     "test_gap_indicators.py",
+    "test_overlap_warnings.py",
 ]
 
 exit_code = 0

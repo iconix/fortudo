@@ -41,9 +41,9 @@
                 <input type="text" name="description" placeholder="Describe your task..." class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base" required>
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5">
                 <div class="flex-grow flex flex-col gap-2 sm:gap-4">
-                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full">
+                    <div id="time-inputs" class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full pb-5 sm:pb-0">
                         <!-- Start Time -->
                         <div class="flex-1 min-w-0">
                             <div class="relative">
@@ -54,7 +54,7 @@
 
                         <!-- Duration -->
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-1 sm:gap-2">
+                            <div class="relative flex items-center gap-1 sm:gap-2">
                                 <div class="relative flex-1">
                                     <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"></i>
                                     <input type="number" name="duration-hours" placeholder="HH" min="0" class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
@@ -63,6 +63,7 @@
                                 <div class="relative flex-1">
                                     <input type="number" name="duration-minutes" placeholder="MM" min="0" max="59" class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base">
                                 </div>
+                                <span id="end-time-hint" class="absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                             </div>
                         </div>
                     </div>
@@ -116,10 +117,11 @@
                 </div>
 
                 <!-- Submit Button -->
-                <button type="submit" class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base">
+                <button type="submit" id="add-task-btn" class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base">
                     <i class="fa-regular fa-plus mr-2"></i>Add Task
                 </button>
             </div>
+            <span id="overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
         </form>
 
         <!-- Scheduled Tasks List -->
@@ -202,16 +204,19 @@
                         <span class="text-slate-400 flex items-center">
                             <i class="fa-regular fa-hourglass text-indigo-400/75 mr-2"></i>Duration
                         </span>
-                        <div class="flex items-center gap-2">
-                            <div class="relative flex-1">
-                                <input type="number" name="modal-duration-hours" placeholder="HH" min="0"
-                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                        <div class="relative">
+                            <div class="flex items-center gap-2">
+                                <div class="relative flex-1">
+                                    <input type="number" name="modal-duration-hours" placeholder="HH" min="0"
+                                        class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                                </div>
+                                <span class="text-slate-400 text-lg">:</span>
+                                <div class="relative flex-1">
+                                    <input type="number" name="modal-duration-minutes" placeholder="MM" min="0" max="59"
+                                        class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
+                                </div>
                             </div>
-                            <span class="text-slate-400 text-lg">:</span>
-                            <div class="relative flex-1">
-                                <input type="number" name="modal-duration-minutes" placeholder="MM" min="0" max="59"
-                                    class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all">
-                            </div>
+                            <span id="modal-end-time-hint" class="absolute top-full mt-0.5 right-0 text-xs text-indigo-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                         </div>
                     </div>
 
@@ -223,13 +228,38 @@
                     </div>
                 </div>
 
+                <span id="modal-overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
+
                 <div class="flex justify-end space-x-3 pt-2">
                     <button id="cancel-schedule-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">Cancel</button>
-                    <button type="submit" class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center">
+                    <button type="submit" id="schedule-modal-submit-btn" class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center">
                         <i class="fa-regular fa-calendar-check mr-2"></i>Schedule
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Gap Task Picker Modal -->
+    <div id="gap-task-picker-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-normal text-teal-400">Schedule in Gap</h3>
+                <button id="close-gap-task-picker-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <p class="mb-4 text-slate-400">
+                <i class="fa-regular fa-clock text-teal-400/75 mr-1"></i>
+                <span id="gap-picker-time-range" class="text-slate-200"></span>
+                (<span id="gap-picker-duration" class="text-slate-200"></span>)
+            </p>
+            <div id="gap-task-picker-list" class="space-y-2 max-h-64 overflow-y-auto">
+                <!-- Unscheduled tasks will be listed here -->
+            </div>
+            <div class="flex justify-end pt-4">
+                <button id="cancel-gap-task-picker-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">Cancel</button>
+            </div>
         </div>
     </div>
 
