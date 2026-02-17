@@ -20,6 +20,9 @@ npm run lint:fix            # Fix ESLint issues
 npm run format              # Format with Prettier
 npm run check               # Run lint + format:check (CI validation)
 
+# Local Development
+npx http-server public -p 5000 -c-1  # Serve app at http://localhost:5000
+
 # Deployment
 firebase deploy             # Deploy to Firebase Hosting
 ```

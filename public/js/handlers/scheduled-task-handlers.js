@@ -156,9 +156,15 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     }
     const originalIndex = getTaskIndex(taskId);
 
+    const overlapEl = formElement.querySelector('.edit-overlap-warning');
+    const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+
     const updateResult = updateTask(originalIndex, taskData);
-    await handleRescheduleConfirmation(updateResult, confirmUpdateTaskAndReschedule, () =>
-        cancelEdit(originalIndex)
+    await handleRescheduleConfirmation(
+        updateResult,
+        confirmUpdateTaskAndReschedule,
+        () => cancelEdit(originalIndex),
+        { reschedulePreApproved }
     );
     refreshUI();
 }

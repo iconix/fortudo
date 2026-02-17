@@ -7,7 +7,11 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { findScheduleGaps } from './reschedule-engine.js';
-import { computeEndTimePreview } from './form-utils.js';
+import {
+    computeEndTimePreview,
+    computeOverlapPreview,
+    formatOverlapWarning
+} from './form-utils.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -79,11 +83,12 @@ export function renderEditTaskHTML(task, index) {
                     <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="submit" class="w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
+                    <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
                         <i class="fa-solid fa-check mr-2"></i>Save
                     </button>
                 </div>
             </div>
+            <span class="edit-overlap-warning block text-amber-400 text-xs mt-1"></span>
         </form>
     `;
 }
@@ -241,26 +246,54 @@ export function renderTasks(
     );
     taskListElement.innerHTML = html;
 
-    // Populate end time hints for any edit forms that were just rendered
+    // Populate end time hints and overlap warnings for any edit forms
     taskListElement.querySelectorAll('form[id^="edit-task-"]').forEach((form) => {
-        const hintEl = form.querySelector('.edit-end-time-hint');
         const startInput = form.querySelector('input[name="start-time"]');
         const hoursInput = form.querySelector('input[name="duration-hours"]');
         const minutesInput = form.querySelector('input[name="duration-minutes"]');
+
         if (
-            hintEl &&
-            startInput instanceof HTMLInputElement &&
-            hoursInput instanceof HTMLInputElement &&
-            minutesInput instanceof HTMLInputElement
-        ) {
-            const result = computeEndTimePreview(
+            !(startInput instanceof HTMLInputElement) ||
+            !(hoursInput instanceof HTMLInputElement) ||
+            !(minutesInput instanceof HTMLInputElement)
+        )
+            return;
+
+        // End time hint
+        const hintEl = form.querySelector('.edit-end-time-hint');
+        if (hintEl) {
+            const hintResult = computeEndTimePreview(
                 startInput.value,
                 hoursInput.value,
                 minutesInput.value
             );
-            if (result) {
-                hintEl.textContent = `▸ ${result}`;
+            if (hintResult) {
+                hintEl.textContent = `\u25B8 ${hintResult}`;
                 hintEl.classList.remove('opacity-0');
+            }
+        }
+
+        // Overlap warning
+        const warningEl = form.querySelector('.edit-overlap-warning');
+        const saveBtn = form.querySelector('.btn-save-edit');
+        if (warningEl && saveBtn) {
+            const excludeTaskId = form.dataset?.taskId;
+            const overlapResult = computeOverlapPreview(
+                startInput.value,
+                hoursInput.value,
+                minutesInput.value,
+                scheduledTasks,
+                excludeTaskId
+            );
+            if (overlapResult && overlapResult.overlaps.length > 0) {
+                warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
+                saveBtn.innerHTML =
+                    '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+                saveBtn.className = saveBtn.className
+                    .replace(/from-teal-500/g, 'from-amber-500')
+                    .replace(/to-teal-400/g, 'to-amber-400')
+                    .replace(/hover:from-teal-400/g, 'hover:from-amber-400')
+                    .replace(/hover:to-teal-300/g, 'hover:to-amber-300');
             }
         }
     });

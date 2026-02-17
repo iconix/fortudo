@@ -6,7 +6,7 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { getTaskState } from './task-manager.js';
-import { setupEndTimeHint } from './form-utils.js';
+import { setupEndTimeHint, setupOverlapWarning } from './form-utils.js';
 
 // --- Modal Elements ---
 const customAlertModal = document.getElementById('custom-alert-modal');
@@ -193,6 +193,37 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
         );
     }
 
+    // Wire up overlap warning for the schedule modal
+    const modalOverlapWarning = document.getElementById('modal-overlap-warning');
+    const modalScheduleBtn = document.getElementById('schedule-modal-submit-btn');
+    if (
+        modalStartTimeInput instanceof HTMLInputElement &&
+        modalDurationHoursInput instanceof HTMLInputElement &&
+        modalDurationMinutesInput instanceof HTMLInputElement &&
+        modalOverlapWarning &&
+        modalScheduleBtn
+    ) {
+        setupOverlapWarning(
+            modalStartTimeInput,
+            modalDurationHoursInput,
+            modalDurationMinutesInput,
+            modalOverlapWarning,
+            modalScheduleBtn,
+            () => getTaskState().filter((t) => t.type === 'scheduled'),
+            {
+                defaultButtonHTML: '<i class="fa-regular fa-calendar-check mr-2"></i>Schedule',
+                defaultButtonClasses: modalScheduleBtn.className,
+                overlapButtonHTML:
+                    '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
+                overlapButtonClasses: modalScheduleBtn.className
+                    .replace(/from-indigo-500\/90/g, 'from-amber-500')
+                    .replace(/to-indigo-400\/90/g, 'to-amber-400')
+                    .replace(/hover:from-indigo-400\/90/g, 'hover:from-amber-400')
+                    .replace(/hover:to-indigo-300\/90/g, 'hover:to-amber-300')
+            }
+        );
+    }
+
     scheduleModalForm.addEventListener('submit', (event) => {
         event.preventDefault();
         const taskId = scheduleModalForm.dataset.taskId;
@@ -216,7 +247,14 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
         }
 
         if (taskId && startTime && duration !== null) {
-            unscheduledTaskCallbacks.onConfirmScheduleTask(taskId, startTime, duration);
+            const modalWarningEl = document.getElementById('modal-overlap-warning');
+            const reschedulePreApproved = !!(modalWarningEl && modalWarningEl.textContent.trim());
+            unscheduledTaskCallbacks.onConfirmScheduleTask(
+                taskId,
+                startTime,
+                duration,
+                reschedulePreApproved
+            );
         }
         hideScheduleModal();
     });

@@ -10,9 +10,13 @@ import {
     getTaskFormElement,
     focusTaskDescriptionInput,
     computeEndTimePreview,
-    setupEndTimeHint
+    setupEndTimeHint,
+    computeOverlapPreview,
+    setupOverlapWarning,
+    formatOverlapWarning
 } from '../public/js/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
+import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock showAlert
 jest.mock('../public/js/modal-manager.js', () => ({
@@ -174,6 +178,17 @@ describe('Form Utils Tests', () => {
                 priority: 'medium',
                 estDuration: null
             });
+        });
+
+        test('returns null and shows alert when unscheduled est duration is invalid', () => {
+            const form = createUnscheduledTaskForm('Backlog task', 'medium', '-1', '0');
+            const result = extractTaskFormData(form);
+
+            expect(result).toBeNull();
+            expect(showAlert).toHaveBeenCalledWith(
+                expect.stringContaining('valid numbers'),
+                'indigo'
+            );
         });
 
         test('handles invalid task type', () => {
@@ -607,6 +622,336 @@ describe('Form Utils Tests', () => {
             startTimeInput.dispatchEvent(new Event('input'));
 
             expect(hintElement.textContent).toMatch(/▸/);
+        });
+    });
+
+    describe('computeOverlapPreview', () => {
+        const today = new Date().toISOString().split('T')[0];
+
+        function makeTasks(...specs) {
+            return specs.map(([desc, startTime, duration], i) =>
+                createTaskWithDateTime({
+                    description: desc,
+                    startTime,
+                    duration,
+                    id: `task-${i + 1}`,
+                    date: today
+                })
+            );
+        }
+
+        test('returns null when start time is empty', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            expect(computeOverlapPreview('', '1', '0', tasks)).toBeNull();
+        });
+
+        test('returns null when duration is zero', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            expect(computeOverlapPreview('10:00', '0', '0', tasks)).toBeNull();
+        });
+
+        test('returns null when hours and minutes are both empty strings', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            expect(computeOverlapPreview('10:00', '', '', tasks)).toBeNull();
+        });
+
+        test('returns null when start time is invalid format', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            expect(computeOverlapPreview('invalid', '1', '0', tasks)).toBeNull();
+        });
+
+        test('returns empty overlaps when no tasks overlap', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            const result = computeOverlapPreview('11:00', '1', '0', tasks);
+            expect(result).toEqual({ overlaps: [] });
+        });
+
+        test('returns overlap info when task overlaps', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            const result = computeOverlapPreview('10:30', '1', '0', tasks);
+            expect(result.overlaps).toHaveLength(1);
+            expect(result.overlaps[0].description).toBe('Meeting');
+            expect(result.overlaps[0].timeRange).toMatch(/10:00\s*AM.*11:00\s*AM/);
+        });
+
+        test('returns multiple overlaps', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60], ['Lunch', '11:00', 60]);
+            const result = computeOverlapPreview('10:30', '1', '30', tasks);
+            expect(result.overlaps).toHaveLength(2);
+            expect(result.overlaps[0].description).toBe('Meeting');
+            expect(result.overlaps[1].description).toBe('Lunch');
+        });
+
+        test('excludes task matching excludeTaskId', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60], ['Lunch', '10:30', 60]);
+            const result = computeOverlapPreview('10:00', '2', '0', tasks, 'task-1');
+            expect(result.overlaps).toHaveLength(1);
+            expect(result.overlaps[0].description).toBe('Lunch');
+        });
+
+        test('handles empty task array', () => {
+            const result = computeOverlapPreview('10:00', '1', '0', []);
+            expect(result).toEqual({ overlaps: [] });
+        });
+
+        test('excludes completed tasks from overlaps', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            tasks[0].status = 'completed';
+            const result = computeOverlapPreview('10:00', '1', '0', tasks);
+            expect(result).toEqual({ overlaps: [] });
+        });
+
+        test('handles minutes-only duration', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            const result = computeOverlapPreview('10:30', '0', '30', tasks);
+            expect(result.overlaps).toHaveLength(1);
+        });
+
+        test('returns null when hours is negative (invalid duration)', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            expect(computeOverlapPreview('10:00', '-1', '0', tasks)).toBeNull();
+        });
+    });
+
+    describe('formatOverlapWarning', () => {
+        test('formats single overlap', () => {
+            const overlaps = [{ description: 'Meeting', timeRange: '10:00 AM \u2013 11:00 AM' }];
+            const result = formatOverlapWarning(overlaps);
+            expect(result).toContain('Meeting');
+            expect(result).toContain('10:00 AM');
+        });
+
+        test('formats two overlaps', () => {
+            const overlaps = [
+                { description: 'Meeting', timeRange: '10:00 AM \u2013 11:00 AM' },
+                { description: 'Lunch', timeRange: '11:00 AM \u2013 12:00 PM' }
+            ];
+            const result = formatOverlapWarning(overlaps);
+            expect(result).toContain('Meeting');
+            expect(result).toContain('1 other task');
+        });
+
+        test('formats three or more overlaps', () => {
+            const overlaps = [
+                { description: 'Meeting', timeRange: '10:00 AM \u2013 11:00 AM' },
+                { description: 'Lunch', timeRange: '11:00 AM \u2013 12:00 PM' },
+                { description: 'Review', timeRange: '12:00 PM \u2013 1:00 PM' }
+            ];
+            const result = formatOverlapWarning(overlaps);
+            expect(result).toContain('Meeting');
+            expect(result).toContain('2 other tasks');
+        });
+
+        test('returns empty string for no overlaps', () => {
+            expect(formatOverlapWarning([])).toBe('');
+        });
+    });
+
+    describe('setupOverlapWarning', () => {
+        let startTimeInput, hoursInput, minutesInput, warningElement, buttonElement;
+
+        const defaultButtonHTML = '<i class="fa-regular fa-plus mr-2"></i>Add Task';
+        const defaultButtonClasses =
+            'bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300';
+        const overlapButtonHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+        const overlapButtonClasses =
+            'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300';
+
+        const today = new Date().toISOString().split('T')[0];
+
+        function makeTasks(...specs) {
+            return specs.map(([desc, startTime, duration], i) =>
+                createTaskWithDateTime({
+                    description: desc,
+                    startTime,
+                    duration,
+                    id: `task-${i + 1}`,
+                    date: today
+                })
+            );
+        }
+
+        beforeEach(() => {
+            document.body.innerHTML = `
+                <input type="time" id="start-time" />
+                <input type="number" id="hours" value="1" />
+                <input type="number" id="minutes" value="0" />
+                <span id="overlap-warning"></span>
+                <button id="submit-btn" class="${defaultButtonClasses}">${defaultButtonHTML}</button>
+            `;
+            startTimeInput = document.getElementById('start-time');
+            hoursInput = document.getElementById('hours');
+            minutesInput = document.getElementById('minutes');
+            warningElement = document.getElementById('overlap-warning');
+            buttonElement = document.getElementById('submit-btn');
+        });
+
+        test('shows warning text when overlap detected on input change', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:30';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(warningElement.textContent).toContain('Meeting');
+        });
+
+        test('hides warning when overlap clears', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:30';
+            startTimeInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toContain('Meeting');
+
+            startTimeInput.value = '11:00';
+            startTimeInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toBe('');
+        });
+
+        test('changes button classes when overlap detected', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:30';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(buttonElement.textContent).toContain('Reschedule');
+            expect(buttonElement.className).toContain('from-amber-500');
+        });
+
+        test('restores button when overlap clears', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:30';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            startTimeInput.value = '11:00';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(buttonElement.innerHTML).toContain('Add Task');
+            expect(buttonElement.className).toContain('from-teal-500');
+        });
+
+        test('responds to hours input change', () => {
+            const tasks = makeTasks(['Meeting', '11:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:00';
+            startTimeInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toBe('');
+
+            hoursInput.value = '2';
+            hoursInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toContain('Meeting');
+        });
+
+        test('responds to minutes input change', () => {
+            const tasks = makeTasks(['Meeting', '10:30', 30]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:00';
+            hoursInput.value = '0';
+            minutesInput.value = '15';
+            minutesInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toBe('');
+
+            minutesInput.value = '45';
+            minutesInput.dispatchEvent(new Event('input'));
+            expect(warningElement.textContent).toContain('Meeting');
+        });
+
+        test('works with excludeTaskId option', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60], ['Lunch', '10:30', 30]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                {
+                    excludeTaskId: 'task-1',
+                    defaultButtonHTML,
+                    defaultButtonClasses,
+                    overlapButtonHTML,
+                    overlapButtonClasses
+                }
+            );
+
+            startTimeInput.value = '10:00';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(warningElement.textContent).toContain('Lunch');
+            expect(warningElement.textContent).not.toContain('Meeting');
+        });
+
+        test('no warning when no overlap exists', () => {
+            const tasks = makeTasks(['Meeting', '14:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            startTimeInput.value = '10:00';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(warningElement.textContent).toBe('');
+            expect(buttonElement.innerHTML).toContain('Add Task');
         });
     });
 });

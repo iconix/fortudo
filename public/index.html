@@ -117,10 +117,11 @@
                 </div>
 
                 <!-- Submit Button -->
-                <button type="submit" class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base">
+                <button type="submit" id="add-task-btn" class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base">
                     <i class="fa-regular fa-plus mr-2"></i>Add Task
                 </button>
             </div>
+            <span id="overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
         </form>
 
         <!-- Scheduled Tasks List -->
@@ -227,9 +228,11 @@
                     </div>
                 </div>
 
+                <span id="modal-overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
+
                 <div class="flex justify-end space-x-3 pt-2">
                     <button id="cancel-schedule-modal" type="button" class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors">Cancel</button>
-                    <button type="submit" class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center">
+                    <button type="submit" id="schedule-modal-submit-btn" class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center">
                         <i class="fa-regular fa-calendar-check mr-2"></i>Schedule
                     </button>
                 </div>

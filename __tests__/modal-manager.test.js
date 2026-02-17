@@ -335,7 +335,8 @@ describe('Modal Manager Tests', () => {
                 expect(mockCallbacks.onConfirmScheduleTask).toHaveBeenCalledWith(
                     'task-1',
                     '11:00',
-                    90
+                    90,
+                    false
                 );
             });
 

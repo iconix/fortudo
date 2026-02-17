@@ -53,8 +53,9 @@ function setupDOM() {
           </select>
           <input type="number" name="est-duration" placeholder="Est. minutes" />
         </div>
-        <button type="submit">Add Task</button>
+        <button type="submit" id="add-task-btn">Add Task</button>
       </form>
+      <span id="overlap-warning"></span>
       <div id="scheduled-task-list" class="task-list"></div>
       <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
       <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
@@ -73,7 +74,8 @@ function setupDOM() {
             <input type="time" name="modal-start-time" required />
             <input type="number" name="modal-duration-hours" min="0" value="0" />
             <input type="number" name="modal-duration-minutes" min="0" max="59" value="0" />
-            <button type="submit">Schedule</button>
+            <span id="modal-overlap-warning"></span>
+            <button type="submit" id="schedule-modal-submit-btn">Schedule</button>
             <button type="button" id="cancel-schedule-modal">Cancel</button>
           </form>
           <button id="close-schedule-modal">Close</button>

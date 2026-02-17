@@ -9,11 +9,15 @@ import {
     renderTasks,
     refreshCurrentGapHighlight
 } from '../public/js/scheduled-task-renderer.js';
-import { timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
+import {
+    timeToDateTime,
+    calculateEndDateTime,
+    extractDateFromDateTime
+} from '../public/js/utils.js';
 
 // Helper to create a scheduled task
 function createTask(id, startTime, duration, options = {}) {
-    const testDate = '2025-01-15';
+    const testDate = options.date || '2025-01-15';
     const startDateTime = timeToDateTime(startTime, testDate);
     const endDateTime = calculateEndDateTime(startDateTime, duration);
 
@@ -348,6 +352,66 @@ describe('Scheduled Task Renderer Tests', () => {
             const list = getScheduledTaskListElement();
             const afterBoundary = list.querySelector('.schedule-boundary[data-boundary="after"]');
             expect(afterBoundary).not.toBeNull();
+        });
+    });
+
+    describe('renderTasks with editing task overlap pre-population', () => {
+        const mockInitListeners = jest.fn();
+        const mockCallbacks = { onCompleteTask: jest.fn() };
+        const today = extractDateFromDateTime(new Date());
+
+        test('shows overlap warning when editing task overlaps another', () => {
+            const tasks = [
+                createTask('1', '10:00', 60, { date: today }),
+                createTask('2', '10:30', 60, { editing: true, date: today })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const warningEl = list.querySelector('.edit-overlap-warning');
+            expect(warningEl).not.toBeNull();
+            expect(warningEl.textContent).toContain('overlaps');
+        });
+
+        test('changes save button to amber when editing task overlaps', () => {
+            const tasks = [
+                createTask('1', '10:00', 60, { date: today }),
+                createTask('2', '10:30', 60, { editing: true, date: today })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const saveBtn = list.querySelector('.btn-save-edit');
+            expect(saveBtn).not.toBeNull();
+            expect(saveBtn.className).toContain('from-amber-500');
+            expect(saveBtn.textContent).toContain('Reschedule');
+        });
+
+        test('no overlap warning when editing task does not overlap', () => {
+            const tasks = [
+                createTask('1', '10:00', 60, { date: today }),
+                createTask('2', '12:00', 60, { editing: true, date: today })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const warningEl = list.querySelector('.edit-overlap-warning');
+            expect(warningEl).not.toBeNull();
+            expect(warningEl.textContent).toBe('');
+        });
+
+        test('pre-populates end time hint for editing task', () => {
+            const tasks = [createTask('1', '10:00', 90, { editing: true, date: today })];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const hintEl = list.querySelector('.edit-end-time-hint');
+            expect(hintEl).not.toBeNull();
+            expect(hintEl.textContent).toContain('AM');
         });
     });
 });

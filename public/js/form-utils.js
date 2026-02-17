@@ -9,6 +9,7 @@ import {
     convertTo12HourTime
 } from './utils.js';
 import { showAlert } from './modal-manager.js';
+import { checkOverlap } from './reschedule-engine.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
@@ -265,6 +266,132 @@ export function setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintE
     startTimeInput.addEventListener('input', update);
     hoursInput.addEventListener('input', update);
     minutesInput.addEventListener('input', update);
+}
+
+// --- Overlap Preview Functions ---
+
+/**
+ * Computes overlap preview for a task being created/edited.
+ * Returns null if inputs are invalid, otherwise returns overlap info.
+ * @param {string} startTimeValue - Start time in HH:MM format
+ * @param {string} hoursValue - Duration hours
+ * @param {string} minutesValue - Duration minutes
+ * @param {Array} scheduledTasks - Array of existing scheduled tasks
+ * @param {string|null} [excludeTaskId=null] - Task ID to exclude (for edit forms)
+ * @returns {{overlaps: Array<{description: string, timeRange: string}>}|null}
+ */
+export function computeOverlapPreview(
+    startTimeValue,
+    hoursValue,
+    minutesValue,
+    scheduledTasks,
+    excludeTaskId = null
+) {
+    if (!startTimeValue) return null;
+
+    const hours = parseInt(hoursValue) || 0;
+    const minutes = parseInt(minutesValue) || 0;
+    const duration = hours * 60 + minutes;
+    if (duration <= 0) return null;
+
+    let startDateTime;
+    try {
+        startDateTime = timeToDateTime(startTimeValue);
+        if (isNaN(new Date(startDateTime).getTime())) return null;
+    } catch {
+        return null;
+    }
+
+    const endDateTime = calculateEndDateTime(startDateTime, duration);
+
+    const tempTask = {
+        type: 'scheduled',
+        id: excludeTaskId || '__preview__',
+        startDateTime,
+        endDateTime
+    };
+
+    const overlapping = checkOverlap(tempTask, scheduledTasks);
+
+    return {
+        overlaps: overlapping.map((task) => {
+            const startTime = extractTimeFromDateTime(new Date(task.startDateTime));
+            const endTime = extractTimeFromDateTime(new Date(task.endDateTime));
+            return {
+                description: task.description,
+                timeRange: `${convertTo12HourTime(startTime)} \u2013 ${convertTo12HourTime(endTime)}`
+            };
+        })
+    };
+}
+
+/**
+ * Formats overlap info into a warning string.
+ * @param {Array<{description: string, timeRange: string}>} overlaps
+ * @returns {string} Warning text or empty string
+ */
+export function formatOverlapWarning(overlaps) {
+    if (!overlaps || overlaps.length === 0) return '';
+
+    const first = overlaps[0];
+    if (overlaps.length === 1) {
+        return `\u26A0 overlaps "${first.description}" (${first.timeRange})`;
+    }
+    const otherCount = overlaps.length - 1;
+    const otherWord = otherCount === 1 ? 'task' : 'tasks';
+    return `\u26A0 overlaps "${first.description}" and ${otherCount} other ${otherWord}`;
+}
+
+/**
+ * Sets up live overlap warning on form inputs.
+ * @param {HTMLInputElement} startTimeInput
+ * @param {HTMLInputElement} hoursInput
+ * @param {HTMLInputElement} minutesInput
+ * @param {HTMLElement} warningElement
+ * @param {HTMLElement} buttonElement
+ * @param {Function} getScheduledTasks - Callback returning current scheduled tasks
+ * @param {Object} [options={}]
+ */
+export function setupOverlapWarning(
+    startTimeInput,
+    hoursInput,
+    minutesInput,
+    warningElement,
+    buttonElement,
+    getScheduledTasks,
+    options = {}
+) {
+    const {
+        excludeTaskId = null,
+        defaultButtonHTML = buttonElement.innerHTML,
+        defaultButtonClasses = buttonElement.className,
+        overlapButtonHTML = defaultButtonHTML,
+        overlapButtonClasses = defaultButtonClasses
+    } = options;
+
+    function updateWarning() {
+        const result = computeOverlapPreview(
+            startTimeInput.value,
+            hoursInput.value,
+            minutesInput.value,
+            getScheduledTasks(),
+            excludeTaskId
+        );
+
+        if (result && result.overlaps.length > 0) {
+            warningElement.textContent = formatOverlapWarning(result.overlaps);
+            buttonElement.innerHTML = overlapButtonHTML;
+            buttonElement.className = overlapButtonClasses;
+        } else {
+            warningElement.textContent = '';
+            buttonElement.innerHTML = defaultButtonHTML;
+            buttonElement.className = defaultButtonClasses;
+        }
+    }
+
+    startTimeInput.addEventListener('input', updateWarning);
+    hoursInput.addEventListener('input', updateWarning);
+    minutesInput.addEventListener('input', updateWarning);
 }
 
 /**

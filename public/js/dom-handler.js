@@ -1,7 +1,12 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './task-manager.js';
 import { isScheduledTask } from './task-validators.js';
-import { getTaskFormElement, computeEndTimePreview } from './form-utils.js';
+import {
+    getTaskFormElement,
+    computeEndTimePreview,
+    computeOverlapPreview,
+    formatOverlapWarning
+} from './form-utils.js';
 
 // Import from new modules
 import {
@@ -268,13 +273,15 @@ function handleScheduledTaskListSubmit(event) {
     }
 }
 
+const SAVE_BUTTON_DEFAULT_CLASSES =
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300';
+const SAVE_BUTTON_OVERLAP_CLASSES =
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300';
+
 function handleScheduledTaskListInput(event) {
     const target = /** @type {HTMLElement} */ (event.target);
     const editForm = target.closest('form[id^="edit-task-"]');
     if (!editForm) return;
-
-    const hintEl = editForm.querySelector('.edit-end-time-hint');
-    if (!hintEl) return;
 
     const startInput = editForm.querySelector('input[name="start-time"]');
     const hoursInput = editForm.querySelector('input[name="duration-hours"]');
@@ -286,13 +293,46 @@ function handleScheduledTaskListInput(event) {
     )
         return;
 
-    const result = computeEndTimePreview(startInput.value, hoursInput.value, minutesInput.value);
-    if (result) {
-        hintEl.textContent = `▸ ${result}`;
-        hintEl.classList.remove('opacity-0');
-    } else {
-        hintEl.textContent = '';
-        hintEl.classList.add('opacity-0');
+    // End time hint
+    const hintEl = editForm.querySelector('.edit-end-time-hint');
+    if (hintEl) {
+        const result = computeEndTimePreview(
+            startInput.value,
+            hoursInput.value,
+            minutesInput.value
+        );
+        if (result) {
+            hintEl.textContent = `\u25B8 ${result}`;
+            hintEl.classList.remove('opacity-0');
+        } else {
+            hintEl.textContent = '';
+            hintEl.classList.add('opacity-0');
+        }
+    }
+
+    // Overlap warning
+    const warningEl = editForm.querySelector('.edit-overlap-warning');
+    const saveBtn = editForm.querySelector('.btn-save-edit');
+    if (warningEl && saveBtn) {
+        const excludeTaskId = editForm.dataset.taskId;
+        const scheduledTasks = getTaskState().filter((t) => t.type === 'scheduled');
+        const overlapResult = computeOverlapPreview(
+            startInput.value,
+            hoursInput.value,
+            minutesInput.value,
+            scheduledTasks,
+            excludeTaskId
+        );
+
+        if (overlapResult && overlapResult.overlaps.length > 0) {
+            warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
+            saveBtn.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+            saveBtn.className = SAVE_BUTTON_OVERLAP_CLASSES;
+        } else {
+            warningEl.textContent = '';
+            saveBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i>Save';
+            saveBtn.className = SAVE_BUTTON_DEFAULT_CLASSES;
+        }
     }
 }
 
