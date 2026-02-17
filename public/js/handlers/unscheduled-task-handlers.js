@@ -59,10 +59,16 @@ export async function handleDeleteUnscheduledTask(taskId) {
     refreshUI();
 }
 
-export async function handleConfirmScheduleTask(taskId, startTime, duration) {
+export async function handleConfirmScheduleTask(
+    taskId,
+    startTime,
+    duration,
+    reschedulePreApproved = false
+) {
     const result = scheduleUnscheduledTask(taskId, startTime, duration);
     if (result.requiresConfirmation) {
-        const userConfirmed = await askConfirmation(result.reason, undefined, 'indigo');
+        const userConfirmed =
+            reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
         if (userConfirmed && result.taskData) {
             confirmScheduleUnscheduledTask(
                 result.taskData.unscheduledTaskId,

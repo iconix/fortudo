@@ -7,6 +7,11 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { findScheduleGaps } from './reschedule-engine.js';
+import {
+    computeEndTimePreview,
+    computeOverlapPreview,
+    formatOverlapWarning
+} from './form-utils.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -48,7 +53,7 @@ export function renderEditTaskHTML(task, index) {
             </div>
 
             <!-- Time, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:pb-5">
                 <!-- Start Time -->
                 <div class="relative">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
@@ -57,16 +62,19 @@ export function renderEditTaskHTML(task, index) {
                 </div>
 
                 <!-- Duration -->
-                <div class="flex items-center gap-2">
-                    <div class="relative flex-1">
-                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
-                        <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
-                            class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
-                    </div>
-                    <span class="text-gray-400 text-lg">:</span>
-                    <div class="relative flex-1">
-                        <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
-                            class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                <div class="relative pb-5 sm:pb-0">
+                    <div class="relative flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                            <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
+                                class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                        </div>
+                        <span class="text-gray-400 text-lg">:</span>
+                        <div class="relative flex-1">
+                            <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
+                                class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                        </div>
+                        <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                     </div>
                 </div>
 
@@ -75,11 +83,12 @@ export function renderEditTaskHTML(task, index) {
                     <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="submit" class="w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
+                    <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
                         <i class="fa-solid fa-check mr-2"></i>Save
                     </button>
                 </div>
             </div>
+            <span class="edit-overlap-warning block text-amber-400 text-xs mt-1"></span>
         </form>
     `;
 }
@@ -151,9 +160,9 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
  */
 export function renderGapHTML(gap) {
     const durationText = calculateHoursAndMinutes(gap.durationMinutes);
-    return `<div class="schedule-gap flex items-center justify-center py-1 text-xs text-slate-500" aria-hidden="true" data-gap-start="${gap.startISO}" data-gap-end="${gap.endISO}">
+    return `<div class="schedule-gap flex items-center justify-center py-1 text-xs text-slate-500 cursor-pointer hover:text-teal-300 transition-colors group" role="button" tabindex="0" data-gap-start="${gap.startISO}" data-gap-end="${gap.endISO}" data-gap-duration="${gap.durationMinutes}" title="Click to schedule a task in this gap">
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
-        <span class="px-2 whitespace-nowrap">${durationText} free</span>
+        <span class="px-2 whitespace-nowrap"><span class="gap-plus-icon">+ </span>${durationText} free</span>
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
     </div>`;
 }
@@ -236,6 +245,58 @@ export function renderTasks(
         'after'
     );
     taskListElement.innerHTML = html;
+
+    // Populate end time hints and overlap warnings for any edit forms
+    taskListElement.querySelectorAll('form[id^="edit-task-"]').forEach((form) => {
+        const startInput = form.querySelector('input[name="start-time"]');
+        const hoursInput = form.querySelector('input[name="duration-hours"]');
+        const minutesInput = form.querySelector('input[name="duration-minutes"]');
+
+        if (
+            !(startInput instanceof HTMLInputElement) ||
+            !(hoursInput instanceof HTMLInputElement) ||
+            !(minutesInput instanceof HTMLInputElement)
+        )
+            return;
+
+        // End time hint
+        const hintEl = form.querySelector('.edit-end-time-hint');
+        if (hintEl) {
+            const hintResult = computeEndTimePreview(
+                startInput.value,
+                hoursInput.value,
+                minutesInput.value
+            );
+            if (hintResult) {
+                hintEl.textContent = `\u25B8 ${hintResult}`;
+                hintEl.classList.remove('opacity-0');
+            }
+        }
+
+        // Overlap warning
+        const warningEl = form.querySelector('.edit-overlap-warning');
+        const saveBtn = form.querySelector('.btn-save-edit');
+        if (warningEl && saveBtn) {
+            const excludeTaskId = form.dataset?.taskId;
+            const overlapResult = computeOverlapPreview(
+                startInput.value,
+                hoursInput.value,
+                minutesInput.value,
+                scheduledTasks,
+                excludeTaskId
+            );
+            if (overlapResult && overlapResult.overlaps.length > 0) {
+                warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
+                saveBtn.innerHTML =
+                    '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+                saveBtn.className = saveBtn.className
+                    .replace(/from-teal-500/g, 'from-amber-500')
+                    .replace(/to-teal-400/g, 'to-amber-400')
+                    .replace(/hover:from-teal-400/g, 'hover:from-amber-400')
+                    .replace(/hover:to-teal-300/g, 'hover:to-amber-300');
+            }
+        }
+    });
 
     return updatedCallbacks;
 }

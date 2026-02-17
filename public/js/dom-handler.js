@@ -1,7 +1,12 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './task-manager.js';
 import { isScheduledTask } from './task-validators.js';
-import { getTaskFormElement } from './form-utils.js';
+import {
+    getTaskFormElement,
+    computeEndTimePreview,
+    computeOverlapPreview,
+    formatOverlapWarning
+} from './form-utils.js';
 
 // Import from new modules
 import {
@@ -133,6 +138,18 @@ function handleScheduledTaskListClick(event) {
     }
     const target = /** @type {HTMLElement} */ (event.target);
 
+    // Check for gap click
+    const gapElement = target.closest('.schedule-gap');
+    if (gapElement instanceof HTMLElement && globalScheduledTaskCallbacks.onGapClick) {
+        const gapStart = gapElement.dataset.gapStart;
+        const gapEnd = gapElement.dataset.gapEnd;
+        const durationMinutes = parseInt(gapElement.dataset.gapDuration, 10);
+        if (gapStart && gapEnd && !isNaN(durationMinutes)) {
+            globalScheduledTaskCallbacks.onGapClick(gapStart, gapEnd, durationMinutes);
+        }
+        return;
+    }
+
     // Check for Cancel button first
     const cancelButtonElement = target.closest('.btn-edit-cancel');
     if (cancelButtonElement instanceof HTMLElement) {
@@ -256,6 +273,69 @@ function handleScheduledTaskListSubmit(event) {
     }
 }
 
+const SAVE_BUTTON_DEFAULT_CLASSES =
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300';
+const SAVE_BUTTON_OVERLAP_CLASSES =
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300';
+
+function handleScheduledTaskListInput(event) {
+    const target = /** @type {HTMLElement} */ (event.target);
+    const editForm = target.closest('form[id^="edit-task-"]');
+    if (!editForm) return;
+
+    const startInput = editForm.querySelector('input[name="start-time"]');
+    const hoursInput = editForm.querySelector('input[name="duration-hours"]');
+    const minutesInput = editForm.querySelector('input[name="duration-minutes"]');
+    if (
+        !(startInput instanceof HTMLInputElement) ||
+        !(hoursInput instanceof HTMLInputElement) ||
+        !(minutesInput instanceof HTMLInputElement)
+    )
+        return;
+
+    // End time hint
+    const hintEl = editForm.querySelector('.edit-end-time-hint');
+    if (hintEl) {
+        const result = computeEndTimePreview(
+            startInput.value,
+            hoursInput.value,
+            minutesInput.value
+        );
+        if (result) {
+            hintEl.textContent = `\u25B8 ${result}`;
+            hintEl.classList.remove('opacity-0');
+        } else {
+            hintEl.textContent = '';
+            hintEl.classList.add('opacity-0');
+        }
+    }
+
+    // Overlap warning
+    const warningEl = editForm.querySelector('.edit-overlap-warning');
+    const saveBtn = editForm.querySelector('.btn-save-edit');
+    if (warningEl && saveBtn) {
+        const excludeTaskId = editForm.dataset.taskId;
+        const scheduledTasks = getTaskState().filter((t) => t.type === 'scheduled');
+        const overlapResult = computeOverlapPreview(
+            startInput.value,
+            hoursInput.value,
+            minutesInput.value,
+            scheduledTasks,
+            excludeTaskId
+        );
+
+        if (overlapResult && overlapResult.overlaps.length > 0) {
+            warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
+            saveBtn.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+            saveBtn.className = SAVE_BUTTON_OVERLAP_CLASSES;
+        } else {
+            warningEl.textContent = '';
+            saveBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i>Save';
+            saveBtn.className = SAVE_BUTTON_DEFAULT_CLASSES;
+        }
+    }
+}
+
 function handleUnscheduledTaskListClick(event) {
     const target = /** @type {HTMLElement} */ (event.target);
     const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
@@ -310,6 +390,21 @@ function handleUnscheduledTaskListClick(event) {
     }
 }
 
+function handleUnscheduledTaskListKeydown(event) {
+    if (event.key !== 'Enter') return;
+    if (!(event.target instanceof HTMLInputElement)) return;
+    const form = event.target.closest('form');
+    if (!form) return;
+    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
+    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+
+    event.preventDefault();
+    const taskId = taskCard.dataset.taskId;
+    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
+        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
+    }
+}
+
 function handleUnscheduledTaskListSubmit(event) {
     event.preventDefault(); // Always prevent default form submission
     const form = event.target;
@@ -334,9 +429,11 @@ export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     }
     taskListElement.removeEventListener('click', handleScheduledTaskListClick);
     taskListElement.removeEventListener('submit', handleScheduledTaskListSubmit);
+    taskListElement.removeEventListener('input', handleScheduledTaskListInput);
     globalScheduledTaskCallbacks = eventCallbacks;
     taskListElement.addEventListener('click', handleScheduledTaskListClick);
     taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
+    taskListElement.addEventListener('input', handleScheduledTaskListInput);
 }
 
 export function initializeUnscheduledTaskListEventListeners(callbacks) {
@@ -346,8 +443,10 @@ export function initializeUnscheduledTaskListEventListeners(callbacks) {
         // Remove existing listeners to prevent duplicates if re-initialized
         unscheduledTaskList.removeEventListener('click', handleUnscheduledTaskListClick);
         unscheduledTaskList.removeEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.removeEventListener('keydown', handleUnscheduledTaskListKeydown);
         unscheduledTaskList.addEventListener('click', handleUnscheduledTaskListClick);
         unscheduledTaskList.addEventListener('submit', handleUnscheduledTaskListSubmit);
+        unscheduledTaskList.addEventListener('keydown', handleUnscheduledTaskListKeydown);
     } else {
         logger.error('Unscheduled task list element not found for event listeners.');
     }
@@ -471,9 +570,7 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
                 event.target.type !== 'submit'
             ) {
                 event.preventDefault();
-                taskFormElement.dispatchEvent(
-                    new Event('submit', { bubbles: true, cancelable: true })
-                );
+                taskFormElement.dispatchEvent(new Event('submit'));
             }
         });
 

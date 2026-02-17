@@ -19,7 +19,14 @@ export function getThemeForTaskId(taskId) {
  * @param {Function} confirmCallback - Callback to invoke if user confirms
  * @param {Function} [cancelCallback] - Callback to invoke if user cancels
  */
-export async function handleRescheduleConfirmation(opResult, confirmCallback, cancelCallback) {
+export async function handleRescheduleConfirmation(
+    opResult,
+    confirmCallback,
+    cancelCallback,
+    options = {}
+) {
+    const { reschedulePreApproved = false } = options;
+
     // Handle UPDATE confirmation (taskIndex + updatedTaskObject)
     if (
         opResult.requiresConfirmation &&
@@ -27,11 +34,13 @@ export async function handleRescheduleConfirmation(opResult, confirmCallback, ca
         opResult.taskIndex !== undefined &&
         opResult.updatedTaskObject
     ) {
-        const userConfirmed = await askConfirmation(
-            opResult.reason,
-            { ok: 'Yes, reschedule', cancel: 'No, cancel' },
-            'teal'
-        );
+        const userConfirmed =
+            reschedulePreApproved ||
+            (await askConfirmation(
+                opResult.reason,
+                { ok: 'Yes, reschedule', cancel: 'No, cancel' },
+                'teal'
+            ));
         if (userConfirmed) {
             confirmCallback({
                 taskIndex: opResult.taskIndex,

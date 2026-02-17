@@ -18,7 +18,12 @@ import {
 } from '../public/js/dom-handler.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
-import { convertTo12HourTime, timeToDateTime, calculateEndDateTime } from '../public/js/utils.js';
+import {
+    convertTo12HourTime,
+    timeToDateTime,
+    calculateEndDateTime,
+    extractDateFromDateTime
+} from '../public/js/utils.js';
 
 // Mock storage.js before importing task-manager
 jest.mock('../public/js/storage.js', () => ({
@@ -27,7 +32,6 @@ jest.mock('../public/js/storage.js', () => ({
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
-
 import { updateTaskState } from '../public/js/task-manager.js';
 
 describe('DOM Handler Interaction Tests', () => {
@@ -381,6 +385,101 @@ describe('DOM Handler Interaction Tests', () => {
             }
             cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
             expect(mockTaskEventCallbacks.onCancelEdit).toHaveBeenCalledWith('test-task-3', 0);
+        });
+
+        test('input event on edit form updates end-time hint and overlap warning', () => {
+            const today = extractDateFromDateTime(new Date());
+            const overlappingTasks = [
+                {
+                    id: 'ov-task-1',
+                    type: 'scheduled',
+                    description: 'Existing Task',
+                    startDateTime: timeToDateTime('10:00', today),
+                    endDateTime: calculateEndDateTime(timeToDateTime('10:00', today), 60),
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                },
+                {
+                    id: 'ov-task-2',
+                    type: 'scheduled',
+                    description: 'Editing Task',
+                    startDateTime: timeToDateTime('10:30', today),
+                    endDateTime: calculateEndDateTime(timeToDateTime('10:30', today), 60),
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: true,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ];
+
+            updateTaskState(overlappingTasks);
+            renderTasks(overlappingTasks, mockTaskEventCallbacks);
+
+            const taskListElement = document.getElementById('scheduled-task-list');
+            const editForm = taskListElement.querySelector('form[id^="edit-task-"]');
+            expect(editForm).not.toBeNull();
+
+            const startInput = editForm.querySelector('input[name="start-time"]');
+            startInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const hintEl = editForm.querySelector('.edit-end-time-hint');
+            expect(hintEl).not.toBeNull();
+            expect(hintEl.textContent).not.toBe('');
+
+            const warningEl = editForm.querySelector('.edit-overlap-warning');
+            expect(warningEl).not.toBeNull();
+            expect(warningEl.textContent).toContain('overlaps');
+
+            const saveBtn = editForm.querySelector('.btn-save-edit');
+            expect(saveBtn.className).toContain('from-amber-500');
+        });
+
+        test('input event on edit form clears overlap warning when no overlap', () => {
+            const today = extractDateFromDateTime(new Date());
+            const nonOverlappingTasks = [
+                {
+                    id: 'no-ov-1',
+                    type: 'scheduled',
+                    description: 'Morning Task',
+                    startDateTime: timeToDateTime('08:00', today),
+                    endDateTime: calculateEndDateTime(timeToDateTime('08:00', today), 60),
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                },
+                {
+                    id: 'no-ov-2',
+                    type: 'scheduled',
+                    description: 'Afternoon Task',
+                    startDateTime: timeToDateTime('14:00', today),
+                    endDateTime: calculateEndDateTime(timeToDateTime('14:00', today), 60),
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: true,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ];
+
+            updateTaskState(nonOverlappingTasks);
+            renderTasks(nonOverlappingTasks, mockTaskEventCallbacks);
+
+            const taskListElement = document.getElementById('scheduled-task-list');
+            const editForm = taskListElement.querySelector('form[id^="edit-task-"]');
+            const startInput = editForm.querySelector('input[name="start-time"]');
+            startInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const warningEl = editForm.querySelector('.edit-overlap-warning');
+            expect(warningEl.textContent).toBe('');
+
+            const saveBtn = editForm.querySelector('.btn-save-edit');
+            expect(saveBtn.className).toContain('from-teal-500');
         });
     });
 
@@ -808,8 +907,9 @@ describe('DOM Handler Interaction Tests', () => {
                     <div class="inline-edit-unscheduled-form hidden">
                         <form>
                             <input name="inline-edit-description" value="Test Task" />
-                            <button class="btn-save-inline-edit">Save</button>
-                            <button class="btn-cancel-inline-edit">Cancel</button>
+                            <input type="number" name="inline-edit-est-duration-minutes" value="0" />
+                            <button type="button" class="btn-save-inline-edit">Save</button>
+                            <button type="button" class="btn-cancel-inline-edit">Cancel</button>
                         </form>
                     </div>
                 </div>
@@ -908,6 +1008,52 @@ describe('DOM Handler Interaction Tests', () => {
             expect(mockUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit).toHaveBeenCalledWith(
                 'unsched-1'
             );
+        });
+
+        test('Enter key on inline edit input calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(enterEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('Enter key on inline edit description input calls onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-description"]');
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(enterEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+        });
+
+        test('non-Enter key on inline edit input does not call onSaveUnscheduledTaskEdit', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
+            const tabEvent = new KeyboardEvent('keydown', {
+                key: 'Tab',
+                bubbles: true,
+                cancelable: true
+            });
+            input.dispatchEvent(tabEvent);
+
+            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).not.toHaveBeenCalled();
         });
 
         test('form submit calls onSaveUnscheduledTaskEdit', () => {

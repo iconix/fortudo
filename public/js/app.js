@@ -10,7 +10,9 @@ import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
     getTaskFormElement,
-    focusTaskDescriptionInput
+    focusTaskDescriptionInput,
+    setupEndTimeHint,
+    setupOverlapWarning
 } from './form-utils.js';
 import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './scheduled-task-renderer.js';
 import {
@@ -68,7 +70,9 @@ async function initAndBootApp(roomCode) {
                 focusTaskDescriptionInput();
                 return;
             }
-            await handleAddTaskProcess(formElement, taskData);
+            const overlapEl = document.getElementById('overlap-warning');
+            const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+            await handleAddTaskProcess(formElement, taskData, { reschedulePreApproved });
         },
         onGlobalClick: (event) => {
             const target = event.target;
@@ -87,6 +91,41 @@ async function initAndBootApp(roomCode) {
     // Initialize event listeners
     const taskFormElement = getTaskFormElement();
     if (!taskFormElement) logger.error('CRITICAL: app.js could not find #task-form element.');
+
+    // Wire up end time hint and overlap warning for the add task form
+    if (taskFormElement) {
+        const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
+        const hoursInput = taskFormElement.querySelector('input[name="duration-hours"]');
+        const minutesInput = taskFormElement.querySelector('input[name="duration-minutes"]');
+        const hintElement = document.getElementById('end-time-hint');
+        if (startTimeInput && hoursInput && minutesInput && hintElement) {
+            setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintElement);
+        }
+
+        const overlapWarning = document.getElementById('overlap-warning');
+        const addTaskBtn = document.getElementById('add-task-btn');
+        if (startTimeInput && hoursInput && minutesInput && overlapWarning && addTaskBtn) {
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                overlapWarning,
+                addTaskBtn,
+                () => getTaskState().filter((t) => t.type === 'scheduled'),
+                {
+                    defaultButtonHTML: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
+                    defaultButtonClasses: addTaskBtn.className,
+                    overlapButtonHTML:
+                        '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
+                    overlapButtonClasses: addTaskBtn.className
+                        .replace(/from-teal-500/g, 'from-amber-500')
+                        .replace(/to-teal-400/g, 'to-amber-400')
+                        .replace(/hover:from-teal-400/g, 'hover:from-amber-400')
+                        .replace(/hover:to-teal-300/g, 'hover:to-amber-300')
+                }
+            );
+        }
+    }
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
@@ -107,6 +146,8 @@ async function initAndBootApp(roomCode) {
         scheduledTaskEventCallbacks
     );
     renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+    refreshActiveTaskColor(allTasks);
+    refreshCurrentGapHighlight();
 
     const suggested = getSuggestedStartTime();
     logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
