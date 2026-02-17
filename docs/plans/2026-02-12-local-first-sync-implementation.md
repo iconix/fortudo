@@ -1154,7 +1154,7 @@ If any fixes were needed, commit them.
 
 ### Future tasks (not part of this plan)
 
-- Set up CouchDB on Fly.io and configure remote URL
+- Set up CouchDB on a hosting provider and configure remote URL
 - Add remote URL configuration UI (settings/config screen)
 - Data migration: one-time import from localStorage to PouchDB for existing users
 - Shared room collaboration features
