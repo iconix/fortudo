@@ -626,7 +626,16 @@ describe('Form Utils Tests', () => {
     });
 
     describe('computeOverlapPreview', () => {
-        const today = new Date().toISOString().split('T')[0];
+        const fixedDate = '2026-03-11';
+
+        beforeAll(() => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date(`${fixedDate}T10:00:00`));
+        });
+
+        afterAll(() => {
+            jest.useRealTimers();
+        });
 
         function makeTasks(...specs) {
             return specs.map(([desc, startTime, duration], i) =>
@@ -635,7 +644,7 @@ describe('Form Utils Tests', () => {
                     startTime,
                     duration,
                     id: `task-${i + 1}`,
-                    date: today
+                    date: fixedDate
                 })
             );
         }
@@ -757,7 +766,16 @@ describe('Form Utils Tests', () => {
         const overlapButtonClasses =
             'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300';
 
-        const today = new Date().toISOString().split('T')[0];
+        const fixedDate = '2026-03-11';
+
+        beforeAll(() => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date(`${fixedDate}T10:00:00`));
+        });
+
+        afterAll(() => {
+            jest.useRealTimers();
+        });
 
         function makeTasks(...specs) {
             return specs.map(([desc, startTime, duration], i) =>
@@ -766,7 +784,7 @@ describe('Form Utils Tests', () => {
                     startTime,
                     duration,
                     id: `task-${i + 1}`,
-                    date: today
+                    date: fixedDate
                 })
             );
         }
