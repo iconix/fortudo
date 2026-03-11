@@ -34,7 +34,13 @@ The browser needs permission to make cross-origin requests to Cloudant.
 
 1. From your Cloudant instance, click **Launch Dashboard**.
 2. Go to **Account** > **CORS**.
-3. Enable CORS and add your Firebase Hosting domain (e.g., `https://your-app.web.app`).
+3. Enable CORS and add your Firebase Hosting domains.
+
+For this repo (`fortudo`), allowlist:
+- Production: `https://fortudo.web.app` and `https://fortudo.firebaseapp.com`
+- Preview channels: `https://fortudo--*.web.app` and `https://fortudo--*.firebaseapp.com` (if wildcards are allowed)
+
+If Cloudant does not accept wildcard domains, add each preview URL explicitly. You can copy the preview URL from the GitHub Actions deploy step or from Firebase Console > Hosting > Channels.
 
 Do **not** use "All domains" in production — restrict to your exact origin.
 
@@ -109,6 +115,15 @@ export const COUCHDB_URL = 'https://<credentials>@<host>.cloudantnosqldb.appdoma
 ```
 
 The app constructs the full database URL automatically (e.g., appending `/fortudo-fox-742`).
+
+### GitHub Actions CI/CD deployment (no checked-in config)
+
+If you use the GitHub Actions workflow in this repo, `public/js/config.js` is generated during CI from a repository secret.
+
+1. In GitHub, add a repository secret named `COUCHDB_URL`.
+2. Set it to your full Cloudant URL (with credentials).
+
+During the build job, the workflow creates `public/js/config.js` from this secret. If the secret is missing (e.g., PRs from forks), it falls back to `public/js/config.example.js` with `COUCHDB_URL = null`.
 
 ## 6. Update Firebase Hosting headers
 
