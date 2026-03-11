@@ -64,7 +64,7 @@ run tests:
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
 - [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
-- [ ] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` (local: copy `public/js/config.example.js` to `public/js/config.js`; CI: add `COUCHDB_URL` repo secret), and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`)
+- [ ] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` (local: copy `public/js/config.example.js` to `public/js/config.js`; CI: add `COUCHDB_URL` repo secret), and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). Preview deployments use `preview-<room>` database names to avoid touching production data.
 - [ ] (v3) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [ ] (v3) clear schedule on a new day (unschedule incomplete tasks)
 - [ ] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)

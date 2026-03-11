@@ -55,6 +55,19 @@ async function loadCouchDbUrl() {
 }
 
 /**
+ * Use an isolated room code for preview deployments so they never touch prod data.
+ * @param {string} roomCode
+ * @returns {string}
+ */
+function getStorageRoomCode(roomCode) {
+    const host = window.location.hostname || '';
+    const isPreviewHost =
+        (host.startsWith('fortudo--') && host.endsWith('.web.app')) ||
+        (host.startsWith('fortudo--') && host.endsWith('.firebaseapp.com'));
+    return isPreviewHost ? `preview-${roomCode}` : roomCode;
+}
+
+/**
  * Initialize storage and boot the main app UI.
  * @param {string} roomCode
  */
@@ -63,8 +76,9 @@ async function initAndBootApp(roomCode) {
 
     // Initialize storage (with optional CouchDB sync)
     const couchDbUrl = await loadCouchDbUrl();
-    const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${roomCode}` : null;
-    await initStorage(roomCode, {}, remoteUrl);
+    const storageRoomCode = getStorageRoomCode(roomCode);
+    const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
+    await initStorage(storageRoomCode, {}, remoteUrl);
 
     // Load and initialize state
     const loadedTasks = await loadTasks();

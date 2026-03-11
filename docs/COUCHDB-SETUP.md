@@ -116,6 +116,15 @@ export const COUCHDB_URL = 'https://<credentials>@<host>.cloudantnosqldb.appdoma
 
 The app constructs the full database URL automatically (e.g., appending `/fortudo-fox-742`).
 
+### Preview deployments isolate data
+
+Preview channels use a separate database prefix to avoid touching production data.
+
+- Production: `fortudo-<room>`
+- Preview: `fortudo-preview-<room>`
+
+The UI still shows the original room code; only the underlying database name changes.
+
 ### GitHub Actions CI/CD deployment (no checked-in config)
 
 If you use the GitHub Actions workflow in this repo, `public/js/config.js` is generated during CI from a repository secret.
