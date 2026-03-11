@@ -131,9 +131,7 @@ jobs:
             - name: Generate CouchDB config (from secret)
               run: |
                   if [ -n "${COUCHDB_URL}" ]; then
-                    cat > public/js/config.js <<EOF
-export const COUCHDB_URL = '${COUCHDB_URL}';
-EOF
+                    printf "export const COUCHDB_URL = '%s';\n" "${COUCHDB_URL}" > public/js/config.js
                   else
                     cp public/js/config.example.js public/js/config.js
                   fi
