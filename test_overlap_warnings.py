@@ -7,39 +7,18 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
-ROOM_CODE = "test-room"
-
-def setup_room(page):
-    """Set room code in localStorage so the app skips the room entry screen."""
-    page.evaluate(f"""() => {{
-        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
-        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
-    }}""")
-
-def clear_and_setup(page):
-    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
-    page.evaluate(f"""() => {{
-        return new Promise((resolve) => {{
-            const db = new PouchDB('fortudo-{ROOM_CODE}');
-            db.destroy().then(() => resolve()).catch(() => resolve());
-        }});
-    }}""")
-    page.evaluate("localStorage.clear()")
-    setup_room(page)
-
 passed = 0
 failed = 0
 results = []
 
 # ---------------------------------------------------------------------------
-# Dynamic future schedule
+# Fixed schedule time
 #
-# All task times are computed relative to "now" so they are always in the
-# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
-# when a task start time is in the past.
+# We freeze "now" to avoid midnight rollovers that can cause overlap warnings
+# to fail to clear in CI.
 # ---------------------------------------------------------------------------
 
-now = datetime.now()
+now = datetime(2026, 3, 11, 12, 0, 0)
 
 def fmt_time(minutes_from_now):
     """Return HH:MM string for a time N minutes from now."""
@@ -168,12 +147,30 @@ def add_unscheduled_task(page, description, hours, minutes, priority="medium"):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 900})
+    fixed_ms = int(now.timestamp() * 1000)
+    page.add_init_script(f"""
+(() => {{
+  const fixed = {fixed_ms};
+  const OriginalDate = Date;
+  class MockDate extends OriginalDate {{
+    constructor(...args) {{
+      if (args.length === 0) return new OriginalDate(fixed);
+      return new OriginalDate(...args);
+    }}
+    static now() {{ return fixed; }}
+  }}
+  MockDate.UTC = OriginalDate.UTC;
+  MockDate.parse = OriginalDate.parse;
+  MockDate.prototype = OriginalDate.prototype;
+  Date = MockDate;
+}})();
+""")
     page.goto(f"http://127.0.0.1:{PORT}")
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
-    # Clear any leftover state from prior runs and set up room
-    clear_and_setup(page)
+    # Clear any leftover state from prior runs
+    page.evaluate("localStorage.clear()")
     page.reload()
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
@@ -637,8 +634,8 @@ with sync_playwright() as p:
         test("Modal warning clears for non-conflicting time", False, "No schedule buttons")
         test("Modal button restores to Schedule", False, "No schedule buttons")
 
-    # Clear state for next test suite
-    clear_and_setup(page)
+    # Clear localStorage for next test suite
+    page.evaluate("localStorage.clear()")
 
     # =========================================================================
     print("\n" + "=" * 60, flush=True)
