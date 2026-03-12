@@ -8,7 +8,7 @@ import {
 import { showAlert, askConfirmation } from '../modal-manager.js';
 import { focusTaskDescriptionInput } from '../form-utils.js';
 import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
-import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-handler.js';
+import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
 import { getThemeForTaskType, logger } from '../utils.js';
 
 /**

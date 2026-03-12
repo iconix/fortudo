@@ -452,68 +452,6 @@ export function initializeUnscheduledTaskListEventListeners(callbacks) {
     }
 }
 
-export function initializeDragAndDropUnscheduled(callbacks) {
-    const taskList = getUnscheduledTaskListElement();
-    if (!taskList) return;
-
-    let dragSrcEl = null;
-
-    taskList.addEventListener('dragstart', (e) => {
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (!(target instanceof HTMLElement)) return;
-        target.style.opacity = '0.4';
-        dragSrcEl = target;
-        e.dataTransfer?.setData('text/html', target.innerHTML);
-    });
-
-    taskList.addEventListener('dragend', (e) => {
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (!(target instanceof HTMLElement)) return;
-        target.style.opacity = '1';
-    });
-
-    taskList.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        return false;
-    });
-
-    taskList.addEventListener('dragenter', (e) => {
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (!(target instanceof HTMLElement)) return;
-        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
-        if (taskCard) {
-            taskCard.classList.add('bg-gray-700');
-        }
-    });
-
-    taskList.addEventListener('dragleave', (e) => {
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (!(target instanceof HTMLElement)) return;
-        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
-        if (taskCard) {
-            taskCard.classList.remove('bg-gray-700');
-        }
-    });
-
-    taskList.addEventListener('drop', (e) => {
-        e.stopPropagation();
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (!(target instanceof HTMLElement)) return;
-        const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
-        if (!taskCard || !dragSrcEl) return;
-
-        taskCard.classList.remove('bg-gray-700');
-
-        if (dragSrcEl !== taskCard) {
-            const draggedTaskId = dragSrcEl.dataset.taskId;
-            const targetTaskId = taskCard.dataset.taskId;
-            if (draggedTaskId && targetTaskId && callbacks.onDropUnscheduledTask) {
-                callbacks.onDropUnscheduledTask(draggedTaskId, targetTaskId);
-            }
-        }
-    });
-}
-
 // --- Wrapper for Render Functions ---
 
 export function renderTasks(tasksToRender, eventCallbacks) {

@@ -40,13 +40,17 @@ const { createTaskWithDateTime, calculateDurationMidnightAware } = require('./te
 // Mock the storage module
 jest.mock('../public/js/storage.js', () => ({
     saveTasks: jest.fn(),
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
 
-// Import the mocked saveTasks
-import { saveTasks } from '../public/js/storage.js';
+// Import the mocked storage functions
+import { saveTasks, putTask, deleteTask as deleteTaskFromStorage } from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(saveTasks);
+const mockPutTask = jest.mocked(putTask);
+const mockDeleteTaskFromStorage = jest.mocked(deleteTaskFromStorage);
 
 // Mock localStorage before any other imports
 const localStorageMock = {
@@ -63,6 +67,8 @@ describe('Task Management Functions (task-manager.js)', () => {
     beforeEach(() => {
         updateTaskState([]);
         mockSaveTasks.mockClear();
+        mockPutTask.mockClear();
+        mockDeleteTaskFromStorage.mockClear();
     });
 
     afterEach(() => {
@@ -459,6 +465,8 @@ describe('Task Management Functions (task-manager.js)', () => {
         beforeEach(() => {
             updateTaskState([]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should not shift any tasks if no subsequent tasks exist', () => {
@@ -584,6 +592,8 @@ describe('Task Management Functions (task-manager.js)', () => {
         beforeEach(() => {
             updateTaskState([]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should add a task, call performReschedule, sort, and save when no overlap occurs', () => {
@@ -607,7 +617,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks.length).toBe(2);
             expect(tasks[0].description).toBe('Task 2'); // Sorted
             expect(tasks[1].description).toBe('Task 1');
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
             // performReschedule effect: If Task 1 was 09:00-10:00 and Task 2 was 09:30-10:30, Task 2 would be shifted.
             // Here, no shift needed for Task 1 by Task 2.
         });
@@ -621,6 +631,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 _skipAdjustCheck: true
             }); // 09:00 - 10:00
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             const taskData = {
                 taskType: 'scheduled',
@@ -669,6 +681,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([completedTask]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             // Add a new task that overlaps the completed task
             const result = addTask({
@@ -702,6 +716,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 })
             ]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should add the task, reschedule, sort, and save', () => {
@@ -742,7 +758,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 
@@ -767,6 +783,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 })
             ]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should update a task, call performReschedule, sort, and save if no overlap occurs', () => {
@@ -779,7 +797,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].description).toBe('Task 1 Updated');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('09:30');
             expect(tasks[1].description).toBe('Task 2'); // Task 2 remains, no reschedule needed for it in this case
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should require confirmation if updating a task creates an overlap', () => {
@@ -843,6 +861,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task1, task2, task3]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should update the task, reschedule subsequent tasks, sort, and save', () => {
@@ -878,7 +898,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 expect(extractTimeFromDateTime(new Date(shiftedT3.startDateTime))).toBe('11:30'); // Shifted
                 expect(extractTimeFromDateTime(new Date(shiftedT3.endDateTime))).toBe('12:30');
             }
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
         });
 
@@ -923,6 +943,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([taskA, taskB, lockedTask, taskC]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             // User wants to move the locked task from 17:30 to 15:15
             // This should overlap with "Earlier Task" (15:00-16:00)
@@ -1016,6 +1038,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([taskA, taskB, lockedTask, taskC]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             // Complete Task A late at 10:30 (30 mins past scheduled end)
             const completeResult = completeTask(0, '10:30');
@@ -1092,6 +1116,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 })
             ]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should mark a task as completed on time and save', () => {
@@ -1100,7 +1126,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Original end time
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should adjust endTime and duration if completed early, and save', () => {
@@ -1111,7 +1137,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe(currentTime);
             expect(tasks[0].duration).toBe(30); // 09:00 to 09:30
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should return requiresConfirmation if completed late, task not modified yet', () => {
@@ -1163,6 +1189,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task1, task2]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should update task status, time, duration, reschedule, sort, and save', () => {
@@ -1191,7 +1219,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 ); // Rescheduled
                 expect(extractTimeFromDateTime(new Date(subsequentTask.endDateTime))).toBe('10:45');
             }
-            expect(mockSaveTasks).toHaveBeenCalledWith(tasks);
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('should handle invalid index', () => {
@@ -1222,6 +1250,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task1, task2]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('truncates task end time and marks complete', () => {
@@ -1239,7 +1269,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const updatedTask = tasks.find((t) => t.id === task1.id);
             expect(updatedTask.status).toBe('completed');
             expect(updatedTask.duration).toBe(30);
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('extends task end time and marks complete', () => {
@@ -1363,6 +1393,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should remove a task if confirmed and save', () => {
@@ -1370,7 +1402,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(true);
             expect(getTaskState().length).toBe(1);
             expect(getTaskState()[0].description).toBe('Task 2');
-            expect(mockSaveTasks).toHaveBeenCalledWith(getTaskState());
+            expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
         });
 
         test('should require confirmation if not confirmed, and set flag', () => {
@@ -1379,7 +1411,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.requiresConfirmation).toBe(true);
             expect(getTaskState().length).toBe(2); // Task still exists
             expect(getTaskState()[0].confirmingDelete).toBe(true);
-            expect(mockSaveTasks).not.toHaveBeenCalled(); // Not saved yet
+            expect(mockDeleteTaskFromStorage).not.toHaveBeenCalled(); // Not saved yet
         });
     });
 
@@ -1393,6 +1425,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('editTask should set editing flag and clear confirmingDelete', () => {
@@ -1430,6 +1464,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 _skipAdjustCheck: true
             });
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         });
 
         test('should delete all tasks and return success result', () => {
@@ -1443,6 +1479,8 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('should return success if no tasks to delete', () => {
             updateTaskState([]);
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             const result = deleteAllTasks();
             expect(result.success).toBe(true);
@@ -2235,39 +2273,6 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('returns error for non-existent task', () => {
             updateTaskState([]);
             const result = deleteUnscheduledTask('nonexistent');
-            expect(result.success).toBe(false);
-        });
-    });
-
-    describe('ReorderUnscheduledTask', () => {
-        const { reorderUnscheduledTask } = require('../public/js/task-manager.js');
-
-        test('reorders tasks correctly', () => {
-            const task1 = {
-                id: 'unsched-1',
-                type: 'unscheduled',
-                description: 'Task 1',
-                priority: 'high',
-                estDuration: 30,
-                status: 'incomplete'
-            };
-            const task2 = {
-                id: 'unsched-2',
-                type: 'unscheduled',
-                description: 'Task 2',
-                priority: 'high',
-                estDuration: 30,
-                status: 'incomplete'
-            };
-            updateTaskState([task1, task2]);
-
-            const result = reorderUnscheduledTask('unsched-2', 'unsched-1');
-            expect(result.success).toBe(true);
-        });
-
-        test('returns error when tasks not found', () => {
-            updateTaskState([]);
-            const result = reorderUnscheduledTask('nonexistent1', 'nonexistent2');
             expect(result.success).toBe(false);
         });
     });

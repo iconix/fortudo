@@ -43,7 +43,6 @@ run tests:
 - [x] local storage for mvp
 - [ ] fix responsiveness on iphone
 - [x] host mvp on firebase
-- [ ] add checkbox to "make a habit" → then we can have a second list that gets injected daily
 - [x] on check, cross out task and enable next checkbox
 - [x] constrain available hours
 - [x] fix deleteTask is not defined on onclick event
@@ -56,17 +55,21 @@ run tests:
 - [x] if task is running late, switch to yellow text as warning
 
 - [x] (v2) move away from browser alerts to custom modals
-- [ ] (v2) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
 - [x] (v2) confetti burst animation when you check off a task
 - [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
-- [x] (v2) publish preview link under shortlink (https://tinyurl.com/fortudo-v2)
+- [x] (v2) publish preview link under shortlink
 - [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
 - [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
 - [x] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
-- [ ] (v2) clear schedule on a new day (unschedule incomplete tasks)
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
-- [ ] (vNext) add horizontal timeline bar to see schedule and gaps more easily
-- [ ] (vNext) try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt) (e.g., https://tinybase.org/demos/todo-app/todo-app-v6-collaboration/)
-  - [ ] or https://github.com/yjs/yjs / https://automerge.org/ for just the crdt part
+- [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
+- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` (local: copy `public/js/config.example.js` to `public/js/config.js`; CI: add `COUCHDB_URL` repo secret), and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). Preview deployments use `preview-<room>` database names to avoid touching production data.
+- [x] (v3) click on scheduling gap to see list of unscheduled tasks and schedule in gap
+- [x] (v3) upgrade `jest-environment-jsdom` to v30 (breaking) and adjust tests if needed (then remove `overrides` in `package.json`)
+- [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
+
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
+- [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+- [ ] (vNext) clear schedule on a new day (unschedule incomplete tasks)
+- [ ] (vNext) add checkbox to "make a habit" → then we can have a second list that gets injected daily

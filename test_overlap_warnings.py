@@ -12,14 +12,13 @@ failed = 0
 results = []
 
 # ---------------------------------------------------------------------------
-# Dynamic future schedule
+# Fixed schedule time
 #
-# All task times are computed relative to "now" so they are always in the
-# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
-# when a task start time is in the past.
+# We freeze "now" to avoid midnight rollovers that can cause overlap warnings
+# to fail to clear in CI.
 # ---------------------------------------------------------------------------
 
-now = datetime.now()
+now = datetime(2026, 3, 11, 12, 0, 0)
 
 def fmt_time(minutes_from_now):
     """Return HH:MM string for a time N minutes from now."""
@@ -148,12 +147,32 @@ def add_unscheduled_task(page, description, hours, minutes, priority="medium"):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 900})
+    fixed_ms = int(now.timestamp() * 1000)
+    page.add_init_script(f"""
+(() => {{
+  const fixed = {fixed_ms};
+  let nowOffset = 0;
+  const OriginalDate = Date;
+  class MockDate extends OriginalDate {{
+    constructor(...args) {{
+      if (args.length === 0) return new OriginalDate(fixed);
+      return new OriginalDate(...args);
+    }}
+    static now() {{ return fixed + (nowOffset++); }}
+  }}
+  MockDate.UTC = OriginalDate.UTC;
+  MockDate.parse = OriginalDate.parse;
+  MockDate.prototype = OriginalDate.prototype;
+  Date = MockDate;
+}})();
+""")
     page.goto(f"http://127.0.0.1:{PORT}")
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
-    # Clear any leftover state from prior runs
+    # Clear any leftover state from prior runs, then set a room to bypass entry screen
     page.evaluate("localStorage.clear()")
+    page.evaluate("localStorage.setItem('fortudo-active-room', 'test-room')")
     page.reload()
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
