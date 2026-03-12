@@ -151,13 +151,14 @@ with sync_playwright() as p:
     page.add_init_script(f"""
 (() => {{
   const fixed = {fixed_ms};
+  let nowOffset = 0;
   const OriginalDate = Date;
   class MockDate extends OriginalDate {{
     constructor(...args) {{
       if (args.length === 0) return new OriginalDate(fixed);
       return new OriginalDate(...args);
     }}
-    static now() {{ return fixed; }}
+    static now() {{ return fixed + (nowOffset++); }}
   }}
   MockDate.UTC = OriginalDate.UTC;
   MockDate.parse = OriginalDate.parse;
@@ -169,8 +170,9 @@ with sync_playwright() as p:
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
-    # Clear any leftover state from prior runs
+    # Clear any leftover state from prior runs, then set a room to bypass entry screen
     page.evaluate("localStorage.clear()")
+    page.evaluate("localStorage.setItem('fortudo-active-room', 'test-room')")
     page.reload()
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
