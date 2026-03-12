@@ -1085,6 +1085,114 @@ describe('App.js Callback Functions', () => {
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Focused Task');
             });
+
+            test('should dedupe overlapping non-local refreshes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const refreshedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Deduped Task',
+                        startTime: '13:00',
+                        duration: 30
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                let resolveLoadTasks;
+                const pendingLoadTasks = new Promise((resolve) => {
+                    resolveLoadTasks = () => resolve(refreshedTasks);
+                });
+                mockLoadTasksFromStorage.mockClear();
+                mockLoadTasksFromStorage.mockImplementation(() => pendingLoadTasks);
+
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+
+                document.dispatchEvent(new Event('visibilitychange'));
+                window.dispatchEvent(new Event('focus'));
+
+                expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
+
+                resolveLoadTasks();
+                await pendingLoadTasks;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Deduped Task');
+            });
+
+            test('should unsubscribe old sync listeners when the app is re-initialized', async () => {
+                const unsubscribeFirst = jest.fn();
+                const unsubscribeSecond = jest.fn();
+                mockOnSyncStatusChange
+                    .mockImplementationOnce(() => unsubscribeFirst)
+                    .mockImplementationOnce(() => unsubscribeSecond);
+
+                mockLoadTasksFromStorage.mockReturnValue([
+                    createTaskWithDateTime({
+                        description: 'Room One Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ]);
+                await setupIntegrationTestEnvironment();
+
+                mockLoadTasksFromStorage.mockReturnValue([
+                    createTaskWithDateTime({
+                        description: 'Room Two Task',
+                        startTime: '10:00',
+                        duration: 60
+                    })
+                ]);
+                localStorage.setItem('fortudo-active-room', 'test-room-2');
+                document.dispatchEvent(
+                    new Event('DOMContentLoaded', {
+                        bubbles: true,
+                        cancelable: true
+                    })
+                );
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                expect(unsubscribeFirst).toHaveBeenCalledTimes(1);
+                expect(unsubscribeSecond).not.toHaveBeenCalled();
+                expect(mockOnSyncStatusChange).toHaveBeenCalledTimes(2);
+            });
+
+            test('should log and keep the current UI when non-local refresh fails', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Still Visible Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+                mockLoadTasksFromStorage.mockRejectedValueOnce(new Error('refresh failed'));
+
+                window.dispatchEvent(new Event('focus'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Still Visible Task');
+                expect(consoleErrorSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('Failed to refresh tasks after external change:'),
+                    expect.any(Error)
+                );
+
+                consoleErrorSpy.mockRestore();
+            });
         });
 
         describe('Force update start time field scenarios', () => {
