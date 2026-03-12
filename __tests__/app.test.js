@@ -30,19 +30,24 @@ jest.mock('../public/js/storage.js', () => ({
 jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn(() => jest.fn()),
     initSync: jest.fn(),
-    debouncedSync: jest.fn()
+    debouncedSync: jest.fn(),
+    triggerSync: jest.fn(() => Promise.resolve())
 }));
 import {
     saveTasks as mockSaveTasksInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
-import { onSyncStatusChange as mockOnSyncStatusChangeInternal } from '../public/js/sync-manager.js';
+import {
+    onSyncStatusChange as mockOnSyncStatusChangeInternal,
+    triggerSync as mockTriggerSyncInternal
+} from '../public/js/sync-manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
+const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -1062,7 +1067,7 @@ describe('App.js Callback Functions', () => {
                 expect(mockSaveTasks).not.toHaveBeenCalled();
             });
 
-            test('should refresh tasks from storage when the window regains focus', async () => {
+            test('should trigger remote sync when the window regains focus', async () => {
                 const initialTasks = [
                     createTaskWithDateTime({
                         description: 'Initial Task',
@@ -1070,29 +1075,17 @@ describe('App.js Callback Functions', () => {
                         duration: 60
                     })
                 ];
-                const refreshedTasks = [
-                    createTaskWithDateTime({
-                        description: 'Focused Task',
-                        startTime: '12:00',
-                        duration: 30
-                    })
-                ];
-
                 await setupAppWithTasks(initialTasks);
 
-                mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
-                mockSaveTasks.mockClear();
+                mockTriggerSync.mockClear();
 
                 window.dispatchEvent(new Event('focus'));
                 await new Promise((resolve) => setTimeout(resolve, 0));
 
-                const renderedTasks = getRenderedTasksDOM();
-                expect(renderedTasks).toHaveLength(1);
-                expect(renderedTasks[0].description).toBe('Focused Task');
-                expect(mockSaveTasks).not.toHaveBeenCalled();
+                expect(mockTriggerSync).toHaveBeenCalledWith({ respectCooldown: true });
             });
 
-            test('should dedupe overlapping non-local refreshes', async () => {
+            test('should dedupe overlapping visibility-triggered refreshes', async () => {
                 const initialTasks = [
                     createTaskWithDateTime({
                         description: 'Initial Task',
@@ -1121,7 +1114,6 @@ describe('App.js Callback Functions', () => {
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
                 document.dispatchEvent(new Event('visibilitychange'));
-                window.dispatchEvent(new Event('focus'));
 
                 expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
                 expect(mockSaveTasks).not.toHaveBeenCalled();
@@ -1174,7 +1166,7 @@ describe('App.js Callback Functions', () => {
                 expect(mockOnSyncStatusChange).toHaveBeenCalledTimes(2);
             });
 
-            test('should log and keep the current UI when non-local refresh fails', async () => {
+            test('should log and keep the current UI when visibility refresh fails', async () => {
                 const initialTasks = [
                     createTaskWithDateTime({
                         description: 'Still Visible Task',
@@ -1187,8 +1179,9 @@ describe('App.js Callback Functions', () => {
 
                 const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
                 mockLoadTasksFromStorage.mockRejectedValueOnce(new Error('refresh failed'));
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
-                window.dispatchEvent(new Event('focus'));
+                document.dispatchEvent(new Event('visibilitychange'));
                 await new Promise((resolve) => setTimeout(resolve, 0));
 
                 const renderedTasks = getRenderedTasksDOM();

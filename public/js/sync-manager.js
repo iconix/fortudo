@@ -16,6 +16,13 @@ const statusCallbacks = new Set();
 let debounceTimer = null;
 
 const DEBOUNCE_MS = 2000;
+const RESUME_SYNC_COOLDOWN_MS = 15000;
+
+/** @type {boolean} */
+let syncInFlight = false;
+
+/** @type {number} */
+let lastSyncStartedAt = 0;
 
 /**
  * Update sync status and notify all listeners.
@@ -41,14 +48,24 @@ export function initSync(db, remote) {
     localDb = db;
     remoteUrl = remote;
     syncStatus = 'idle';
+    syncInFlight = false;
+    lastSyncStartedAt = 0;
 }
 
 /**
  * Trigger a one-time bidirectional sync with the remote.
  */
-export async function triggerSync() {
+export async function triggerSync({ respectCooldown = false } = {}) {
     if (!localDb || !remoteUrl) return;
+    if (syncInFlight) return;
 
+    const now = Date.now();
+    if (respectCooldown && now - lastSyncStartedAt < RESUME_SYNC_COOLDOWN_MS) {
+        return;
+    }
+
+    syncInFlight = true;
+    lastSyncStartedAt = now;
     setStatus('syncing');
     try {
         await localDb.replicate.to(remoteUrl);
@@ -57,6 +74,8 @@ export async function triggerSync() {
     } catch (err) {
         logger.error('Sync error:', err);
         setStatus('error');
+    } finally {
+        syncInFlight = false;
     }
 }
 
@@ -102,5 +121,7 @@ export function teardownSync() {
     localDb = null;
     remoteUrl = null;
     syncStatus = 'idle';
+    syncInFlight = false;
+    lastSyncStartedAt = 0;
     statusCallbacks.clear();
 }

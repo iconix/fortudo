@@ -38,7 +38,7 @@ import {
     updateSyncStatusUI
 } from './handlers/room-ui-handler.js';
 import { getActiveRoom } from './room-manager.js';
-import { onSyncStatusChange } from './sync-manager.js';
+import { onSyncStatusChange, triggerSync } from './sync-manager.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -223,6 +223,12 @@ async function initAndBootApp(roomCode) {
         });
     };
 
+    const syncOnFocus = () => {
+        triggerSync({ respectCooldown: true }).catch((err) => {
+            logger.error('Failed to sync tasks after window focus:', err);
+        });
+    };
+
     document.addEventListener(
         'visibilitychange',
         () => {
@@ -233,7 +239,7 @@ async function initAndBootApp(roomCode) {
         { signal }
     );
 
-    window.addEventListener('focus', refreshFromExternalChange, { signal });
+    window.addEventListener('focus', syncOnFocus, { signal });
 
     // Initial render
     const allTasks = getTaskState();
