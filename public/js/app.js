@@ -40,6 +40,15 @@ import {
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange } from './sync-manager.js';
 
+/** @type {AbortController|null} */
+let appLifecycleAbortController = null;
+
+/** @type {(() => void) | null} */
+let unsubscribeSyncStatus = null;
+
+/** @type {Promise<void> | null} */
+let refreshFromStoragePromise = null;
+
 /**
  * Load CouchDB URL from config.js if it exists.
  * Returns null when config.js is absent (local-only mode).
@@ -78,10 +87,22 @@ async function loadTasksIntoState() {
 }
 
 async function refreshFromStorage() {
-    await loadTasksIntoState();
-    refreshUI();
-    refreshActiveTaskColor(getTaskState());
-    refreshCurrentGapHighlight();
+    if (refreshFromStoragePromise) {
+        return refreshFromStoragePromise;
+    }
+
+    refreshFromStoragePromise = (async () => {
+        await loadTasksIntoState();
+        refreshUI();
+        refreshActiveTaskColor(getTaskState());
+        refreshCurrentGapHighlight();
+    })();
+
+    try {
+        await refreshFromStoragePromise;
+    } finally {
+        refreshFromStoragePromise = null;
+    }
 }
 
 /**
@@ -89,6 +110,17 @@ async function refreshFromStorage() {
  * @param {string} roomCode
  */
 async function initAndBootApp(roomCode) {
+    if (appLifecycleAbortController) {
+        appLifecycleAbortController.abort();
+    }
+    appLifecycleAbortController = new AbortController();
+    const { signal } = appLifecycleAbortController;
+
+    if (unsubscribeSyncStatus) {
+        unsubscribeSyncStatus();
+        unsubscribeSyncStatus = null;
+    }
+
     showMainApp(roomCode);
 
     // Initialize storage (with optional CouchDB sync)
@@ -176,7 +208,7 @@ async function initAndBootApp(roomCode) {
     initializeClearTasksHandlers();
 
     // Wire up sync status indicator + refresh after sync
-    onSyncStatusChange((status) => {
+    unsubscribeSyncStatus = onSyncStatusChange((status) => {
         updateSyncStatusUI(status);
         if (status === 'synced') {
             refreshFromStorage().catch((err) => {
@@ -184,6 +216,24 @@ async function initAndBootApp(roomCode) {
             });
         }
     });
+
+    const refreshFromExternalChange = () => {
+        refreshFromStorage().catch((err) => {
+            logger.error('Failed to refresh tasks after external change:', err);
+        });
+    };
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (!document.hidden) {
+                refreshFromExternalChange();
+            }
+        },
+        { signal }
+    );
+
+    window.addEventListener('focus', refreshFromExternalChange, { signal });
 
     // Initial render
     const allTasks = getTaskState();
@@ -208,9 +258,13 @@ async function initAndBootApp(roomCode) {
         refreshStartTimeField();
     }, 1000);
 
-    window.addEventListener('beforeunload', () => {
-        clearInterval(activeTaskColorInterval);
-    });
+    window.addEventListener(
+        'beforeunload',
+        () => {
+            clearInterval(activeTaskColorInterval);
+        },
+        { signal }
+    );
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

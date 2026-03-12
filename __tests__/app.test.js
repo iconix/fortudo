@@ -37,10 +37,12 @@ import {
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
+import { onSyncStatusChange as mockOnSyncStatusChangeInternal } from '../public/js/sync-manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -992,6 +994,96 @@ describe('App.js Callback Functions', () => {
 
                 // Clean up
                 consoleSpy.mockRestore();
+            });
+        });
+
+        describe('non-local task refreshes', () => {
+            test('should refresh tasks from storage after sync completes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Local Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const syncedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Synced Task',
+                        startTime: '10:00',
+                        duration: 30
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                const syncStatusCallback = mockOnSyncStatusChange.mock.calls.at(-1)?.[0];
+                expect(syncStatusCallback).toEqual(expect.any(Function));
+
+                mockLoadTasksFromStorage.mockReturnValue(syncedTasks);
+
+                syncStatusCallback('synced');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Synced Task');
+            });
+
+            test('should refresh tasks from storage when the tab becomes visible again', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const refreshedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Visible Task',
+                        startTime: '11:00',
+                        duration: 45
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+
+                document.dispatchEvent(new Event('visibilitychange'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Visible Task');
+            });
+
+            test('should refresh tasks from storage when the window regains focus', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const refreshedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Focused Task',
+                        startTime: '12:00',
+                        duration: 30
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
+
+                window.dispatchEvent(new Event('focus'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Focused Task');
             });
         });
 
