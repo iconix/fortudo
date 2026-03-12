@@ -88,8 +88,8 @@ describe('Clear Tasks Handler', () => {
             <button id="delete-all">Clear Schedule</button>
             <button id="clear-options-dropdown-trigger-btn">▾</button>
             <div id="clear-tasks-dropdown" class="hidden">
-                <a id="clear-all-tasks-option" href="#">Clear All</a>
                 <a id="clear-completed-tasks-option" href="#">Clear Completed</a>
+                <a id="clear-all-tasks-option" href="#">Clear All</a>
             </div>
         `;
 
@@ -173,6 +173,13 @@ describe('Clear Tasks Handler', () => {
             triggerBtn.click();
 
             expect(toggleClearTasksDropdown).toHaveBeenCalled();
+        });
+
+        test('dropdown lists Clear Completed before Clear All', () => {
+            const dropdown = document.getElementById('clear-tasks-dropdown');
+            const optionIds = Array.from(dropdown.querySelectorAll('a')).map((el) => el.id);
+
+            expect(optionIds).toEqual(['clear-completed-tasks-option', 'clear-all-tasks-option']);
         });
 
         test('clear completed option shows alert when no completed tasks', async () => {
