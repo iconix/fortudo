@@ -130,7 +130,7 @@ export function resetAllInlineEditingFlags() {
     });
     return changed;
 }
-export function updateTaskState(newTasks) {
+export function updateTaskState(newTasks, { persist = true } = {}) {
     tasks = newTasks || [];
     if (tasks.length === 0) {
         /* Sample tasks are added in task-manager.js's updateTaskState */
@@ -143,7 +143,9 @@ export function updateTaskState(newTasks) {
     tasks = [...scheduledTasks, ...unscheduledTasks];
 
     invalidateTaskCaches();
-    saveTasks(tasks.map(stripUIFlags));
+    if (persist) {
+        saveTasks(tasks.map(stripUIFlags));
+    }
 }
 
 // ============================================================================

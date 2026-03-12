@@ -30,17 +30,24 @@ jest.mock('../public/js/storage.js', () => ({
 jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn(() => jest.fn()),
     initSync: jest.fn(),
-    debouncedSync: jest.fn()
+    debouncedSync: jest.fn(),
+    triggerSync: jest.fn(() => Promise.resolve())
 }));
 import {
     saveTasks as mockSaveTasksInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
+import {
+    onSyncStatusChange as mockOnSyncStatusChangeInternal,
+    triggerSync as mockTriggerSyncInternal
+} from '../public/js/sync-manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
+const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -992,6 +999,220 @@ describe('App.js Callback Functions', () => {
 
                 // Clean up
                 consoleSpy.mockRestore();
+            });
+        });
+
+        describe('non-local task refreshes', () => {
+            test('should refresh tasks from storage after sync completes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Local Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const syncedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Synced Task',
+                        startTime: '10:00',
+                        duration: 30
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                const syncStatusCallback = mockOnSyncStatusChange.mock.calls.at(-1)?.[0];
+                expect(syncStatusCallback).toEqual(expect.any(Function));
+
+                mockLoadTasksFromStorage.mockReturnValue(syncedTasks);
+                mockSaveTasks.mockClear();
+
+                syncStatusCallback('synced');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Synced Task');
+                expect(mockSaveTasks).not.toHaveBeenCalled();
+            });
+
+            test('should refresh tasks from storage when the tab becomes visible again', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const refreshedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Visible Task',
+                        startTime: '11:00',
+                        duration: 45
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+                mockSaveTasks.mockClear();
+
+                document.dispatchEvent(new Event('visibilitychange'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Visible Task');
+                expect(mockSaveTasks).not.toHaveBeenCalled();
+            });
+
+            test('should trigger remote sync when the window regains focus', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                await setupAppWithTasks(initialTasks);
+
+                mockTriggerSync.mockClear();
+
+                window.dispatchEvent(new Event('focus'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(mockTriggerSync).toHaveBeenCalledWith({ respectCooldown: true });
+            });
+
+            test('should trigger manual sync when clicking the sync status button', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                mockTriggerSync.mockClear();
+
+                const syncButton = document.getElementById('sync-status-indicator');
+                syncButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(mockTriggerSync).toHaveBeenCalledWith();
+            });
+
+            test('should dedupe overlapping visibility-triggered refreshes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+                const refreshedTasks = [
+                    createTaskWithDateTime({
+                        description: 'Deduped Task',
+                        startTime: '13:00',
+                        duration: 30
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                let resolveLoadTasks;
+                const pendingLoadTasks = new Promise((resolve) => {
+                    resolveLoadTasks = () => resolve(refreshedTasks);
+                });
+                mockLoadTasksFromStorage.mockClear();
+                mockLoadTasksFromStorage.mockImplementation(() => pendingLoadTasks);
+                mockSaveTasks.mockClear();
+
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+
+                document.dispatchEvent(new Event('visibilitychange'));
+
+                expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
+                expect(mockSaveTasks).not.toHaveBeenCalled();
+
+                resolveLoadTasks();
+                await pendingLoadTasks;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Deduped Task');
+            });
+
+            test('should unsubscribe old sync listeners when the app is re-initialized', async () => {
+                const unsubscribeFirst = jest.fn();
+                const unsubscribeSecond = jest.fn();
+                mockOnSyncStatusChange
+                    .mockImplementationOnce(() => unsubscribeFirst)
+                    .mockImplementationOnce(() => unsubscribeSecond);
+
+                mockLoadTasksFromStorage.mockReturnValue([
+                    createTaskWithDateTime({
+                        description: 'Room One Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ]);
+                await setupIntegrationTestEnvironment();
+
+                mockLoadTasksFromStorage.mockReturnValue([
+                    createTaskWithDateTime({
+                        description: 'Room Two Task',
+                        startTime: '10:00',
+                        duration: 60
+                    })
+                ]);
+                localStorage.setItem('fortudo-active-room', 'test-room-2');
+                document.dispatchEvent(
+                    new Event('DOMContentLoaded', {
+                        bubbles: true,
+                        cancelable: true
+                    })
+                );
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                expect(unsubscribeFirst).toHaveBeenCalledTimes(1);
+                expect(unsubscribeSecond).not.toHaveBeenCalled();
+                expect(mockOnSyncStatusChange).toHaveBeenCalledTimes(2);
+            });
+
+            test('should log and keep the current UI when visibility refresh fails', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Still Visible Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+                mockLoadTasksFromStorage.mockRejectedValueOnce(new Error('refresh failed'));
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+
+                document.dispatchEvent(new Event('visibilitychange'));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const renderedTasks = getRenderedTasksDOM();
+                expect(renderedTasks).toHaveLength(1);
+                expect(renderedTasks[0].description).toBe('Still Visible Task');
+                expect(consoleErrorSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('Failed to refresh tasks after external change:'),
+                    expect.any(Error)
+                );
+
+                consoleErrorSpy.mockRestore();
             });
         });
 

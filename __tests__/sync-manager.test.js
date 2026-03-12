@@ -158,6 +158,51 @@ describe('Sync Manager', () => {
 
             expect(getSyncStatus()).toBe('error');
         });
+
+        test('does not start another sync while one is in flight', async () => {
+            let resolveFirstSync;
+            const firstSyncPromise = new Promise((resolve) => {
+                resolveFirstSync = resolve;
+            });
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockImplementation(() => firstSyncPromise),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(mockDb, 'http://remote:5984/db');
+
+            const firstTrigger = triggerSync();
+            const secondTrigger = triggerSync();
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(1);
+
+            resolveFirstSync({});
+            await firstTrigger;
+            await secondTrigger;
+        });
+
+        test('respects cooldown for resume-triggered syncs', async () => {
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(mockDb, 'http://remote:5984/db');
+
+            await triggerSync({ respectCooldown: true });
+            await triggerSync({ respectCooldown: true });
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(1);
+
+            jest.setSystemTime(new Date(Date.now() + 15001));
+            await triggerSync({ respectCooldown: true });
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
+        });
     });
 
     describe('debouncedSync', () => {

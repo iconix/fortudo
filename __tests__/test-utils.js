@@ -37,10 +37,10 @@ function setupDOM() {
         <div id="current-time"></div>
         <div id="current-date"></div>
         <span id="room-code-badge"><span id="room-code-display"></span></span>
-        <span id="sync-status-indicator">
+        <button id="sync-status-indicator" type="button">
           <i id="sync-status-icon"></i>
           <span id="sync-status-text"></span>
-        </span>
+        </button>
       </div>
       <form id="task-form">
         <div class="form-group">
