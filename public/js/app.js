@@ -67,6 +67,23 @@ function getStorageRoomCode(roomCode) {
     return isPreviewHost ? `preview-${roomCode}` : roomCode;
 }
 
+async function loadTasksIntoState() {
+    const loadedTasks = await loadTasks();
+    loadedTasks.forEach((task) => {
+        if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
+            task.isEditingInline = false;
+        }
+    });
+    updateTaskState(loadedTasks);
+}
+
+async function refreshFromStorage() {
+    await loadTasksIntoState();
+    refreshUI();
+    refreshActiveTaskColor(getTaskState());
+    refreshCurrentGapHighlight();
+}
+
 /**
  * Initialize storage and boot the main app UI.
  * @param {string} roomCode
@@ -81,13 +98,7 @@ async function initAndBootApp(roomCode) {
     await initStorage(storageRoomCode, {}, remoteUrl);
 
     // Load and initialize state
-    const loadedTasks = await loadTasks();
-    loadedTasks.forEach((task) => {
-        if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
-            task.isEditingInline = false;
-        }
-    });
-    updateTaskState(loadedTasks);
+    await loadTasksIntoState();
 
     // Create callback objects
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
@@ -164,9 +175,14 @@ async function initAndBootApp(roomCode) {
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
 
-    // Wire up sync status indicator
+    // Wire up sync status indicator + refresh after sync
     onSyncStatusChange((status) => {
         updateSyncStatusUI(status);
+        if (status === 'synced') {
+            refreshFromStorage().catch((err) => {
+                logger.error('Failed to refresh tasks after sync:', err);
+            });
+        }
     });
 
     // Initial render
