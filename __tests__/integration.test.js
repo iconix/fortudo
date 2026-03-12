@@ -16,7 +16,7 @@ import {
     createTaskWithDateTime
 } from './test-utils.js';
 
-import { resetEventDelegation } from '../public/js/dom-handler.js';
+import { resetEventDelegation } from '../public/js/dom-renderer.js';
 import { refreshActiveTaskColor } from '../public/js/scheduled-task-renderer.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';

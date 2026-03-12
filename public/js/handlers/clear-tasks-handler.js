@@ -18,7 +18,7 @@ import {
     getClearCompletedOptionElement,
     toggleClearTasksDropdown,
     closeClearTasksDropdown
-} from '../dom-handler.js';
+} from '../dom-renderer.js';
 
 /**
  * Initialize all clear/delete task button event listeners
