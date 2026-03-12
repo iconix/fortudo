@@ -22,8 +22,8 @@ jest.mock('../public/js/modal-manager.js', () => ({
     initializeModalEventListeners: jest.fn()
 }));
 
-// Mock dom-handler — all jest.fn() inline, referenced via imports after
-jest.mock('../public/js/dom-handler.js', () => ({
+// Mock dom-renderer — all jest.fn() inline, referenced via imports after
+jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
     renderUnscheduledTasks: jest.fn(),
@@ -74,7 +74,7 @@ import {
     getClearTasksDropdownMenuElement,
     getClearScheduledOptionElement,
     getClearCompletedOptionElement
-} from '../public/js/dom-handler.js';
+} from '../public/js/dom-renderer.js';
 
 describe('Clear Tasks Handler', () => {
     beforeEach(() => {

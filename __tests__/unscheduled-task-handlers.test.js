@@ -28,8 +28,8 @@ jest.mock('../public/js/modal-manager.js', () => ({
     initializeModalEventListeners: jest.fn()
 }));
 
-// Mock dom-handler
-jest.mock('../public/js/dom-handler.js', () => ({
+// Mock dom-renderer
+jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
     renderUnscheduledTasks: jest.fn(),
@@ -69,7 +69,7 @@ jest.mock('../public/js/form-utils.js', () => ({
     getUnscheduledTaskInlineFormData: jest.fn()
 }));
 
-import { refreshUI } from '../public/js/dom-handler.js';
+import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
 
 function createUnscheduledTask(overrides = {}) {
