@@ -26,16 +26,62 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-handler.js';
-import { loadTasksFromStorage } from './storage.js';
+import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
 import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
 import { handleAddTaskProcess } from './handlers/add-task-handler.js';
 import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js';
+import {
+    showRoomEntryScreen,
+    showMainApp,
+    updateSyncStatusUI
+} from './handlers/room-ui-handler.js';
+import { getActiveRoom } from './room-manager.js';
+import { onSyncStatusChange } from './sync-manager.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Load CouchDB URL from config.js if it exists.
+ * Returns null when config.js is absent (local-only mode).
+ * @returns {Promise<string|null>}
+ */
+async function loadCouchDbUrl() {
+    try {
+        const config = await import('./config.js');
+        return config.COUCHDB_URL || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Use an isolated room code for preview deployments so they never touch prod data.
+ * @param {string} roomCode
+ * @returns {string}
+ */
+function getStorageRoomCode(roomCode) {
+    const host = window.location.hostname || '';
+    const isPreviewHost =
+        (host.startsWith('fortudo--') && host.endsWith('.web.app')) ||
+        (host.startsWith('fortudo--') && host.endsWith('.firebaseapp.com'));
+    return isPreviewHost ? `preview-${roomCode}` : roomCode;
+}
+
+/**
+ * Initialize storage and boot the main app UI.
+ * @param {string} roomCode
+ */
+async function initAndBootApp(roomCode) {
+    showMainApp(roomCode);
+
+    // Initialize storage (with optional CouchDB sync)
+    const couchDbUrl = await loadCouchDbUrl();
+    const storageRoomCode = getStorageRoomCode(roomCode);
+    const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
+    await initStorage(storageRoomCode, {}, remoteUrl);
+
     // Load and initialize state
-    const loadedTasks = loadTasksFromStorage();
+    const loadedTasks = await loadTasks();
     loadedTasks.forEach((task) => {
         if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
             task.isEditingInline = false;
@@ -118,6 +164,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
 
+    // Wire up sync status indicator
+    onSyncStatusChange((status) => {
+        updateSyncStatusUI(status);
+    });
+
     // Initial render
     const allTasks = getTaskState();
     renderTasks(
@@ -129,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshCurrentGapHighlight();
 
     const suggested = getSuggestedStartTime();
-    logger.debug('DOMContentLoaded - getSuggestedStartTime() returned:', suggested);
+    logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
@@ -144,4 +195,21 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('beforeunload', () => {
         clearInterval(activeTaskColorInterval);
     });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
+    const roomCodeBadge = document.getElementById('room-code-badge');
+    if (roomCodeBadge) {
+        roomCodeBadge.addEventListener('click', () => {
+            showRoomEntryScreen(initAndBootApp);
+        });
+    }
+
+    const activeRoom = getActiveRoom();
+    if (!activeRoom) {
+        showRoomEntryScreen(initAndBootApp);
+        return;
+    }
+    await initAndBootApp(activeRoom);
 });

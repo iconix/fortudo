@@ -23,18 +23,32 @@ import { extractTimeFromDateTime } from '../public/js/utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
+    initStorage: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
-    loadTasksFromStorage: jest.fn(() => []) // Start with no tasks loaded unless specified by a test
+    putTask: jest.fn(),
+    deleteTask: jest.fn(),
+    loadTasks: jest.fn(() => [])
+}));
+
+// Mock sync-manager.js to prevent real sync operations
+jest.mock('../public/js/sync-manager.js', () => ({
+    onSyncStatusChange: jest.fn(() => jest.fn()),
+    initSync: jest.fn(),
+    debouncedSync: jest.fn()
 }));
 import {
     saveTasks as mockSaveTasksInternal,
-    loadTasksFromStorage as mockLoadTasksFromStorageInternal
+    putTask as mockPutTaskInternal,
+    deleteTask as mockDeleteTaskFromStorageInternal,
+    loadTasks as mockLoadTasksFromStorageInternal
 } from '../public/js/storage.js';
 
 // Import task-manager after the mock since it depends on mock storage.js
 import * as taskManager from '../public/js/task-manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockPutTask = jest.mocked(mockPutTaskInternal);
+const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 
 describe('User Confirmation Flows', () => {
@@ -79,6 +93,20 @@ describe('User Confirmation Flows', () => {
     });
 
     describe('Add Task with Reschedule Confirmation', () => {
+        const withFixedNow = async (isoDateTime, fn) => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date(isoDateTime));
+            try {
+                const resultPromise = fn();
+                await jest.runOnlyPendingTimersAsync();
+                return await resultPromise;
+            } finally {
+                jest.useRealTimers();
+            }
+        };
+
+        const fixedDate = '2026-03-11';
+
         // Use future times (21:00+) to avoid triggering adjust-running-task check
         const getInitialTask = () =>
             createTaskWithDateTime({
@@ -88,7 +116,8 @@ describe('User Confirmation Flows', () => {
                 status: 'incomplete',
                 editing: false,
                 confirmingDelete: false,
-                locked: false
+                locked: false,
+                date: fixedDate
             });
 
         const setupInitialStateAndApp = async () => {
@@ -113,22 +142,25 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         };
 
-        test('User confirms reschedule: overlapping task added, initial task IS shifted (correct behavior)', async () => {
+        test('User confirms reschedule: future overlap triggers reschedule flow', async () => {
             await setupInitialStateAndApp();
+            await withFixedNow('2026-03-11T20:00:00', async () => {
+                confirmSpy.mockReturnValueOnce(true);
 
-            confirmSpy.mockReturnValueOnce(true);
+                const overlappingTaskData = {
+                    description: 'Overlapping Task',
+                    duration: 60
+                };
+                // Use 21:30 to overlap with Initial Task at 21:00-22:00
+                const startTime = '21:30';
+                await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
+            });
 
-            const overlappingTaskData = {
-                description: 'Overlapping Task',
-                duration: 60
-            };
-            // Use 21:30 to overlap with Initial Task at 21:00-22:00
-            const startTime = '21:30';
-            await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
-
-            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy).toHaveBeenCalled();
             expect(confirmSpy.mock.calls[0][0]).toContain('will overlap other tasks');
 
             const tasks = getRenderedTasksDOM();
@@ -139,7 +171,7 @@ describe('User Confirmation Flows', () => {
 
             expect(initialTaskDOM).toBeDefined();
             if (initialTaskDOM) {
-                // After reschedule, the initial task should be shifted to 10:30 PM - 11:30 PM
+                // Reschedule flow shifts the initial task to 10:30 PM - 11:30 PM
                 expect(initialTaskDOM.startTime12).toBe('10:30 PM');
                 expect(initialTaskDOM.endTime12).toBe('11:30 PM');
             }
@@ -151,36 +183,83 @@ describe('User Confirmation Flows', () => {
                 expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            const savedTasks = mockSaveTasks.mock.calls[0][0];
-            expect(
-                extractTimeFromDateTime(
-                    new Date(savedTasks.find((t) => t.description === 'Initial Task').startDateTime)
-                )
-            ).toBe('22:30');
-            expect(
-                extractTimeFromDateTime(
-                    new Date(
-                        savedTasks.find((t) => t.description === 'Overlapping Task').endDateTime
-                    )
-                )
-            ).toBe('22:30');
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedInitialTask = currentTasks.find((t) => t.description === 'Initial Task');
+            const savedOverlappingTask = currentTasks.find(
+                (t) => t.description === 'Overlapping Task'
+            );
+            expect(extractTimeFromDateTime(new Date(savedInitialTask.startDateTime))).toBe('22:30');
+            expect(extractTimeFromDateTime(new Date(savedOverlappingTask.endDateTime))).toBe(
+                '22:30'
+            );
+        });
+
+        test('User confirms reschedule: past overlap triggers adjust-running flow', async () => {
+            await setupInitialStateAndApp();
+            await withFixedNow('2026-03-11T23:00:00', async () => {
+                confirmSpy.mockReturnValueOnce(true);
+
+                const overlappingTaskData = {
+                    description: 'Overlapping Task',
+                    duration: 60
+                };
+                // Use 21:30 to overlap with Initial Task at 21:00-22:00
+                const startTime = '21:30';
+                await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
+            });
+
+            expect(confirmSpy).toHaveBeenCalled();
+            expect(confirmSpy.mock.calls[0][0]).toContain('Complete it at');
+
+            const tasks = getRenderedTasksDOM();
+            expect(tasks.length).toBe(2);
+
+            const initialTaskDOM = tasks.find((t) => t.description === 'Initial Task');
+            const overlappingTaskDOM = tasks.find((t) => t.description === 'Overlapping Task');
+
+            expect(initialTaskDOM).toBeDefined();
+            if (initialTaskDOM) {
+                // Adjust flow truncates the initial task to end at 9:30 PM
+                expect(initialTaskDOM.startTime12).toBe('9:00 PM');
+                expect(initialTaskDOM.endTime12).toBe('9:30 PM');
+            }
+
+            expect(overlappingTaskDOM).toBeDefined();
+            if (overlappingTaskDOM) {
+                // The overlapping task should take the 9:30 PM - 10:30 PM slot
+                expect(overlappingTaskDOM.startTime12).toBe('9:30 PM');
+                expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
+            }
+
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedInitialTask = currentTasks.find((t) => t.description === 'Initial Task');
+            const savedOverlappingTask = currentTasks.find(
+                (t) => t.description === 'Overlapping Task'
+            );
+            expect(extractTimeFromDateTime(new Date(savedInitialTask.endDateTime))).toBe('21:30');
+            expect(extractTimeFromDateTime(new Date(savedOverlappingTask.endDateTime))).toBe(
+                '22:30'
+            );
         });
 
         test('User denies reschedule: overlapping task not added', async () => {
             await setupInitialStateAndApp();
 
-            confirmSpy.mockReturnValueOnce(false);
+            await withFixedNow('2026-03-11T20:00:00', async () => {
+                confirmSpy.mockReturnValueOnce(false);
 
-            const overlappingTaskData = {
-                description: 'Overlapping Task',
-                duration: 60
-            };
-            // Use 21:30 to overlap with Initial Task at 21:00-22:00
-            const startTime = '21:30';
-            await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
+                const overlappingTaskData = {
+                    description: 'Overlapping Task',
+                    duration: 60
+                };
+                // Use 21:30 to overlap with Initial Task at 21:00-22:00
+                const startTime = '21:30';
+                await addTaskDOM(overlappingTaskData.description, startTime, '1', '0');
+            });
 
-            expect(confirmSpy).toHaveBeenCalledTimes(1);
+            expect(confirmSpy).toHaveBeenCalled();
             expect(alertSpy).toHaveBeenCalledWith(
                 'Alert: Task not added as rescheduling of other tasks was declined.'
             );
@@ -234,6 +313,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         };
 
         test('User confirms update reschedule: task updated and other tasks shifted', async () => {
@@ -274,7 +355,7 @@ describe('User Confirmation Flows', () => {
                 expect(taskBDOM.endTime12).toBe('11:30 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
 
         test('User denies update reschedule: edit cancelled, tasks unchanged', async () => {
@@ -355,6 +436,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             // Confirm the reschedule
             confirmSpy.mockReturnValueOnce(true);
@@ -391,7 +474,7 @@ describe('User Confirmation Flows', () => {
                 expect(unlockedTaskDOM.endTime12).toBe('11:15 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 
@@ -434,6 +517,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         };
 
         test('User confirms schedule update: Task completed late, time updated, subsequent task shifted', async () => {
@@ -466,25 +551,19 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('11:00 AM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            const savedTasks = mockSaveTasks.mock.calls[0][0];
-            expect(savedTasks.find((t) => t.description === 'Task To Complete').status).toBe(
-                'completed'
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedCompletedTask = currentTasks.find(
+                (t) => t.description === 'Task To Complete'
             );
-            expect(
-                extractTimeFromDateTime(
-                    new Date(
-                        savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
-                    )
-                )
-            ).toBe('10:30');
-            expect(
-                extractTimeFromDateTime(
-                    new Date(
-                        savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
-                    )
-                )
-            ).toBe('10:30');
+            const savedSubsequentTask = currentTasks.find(
+                (t) => t.description === 'Subsequent Task'
+            );
+            expect(savedCompletedTask.status).toBe('completed');
+            expect(extractTimeFromDateTime(new Date(savedCompletedTask.endDateTime))).toBe('10:30');
+            expect(extractTimeFromDateTime(new Date(savedSubsequentTask.startDateTime))).toBe(
+                '10:30'
+            );
         });
 
         test('User denies schedule update: Task completed, original time preserved, subsequent task not shifted', async () => {
@@ -514,25 +593,13 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('10:30 AM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            const savedTasks = mockSaveTasks.mock.calls[0][0];
-            expect(savedTasks.find((t) => t.description === 'Task To Complete').status).toBe(
-                'completed'
+            expect(mockPutTask).toHaveBeenCalled();
+            const currentTasks = taskManager.getTaskState();
+            const savedCompletedTask = currentTasks.find(
+                (t) => t.description === 'Task To Complete'
             );
-            expect(
-                extractTimeFromDateTime(
-                    new Date(
-                        savedTasks.find((t) => t.description === 'Task To Complete').endDateTime
-                    )
-                )
-            ).toBe('10:00');
-            expect(
-                extractTimeFromDateTime(
-                    new Date(
-                        savedTasks.find((t) => t.description === 'Subsequent Task').startDateTime
-                    )
-                )
-            ).toBe('10:00');
+            expect(savedCompletedTask.status).toBe('completed');
+            expect(extractTimeFromDateTime(new Date(savedCompletedTask.endDateTime))).toBe('10:00');
         });
 
         test('Start time field is force updated after confirming late completion with schedule change', async () => {
@@ -572,7 +639,7 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toBe('11:00');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTask).toHaveBeenCalled();
 
             // Clean up the spy
             getCurrentTimeRoundedSpy.mockRestore();
@@ -652,7 +719,7 @@ describe('User Confirmation Flows', () => {
                 expect(shiftableTaskDOM.endTime12).toBe('1:00 PM');
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTask).toHaveBeenCalled();
         });
     });
 
@@ -680,6 +747,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         };
 
         test('User confirms delete all: all tasks are removed', async () => {
@@ -748,6 +817,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
 
             await clickDeleteAllButton();
 
@@ -827,6 +898,8 @@ describe('User Confirmation Flows', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
         };
 
         test('Active task color changes from green to yellow when it becomes late', async () => {

@@ -8,16 +8,54 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/custom.css">
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@9.0.0/dist/pouchdb.min.js"></script>
     <script type="module" src="js/app.js"></script>
 </head>
 <body class="bg-gradient-to-b from-slate-900 to-slate-800 text-slate-200 font-sans min-h-screen">
+    <!-- Room Entry Screen -->
+    <div id="room-entry-screen" class="hidden min-h-screen flex items-center justify-center">
+        <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-8 max-w-md w-full mx-4 text-center">
+            <h1 class="text-4xl font-bold text-amber-300 mb-2">Fortu-do 💪🏾</h1>
+            <p class="text-slate-400 mb-6">Enter a room code to get started, or generate a new one.</p>
+            <form id="room-entry-form" class="space-y-4">
+                <div class="flex gap-2">
+                    <input type="text" id="room-code-input" placeholder="e.g. fox-742" class="bg-slate-700 p-3 rounded-lg flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none transition-all text-center text-lg" required>
+                    <button type="button" id="generate-room-btn" class="bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg border border-slate-600 transition-colors text-slate-300" title="Generate random code">
+                        <i class="fa-solid fa-dice"></i>
+                    </button>
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-3 rounded-lg font-normal text-white transition-all duration-300">
+                    <i class="fa-solid fa-right-to-bracket mr-2"></i>Enter Room
+                </button>
+            </form>
+            <div id="saved-rooms-list" class="mt-6 hidden">
+                <p class="text-slate-500 text-sm mb-2">Saved rooms:</p>
+                <div id="saved-rooms-buttons" class="flex flex-wrap gap-2 justify-center"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App (hidden until room is selected) -->
+    <div id="main-app" class="hidden">
     <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-4 relative">
         <!-- App Header with subtle styling -->
         <div class="mb-8">
             <h1 class="lg:text-5xl text-4xl font-bold text-amber-300 mb-2">
                 Fortu-do 💪🏾
             </h1>
-            <h2 class="lg:text-lg text-slate-400">A Daily Time-Blocking To-Do App. For Cristell<span class="not-italic pl-1 animate-pulse">💜</span></h2>
+            <div class="flex items-center justify-center gap-3">
+                <h2 class="lg:text-lg text-slate-400">A Daily Time-Blocking To-Do App. For Cristell<span class="not-italic pl-1 animate-pulse">💜</span></h2>
+            </div>
+            <div class="mt-2 flex items-center justify-center gap-2">
+                <span id="room-code-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-700/80 border border-slate-600 text-sm text-slate-300 cursor-pointer hover:bg-slate-600/80 transition-colors" title="Click to switch rooms">
+                    <i class="fa-solid fa-door-open text-teal-400/75 text-xs"></i>
+                    <span id="room-code-display"></span>
+                </span>
+                <span id="sync-status-indicator" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs" title="Sync status">
+                    <i id="sync-status-icon" class="fa-solid fa-cloud text-slate-500"></i>
+                    <span id="sync-status-text" class="text-slate-500">Local</span>
+                </span>
+            </div>
         </div>
 
         <!-- Task Form with refined styling -->
@@ -179,6 +217,7 @@
         </div>
         <footer class="text-sm pt-6 pb-4 text-slate-500">© 2023-2025 R-F Incorporated.</footer>
     </div>
+    </div><!-- end #main-app -->
 
     <!-- Schedule Modal -->
     <div id="schedule-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">

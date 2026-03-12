@@ -6,6 +6,26 @@ PORT = 9847
 SCREENSHOTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+ROOM_CODE = "test-room"
+
+def setup_room(page):
+    """Set room code in localStorage so the app skips the room entry screen."""
+    page.evaluate(f"""() => {{
+        localStorage.setItem('fortudo-active-room', '{ROOM_CODE}');
+        localStorage.setItem('fortudo-rooms', JSON.stringify(['{ROOM_CODE}']));
+    }}""")
+
+def clear_and_setup(page):
+    """Clear all state (localStorage + PouchDB) and set up a fresh room."""
+    page.evaluate(f"""() => {{
+        return new Promise((resolve) => {{
+            const db = new PouchDB('fortudo-{ROOM_CODE}');
+            db.destroy().then(() => resolve()).catch(() => resolve());
+        }});
+    }}""")
+    page.evaluate("localStorage.clear()")
+    setup_room(page)
+
 passed = 0
 failed = 0
 results = []
@@ -45,7 +65,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # Clear any leftover state from prior runs
-    page.evaluate("localStorage.clear()")
+    clear_and_setup(page)
     page.reload()
     page.wait_for_load_state("load")
     page.wait_for_timeout(2000)
@@ -256,9 +276,9 @@ with sync_playwright() as p:
     screenshot(page, "08b_all_cleared")
 
     # =========================================================================
-    # TEST 9: LocalStorage persistence
+    # TEST 9: PouchDB persistence
     # =========================================================================
-    print("\nTEST 9: LocalStorage persistence", flush=True)
+    print("\nTEST 9: PouchDB persistence", flush=True)
     page.fill('input[name="description"]', "Persistent task")
     page.fill('input[name="start-time"]', "10:00")
     page.fill('input[name="duration-hours"]', "1")
@@ -267,10 +287,16 @@ with sync_playwright() as p:
     page.wait_for_timeout(500)
     dismiss_modals(page)
 
-    storage_data = page.evaluate("localStorage.getItem('tasks')")
-    test("Tasks saved to localStorage",
-         storage_data is not None and "Persistent task" in storage_data,
-         f"Storage: {str(storage_data)[:100] if storage_data else 'None'}")
+    # Verify the task was stored in PouchDB (IndexedDB) rather than localStorage
+    pouch_db_count = page.evaluate("""() => {
+        return new Promise((resolve) => {
+            const db = new PouchDB('fortudo-test-room');
+            db.allDocs().then(result => resolve(result.total_rows)).catch(() => resolve(-1));
+        });
+    }""")
+    test("Tasks saved to PouchDB",
+         pouch_db_count is not None and pouch_db_count >= 1,
+         f"PouchDB doc count: {pouch_db_count}")
 
     page.reload()
     page.wait_for_load_state("load")
