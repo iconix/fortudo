@@ -6,7 +6,7 @@ import {
     getSuggestedStartTime
 } from '../task-manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
-import { focusTaskDescriptionInput } from '../form-utils.js';
+import { focusTaskDescriptionInput, resetTaskFormPreviewState } from '../form-utils.js';
 import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
 import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
 import { getThemeForTaskType, logger } from '../utils.js';
@@ -126,6 +126,11 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
     if (operationResult.success) {
         const taskType = formElement.querySelector('input[name="task-type"]:checked')?.value;
         formElement.reset();
+        resetTaskFormPreviewState({
+            hintElement: document.getElementById('end-time-hint'),
+            warningElement: document.getElementById('overlap-warning'),
+            buttonElement: document.getElementById('add-task-btn')
+        });
 
         if (taskType) {
             const taskTypeRadio = formElement.querySelector(

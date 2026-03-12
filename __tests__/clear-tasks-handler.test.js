@@ -39,7 +39,7 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     getDeleteAllButtonElement: jest.fn(),
     getClearOptionsDropdownTriggerButtonElement: jest.fn(),
     getClearTasksDropdownMenuElement: jest.fn(),
-    getClearScheduledOptionElement: jest.fn(),
+    getClearAllOptionElement: jest.fn(),
     getClearCompletedOptionElement: jest.fn(),
     toggleClearTasksDropdown: jest.fn(),
     closeClearTasksDropdown: jest.fn(),
@@ -67,12 +67,13 @@ import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
+    updateStartTimeField,
     toggleClearTasksDropdown,
     closeClearTasksDropdown,
     getDeleteAllButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
-    getClearScheduledOptionElement,
+    getClearAllOptionElement,
     getClearCompletedOptionElement
 } from '../public/js/dom-renderer.js';
 
@@ -84,11 +85,11 @@ describe('Clear Tasks Handler', () => {
             <form id="task-form">
                 <input type="text" name="description" />
             </form>
-            <button id="delete-all">Delete All</button>
+            <button id="delete-all">Clear Schedule</button>
             <button id="clear-options-dropdown-trigger-btn">▾</button>
             <div id="clear-tasks-dropdown" class="hidden">
-                <a id="clear-scheduled-tasks-option" href="#">Clear Scheduled</a>
                 <a id="clear-completed-tasks-option" href="#">Clear Completed</a>
+                <a id="clear-all-tasks-option" href="#">Clear All</a>
             </div>
         `;
 
@@ -103,9 +104,7 @@ describe('Clear Tasks Handler', () => {
         getClearTasksDropdownMenuElement.mockReturnValue(
             document.getElementById('clear-tasks-dropdown')
         );
-        getClearScheduledOptionElement.mockReturnValue(
-            document.getElementById('clear-scheduled-tasks-option')
-        );
+        getClearAllOptionElement.mockReturnValue(document.getElementById('clear-all-tasks-option'));
         getClearCompletedOptionElement.mockReturnValue(
             document.getElementById('clear-completed-tasks-option')
         );
@@ -116,16 +115,19 @@ describe('Clear Tasks Handler', () => {
             expect(() => initializeClearTasksHandlers()).not.toThrow();
         });
 
-        test('delete all button shows alert when no tasks', async () => {
+        test('main clear button shows alert when no scheduled tasks', async () => {
             initializeClearTasksHandlers();
             const deleteAllBtn = document.getElementById('delete-all');
             deleteAllBtn.click();
             await new Promise((r) => setTimeout(r, 0));
 
-            expect(showAlert).toHaveBeenCalledWith('There are no tasks to delete.', 'red');
+            expect(showAlert).toHaveBeenCalledWith(
+                'There are no scheduled tasks to clear.',
+                'teal'
+            );
         });
 
-        test('delete all button deletes all tasks when confirmed', async () => {
+        test('main clear button clears scheduled tasks when confirmed', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Me',
                 startTime: '09:00',
@@ -140,8 +142,29 @@ describe('Clear Tasks Handler', () => {
 
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
+            expect(renderTasks).not.toHaveBeenCalledWith([]);
+            expect(renderUnscheduledTasks).not.toHaveBeenCalledWith([]);
+            expect(updateStartTimeField).toHaveBeenCalledWith(expect.any(String), true);
+        });
+
+        test('clear all dropdown option deletes all tasks when confirmed', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Delete Me',
+                startTime: '09:00',
+                duration: 60
+            });
+            updateTaskState([task]);
+
+            initializeClearTasksHandlers();
+            const clearAllOption = document.getElementById('clear-all-tasks-option');
+            clearAllOption.click();
+            await new Promise((r) => setTimeout(r, 0));
+
+            expect(askConfirmation).toHaveBeenCalled();
+            expect(getTaskState()).toHaveLength(0);
             expect(renderTasks).toHaveBeenCalledWith([]);
             expect(renderUnscheduledTasks).toHaveBeenCalledWith([]);
+            expect(closeClearTasksDropdown).toHaveBeenCalled();
         });
 
         test('dropdown trigger toggles dropdown', () => {
@@ -152,17 +175,11 @@ describe('Clear Tasks Handler', () => {
             expect(toggleClearTasksDropdown).toHaveBeenCalled();
         });
 
-        test('clear scheduled option shows alert when no scheduled tasks', async () => {
-            initializeClearTasksHandlers();
-            const clearScheduled = document.getElementById('clear-scheduled-tasks-option');
-            clearScheduled.click();
-            await new Promise((r) => setTimeout(r, 0));
+        test('dropdown lists Clear Completed before Clear All', () => {
+            const dropdown = document.getElementById('clear-tasks-dropdown');
+            const optionIds = Array.from(dropdown.querySelectorAll('a')).map((el) => el.id);
 
-            expect(showAlert).toHaveBeenCalledWith(
-                'There are no scheduled tasks to clear.',
-                'teal'
-            );
-            expect(closeClearTasksDropdown).toHaveBeenCalled();
+            expect(optionIds).toEqual(['clear-completed-tasks-option', 'clear-all-tasks-option']);
         });
 
         test('clear completed option shows alert when no completed tasks', async () => {

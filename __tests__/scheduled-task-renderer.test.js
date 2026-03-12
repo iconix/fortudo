@@ -353,6 +353,34 @@ describe('Scheduled Task Renderer Tests', () => {
             const afterBoundary = list.querySelector('.schedule-boundary[data-boundary="after"]');
             expect(afterBoundary).not.toBeNull();
         });
+
+        test('reuses existing boundary elements across task rerenders', () => {
+            const initialTasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(initialTasks, mockCallbacks, mockInitListeners, null);
+
+            const list = getScheduledTaskListElement();
+            const initialBeforeBoundary = list.querySelector(
+                '.schedule-boundary[data-boundary="before"]'
+            );
+            const initialAfterBoundary = list.querySelector(
+                '.schedule-boundary[data-boundary="after"]'
+            );
+
+            const updatedTasks = [createTask('1', '10:15', 60), createTask('2', '11:45', 60)];
+            renderTasks(updatedTasks, mockCallbacks, mockInitListeners, mockCallbacks);
+
+            const updatedBeforeBoundary = list.querySelector(
+                '.schedule-boundary[data-boundary="before"]'
+            );
+            const updatedAfterBoundary = list.querySelector(
+                '.schedule-boundary[data-boundary="after"]'
+            );
+
+            expect(updatedBeforeBoundary).toBe(initialBeforeBoundary);
+            expect(updatedAfterBoundary).toBe(initialAfterBoundary);
+            expect(updatedBeforeBoundary.dataset.boundaryTime).toBe(updatedTasks[0].startDateTime);
+            expect(updatedAfterBoundary.dataset.boundaryTime).toBe(updatedTasks[1].endDateTime);
+        });
     });
 
     describe('renderTasks with editing task overlap pre-population', () => {

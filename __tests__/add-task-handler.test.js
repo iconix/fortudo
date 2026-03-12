@@ -58,13 +58,14 @@ jest.mock('../public/js/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
+    resetTaskFormPreviewState: jest.fn(),
     populateUnscheduledTaskInlineEditForm: jest.fn(),
     getUnscheduledTaskInlineFormData: jest.fn()
 }));
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert } from '../public/js/modal-manager.js';
-import { focusTaskDescriptionInput } from '../public/js/form-utils.js';
+import { focusTaskDescriptionInput, resetTaskFormPreviewState } from '../public/js/form-utils.js';
 
 describe('Add Task Handler', () => {
     let mockFormElement;
@@ -80,6 +81,9 @@ describe('Add Task Handler', () => {
                 <input type="time" name="start-time" />
                 <input type="number" name="duration-hours" value="1" />
                 <input type="number" name="duration-minutes" value="0" />
+                <span id="end-time-hint"></span>
+                <span id="overlap-warning"></span>
+                <button id="add-task-btn" type="submit">Add Task</button>
             </form>
         `;
         mockFormElement = document.getElementById('task-form');
@@ -104,6 +108,7 @@ describe('Add Task Handler', () => {
             expect(tasks[0].type).toBe('scheduled');
             expect(refreshUI).toHaveBeenCalled();
             expect(focusTaskDescriptionInput).toHaveBeenCalled();
+            expect(resetTaskFormPreviewState).toHaveBeenCalled();
         });
 
         test('adds an unscheduled task successfully', async () => {
@@ -161,6 +166,43 @@ describe('Add Task Handler', () => {
             await handleAddTaskProcess(mockFormElement, taskData);
 
             expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('clears stale preview state after successful reschedule-confirmed add', async () => {
+            updateTaskState([
+                {
+                    id: 'existing-task',
+                    description: 'Existing Task',
+                    type: 'scheduled',
+                    startDateTime: '2026-03-11T20:00:00.000Z',
+                    endDateTime: '2026-03-11T21:00:00.000Z',
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ]);
+
+            const taskData = {
+                description: 'Overlapping Task',
+                startTime: '21:30',
+                duration: 60,
+                taskType: 'scheduled'
+            };
+
+            document.getElementById('end-time-hint').textContent = '3:08 PM';
+            document.getElementById('overlap-warning').textContent =
+                'overlaps "call gift" (2:19 PM - 2:49 PM)';
+            document.getElementById('add-task-btn').innerHTML = 'Reschedule';
+
+            await handleAddTaskProcess(mockFormElement, taskData, { reschedulePreApproved: true });
+
+            expect(resetTaskFormPreviewState).toHaveBeenCalledWith({
+                hintElement: document.getElementById('end-time-hint'),
+                warningElement: document.getElementById('overlap-warning'),
+                buttonElement: document.getElementById('add-task-btn')
+            });
         });
     });
 });

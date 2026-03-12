@@ -622,6 +622,10 @@ export function getClearScheduledOptionElement() {
     return document.getElementById('clear-scheduled-tasks-option');
 }
 
+export function getClearAllOptionElement() {
+    return document.getElementById('clear-all-tasks-option');
+}
+
 export function getClearCompletedOptionElement() {
     return document.getElementById('clear-completed-tasks-option');
 }

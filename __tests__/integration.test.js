@@ -723,7 +723,7 @@ describe('User Confirmation Flows', () => {
         });
     });
 
-    describe('Delete All Tasks with Confirmation', () => {
+    describe('Clear Schedule Default Action', () => {
         const setupInitialStateAndApp = async (initialTasks = []) => {
             document.body.innerHTML = '';
             clearLocalStorage();
@@ -751,7 +751,7 @@ describe('User Confirmation Flows', () => {
             mockDeleteTaskFromStorage.mockClear();
         };
 
-        test('User confirms delete all: all tasks are removed', async () => {
+        test('User confirms clear schedule: scheduled tasks are removed', async () => {
             await setupInitialStateAndApp([
                 createTaskWithDateTime({
                     description: 'Task 1',
@@ -770,7 +770,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete ALL tasks'
+                "Are you sure you want to clear all tasks from Today's Schedule"
             );
 
             const tasks = getRenderedTasksDOM();
@@ -780,7 +780,7 @@ describe('User Confirmation Flows', () => {
             expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
         });
 
-        test('User denies delete all: tasks remain unchanged', async () => {
+        test('User denies clear schedule: tasks remain unchanged', async () => {
             await setupInitialStateAndApp([
                 createTaskWithDateTime({
                     description: 'Task 1',
@@ -806,7 +806,7 @@ describe('User Confirmation Flows', () => {
             expect(mockSaveTasks).not.toHaveBeenCalled(); // No save because action was cancelled
         });
 
-        test('Delete All button does nothing if no tasks exist', async () => {
+        test('Clear Schedule button does nothing if no scheduled tasks exist', async () => {
             // No initial tasks setup, so localStorage is empty, mockLoadTasksFromStorage returns [] by default
             await setupIntegrationTestEnvironment(); // Re-init with empty
 
@@ -824,11 +824,11 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
             // App now shows an alert when there are no tasks to delete
-            expect(alertSpy).toHaveBeenCalledWith('Alert: There are no tasks to delete.');
+            expect(alertSpy).toHaveBeenCalledWith('Alert: There are no scheduled tasks to clear.');
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
-        test('Start time field is reset after all tasks are deleted', async () => {
+        test('Start time field is reset after scheduled tasks are cleared', async () => {
             await setupInitialStateAndApp([
                 createTaskWithDateTime({
                     description: 'Task 1',
@@ -854,7 +854,7 @@ describe('User Confirmation Flows', () => {
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
-                'Are you sure you want to delete ALL tasks'
+                "Are you sure you want to clear all tasks from Today's Schedule"
             );
 
             // Verify all tasks are deleted

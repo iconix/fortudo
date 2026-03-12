@@ -182,6 +182,48 @@ export function renderBoundaryMarkerHTML(boundaryTime, position) {
     </div>`;
 }
 
+function ensureScheduleBoundaryElement(taskListElement, position) {
+    let boundaryElement = taskListElement.querySelector(
+        `.schedule-boundary[data-boundary="${position}"]`
+    );
+    if (!boundaryElement) {
+        taskListElement.insertAdjacentHTML(
+            position === 'before' ? 'afterbegin' : 'beforeend',
+            renderBoundaryMarkerHTML('', position)
+        );
+        boundaryElement = taskListElement.querySelector(
+            `.schedule-boundary[data-boundary="${position}"]`
+        );
+    }
+    return boundaryElement;
+}
+
+function ensureScheduledTaskLayout(taskListElement) {
+    const beforeBoundary = ensureScheduleBoundaryElement(taskListElement, 'before');
+    const afterBoundary = ensureScheduleBoundaryElement(taskListElement, 'after');
+
+    if (taskListElement.firstElementChild !== beforeBoundary) {
+        taskListElement.insertBefore(beforeBoundary, taskListElement.firstChild);
+    }
+    if (taskListElement.lastElementChild !== afterBoundary) {
+        taskListElement.appendChild(afterBoundary);
+    }
+
+    return { beforeBoundary, afterBoundary };
+}
+
+function replaceScheduledTaskContent(taskListElement, html) {
+    Array.from(taskListElement.children).forEach((child) => {
+        if (!child.classList.contains('schedule-boundary')) {
+            child.remove();
+        }
+    });
+
+    const afterBoundary = ensureScheduleBoundaryElement(taskListElement, 'after');
+    const fragment = document.createRange().createContextualFragment(html);
+    taskListElement.insertBefore(fragment, afterBoundary);
+}
+
 /**
  * Renders all scheduled tasks
  * @param {Array} tasksToRender - All tasks
@@ -223,7 +265,6 @@ export function renderTasks(
     const gapAfterTask = new Map(gaps.map((g) => [g.afterTaskId, g]));
 
     let html = '';
-    html += renderBoundaryMarkerHTML(scheduledTasks[0].startDateTime, 'before');
     scheduledTasks.forEach((task) => {
         const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
         let isActiveTask = false;
@@ -240,11 +281,10 @@ export function renderTasks(
             html += renderGapHTML(gap);
         }
     });
-    html += renderBoundaryMarkerHTML(
-        scheduledTasks[scheduledTasks.length - 1].endDateTime,
-        'after'
-    );
-    taskListElement.innerHTML = html;
+    const { beforeBoundary, afterBoundary } = ensureScheduledTaskLayout(taskListElement);
+    beforeBoundary.dataset.boundaryTime = scheduledTasks[0].startDateTime;
+    afterBoundary.dataset.boundaryTime = scheduledTasks[scheduledTasks.length - 1].endDateTime;
+    replaceScheduledTaskContent(taskListElement, html);
 
     // Populate end time hints and overlap warnings for any edit forms
     taskListElement.querySelectorAll('form[id^="edit-task-"]').forEach((form) => {

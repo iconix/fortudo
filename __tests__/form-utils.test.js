@@ -13,7 +13,8 @@ import {
     setupEndTimeHint,
     computeOverlapPreview,
     setupOverlapWarning,
-    formatOverlapWarning
+    formatOverlapWarning,
+    resetTaskFormPreviewState
 } from '../public/js/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
@@ -884,6 +885,22 @@ describe('Form Utils Tests', () => {
             expect(buttonElement.className).toContain('from-teal-500');
         });
 
+        test('stores default button state for later reset', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                { defaultButtonHTML, defaultButtonClasses, overlapButtonHTML, overlapButtonClasses }
+            );
+
+            expect(buttonElement.dataset.defaultButtonHtml).toBe(defaultButtonHTML);
+            expect(buttonElement.dataset.defaultButtonClasses).toBe(defaultButtonClasses);
+        });
+
         test('responds to hours input change', () => {
             const tasks = makeTasks(['Meeting', '11:00', 60]);
             setupOverlapWarning(
@@ -970,6 +987,35 @@ describe('Form Utils Tests', () => {
 
             expect(warningElement.textContent).toBe('');
             expect(buttonElement.innerHTML).toContain('Add Task');
+        });
+    });
+
+    describe('resetTaskFormPreviewState', () => {
+        test('clears hint, overlap warning, and restores button state', () => {
+            document.body.innerHTML = `
+                <span id="end-time-hint" class="text-teal-400">3:08 PM</span>
+                <span id="overlap-warning">overlaps "call gift"</span>
+                <button
+                    id="add-task-btn"
+                    class="bg-gradient-to-r from-amber-500 to-amber-400"
+                    data-default-button-html="<i class='fa-regular fa-plus mr-2'></i>Add Task"
+                    data-default-button-classes="bg-gradient-to-r from-teal-500 to-teal-400"
+                >
+                    Reschedule
+                </button>
+            `;
+
+            const hintElement = document.getElementById('end-time-hint');
+            const warningElement = document.getElementById('overlap-warning');
+            const buttonElement = document.getElementById('add-task-btn');
+
+            resetTaskFormPreviewState({ hintElement, warningElement, buttonElement });
+
+            expect(hintElement.textContent).toBe('');
+            expect(hintElement.classList.contains('opacity-0')).toBe(true);
+            expect(warningElement.textContent).toBe('');
+            expect(buttonElement.innerHTML).toContain('Add Task');
+            expect(buttonElement.className).toBe('bg-gradient-to-r from-teal-500 to-teal-400');
         });
     });
 });
