@@ -14,7 +14,7 @@ import {
     getDeleteAllButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
-    getClearScheduledOptionElement,
+    getClearAllOptionElement,
     getClearCompletedOptionElement,
     toggleClearTasksDropdown,
     closeClearTasksDropdown
@@ -24,16 +24,56 @@ import {
  * Initialize all clear/delete task button event listeners
  */
 export function initializeClearTasksHandlers() {
-    // "Clear All Tasks" button
+    // Main button defaults to clearing scheduled tasks
     const deleteAllButton = getDeleteAllButtonElement();
     if (deleteAllButton) {
         deleteAllButton.addEventListener('click', async (event) => {
             event.stopPropagation();
+            const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
+            if (!scheduledTasksExist) {
+                showAlert('There are no scheduled tasks to clear.', 'teal');
+                return;
+            }
+            if (
+                await askConfirmation(
+                    "Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected.",
+                    undefined,
+                    'teal'
+                )
+            ) {
+                const result = deleteAllScheduledTasks();
+                if (result.success) {
+                    showAlert(result.message || 'All scheduled tasks have been cleared.', 'teal');
+                    refreshUI();
+                    updateStartTimeField(getSuggestedStartTime(), true);
+                } else {
+                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                }
+            }
+        });
+    }
+
+    // Caret button (dropdown trigger)
+    const clearOptionsTriggerButton = getClearOptionsDropdownTriggerButtonElement();
+    if (clearOptionsTriggerButton) {
+        clearOptionsTriggerButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleClearTasksDropdown();
+        });
+    }
+
+    // "Clear All Tasks" dropdown option
+    const clearAllOption = getClearAllOptionElement();
+    if (clearAllOption) {
+        clearAllOption.addEventListener('click', async (event) => {
+            event.preventDefault();
             const tasksExist = getTaskState().length > 0;
             if (!tasksExist) {
                 showAlert('There are no tasks to delete.', 'red');
+                closeClearTasksDropdown();
                 return;
             }
+
             if (
                 await askConfirmation(
                     'Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.',
@@ -49,45 +89,6 @@ export function initializeClearTasksHandlers() {
                     updateStartTimeField(getSuggestedStartTime(), true);
                 } else {
                     showAlert(result.reason || 'Failed to delete all tasks.', 'red');
-                }
-            }
-        });
-    }
-
-    // Caret button (dropdown trigger)
-    const clearOptionsTriggerButton = getClearOptionsDropdownTriggerButtonElement();
-    if (clearOptionsTriggerButton) {
-        clearOptionsTriggerButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            toggleClearTasksDropdown();
-        });
-    }
-
-    // "Clear Scheduled Tasks" dropdown option
-    const clearScheduledOption = getClearScheduledOptionElement();
-    if (clearScheduledOption) {
-        clearScheduledOption.addEventListener('click', async (event) => {
-            event.preventDefault();
-            const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
-            if (!scheduledTasksExist) {
-                showAlert('There are no scheduled tasks to clear.', 'teal');
-                closeClearTasksDropdown();
-                return;
-            }
-
-            if (
-                await askConfirmation(
-                    "Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected.",
-                    undefined,
-                    'teal'
-                )
-            ) {
-                const result = deleteAllScheduledTasks();
-                if (result.success) {
-                    showAlert(result.message || 'All scheduled tasks have been cleared.', 'teal');
-                    refreshUI();
-                } else {
-                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
                 }
             }
             closeClearTasksDropdown();

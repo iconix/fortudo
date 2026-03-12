@@ -772,8 +772,9 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-                // App shows an alert when there are no tasks to delete
-                expect(alertSpy).toHaveBeenCalledWith('Alert: There are no tasks to delete.');
+                expect(alertSpy).toHaveBeenCalledWith(
+                    'Alert: There are no scheduled tasks to clear.'
+                );
             });
 
             test('should handle user denying delete all confirmation', async () => {
@@ -798,7 +799,7 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
+                    "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
                 expect(mockSaveTasks).not.toHaveBeenCalled(); // Should not save since user denied
             });
@@ -818,10 +819,10 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
                 mockSaveTasks.mockClear();
 
-                // Mock deleteAllTasks to fail
+                // Mock deleteAllScheduledTasks to fail
                 jest.spyOn(
                     require('../public/js/task-manager.js'),
-                    'deleteAllTasks'
+                    'deleteAllScheduledTasks'
                 ).mockReturnValue({
                     success: false,
                     reason: 'Delete all failed'
@@ -834,12 +835,12 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
+                    "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
                 expect(alertSpy).toHaveBeenCalledWith('Alert: Delete all failed');
             });
 
-            test('should call updateStartTimeField with forceUpdate=true after delete all', async () => {
+            test('should force updateStartTimeField after clearing schedule', async () => {
                 const tasks = [
                     createTaskWithDateTime({
                         description: 'Task 1',
@@ -859,9 +860,9 @@ describe('App.js Callback Functions', () => {
                     'updateStartTimeField'
                 );
 
-                // Mock deleteAllTasks to succeed
+                // Mock deleteAllScheduledTasks to succeed
                 const executeDeleteSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'deleteAllTasks')
+                    .spyOn(require('../public/js/task-manager.js'), 'deleteAllScheduledTasks')
                     .mockReturnValue({
                         success: true,
                         tasksDeleted: 1
@@ -876,11 +877,9 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).toHaveBeenCalledWith(
-                    'Confirmation: Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.'
+                    "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
                 expect(executeDeleteSpy).toHaveBeenCalledTimes(1);
-
-                // Verify updateStartTimeField was called with forceUpdate=true
                 expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
 
                 updateStartTimeFieldSpy.mockRestore();
