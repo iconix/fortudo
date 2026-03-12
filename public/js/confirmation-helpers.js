@@ -1,6 +1,6 @@
 import { getTaskById, getSuggestedStartTime } from './task-manager.js';
 import { showAlert, askConfirmation } from './modal-manager.js';
-import { updateStartTimeField } from './dom-handler.js';
+import { updateStartTimeField } from './dom-renderer.js';
 import { getThemeForTask } from './utils.js';
 
 /**

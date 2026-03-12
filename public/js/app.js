@@ -25,7 +25,7 @@ import {
     initializeTaskTypeToggle,
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
-} from './dom-handler.js';
+} from './dom-renderer.js';
 import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';

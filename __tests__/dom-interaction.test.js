@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-// This file contains tests for DOM interactions in dom-handler.js
+// This file contains tests for DOM interactions in dom-renderer.js
 // These tests focus on UI elements and event handlers, ensuring callbacks are invoked.
 
 import {
@@ -15,7 +15,7 @@ import {
     refreshStartTimeField,
     disableStartTimeAutoUpdate,
     refreshUI
-} from '../public/js/dom-handler.js';
+} from '../public/js/dom-renderer.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
 import {
@@ -929,7 +929,7 @@ describe('DOM Handler Interaction Tests', () => {
             // Import and call the initialization function
             const {
                 initializeUnscheduledTaskListEventListeners
-            } = require('../public/js/dom-handler.js');
+            } = require('../public/js/dom-renderer.js');
             initializeUnscheduledTaskListEventListeners(mockUnscheduledTaskCallbacks);
         }
 
@@ -1071,7 +1071,7 @@ describe('DOM Handler Interaction Tests', () => {
     describe('Task Type Toggle', () => {
         beforeEach(() => {
             // Initialize the task type toggle which sets up the event listeners
-            const { initializeTaskTypeToggle } = require('../public/js/dom-handler.js');
+            const { initializeTaskTypeToggle } = require('../public/js/dom-renderer.js');
             initializeTaskTypeToggle();
         });
 
@@ -1092,7 +1092,7 @@ describe('DOM Handler Interaction Tests', () => {
         });
 
         test('switching to scheduled shows time inputs and hides priority', () => {
-            require('../public/js/dom-handler.js'); // ensure module is loaded
+            require('../public/js/dom-renderer.js'); // ensure module is loaded
 
             // First switch to unscheduled
             const unscheduledRadio = document.getElementById('unscheduled');
