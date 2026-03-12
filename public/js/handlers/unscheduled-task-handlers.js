@@ -13,7 +13,7 @@ import {
     populateUnscheduledTaskInlineEditForm,
     getUnscheduledTaskInlineFormData
 } from '../form-utils.js';
-import { refreshUI } from '../dom-handler.js';
+import { refreshUI } from '../dom-renderer.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { getThemeForTaskId } from '../confirmation-helpers.js';
 

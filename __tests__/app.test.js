@@ -14,7 +14,7 @@ import {
     getTaskState,
     cancelEdit as cancelEditDirect
 } from '../public/js/task-manager.js';
-import { resetEventDelegation, renderTasks } from '../public/js/dom-handler.js';
+import { resetEventDelegation, renderTasks } from '../public/js/dom-renderer.js';
 import { getTaskFormElement } from '../public/js/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
@@ -848,7 +848,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock updateStartTimeField to verify it's called with forceUpdate=true
                 const updateStartTimeFieldSpy = jest.spyOn(
-                    require('../public/js/dom-handler.js'),
+                    require('../public/js/dom-renderer.js'),
                     'updateStartTimeField'
                 );
 
@@ -1000,7 +1000,7 @@ describe('App.js Callback Functions', () => {
 
             beforeEach(() => {
                 updateStartTimeFieldSpy = jest.spyOn(
-                    require('../public/js/dom-handler.js'),
+                    require('../public/js/dom-renderer.js'),
                     'updateStartTimeField'
                 );
             });
