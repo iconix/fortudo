@@ -83,7 +83,7 @@ async function loadTasksIntoState() {
             task.isEditingInline = false;
         }
     });
-    updateTaskState(loadedTasks);
+    updateTaskState(loadedTasks, { persist: false });
 }
 
 async function refreshFromStorage() {

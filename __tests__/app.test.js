@@ -1020,6 +1020,7 @@ describe('App.js Callback Functions', () => {
                 expect(syncStatusCallback).toEqual(expect.any(Function));
 
                 mockLoadTasksFromStorage.mockReturnValue(syncedTasks);
+                mockSaveTasks.mockClear();
 
                 syncStatusCallback('synced');
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1027,6 +1028,7 @@ describe('App.js Callback Functions', () => {
                 const renderedTasks = getRenderedTasksDOM();
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Synced Task');
+                expect(mockSaveTasks).not.toHaveBeenCalled();
             });
 
             test('should refresh tasks from storage when the tab becomes visible again', async () => {
@@ -1049,6 +1051,7 @@ describe('App.js Callback Functions', () => {
 
                 mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+                mockSaveTasks.mockClear();
 
                 document.dispatchEvent(new Event('visibilitychange'));
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1056,6 +1059,7 @@ describe('App.js Callback Functions', () => {
                 const renderedTasks = getRenderedTasksDOM();
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Visible Task');
+                expect(mockSaveTasks).not.toHaveBeenCalled();
             });
 
             test('should refresh tasks from storage when the window regains focus', async () => {
@@ -1077,6 +1081,7 @@ describe('App.js Callback Functions', () => {
                 await setupAppWithTasks(initialTasks);
 
                 mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
+                mockSaveTasks.mockClear();
 
                 window.dispatchEvent(new Event('focus'));
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1084,6 +1089,7 @@ describe('App.js Callback Functions', () => {
                 const renderedTasks = getRenderedTasksDOM();
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Focused Task');
+                expect(mockSaveTasks).not.toHaveBeenCalled();
             });
 
             test('should dedupe overlapping non-local refreshes', async () => {
@@ -1110,6 +1116,7 @@ describe('App.js Callback Functions', () => {
                 });
                 mockLoadTasksFromStorage.mockClear();
                 mockLoadTasksFromStorage.mockImplementation(() => pendingLoadTasks);
+                mockSaveTasks.mockClear();
 
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
@@ -1117,6 +1124,7 @@ describe('App.js Callback Functions', () => {
                 window.dispatchEvent(new Event('focus'));
 
                 expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
+                expect(mockSaveTasks).not.toHaveBeenCalled();
 
                 resolveLoadTasks();
                 await pendingLoadTasks;
