@@ -32,10 +32,10 @@ function setupRoomDOM() {
         </div>
         <div id="main-app" class="hidden">
             <span id="room-code-badge"><span id="room-code-display"></span></span>
-            <span id="sync-status-indicator">
+            <button id="sync-status-indicator" type="button">
                 <i id="sync-status-icon" class="fa-solid fa-cloud text-slate-500"></i>
                 <span id="sync-status-text" class="text-slate-500">Local</span>
-            </span>
+            </button>
         </div>
     `;
 }
@@ -135,16 +135,20 @@ describe('Room UI Handler', () => {
             updateSyncStatusUI('syncing');
             const icon = document.getElementById('sync-status-icon');
             const text = document.getElementById('sync-status-text');
+            const indicator = document.getElementById('sync-status-indicator');
             expect(icon.className).toContain('fa-rotate');
             expect(icon.className).toContain('text-blue-400');
             expect(text.textContent).toBe('Syncing');
+            expect(indicator.disabled).toBe(true);
         });
 
         test('updates icon and text for synced status', () => {
             updateSyncStatusUI('synced');
             const text = document.getElementById('sync-status-text');
+            const indicator = document.getElementById('sync-status-indicator');
             expect(text.textContent).toBe('Synced');
             expect(text.className).toContain('text-teal-400');
+            expect(indicator.disabled).toBe(false);
         });
 
         test('updates icon and text for error status', () => {

@@ -1085,6 +1085,26 @@ describe('App.js Callback Functions', () => {
                 expect(mockTriggerSync).toHaveBeenCalledWith({ respectCooldown: true });
             });
 
+            test('should trigger manual sync when clicking the sync status button', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Initial Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                await setupAppWithTasks(initialTasks);
+
+                mockTriggerSync.mockClear();
+
+                const syncButton = document.getElementById('sync-status-indicator');
+                syncButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(mockTriggerSync).toHaveBeenCalledWith();
+            });
+
             test('should dedupe overlapping visibility-triggered refreshes', async () => {
                 const initialTasks = [
                     createTaskWithDateTime({

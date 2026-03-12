@@ -282,6 +282,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    const syncStatusIndicator = document.getElementById('sync-status-indicator');
+    if (syncStatusIndicator) {
+        syncStatusIndicator.addEventListener('click', () => {
+            triggerSync().catch((err) => {
+                logger.error('Failed to sync tasks after manual sync request:', err);
+            });
+        });
+    }
+
     const activeRoom = getActiveRoom();
     if (!activeRoom) {
         showRoomEntryScreen(initAndBootApp);
