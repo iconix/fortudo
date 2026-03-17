@@ -1,6 +1,5 @@
-import { getTaskById, getSuggestedStartTime } from './manager.js';
+import { getTaskById } from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
-import { updateStartTimeField } from '../dom-renderer.js';
 import { getThemeForTask } from '../utils.js';
 
 /**
@@ -42,29 +41,25 @@ export async function handleRescheduleConfirmation(
                 'teal'
             ));
         if (userConfirmed) {
-            confirmCallback({
+            const confirmResult = confirmCallback({
                 taskIndex: opResult.taskIndex,
                 updatedTaskObject: opResult.updatedTaskObject
             });
-            updateStartTimeField(getSuggestedStartTime(), true);
+            if (confirmResult?.success) {
+                return confirmResult;
+            }
+            if (confirmResult?.reason) {
+                showAlert(confirmResult.reason, 'teal');
+            }
         } else {
             showAlert('Task update cancelled to avoid overlap.', 'teal');
-            if (cancelCallback) cancelCallback();
-        }
-    } else if (opResult.requiresConfirmation && opResult.taskData) {
-        // Legacy pattern for other confirmation types
-        const userConfirmed = await askConfirmation(opResult.reason, undefined, 'teal');
-        if (userConfirmed) {
-            confirmCallback(opResult.taskData, opResult.originalIndex, opResult.conflictingTask);
-            updateStartTimeField(getSuggestedStartTime(), true);
-        } else {
-            showAlert('Task operation cancelled to avoid overlap.', 'teal');
             if (cancelCallback) cancelCallback();
         }
     } else if (!opResult.success && opResult.reason) {
         showAlert(opResult.reason, 'teal');
         if (cancelCallback) cancelCallback();
-    } else if (opResult.success && opResult.type === 'scheduled') {
-        updateStartTimeField(getSuggestedStartTime(), true);
+    } else if (opResult.success) {
+        return opResult;
     }
+    return null;
 }

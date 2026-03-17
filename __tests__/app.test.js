@@ -471,12 +471,20 @@ describe('App.js Callback Functions', () => {
                 jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
-                    taskData: {
+                    confirmationType: 'RESCHEDULE_UPDATE',
+                    taskIndex: 0,
+                    updatedTaskObject: {
+                        id: tasks[0].id,
+                        type: 'scheduled',
                         description: 'Updated Task',
-                        startTime: '09:30',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false,
+                        locked: false,
+                        startDateTime: tasks[0].startDateTime,
+                        endDateTime: tasks[0].endDateTime,
                         duration: 120
                     },
-                    originalIndex: 0,
                     reason: 'Would cause overlap'
                 });
 
@@ -511,7 +519,7 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(alertSpy).toHaveBeenCalledWith(
-                    'Alert: Task operation cancelled to avoid overlap.'
+                    'Alert: Task update cancelled to avoid overlap.'
                 );
             });
 
@@ -860,12 +868,6 @@ describe('App.js Callback Functions', () => {
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
 
-                // Mock updateStartTimeField to verify it's called with forceUpdate=true
-                const updateStartTimeFieldSpy = jest.spyOn(
-                    require('../public/js/dom-renderer.js'),
-                    'updateStartTimeField'
-                );
-
                 // Mock deleteAllScheduledTasks to succeed
                 const executeDeleteSpy = jest
                     .spyOn(require('../public/js/tasks/manager.js'), 'deleteAllScheduledTasks')
@@ -875,6 +877,12 @@ describe('App.js Callback Functions', () => {
                     });
 
                 mockSaveTasks.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 const deleteAllButton = document.getElementById('delete-all');
                 if (deleteAllButton) {
@@ -886,9 +894,11 @@ describe('App.js Callback Functions', () => {
                     "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
                 expect(executeDeleteSpy).toHaveBeenCalledTimes(1);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
-                updateStartTimeFieldSpy.mockRestore();
                 executeDeleteSpy.mockRestore();
             });
         });
@@ -1388,12 +1398,20 @@ describe('App.js Callback Functions', () => {
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
-                        taskData: {
+                        confirmationType: 'RESCHEDULE_UPDATE',
+                        taskIndex: 0,
+                        updatedTaskObject: {
+                            id: tasks[0].id,
+                            type: 'scheduled',
                             description: 'Updated Task',
-                            startTime: '09:30',
+                            status: 'incomplete',
+                            editing: false,
+                            confirmingDelete: false,
+                            locked: false,
+                            startDateTime: tasks[0].startDateTime,
+                            endDateTime: tasks[0].endDateTime,
                             duration: 120
                         },
-                        originalIndex: 0,
                         reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
                     });
 
@@ -1402,9 +1420,22 @@ describe('App.js Callback Functions', () => {
                         require('../public/js/tasks/manager.js'),
                         'confirmUpdateTaskAndReschedule'
                     )
-                    .mockReturnValue({ success: true });
+                    .mockReturnValue({
+                        success: true,
+                        task: {
+                            id: tasks[0].id,
+                            type: 'scheduled',
+                            description: 'Updated Task'
+                        }
+                    });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Start editing the first task
                 const editButtons = document.querySelectorAll('.btn-edit');
@@ -1424,7 +1455,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmUpdateTaskAndReschedule).toHaveBeenCalled();
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 updateTaskSpy.mockRestore();
                 confirmUpdateTaskAndReschedule.mockRestore();

@@ -23,6 +23,7 @@ import {
     onTaskAdded,
     onTaskUpdated,
     onTaskDeleted,
+    onTasksCleared,
     onDayChanged
 } from '../public/js/app-coordinator.js';
 import { refreshUI, updateStartTimeField } from '../public/js/dom-renderer.js';
@@ -70,6 +71,13 @@ describe('app-coordinator', () => {
 
     test('onTaskDeleted refreshes UI without directly updating start time', () => {
         onTaskDeleted('task-6');
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onTasksCleared refreshes UI without directly updating start time', () => {
+        onTasksCleared('all');
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();

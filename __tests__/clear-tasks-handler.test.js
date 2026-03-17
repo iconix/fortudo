@@ -26,6 +26,10 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTasksCleared: jest.fn()
+}));
+
 // Mock dom-renderer — all jest.fn() inline, referenced via imports after
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
@@ -69,7 +73,9 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 
 import { askConfirmation } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { onTasksCleared } from '../public/js/app-coordinator.js';
 import {
+    refreshUI,
     renderTasks,
     renderUnscheduledTasks,
     updateStartTimeField,
@@ -149,9 +155,11 @@ describe('Clear Tasks Handler', () => {
             expect(showToast).toHaveBeenCalledWith('1 scheduled tasks deleted.', {
                 theme: 'teal'
             });
-            expect(renderTasks).not.toHaveBeenCalledWith([]);
-            expect(renderUnscheduledTasks).not.toHaveBeenCalledWith([]);
-            expect(updateStartTimeField).toHaveBeenCalledWith(expect.any(String), true);
+            expect(onTasksCleared).toHaveBeenCalledWith('scheduled');
+            expect(refreshUI).not.toHaveBeenCalled();
+            expect(renderTasks).not.toHaveBeenCalled();
+            expect(renderUnscheduledTasks).not.toHaveBeenCalled();
+            expect(updateStartTimeField).not.toHaveBeenCalled();
         });
 
         test('clear all dropdown option shows toast when no tasks exist', async () => {
@@ -182,8 +190,11 @@ describe('Clear Tasks Handler', () => {
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
             expect(showToast).toHaveBeenCalledWith('1 tasks deleted.', { theme: 'rose' });
-            expect(renderTasks).toHaveBeenCalledWith([]);
-            expect(renderUnscheduledTasks).toHaveBeenCalledWith([]);
+            expect(onTasksCleared).toHaveBeenCalledWith('all');
+            expect(refreshUI).not.toHaveBeenCalled();
+            expect(renderTasks).not.toHaveBeenCalled();
+            expect(renderUnscheduledTasks).not.toHaveBeenCalled();
+            expect(updateStartTimeField).not.toHaveBeenCalled();
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });
 
@@ -231,6 +242,8 @@ describe('Clear Tasks Handler', () => {
             expect(showToast).toHaveBeenCalledWith('1 completed tasks deleted.', {
                 theme: 'indigo'
             });
+            expect(onTasksCleared).toHaveBeenCalledWith('completed');
+            expect(refreshUI).not.toHaveBeenCalled();
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });
     });

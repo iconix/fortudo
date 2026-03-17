@@ -2,16 +2,11 @@ import {
     getTaskState,
     deleteAllTasks,
     deleteAllScheduledTasks,
-    deleteCompletedTasks,
-    getSuggestedStartTime
+    deleteCompletedTasks
 } from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import {
-    refreshUI,
-    renderTasks,
-    renderUnscheduledTasks,
-    updateStartTimeField,
     getDeleteAllButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
@@ -20,6 +15,7 @@ import {
     toggleClearTasksDropdown,
     closeClearTasksDropdown
 } from '../dom-renderer.js';
+import { onTasksCleared } from '../app-coordinator.js';
 
 /**
  * Initialize all clear/delete task button event listeners
@@ -47,8 +43,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All scheduled tasks have been cleared.', {
                         theme: 'teal'
                     });
-                    refreshUI();
-                    updateStartTimeField(getSuggestedStartTime(), true);
+                    onTasksCleared('scheduled');
                 } else {
                     showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
                 }
@@ -87,9 +82,7 @@ export function initializeClearTasksHandlers() {
                 const result = deleteAllTasks();
                 if (result.success) {
                     showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
-                    renderTasks([]);
-                    renderUnscheduledTasks([]);
-                    updateStartTimeField(getSuggestedStartTime(), true);
+                    onTasksCleared('all');
                 } else {
                     showAlert(result.reason || 'Failed to delete all tasks.', 'red');
                 }
@@ -122,7 +115,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All completed tasks have been cleared.', {
                         theme: 'indigo'
                     });
-                    refreshUI();
+                    onTasksCleared('completed');
                 } else {
                     showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
                 }

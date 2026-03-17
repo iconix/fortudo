@@ -29,7 +29,7 @@ import {
     getThemeForTask
 } from '../utils.js';
 import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
-import { onTaskCompleted, onTaskDeleted } from '../app-coordinator.js';
+import { onTaskCompleted, onTaskUpdated, onTaskDeleted } from '../app-coordinator.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
     const taskToComplete = getTaskById(taskId);
@@ -99,10 +99,11 @@ export async function handleCompleteTask(taskId, _taskIndex) {
 
 export function handleLockTask(taskId, _taskIndex) {
     const result = toggleLockState(taskId);
-    if (!result.success && result.reason) {
+    if (result.success) {
+        onTaskUpdated(result.task);
+    } else if (result.reason) {
         showAlert(result.reason, getThemeForTaskId(taskId));
     }
-    refreshUI();
 }
 
 export function handleEditTask(taskId, _taskIndex) {
@@ -133,10 +134,12 @@ export function handleDeleteTask(taskId, _taskIndex) {
 export function handleUnscheduleTask(taskId, _taskIndex) {
     logger.info('Unschedule button clicked for', { taskId });
     const unscheduleResult = unscheduleTask(taskId);
-    if (!unscheduleResult.success && unscheduleResult.reason) {
+    if (unscheduleResult.success) {
+        onTaskUpdated(unscheduleResult.task);
+    } else if (unscheduleResult.reason) {
         showAlert(unscheduleResult.reason, 'teal');
+        refreshUI();
     }
-    refreshUI();
 }
 
 export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
@@ -159,13 +162,17 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
 
     const updateResult = updateTask(originalIndex, taskData);
-    await handleRescheduleConfirmation(
+    const finalResult = await handleRescheduleConfirmation(
         updateResult,
         confirmUpdateTaskAndReschedule,
         () => cancelEdit(originalIndex),
         { reschedulePreApproved }
     );
-    refreshUI();
+    if (finalResult?.success) {
+        onTaskUpdated(finalResult.task);
+    } else {
+        refreshUI();
+    }
 }
 
 export function handleCancelEdit(taskId, _taskIndex) {
