@@ -57,6 +57,11 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskUpdated: jest.fn(),
+    onTaskDeleted: jest.fn()
+}));
+
 // Mock scheduled-task-renderer
 jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
@@ -77,6 +82,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { onTaskUpdated, onTaskDeleted } from '../public/js/app-coordinator.js';
 
 function createUnscheduledTask(overrides = {}) {
     return {
@@ -202,7 +208,8 @@ describe('Unscheduled Task Handlers', () => {
             await handleDeleteUnscheduledTask('unsched-task-id');
 
             expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskDeleted).toHaveBeenCalledWith('unsched-task-id');
+            expect(refreshUI).not.toHaveBeenCalled();
         });
     });
 
@@ -234,7 +241,8 @@ describe('Unscheduled Task Handlers', () => {
             handleToggleCompleteUnscheduledTask(task.id);
 
             expect(getTaskById(task.id).status).toBe('completed');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskUpdated).toHaveBeenCalledWith(getTaskById(task.id));
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('shows alert on failure', () => {

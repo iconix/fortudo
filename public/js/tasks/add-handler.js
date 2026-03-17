@@ -2,14 +2,14 @@ import {
     addTask,
     confirmAddTaskAndReschedule,
     adjustAndCompleteTask,
-    truncateCompletedTask,
-    getSuggestedStartTime
+    truncateCompletedTask
 } from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import { focusTaskDescriptionInput, resetTaskFormPreviewState } from './form-utils.js';
 import { triggerConfettiAnimation } from './scheduled-renderer.js';
-import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
+import { refreshUI, initializeTaskTypeToggle } from '../dom-renderer.js';
+import { onTaskAdded } from '../app-coordinator.js';
 import { getThemeForTaskType, logger } from '../utils.js';
 
 /**
@@ -143,10 +143,11 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         }
 
         initializeTaskTypeToggle();
-        if (initialTaskData.taskType === 'scheduled') {
-            updateStartTimeField(getSuggestedStartTime(), true);
-        }
         focusTaskDescriptionInput();
+        onTaskAdded({
+            type: initialTaskData.taskType,
+            id: operationResult.taskId ?? operationResult.task?.id
+        });
 
         if (operationResult.autoRescheduledMessage) {
             showToast(operationResult.autoRescheduledMessage, { theme });
@@ -164,5 +165,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         showAlert('Could not process the task at this time.', theme);
     }
 
-    refreshUI();
+    if (!operationResult.success) {
+        refreshUI();
+    }
 }

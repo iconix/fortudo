@@ -15,6 +15,7 @@ import {
     getUnscheduledTaskInlineFormData
 } from './form-utils.js';
 import { refreshUI } from '../dom-renderer.js';
+import { onTaskUpdated, onTaskDeleted } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { getThemeForTaskId } from './confirmation-helpers.js';
 
@@ -54,10 +55,13 @@ export async function handleDeleteUnscheduledTask(taskId) {
     const result = deleteUnscheduledTask(taskId);
     if (result.success && result.message) {
         showToast(result.message, { theme: 'teal' });
+        onTaskDeleted(taskId);
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'teal');
+        refreshUI();
+    } else {
+        refreshUI();
     }
-    refreshUI();
 }
 
 export async function handleConfirmScheduleTask(
@@ -75,13 +79,17 @@ export async function handleConfirmScheduleTask(
                 result.taskData.unscheduledTaskId,
                 result.taskData.newScheduledTaskData
             );
+            onTaskUpdated(result.taskData.newScheduledTaskData);
         } else if (!userConfirmed) {
             showAlert('Task not scheduled to avoid overlap.', 'indigo');
+            refreshUI();
         }
     } else if (!result.success) {
         showAlert(result.reason, 'indigo');
+        refreshUI();
+    } else {
+        onTaskUpdated(getTaskById(taskId));
     }
-    refreshUI();
 }
 
 export async function handleSaveUnscheduledTaskEdit(taskId) {
@@ -95,7 +103,7 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     const result = updateUnscheduledTask(taskId, updatedData);
     if (result.success) {
         setTaskInlineEditing(taskId, false);
-        refreshUI();
+        onTaskUpdated(getTaskById(taskId));
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
     }
@@ -115,7 +123,7 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
     if (result && result.success) {
-        refreshUI();
+        onTaskUpdated(getTaskById(taskId));
     } else {
         showAlert(
             result.reason || 'Could not update task completion status.',

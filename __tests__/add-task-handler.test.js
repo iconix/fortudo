@@ -58,6 +58,10 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskAdded: jest.fn()
+}));
+
 // Mock form-utils
 jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
@@ -75,6 +79,7 @@ import {
     focusTaskDescriptionInput,
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
+import { onTaskAdded } from '../public/js/app-coordinator.js';
 
 describe('Add Task Handler', () => {
     let mockFormElement;
@@ -115,7 +120,10 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Scheduled Task');
             expect(tasks[0].type).toBe('scheduled');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskAdded).toHaveBeenCalledWith({
+                type: 'scheduled',
+                id: tasks[0].id
+            });
             expect(focusTaskDescriptionInput).toHaveBeenCalled();
             expect(resetTaskFormPreviewState).toHaveBeenCalled();
         });
@@ -134,7 +142,10 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Unscheduled Task');
             expect(tasks[0].type).toBe('unscheduled');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskAdded).toHaveBeenCalledWith({
+                type: 'unscheduled',
+                id: tasks[0].id
+            });
         });
 
         test('shows toast when addTask returns success message', async () => {
@@ -204,7 +215,7 @@ describe('Add Task Handler', () => {
             expect(showAlert).toHaveBeenCalled();
         });
 
-        test('calls refreshUI after operation', async () => {
+        test('calls coordinator on successful operation', async () => {
             const taskData = {
                 description: 'Refresh Test',
                 startTime: '10:00',
@@ -214,7 +225,8 @@ describe('Add Task Handler', () => {
 
             await handleAddTaskProcess(mockFormElement, taskData);
 
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskAdded).toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('clears stale preview state after successful reschedule-confirmed add', async () => {
