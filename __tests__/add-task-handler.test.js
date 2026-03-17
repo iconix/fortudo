@@ -120,10 +120,7 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Scheduled Task');
             expect(tasks[0].type).toBe('scheduled');
-            expect(onTaskAdded).toHaveBeenCalledWith({
-                type: 'scheduled',
-                id: tasks[0].id
-            });
+            expect(onTaskAdded).toHaveBeenCalledWith(tasks[0]);
             expect(focusTaskDescriptionInput).toHaveBeenCalled();
             expect(resetTaskFormPreviewState).toHaveBeenCalled();
         });
@@ -142,10 +139,7 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Unscheduled Task');
             expect(tasks[0].type).toBe('unscheduled');
-            expect(onTaskAdded).toHaveBeenCalledWith({
-                type: 'unscheduled',
-                id: tasks[0].id
-            });
+            expect(onTaskAdded).toHaveBeenCalledWith(tasks[0]);
         });
 
         test('shows toast when addTask returns success message', async () => {

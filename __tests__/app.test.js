@@ -568,7 +568,7 @@ describe('App.js Callback Functions', () => {
                     requiresConfirmation: true,
                     confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
                     reason: 'Would cause overlap',
-                    taskObjectToFinalize: {
+                    proposedTask: {
                         description: 'New Task',
                         startTime: '09:00',
                         duration: 60
@@ -1451,7 +1451,7 @@ describe('App.js Callback Functions', () => {
                         success: false,
                         requiresConfirmation: true,
                         confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
-                        taskObjectToFinalize: {
+                        proposedTask: {
                             description: 'New Task',
                             startTime: '09:30',
                             duration: 60
@@ -1462,7 +1462,14 @@ describe('App.js Callback Functions', () => {
 
                 const confirmAddTaskAndReschedule = jest
                     .spyOn(require('../public/js/tasks/manager.js'), 'confirmAddTaskAndReschedule')
-                    .mockReturnValue({ success: true });
+                    .mockReturnValue({
+                        success: true,
+                        task: {
+                            id: 'sched-confirmed-add',
+                            type: 'scheduled',
+                            description: 'New Task'
+                        }
+                    });
 
                 updateStartTimeFieldSpy.mockClear();
                 const startTimeInput = document.querySelector(
@@ -1530,7 +1537,7 @@ describe('App.js Callback Functions', () => {
                         success: false,
                         requiresConfirmation: true,
                         confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
-                        taskObjectToFinalize: {
+                        proposedTask: {
                             description: 'New Task',
                             startTime: '09:30',
                             duration: 60

@@ -74,10 +74,10 @@ export async function handleConfirmScheduleTask(
     if (result.requiresConfirmation) {
         const userConfirmed =
             reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
-        if (userConfirmed && result.taskData) {
+        if (userConfirmed && result.context) {
             const confirmResult = confirmScheduleUnscheduledTask(
-                result.taskData.unscheduledTaskId,
-                result.taskData.newScheduledTaskData
+                result.context.unscheduledTaskId,
+                result.context.scheduledTaskData
             );
             if (confirmResult.success) {
                 onTaskUpdated(confirmResult.task);
@@ -108,7 +108,7 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     const result = updateUnscheduledTask(taskId, updatedData);
     if (result.success) {
         setTaskInlineEditing(taskId, false);
-        onTaskUpdated(getTaskById(taskId));
+        onTaskUpdated(result.task);
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
     }
@@ -128,7 +128,7 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
     if (result && result.success) {
-        onTaskUpdated(getTaskById(taskId));
+        onTaskUpdated(result.task);
     } else {
         showAlert(
             result.reason || 'Could not update task completion status.',

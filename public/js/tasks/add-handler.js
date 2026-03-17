@@ -93,8 +93,8 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         operationResult.confirmationType === 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED'
     ) {
         const userConfirmedShift = await askConfirmation(operationResult.reason, undefined, theme);
-        if (userConfirmedShift && operationResult.adjustedTaskDataForResubmission) {
-            operationResult = addTask(operationResult.adjustedTaskDataForResubmission, true);
+        if (userConfirmedShift && operationResult.context?.resubmissionTaskData) {
+            operationResult = addTask(operationResult.context.resubmissionTaskData, true);
         } else {
             showAlert(
                 'Task not added as the proposed shift due to a locked task was declined.',
@@ -113,9 +113,9 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         const userConfirmedReschedule =
             reschedulePreApproved ||
             (await askConfirmation(operationResult.reason, undefined, theme));
-        if (userConfirmedReschedule && operationResult.taskObjectToFinalize) {
+        if (userConfirmedReschedule && operationResult.proposedTask) {
             operationResult = confirmAddTaskAndReschedule({
-                taskObjectToFinalize: operationResult.taskObjectToFinalize
+                proposedTask: operationResult.proposedTask
             });
         } else {
             showAlert('Task not added as rescheduling of other tasks was declined.', theme);
@@ -144,10 +144,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
 
         initializeTaskTypeToggle();
         focusTaskDescriptionInput();
-        onTaskAdded({
-            type: initialTaskData.taskType,
-            id: operationResult.taskId ?? operationResult.task?.id
-        });
+        onTaskAdded(operationResult.task);
 
         if (operationResult.autoRescheduledMessage) {
             showToast(operationResult.autoRescheduledMessage, { theme });
