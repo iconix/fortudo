@@ -71,5 +71,13 @@ run tests:
 
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
 - [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+  - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
+  - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then
+  - show a toast so the user knows the task was moved out of the current day's schedule instead of silently disappearing
 - [ ] (vNext) clear schedule on a new day (unschedule incomplete tasks)
+  - coordinate this through `onDayChanged()` as the single day-rollover boundary in the app layer
+  - run once per room per local calendar day, including the first app open after midnight, so rollover is idempotent instead of tick-sensitive
+  - delete all completed tasks from the prior day
+  - convert all remaining incomplete scheduled tasks from prior days into unscheduled tasks, copying `duration` into `estDuration` and defaulting `priority` to `medium`
+  - show a summary toast after rollover so the user can see what changed
 - [ ] (vNext) add checkbox to "make a habit" → then we can have a second list that gets injected daily
