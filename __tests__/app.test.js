@@ -35,6 +35,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     triggerSync: jest.fn(() => Promise.resolve())
 }));
 import {
+    initStorage as mockInitStorageInternal,
     saveTasks as mockSaveTasksInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
@@ -44,6 +45,7 @@ import {
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
 
+const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
@@ -99,6 +101,7 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockInitStorage.mockClear();
         updateTaskState([]);
 
         // Clean up any existing spies
@@ -213,6 +216,20 @@ describe('App.js Callback Functions', () => {
             expect(tasks).toHaveLength(2);
             expect(tasks[0].description).toBe('Task 1');
             expect(tasks[1].description).toBe('Task 2');
+        });
+    });
+
+    describe('sync config boot behavior', () => {
+        test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
+            const config = await import('../public/js/config.js');
+
+            expect(config.COUCHDB_URL).toBeNull();
+        });
+
+        test('boot initializes storage without a remote URL when sync config is null', async () => {
+            await setupAppWithTasks([]);
+
+            expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
         });
     });
 

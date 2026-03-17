@@ -64,7 +64,7 @@ run tests:
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
 - [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
-- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` (local: copy `public/js/config.example.js` to `public/js/config.js`; CI: add `COUCHDB_URL` repo secret), and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). Preview deployments use `preview-<room>` database names to avoid touching production data.
+- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` in the tracked `public/js/config.js` for local testing or override it in CI via the `COUCHDB_URL` repo secret, and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). The repo default is `COUCHDB_URL = null`, which makes local-only mode explicit. Preview deployments use `preview-<room>` database names to avoid touching production data.
 - [x] (v3) click on scheduling gap to see list of unscheduled tasks and schedule in gap
 - [x] (v3) upgrade `jest-environment-jsdom` to v30 (breaking) and adjust tests if needed (then remove `overrides` in `package.json`)
 - [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)

@@ -467,23 +467,8 @@ with sync_playwright() as p:
     # =========================================================================
     print("\nTEST 13: Console errors check", flush=True)
     error_messages = [m for m in console_messages if m.startswith("[error]")]
-    known_missing_config_suffix = "/js/config.js"
-    unexpected_404_urls = [
-        url for url in http_404_urls if not url.endswith(known_missing_config_suffix)
-    ]
-    only_known_config_404 = (
-        len(unexpected_404_urls) == 0
-        and any(url.endswith(known_missing_config_suffix) for url in http_404_urls)
-        and all(
-            msg == "[error] Failed to load resource: the server responded with a status of 404 (File not found)"
-            for msg in error_messages
-        )
-    )
-    if only_known_config_404:
-        error_messages = []
-
-    test("No unexpected console errors", len(error_messages) == 0 and len(unexpected_404_urls) == 0,
-         f"Errors: {error_messages[:3]}, 404s: {unexpected_404_urls[:3]}")
+    test("No unexpected console errors", len(error_messages) == 0 and len(http_404_urls) == 0,
+         f"Errors: {error_messages[:3]}, 404s: {http_404_urls[:3]}")
 
     # Clear localStorage for cleanliness
     page.evaluate("localStorage.clear()")

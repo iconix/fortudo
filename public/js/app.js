@@ -36,6 +36,7 @@ import { onDayChanged } from './app-coordinator.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync } from './sync-manager.js';
+import { COUCHDB_URL } from './config.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -45,20 +46,6 @@ let unsubscribeSyncStatus = null;
 
 /** @type {Promise<void> | null} */
 let refreshFromStoragePromise = null;
-
-/**
- * Load CouchDB URL from config.js if it exists.
- * Returns null when config.js is absent (local-only mode).
- * @returns {Promise<string|null>}
- */
-async function loadCouchDbUrl() {
-    try {
-        const config = await import('./config.js');
-        return config.COUCHDB_URL || null;
-    } catch {
-        return null;
-    }
-}
 
 /**
  * Use an isolated room code for preview deployments so they never touch prod data.
@@ -121,7 +108,7 @@ async function initAndBootApp(roomCode) {
     showMainApp(roomCode);
 
     // Initialize storage (with optional CouchDB sync)
-    const couchDbUrl = await loadCouchDbUrl();
+    const couchDbUrl = COUCHDB_URL || null;
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     await initStorage(storageRoomCode, {}, remoteUrl);
