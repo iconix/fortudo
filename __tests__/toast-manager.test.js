@@ -12,7 +12,7 @@ describe('toast-manager', () => {
 
     afterEach(() => {
         jest.useRealTimers();
-        const container = getToastContainer();
+        const container = document.querySelector('[data-toast-container]');
         if (container) container.remove();
     });
 
