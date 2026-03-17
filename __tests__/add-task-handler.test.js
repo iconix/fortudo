@@ -58,7 +58,7 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
-    onTaskAdded: jest.fn()
+    onTaskCreated: jest.fn()
 }));
 
 // Mock form-utils
@@ -78,7 +78,7 @@ import {
     focusTaskDescriptionInput,
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
-import { onTaskAdded } from '../public/js/app-coordinator.js';
+import { onTaskCreated } from '../public/js/app-coordinator.js';
 
 describe('Add Task Handler', () => {
     let mockFormElement;
@@ -119,7 +119,7 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Scheduled Task');
             expect(tasks[0].type).toBe('scheduled');
-            expect(onTaskAdded).toHaveBeenCalledWith(tasks[0]);
+            expect(onTaskCreated).toHaveBeenCalledWith({ task: tasks[0] });
             expect(focusTaskDescriptionInput).toHaveBeenCalled();
             expect(resetTaskFormPreviewState).toHaveBeenCalled();
         });
@@ -138,7 +138,7 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Unscheduled Task');
             expect(tasks[0].type).toBe('unscheduled');
-            expect(onTaskAdded).toHaveBeenCalledWith(tasks[0]);
+            expect(onTaskCreated).toHaveBeenCalledWith({ task: tasks[0] });
         });
 
         test('shows toast when addTask returns success message', async () => {
@@ -218,7 +218,7 @@ describe('Add Task Handler', () => {
 
             await handleAddTaskProcess(mockFormElement, taskData);
 
-            expect(onTaskAdded).toHaveBeenCalled();
+            expect(onTaskCreated).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
         });
 

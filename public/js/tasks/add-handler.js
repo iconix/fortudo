@@ -9,7 +9,7 @@ import { showToast } from '../toast-manager.js';
 import { focusTaskDescriptionInput, resetTaskFormPreviewState } from './form-utils.js';
 import { triggerConfettiAnimation } from './scheduled-renderer.js';
 import { refreshUI, initializeTaskTypeToggle } from '../dom-renderer.js';
-import { onTaskAdded } from '../app-coordinator.js';
+import { onTaskCreated } from '../app-coordinator.js';
 import { getThemeForTaskType, logger } from '../utils.js';
 
 /**
@@ -144,7 +144,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
 
         initializeTaskTypeToggle();
         focusTaskDescriptionInput();
-        onTaskAdded(operationResult.task);
+        onTaskCreated({ task: operationResult.task });
 
         if (operationResult.autoRescheduledMessage) {
             showToast(operationResult.autoRescheduledMessage, { theme });

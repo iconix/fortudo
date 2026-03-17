@@ -1492,6 +1492,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('should remove a task if confirmed and save', () => {
             const result = deleteTask(0, true);
             expect(result.success).toBe(true);
+            expect(result.task).toEqual(expect.objectContaining({ description: 'Task 1' }));
             expect(getTaskState().length).toBe(1);
             expect(getTaskState()[0].description).toBe('Task 2');
             expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
@@ -2342,6 +2343,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const result = deleteUnscheduledTask('unsched-1');
             expect(result.success).toBe(true);
+            expect(result.task).toEqual(expect.objectContaining({ id: 'unsched-1' }));
             expect(getTaskState()).toHaveLength(0);
         });
 

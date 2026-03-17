@@ -18,6 +18,7 @@ import {
 
 import { resetEventDelegation } from '../public/js/dom-renderer.js';
 import { refreshActiveTaskColor } from '../public/js/tasks/scheduled-renderer.js';
+import * as appCoordinator from '../public/js/app-coordinator.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
 
@@ -525,6 +526,7 @@ describe('User Confirmation Flows', () => {
             await setupInitialStateAndApp([getTaskToComplete(), getSubsequentTask()]);
             setCurrentTimeInDOM('10:30 AM');
             confirmSpy.mockReturnValueOnce(true);
+            const onTaskCompletedSpy = jest.spyOn(appCoordinator, 'onTaskCompleted');
 
             await clickCompleteCheckbox(0);
 
@@ -532,6 +534,13 @@ describe('User Confirmation Flows', () => {
             expect(confirmSpy.mock.calls[0][0]).toContain(
                 'Do you want to update your schedule to show you finished at 10:30 AM'
             );
+            expect(onTaskCompletedSpy).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    description: 'Task To Complete',
+                    type: 'scheduled',
+                    status: 'completed'
+                })
+            });
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -564,6 +573,8 @@ describe('User Confirmation Flows', () => {
             expect(extractTimeFromDateTime(new Date(savedSubsequentTask.startDateTime))).toBe(
                 '10:30'
             );
+
+            onTaskCompletedSpy.mockRestore();
         });
 
         test('User denies schedule update: Task completed, original time preserved, subsequent task not shifted', async () => {
@@ -765,6 +776,10 @@ describe('User Confirmation Flows', () => {
                 })
             ]);
             confirmSpy.mockReturnValueOnce(true);
+            const onScheduledTasksClearedSpy = jest.spyOn(
+                appCoordinator,
+                'onScheduledTasksCleared'
+            );
 
             await clickClearScheduleButton();
 
@@ -772,12 +787,15 @@ describe('User Confirmation Flows', () => {
             expect(confirmSpy.mock.calls[0][0]).toContain(
                 "Are you sure you want to clear all tasks from Today's Schedule"
             );
+            expect(onScheduledTasksClearedSpy).toHaveBeenCalledTimes(1);
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(0);
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
             expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+
+            onScheduledTasksClearedSpy.mockRestore();
         });
 
         test('User denies clear schedule: tasks remain unchanged', async () => {

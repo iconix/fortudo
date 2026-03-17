@@ -27,7 +27,9 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
-    onTasksCleared: jest.fn()
+    onScheduledTasksCleared: jest.fn(),
+    onCompletedTasksCleared: jest.fn(),
+    onAllTasksCleared: jest.fn()
 }));
 
 // Mock dom-renderer — all jest.fn() inline, referenced via imports after
@@ -73,7 +75,11 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 
 import { askConfirmation } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
-import { onTasksCleared } from '../public/js/app-coordinator.js';
+import {
+    onScheduledTasksCleared,
+    onCompletedTasksCleared,
+    onAllTasksCleared
+} from '../public/js/app-coordinator.js';
 import {
     refreshUI,
     renderTasks,
@@ -157,7 +163,7 @@ describe('Clear Tasks Handler', () => {
             expect(showToast).toHaveBeenCalledWith('1 scheduled tasks deleted.', {
                 theme: 'teal'
             });
-            expect(onTasksCleared).toHaveBeenCalledWith('scheduled');
+            expect(onScheduledTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
             expect(renderTasks).not.toHaveBeenCalled();
             expect(renderUnscheduledTasks).not.toHaveBeenCalled();
@@ -192,7 +198,7 @@ describe('Clear Tasks Handler', () => {
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
             expect(showToast).toHaveBeenCalledWith('1 tasks deleted.', { theme: 'rose' });
-            expect(onTasksCleared).toHaveBeenCalledWith('all');
+            expect(onAllTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
             expect(renderTasks).not.toHaveBeenCalled();
             expect(renderUnscheduledTasks).not.toHaveBeenCalled();
@@ -244,7 +250,7 @@ describe('Clear Tasks Handler', () => {
             expect(showToast).toHaveBeenCalledWith('1 completed tasks deleted.', {
                 theme: 'indigo'
             });
-            expect(onTasksCleared).toHaveBeenCalledWith('completed');
+            expect(onCompletedTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });

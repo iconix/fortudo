@@ -15,7 +15,7 @@ import {
     getUnscheduledTaskInlineFormData
 } from './form-utils.js';
 import { refreshUI } from '../dom-renderer.js';
-import { onTaskUpdated, onTaskDeleted } from '../app-coordinator.js';
+import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { getThemeForTaskId } from './confirmation-helpers.js';
 
@@ -55,7 +55,9 @@ export async function handleDeleteUnscheduledTask(taskId) {
     const result = deleteUnscheduledTask(taskId);
     if (result.success) {
         showToast(result.message || 'Task deleted.', { theme: 'teal' });
-        onTaskDeleted(taskId);
+        onTaskDeleted({
+            task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
+        });
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'teal');
         refreshUI();
@@ -80,7 +82,7 @@ export async function handleConfirmScheduleTask(
                 result.context.scheduledTaskData
             );
             if (confirmResult.success) {
-                onTaskUpdated(confirmResult.task);
+                onTaskScheduled({ task: confirmResult.task });
             } else {
                 showAlert(confirmResult.reason || 'Task could not be scheduled.', 'indigo');
                 refreshUI();
@@ -93,7 +95,7 @@ export async function handleConfirmScheduleTask(
         showAlert(result.reason, 'indigo');
         refreshUI();
     } else {
-        onTaskUpdated(result.task);
+        onTaskScheduled({ task: result.task });
     }
 }
 
@@ -108,7 +110,7 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     const result = updateUnscheduledTask(taskId, updatedData);
     if (result.success) {
         setTaskInlineEditing(taskId, false);
-        onTaskUpdated(result.task);
+        onTaskEdited({ task: result.task });
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
     }
@@ -128,7 +130,7 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
     if (result && result.success) {
-        onTaskUpdated(result.task);
+        onTaskEdited({ task: result.task });
     } else {
         showAlert(
             result.reason || 'Could not update task completion status.',

@@ -3,37 +3,70 @@ import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
 
 /**
  * Semantic post-mutation coordinator boundary for task state changes.
- * Single-task mutations should route through one of:
- * - onTaskAdded(task)
- * - onTaskUpdated(task)
- * - onTaskDeleted(taskId)
- * - onTaskCompleted(task)
- * Batch clears should route through:
- * - onTasksCleared(scope)
+ * Handlers should report successful mutations through specific event types:
+ * - onTaskCreated({ task })
+ * - onTaskEdited({ task })
+ * - onTaskScheduled({ task })
+ * - onTaskUnscheduled({ task })
+ * - onTaskCompleted({ task })
+ * - onTaskDeleted({ task })
+ * - onScheduledTasksCleared()
+ * - onCompletedTasksCleared()
+ * - onAllTasksCleared()
  */
-export function onTaskCompleted(task) {
+export function onTaskCreated({ task }) {
+    if (!task) {
+        return;
+    }
     refreshUI();
-    if (task?.type === 'scheduled') {
+}
+
+export function onTaskEdited({ task }) {
+    if (!task) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onTaskScheduled({ task }) {
+    if (!task) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onTaskUnscheduled({ task }) {
+    if (!task) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onTaskCompleted({ task }) {
+    if (!task) {
+        return;
+    }
+    refreshUI();
+    if (task.type === 'scheduled') {
         triggerConfettiAnimation(task.id);
     }
 }
 
-export function onTaskAdded(task) {
-    refreshUI();
-    void task;
-}
-
-export function onTaskUpdated(task) {
-    void task;
+export function onTaskDeleted({ task }) {
+    if (!task) {
+        return;
+    }
     refreshUI();
 }
 
-export function onTaskDeleted(taskId) {
-    void taskId;
+export function onScheduledTasksCleared() {
     refreshUI();
 }
 
-export function onTasksCleared(scope) {
-    void scope;
+export function onCompletedTasksCleared() {
+    refreshUI();
+}
+
+export function onAllTasksCleared() {
     refreshUI();
 }

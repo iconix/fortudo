@@ -28,7 +28,7 @@ describe('app-coordinator', () => {
     });
 
     test('onTaskCompleted refreshes UI and triggers confetti for scheduled tasks without directly updating start time', () => {
-        appCoordinator.onTaskCompleted({ id: 'task-1', type: 'scheduled' });
+        appCoordinator.onTaskCompleted({ task: { id: 'task-1', type: 'scheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-1');
@@ -36,47 +36,72 @@ describe('app-coordinator', () => {
     });
 
     test('onTaskCompleted skips confetti and start-time updates for unscheduled tasks', () => {
-        appCoordinator.onTaskCompleted({ id: 'task-2', type: 'unscheduled' });
+        appCoordinator.onTaskCompleted({ task: { id: 'task-2', type: 'unscheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(triggerConfettiAnimation).not.toHaveBeenCalled();
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTaskAdded refreshes UI without directly updating start time for either task type', () => {
-        appCoordinator.onTaskAdded({ id: 'task-3', type: 'scheduled' });
-        expect(refreshUI).toHaveBeenCalledTimes(1);
-        expect(updateStartTimeField).not.toHaveBeenCalled();
-
-        jest.clearAllMocks();
-
-        appCoordinator.onTaskAdded({ id: 'task-4', type: 'unscheduled' });
+    test('onTaskCreated refreshes UI without directly updating start time', () => {
+        appCoordinator.onTaskCreated({ task: { id: 'task-3', type: 'scheduled' } });
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTaskUpdated refreshes UI without directly updating start time', () => {
-        appCoordinator.onTaskUpdated({ id: 'task-5', type: 'scheduled' });
+    test('onTaskEdited refreshes UI without directly updating start time', () => {
+        appCoordinator.onTaskEdited({ task: { id: 'task-5', type: 'scheduled' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onTaskScheduled refreshes UI without directly updating start time', () => {
+        appCoordinator.onTaskScheduled({ task: { id: 'task-6', type: 'scheduled' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onTaskUnscheduled refreshes UI without directly updating start time', () => {
+        appCoordinator.onTaskUnscheduled({ task: { id: 'task-7', type: 'unscheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
     test('onTaskDeleted refreshes UI without directly updating start time', () => {
-        appCoordinator.onTaskDeleted('task-6');
+        appCoordinator.onTaskDeleted({ task: { id: 'task-8', type: 'scheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTasksCleared refreshes UI without directly updating start time', () => {
-        appCoordinator.onTasksCleared('all');
+    test('onScheduledTasksCleared refreshes UI without directly updating start time', () => {
+        appCoordinator.onScheduledTasksCleared();
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('does not expose a placeholder day-change hook', () => {
+    test('onCompletedTasksCleared refreshes UI without directly updating start time', () => {
+        appCoordinator.onCompletedTasksCleared();
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onAllTasksCleared refreshes UI without directly updating start time', () => {
+        appCoordinator.onAllTasksCleared();
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('does not expose the old generic coordinator surface', () => {
+        expect(appCoordinator.onTaskAdded).toBeUndefined();
+        expect(appCoordinator.onTaskUpdated).toBeUndefined();
+        expect(appCoordinator.onTasksCleared).toBeUndefined();
         expect(appCoordinator.onDayChanged).toBeUndefined();
     });
 });

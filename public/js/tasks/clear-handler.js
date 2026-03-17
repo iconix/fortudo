@@ -15,7 +15,11 @@ import {
     toggleClearTasksDropdown,
     closeClearTasksDropdown
 } from '../dom-renderer.js';
-import { onTasksCleared } from '../app-coordinator.js';
+import {
+    onScheduledTasksCleared,
+    onCompletedTasksCleared,
+    onAllTasksCleared
+} from '../app-coordinator.js';
 
 /**
  * Initialize all clear/delete task button event listeners
@@ -43,7 +47,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All scheduled tasks have been cleared.', {
                         theme: 'teal'
                     });
-                    onTasksCleared('scheduled');
+                    onScheduledTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
                 }
@@ -82,7 +86,7 @@ export function initializeClearTasksHandlers() {
                 const result = deleteAllTasks();
                 if (result.success) {
                     showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
-                    onTasksCleared('all');
+                    onAllTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to delete all tasks.', 'red');
                 }
@@ -115,7 +119,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All completed tasks have been cleared.', {
                         theme: 'indigo'
                     });
-                    onTasksCleared('completed');
+                    onCompletedTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
                 }

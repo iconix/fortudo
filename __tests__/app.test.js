@@ -44,6 +44,7 @@ import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
+import * as appCoordinator from '../public/js/app-coordinator.js';
 
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
@@ -88,6 +89,19 @@ describe('App.js Callback Functions', () => {
         const cancelButton = editForm.querySelector('.btn-edit-cancel');
         if (cancelButton) {
             cancelButton.dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return true;
+        }
+        return false;
+    };
+
+    const clickUnscheduleButton = async (taskIndex) => {
+        const taskWrapper = document.querySelector(`[data-task-index="${taskIndex}"]`);
+        if (!taskWrapper) return false;
+
+        const unscheduleButton = taskWrapper.querySelector('.btn-unschedule');
+        if (unscheduleButton) {
+            unscheduleButton.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
             return true;
         }
@@ -386,6 +400,43 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks).toHaveLength(1);
             expect(updatedTasks[0].description).toBe('Task 1');
             expect(updatedTasks[0].editing).toBe(false);
+        });
+    });
+
+    describe('coordinator boundary integration', () => {
+        test('should route scheduled unschedule through the coordinator', async () => {
+            const tasks = [
+                createTaskWithDateTime({
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60
+                })
+            ];
+
+            await setupAppWithTasks(tasks);
+
+            const onTaskUnscheduledSpy = jest.spyOn(appCoordinator, 'onTaskUnscheduled');
+
+            const clicked = await clickUnscheduleButton(0);
+            expect(clicked).toBe(true);
+
+            expect(onTaskUnscheduledSpy).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    description: 'Task 1',
+                    type: 'unscheduled',
+                    priority: 'medium',
+                    estDuration: 60
+                })
+            });
+
+            const updatedTasks = getTaskState();
+            expect(updatedTasks).toHaveLength(1);
+            expect(updatedTasks[0].type).toBe('unscheduled');
+
+            const unscheduledTask = document.querySelector('#unscheduled-task-list [data-task-id]');
+            expect(unscheduledTask).toBeTruthy();
+
+            onTaskUnscheduledSpy.mockRestore();
         });
     });
 

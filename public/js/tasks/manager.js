@@ -1163,7 +1163,7 @@ export function deleteTask(index, confirmed = false) {
     resetAllUIFlags();
     invalidateTaskCaches();
     deleteTaskFromStorage(taskId);
-    return { success: true };
+    return { success: true, task: taskToDelete };
 }
 
 /**

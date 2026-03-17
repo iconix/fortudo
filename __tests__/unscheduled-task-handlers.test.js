@@ -59,8 +59,9 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
-    onTaskUpdated: jest.fn(),
-    onTaskDeleted: jest.fn()
+    onTaskEdited: jest.fn(),
+    onTaskDeleted: jest.fn(),
+    onTaskScheduled: jest.fn()
 }));
 
 // Mock scheduled-task-renderer
@@ -84,7 +85,7 @@ import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { getUnscheduledTaskInlineFormData } from '../public/js/tasks/form-utils.js';
-import { onTaskUpdated, onTaskDeleted } from '../public/js/app-coordinator.js';
+import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../public/js/app-coordinator.js';
 
 function createUnscheduledTask(overrides = {}) {
     return {
@@ -211,7 +212,9 @@ describe('Unscheduled Task Handlers', () => {
             await handleDeleteUnscheduledTask(task.id);
 
             expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
-            expect(onTaskDeleted).toHaveBeenCalledWith(task.id);
+            expect(onTaskDeleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id, type: 'unscheduled' })
+            });
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
@@ -224,7 +227,9 @@ describe('Unscheduled Task Handlers', () => {
             await handleDeleteUnscheduledTask('unsched-task-id');
 
             expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
-            expect(onTaskDeleted).toHaveBeenCalledWith('unsched-task-id');
+            expect(onTaskDeleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: 'unsched-task-id', type: 'unscheduled' })
+            });
             expect(refreshUI).not.toHaveBeenCalled();
         });
     });
@@ -236,9 +241,9 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleConfirmScheduleTask(task.id, '09:00', 30);
 
-            expect(onTaskUpdated).toHaveBeenCalledWith(
-                expect.objectContaining({ type: 'scheduled' })
-            );
+            expect(onTaskScheduled).toHaveBeenCalledWith({
+                task: expect.objectContaining({ type: 'scheduled' })
+            });
             expect(refreshUI).not.toHaveBeenCalled();
         });
     });
@@ -259,13 +264,13 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleSaveUnscheduledTaskEdit(task.id);
 
-            expect(onTaskUpdated).toHaveBeenCalledWith(
-                expect.objectContaining({
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({
                     id: task.id,
                     description: 'After',
                     type: 'unscheduled'
                 })
-            );
+            });
             expect(refreshUI).not.toHaveBeenCalled();
         });
     });
@@ -298,7 +303,9 @@ describe('Unscheduled Task Handlers', () => {
             handleToggleCompleteUnscheduledTask(task.id);
 
             expect(getTaskById(task.id).status).toBe('completed');
-            expect(onTaskUpdated).toHaveBeenCalledWith(getTaskById(task.id));
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: getTaskById(task.id)
+            });
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
