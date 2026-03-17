@@ -255,6 +255,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(500)
     dismiss_modals(page)
 
+    unscheduled_before_clear = page.locator("#unscheduled-task-list .task-card").count()
     page.locator("#delete-all").click()
     page.wait_for_timeout(500)
 
@@ -270,7 +271,8 @@ with sync_playwright() as p:
 
     scheduled_after_clear = page.locator("#scheduled-task-list > [data-task-id]").count()
     unscheduled_after_clear = page.locator("#unscheduled-task-list .task-card").count()
-    test("All tasks cleared", scheduled_after_clear == 0 and unscheduled_after_clear == 0,
+    test("Clear Schedule preserves unscheduled tasks",
+         scheduled_after_clear == 0 and unscheduled_after_clear == unscheduled_before_clear,
          f"Scheduled: {scheduled_after_clear}, Unscheduled: {unscheduled_after_clear}")
 
     screenshot(page, "08b_all_cleared")
