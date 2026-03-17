@@ -6,6 +6,8 @@ import {
     handleScheduleUnscheduledTask,
     handleEditUnscheduledTask,
     handleDeleteUnscheduledTask,
+    handleConfirmScheduleTask,
+    handleSaveUnscheduledTaskEdit,
     handleCancelUnscheduledTaskEdit,
     handleToggleCompleteUnscheduledTask,
     createUnscheduledTaskCallbacks
@@ -82,6 +84,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { getUnscheduledTaskInlineFormData } from '../public/js/tasks/form-utils.js';
 import { onTaskUpdated, onTaskDeleted } from '../public/js/app-coordinator.js';
 
 function createUnscheduledTask(overrides = {}) {
@@ -199,6 +202,20 @@ describe('Unscheduled Task Handlers', () => {
             expect(refreshUI).toHaveBeenCalled();
         });
 
+        test('shows default delete-success toast and calls coordinator after confirmed delete', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-confirmed-delete' });
+            updateTaskState([task]);
+
+            await handleDeleteUnscheduledTask(task.id);
+            jest.clearAllMocks();
+
+            await handleDeleteUnscheduledTask(task.id);
+
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
+            expect(onTaskDeleted).toHaveBeenCalledWith(task.id);
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+
         test('shows delete-success toast when delete operation returns a success message', async () => {
             jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
                 success: true,
@@ -209,6 +226,47 @@ describe('Unscheduled Task Handlers', () => {
 
             expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
             expect(onTaskDeleted).toHaveBeenCalledWith('unsched-task-id');
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleConfirmScheduleTask', () => {
+        test('calls coordinator when scheduling succeeds without confirmation', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-direct-schedule' });
+            updateTaskState([task]);
+
+            await handleConfirmScheduleTask(task.id, '09:00', 30);
+
+            expect(onTaskUpdated).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'scheduled' })
+            );
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleSaveUnscheduledTaskEdit', () => {
+        test('calls coordinator on successful save', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-inline-save',
+                isEditingInline: true,
+                description: 'Before'
+            });
+            updateTaskState([task]);
+            getUnscheduledTaskInlineFormData.mockReturnValue({
+                description: 'After',
+                priority: 'high',
+                estDuration: 45
+            });
+
+            await handleSaveUnscheduledTaskEdit(task.id);
+
+            expect(onTaskUpdated).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: task.id,
+                    description: 'After',
+                    type: 'unscheduled'
+                })
+            );
             expect(refreshUI).not.toHaveBeenCalled();
         });
     });

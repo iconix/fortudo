@@ -53,8 +53,8 @@ export function handleEditUnscheduledTask(taskId) {
 export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
     const result = deleteUnscheduledTask(taskId);
-    if (result.success && result.message) {
-        showToast(result.message, { theme: 'teal' });
+    if (result.success) {
+        showToast(result.message || 'Task deleted.', { theme: 'teal' });
         onTaskDeleted(taskId);
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'teal');
@@ -75,11 +75,16 @@ export async function handleConfirmScheduleTask(
         const userConfirmed =
             reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
         if (userConfirmed && result.taskData) {
-            confirmScheduleUnscheduledTask(
+            const confirmResult = confirmScheduleUnscheduledTask(
                 result.taskData.unscheduledTaskId,
                 result.taskData.newScheduledTaskData
             );
-            onTaskUpdated(result.taskData.newScheduledTaskData);
+            if (confirmResult.success) {
+                onTaskUpdated(confirmResult.task);
+            } else {
+                showAlert(confirmResult.reason || 'Task could not be scheduled.', 'indigo');
+                refreshUI();
+            }
         } else if (!userConfirmed) {
             showAlert('Task not scheduled to avoid overlap.', 'indigo');
             refreshUI();
@@ -88,7 +93,7 @@ export async function handleConfirmScheduleTask(
         showAlert(result.reason, 'indigo');
         refreshUI();
     } else {
-        onTaskUpdated(getTaskById(taskId));
+        onTaskUpdated(result.task);
     }
 }
 
