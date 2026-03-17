@@ -112,12 +112,15 @@ A new `app-coordinator.js` module owns runtime orchestration. `app.js` stays thi
 
 ```js
 // app-coordinator.js
-export function onTaskCompleted(task) { ... }
-export function onTaskAdded(task) { ... }
-export function onTaskUpdated(task) { ... }
-export function onTaskDeleted(taskId) { ... }
-export function onDayChanged() { ... }
-export function onSyncComplete() { ... }
+export function onTaskCreated({ task }) { ... }
+export function onTaskEdited({ task }) { ... }
+export function onTaskScheduled({ task }) { ... }
+export function onTaskUnscheduled({ task }) { ... }
+export function onTaskCompleted({ task }) { ... }
+export function onTaskDeleted({ task }) { ... }
+export function onScheduledTasksCleared() { ... }
+export function onCompletedTasksCleared() { ... }
+export function onAllTasksCleared() { ... }
 ```
 
 Before:
@@ -130,11 +133,15 @@ After:
 handleCompleteTask → completeTask → coordinator.onTaskCompleted(task)
 ```
 
-The coordinator centralizes all post-action logic: persistence, UI refresh, auto-logging activities, and (future) habit detection. New features add lines to the coordinator rather than modifying existing handlers.
+The current implementation uses object payloads such as `coordinator.onTaskCompleted({ task })` rather than primitive arguments.
+
+The current coordinator centralizes the post-mutation effects that already exist today: `refreshUI()` for successful task mutations and scheduled-task completion confetti. The semantic event surface is intentionally narrow and pre-Activities. It gives Activities, auto-logging, and later day-rollover work a stable runtime boundary without leaving generic `onTaskUpdated()`-style glue in place.
+
+As Activities land, new cross-cutting behavior should attach to these semantic events instead of being re-threaded through each handler. That keeps handlers thin and preserves the coordinator as the single post-mutation boundary.
 
 If the coordinator grows unwieldy with habits and day-rollover logic, it can graduate to an event bus pattern. The coordination points are already identified, making the swap straightforward. Habit tracking is a planned fast-follow (it already exists in tracks), so the coordinator is designed with that in mind.
 
-**Day boundary detection:** The existing 1-second interval in `app.js` checks if the date has rolled over since last tick. On change, calls `coordinator.onDayChanged()`. This sets up for future day-boundary features (clear schedule, habit reset, midnight rollover).
+**Day boundary detection:** The earlier placeholder `coordinator.onDayChanged()` hook was intentionally removed once it became clear it implied behavior that did not exist yet. Future day-rollover work should reintroduce a real semantic boundary only when the rollover mutation rules are fully specified.
 
 ### Module Structure
 
