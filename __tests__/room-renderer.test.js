@@ -40,7 +40,7 @@ function setupRoomDOM() {
     `;
 }
 
-describe('Room UI Handler', () => {
+describe('Room Renderer', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         setupRoomDOM();

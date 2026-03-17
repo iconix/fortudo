@@ -2,7 +2,7 @@
 
 ## Strengths
 
-**Clean module separation** - Each file has a clear responsibility. `task-manager.js` owns state, `dom-handler.js` owns DOM, `reschedule-engine.js` owns scheduling logic. Dependencies flow in one direction.
+**Clean module separation** - Each file has a clear responsibility. `tasks/manager.js` owns task state, `dom-renderer.js` owns DOM concerns, and `reschedule-engine.js` owns scheduling logic. Dependencies flow in one direction.
 
 **Event delegation** - Using 2 container listeners instead of per-element handlers is a smart optimization for a dynamic list UI.
 
@@ -16,7 +16,7 @@
 
 **app.js is a 780-line god file** - The callback objects are defined inline with significant logic. This makes it hard to test the orchestration layer in isolation.
 
-**State isn't truly immutable** - `task-manager.js` mutates a module-level array. Works fine, but makes debugging state changes harder.
+**State isn't truly immutable** - `tasks/manager.js` mutates a module-level array. Works fine, but makes debugging state changes harder.
 
 **Callback threading is verbose** - Passing `scheduledTaskEventCallbacks` and `unscheduledTaskEventCallbacks` through every render call creates coupling. A simple event bus or pub/sub would be cleaner.
 
