@@ -64,6 +64,7 @@ Tests are in `__tests__/` with a shared `test-utils.js` for mocks and helpers. J
 ## Code Style
 
 - ESLint with Prettier integration (run `npm run check` before commits)
+- Run `npm run format` or `npm run format:check` before attempting a commit; do not rely on the pre-commit hook to discover formatting issues
 - Single quotes, 4-space indentation, 100 char line width
 - `prefer-const`, `no-var`, strict equality (`===`)
 - JSDoc comments for public functions
