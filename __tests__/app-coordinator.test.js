@@ -1,0 +1,81 @@
+/**
+ * @jest-environment jsdom
+ */
+
+jest.mock('../public/js/dom-renderer.js', () => ({
+    refreshUI: jest.fn(),
+    updateStartTimeField: jest.fn()
+}));
+
+jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
+    triggerConfettiAnimation: jest.fn(),
+    refreshActiveTaskColor: jest.fn(),
+    refreshCurrentGapHighlight: jest.fn()
+}));
+
+jest.mock('../public/js/tasks/manager.js', () => ({
+    getSuggestedStartTime: jest.fn(() => '10:00'),
+    getTaskState: jest.fn(() => [])
+}));
+
+import {
+    onTaskCompleted,
+    onTaskAdded,
+    onTaskUpdated,
+    onTaskDeleted,
+    onDayChanged
+} from '../public/js/app-coordinator.js';
+import { refreshUI, updateStartTimeField } from '../public/js/dom-renderer.js';
+import { triggerConfettiAnimation } from '../public/js/tasks/scheduled-renderer.js';
+
+describe('app-coordinator', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    test('onTaskCompleted refreshes UI, triggers confetti for scheduled tasks, and updates start time', () => {
+        onTaskCompleted({ id: 'task-1', type: 'scheduled' });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-1');
+        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+    });
+
+    test('onTaskCompleted skips confetti and start-time updates for unscheduled tasks', () => {
+        onTaskCompleted({ id: 'task-2', type: 'unscheduled' });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(triggerConfettiAnimation).not.toHaveBeenCalled();
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onTaskAdded refreshes UI and updates start time for scheduled tasks, but not unscheduled tasks', () => {
+        onTaskAdded({ id: 'task-3', type: 'scheduled' });
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+
+        jest.clearAllMocks();
+
+        onTaskAdded({ id: 'task-4', type: 'unscheduled' });
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onTaskUpdated refreshes UI and updates start time', () => {
+        onTaskUpdated({ id: 'task-5', type: 'scheduled' });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+    });
+
+    test('onTaskDeleted refreshes UI and updates start time', () => {
+        onTaskDeleted('task-6');
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+    });
+
+    test('onDayChanged is callable and does not throw', () => {
+        expect(() => onDayChanged()).not.toThrow();
+    });
+});
