@@ -762,6 +762,9 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
+                const toastSpy = jest
+                    .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                    .mockImplementation(() => {});
                 mockSaveTasks.mockClear();
 
                 // Click the delete all button when no tasks exist
@@ -772,9 +775,11 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-                expect(alertSpy).toHaveBeenCalledWith(
-                    'Alert: There are no scheduled tasks to clear.'
-                );
+                expect(alertSpy).not.toHaveBeenCalled();
+                expect(toastSpy).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
+                    theme: 'teal'
+                });
+                toastSpy.mockRestore();
             });
 
             test('should handle user denying delete all confirmation', async () => {

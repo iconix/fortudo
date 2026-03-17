@@ -11,6 +11,7 @@ import {
     createUnscheduledTaskCallbacks
 } from '../public/js/tasks/unscheduled-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
@@ -75,6 +76,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
 
 function createUnscheduledTask(overrides = {}) {
     return {
@@ -188,6 +190,18 @@ describe('Unscheduled Task Handlers', () => {
 
             // First click triggers confirmation, task should still exist
             expect(getTaskState()).toHaveLength(1);
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('shows delete-success toast when delete operation returns a success message', async () => {
+            jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
+                success: true,
+                message: 'Task deleted.'
+            });
+
+            await handleDeleteUnscheduledTask('unsched-task-id');
+
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
             expect(refreshUI).toHaveBeenCalled();
         });
     });

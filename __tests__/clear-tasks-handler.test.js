@@ -146,9 +146,24 @@ describe('Clear Tasks Handler', () => {
 
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
+            expect(showToast).toHaveBeenCalledWith('1 scheduled tasks deleted.', {
+                theme: 'teal'
+            });
             expect(renderTasks).not.toHaveBeenCalledWith([]);
             expect(renderUnscheduledTasks).not.toHaveBeenCalledWith([]);
             expect(updateStartTimeField).toHaveBeenCalledWith(expect.any(String), true);
+        });
+
+        test('clear all dropdown option shows toast when no tasks exist', async () => {
+            initializeClearTasksHandlers();
+            const clearAllOption = document.getElementById('clear-all-tasks-option');
+            clearAllOption.click();
+            await new Promise((r) => setTimeout(r, 0));
+
+            expect(showToast).toHaveBeenCalledWith('There are no tasks to delete.', {
+                theme: 'rose'
+            });
+            expect(closeClearTasksDropdown).toHaveBeenCalled();
         });
 
         test('clear all dropdown option deletes all tasks when confirmed', async () => {
@@ -166,6 +181,7 @@ describe('Clear Tasks Handler', () => {
 
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
+            expect(showToast).toHaveBeenCalledWith('1 tasks deleted.', { theme: 'rose' });
             expect(renderTasks).toHaveBeenCalledWith([]);
             expect(renderUnscheduledTasks).toHaveBeenCalledWith([]);
             expect(closeClearTasksDropdown).toHaveBeenCalled();
@@ -193,6 +209,26 @@ describe('Clear Tasks Handler', () => {
             await new Promise((r) => setTimeout(r, 0));
 
             expect(showToast).toHaveBeenCalledWith('There are no completed tasks to clear.', {
+                theme: 'indigo'
+            });
+            expect(closeClearTasksDropdown).toHaveBeenCalled();
+        });
+
+        test('clear completed option shows success toast when completed tasks are cleared', async () => {
+            const completedTask = createTaskWithDateTime({
+                description: 'Completed Task',
+                startTime: '09:00',
+                duration: 60
+            });
+            completedTask.status = 'completed';
+            updateTaskState([completedTask]);
+
+            initializeClearTasksHandlers();
+            const clearCompleted = document.getElementById('clear-completed-tasks-option');
+            clearCompleted.click();
+            await new Promise((r) => setTimeout(r, 0));
+
+            expect(showToast).toHaveBeenCalledWith('1 completed tasks deleted.', {
                 theme: 'indigo'
             });
             expect(closeClearTasksDropdown).toHaveBeenCalled();

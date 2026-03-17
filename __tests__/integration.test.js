@@ -816,6 +816,9 @@ describe('User Confirmation Flows', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
+            const toastSpy = jest
+                .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                .mockImplementation(() => {});
             mockSaveTasks.mockClear();
             mockPutTask.mockClear();
             mockDeleteTaskFromStorage.mockClear();
@@ -823,9 +826,12 @@ describe('User Confirmation Flows', () => {
             await clickDeleteAllButton();
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-            // App now shows an alert when there are no tasks to delete
-            expect(alertSpy).toHaveBeenCalledWith('Alert: There are no scheduled tasks to clear.');
+            expect(alertSpy).not.toHaveBeenCalled();
+            expect(toastSpy).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
+                theme: 'teal'
+            });
             expect(mockSaveTasks).not.toHaveBeenCalled();
+            toastSpy.mockRestore();
         });
 
         test('Start time field is reset after scheduled tasks are cleared', async () => {

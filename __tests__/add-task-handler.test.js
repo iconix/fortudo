@@ -4,6 +4,7 @@
 
 import { handleAddTaskProcess } from '../public/js/tasks/add-handler.js';
 import { updateTaskState, getTaskState } from '../public/js/tasks/manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
@@ -53,6 +54,10 @@ jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     getScheduledTaskListElement: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
 // Mock form-utils
 jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
@@ -65,6 +70,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
 import {
     focusTaskDescriptionInput,
     resetTaskFormPreviewState
@@ -129,6 +135,46 @@ describe('Add Task Handler', () => {
             expect(tasks[0].description).toBe('New Unscheduled Task');
             expect(tasks[0].type).toBe('unscheduled');
             expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('shows toast when addTask returns success message', async () => {
+            const taskData = {
+                description: 'Message Task',
+                taskType: 'unscheduled',
+                priority: 'high',
+                estDuration: 30
+            };
+
+            jest.spyOn(taskManager, 'addTask').mockReturnValueOnce({
+                success: true,
+                message: 'Task added successfully.'
+            });
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(showToast).toHaveBeenCalledWith('Task added successfully.', {
+                theme: 'indigo'
+            });
+        });
+
+        test('shows toast when addTask returns auto-rescheduled message', async () => {
+            const taskData = {
+                description: 'Auto Rescheduled Task',
+                startTime: '10:00',
+                duration: 30,
+                taskType: 'scheduled'
+            };
+
+            jest.spyOn(taskManager, 'addTask').mockReturnValueOnce({
+                success: true,
+                autoRescheduledMessage: 'Task auto-rescheduled.'
+            });
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(showToast).toHaveBeenCalledWith('Task auto-rescheduled.', {
+                theme: 'teal'
+            });
         });
 
         test('shows alert for invalid task data', async () => {
