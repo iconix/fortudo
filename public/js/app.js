@@ -32,6 +32,7 @@ import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
 import { handleAddTaskProcess } from './tasks/add-handler.js';
 import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
+import { onDayChanged } from './app-coordinator.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync } from './sync-manager.js';
@@ -254,10 +255,17 @@ async function initAndBootApp(roomCode) {
     focusTaskDescriptionInput();
 
     // Active task color refresh interval
+    let lastDate = new Date().toDateString();
     const activeTaskColorInterval = setInterval(() => {
         refreshActiveTaskColor(getTaskState());
         refreshCurrentGapHighlight();
         refreshStartTimeField();
+
+        const currentDate = new Date().toDateString();
+        if (currentDate !== lastDate) {
+            lastDate = currentDate;
+            onDayChanged();
+        }
     }, 1000);
 
     window.addEventListener(
