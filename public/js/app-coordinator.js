@@ -37,7 +37,3 @@ export function onTasksCleared(scope) {
     void scope;
     refreshUI();
 }
-
-export function onDayChanged() {
-    // Placeholder for future day-change coordination.
-}
