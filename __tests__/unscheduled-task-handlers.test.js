@@ -52,6 +52,10 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     resetEventDelegation: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
 // Mock scheduled-task-renderer
 jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),

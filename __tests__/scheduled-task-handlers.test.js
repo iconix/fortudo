@@ -58,6 +58,10 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     resetEventDelegation: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
 // Mock scheduled-task-renderer
 jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
@@ -77,6 +81,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showGapTaskPicker, showScheduleModal } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
 
 describe('Scheduled Task Handlers', () => {
     beforeEach(() => {
@@ -283,7 +288,9 @@ describe('Scheduled Task Handlers', () => {
 
             handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
 
-            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showToast).toHaveBeenCalledWith('No unscheduled tasks to schedule.', {
+                theme: 'teal'
+            });
             expect(showGapTaskPicker).not.toHaveBeenCalled();
         });
 
@@ -293,7 +300,9 @@ describe('Scheduled Task Handlers', () => {
 
             handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
 
-            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showToast).toHaveBeenCalledWith('No unscheduled tasks to schedule.', {
+                theme: 'teal'
+            });
             expect(showGapTaskPicker).not.toHaveBeenCalled();
         });
 

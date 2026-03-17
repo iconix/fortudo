@@ -22,6 +22,10 @@ jest.mock('../public/js/modal-manager.js', () => ({
     initializeModalEventListeners: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
 // Mock dom-renderer — all jest.fn() inline, referenced via imports after
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
@@ -63,7 +67,8 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
     getUnscheduledTaskInlineFormData: jest.fn()
 }));
 
-import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
+import { askConfirmation } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
@@ -115,16 +120,15 @@ describe('Clear Tasks Handler', () => {
             expect(() => initializeClearTasksHandlers()).not.toThrow();
         });
 
-        test('main clear button shows alert when no scheduled tasks', async () => {
+        test('main clear button shows toast when no scheduled tasks', async () => {
             initializeClearTasksHandlers();
             const deleteAllBtn = document.getElementById('delete-all');
             deleteAllBtn.click();
             await new Promise((r) => setTimeout(r, 0));
 
-            expect(showAlert).toHaveBeenCalledWith(
-                'There are no scheduled tasks to clear.',
-                'teal'
-            );
+            expect(showToast).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
+                theme: 'teal'
+            });
         });
 
         test('main clear button clears scheduled tasks when confirmed', async () => {
@@ -182,16 +186,15 @@ describe('Clear Tasks Handler', () => {
             expect(optionIds).toEqual(['clear-completed-tasks-option', 'clear-all-tasks-option']);
         });
 
-        test('clear completed option shows alert when no completed tasks', async () => {
+        test('clear completed option shows toast when no completed tasks', async () => {
             initializeClearTasksHandlers();
             const clearCompleted = document.getElementById('clear-completed-tasks-option');
             clearCompleted.click();
             await new Promise((r) => setTimeout(r, 0));
 
-            expect(showAlert).toHaveBeenCalledWith(
-                'There are no completed tasks to clear.',
-                'indigo'
-            );
+            expect(showToast).toHaveBeenCalledWith('There are no completed tasks to clear.', {
+                theme: 'indigo'
+            });
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });
     });

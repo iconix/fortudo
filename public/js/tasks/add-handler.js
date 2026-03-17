@@ -6,6 +6,7 @@ import {
     getSuggestedStartTime
 } from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import { focusTaskDescriptionInput, resetTaskFormPreviewState } from './form-utils.js';
 import { triggerConfettiAnimation } from './scheduled-renderer.js';
 import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
@@ -148,9 +149,9 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         focusTaskDescriptionInput();
 
         if (operationResult.autoRescheduledMessage) {
-            showAlert(operationResult.autoRescheduledMessage, theme);
+            showToast(operationResult.autoRescheduledMessage, { theme });
         } else if (operationResult.message) {
-            showAlert(operationResult.message, theme);
+            showToast(operationResult.message, { theme });
         }
     } else if (operationResult.reason) {
         showAlert(operationResult.reason, theme);

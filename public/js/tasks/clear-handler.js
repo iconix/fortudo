@@ -6,6 +6,7 @@ import {
     getSuggestedStartTime
 } from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import {
     refreshUI,
     renderTasks,
@@ -31,7 +32,7 @@ export function initializeClearTasksHandlers() {
             event.stopPropagation();
             const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
             if (!scheduledTasksExist) {
-                showAlert('There are no scheduled tasks to clear.', 'teal');
+                showToast('There are no scheduled tasks to clear.', { theme: 'teal' });
                 return;
             }
             if (
@@ -43,7 +44,9 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteAllScheduledTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All scheduled tasks have been cleared.', 'teal');
+                    showToast(result.message || 'All scheduled tasks have been cleared.', {
+                        theme: 'teal'
+                    });
                     refreshUI();
                     updateStartTimeField(getSuggestedStartTime(), true);
                 } else {
@@ -69,7 +72,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const tasksExist = getTaskState().length > 0;
             if (!tasksExist) {
-                showAlert('There are no tasks to delete.', 'red');
+                showToast('There are no tasks to delete.', { theme: 'rose' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -83,7 +86,7 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteAllTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All tasks have been deleted.', 'red');
+                    showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
                     renderTasks([]);
                     renderUnscheduledTasks([]);
                     updateStartTimeField(getSuggestedStartTime(), true);
@@ -102,7 +105,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const completedTasksExist = getTaskState().some((task) => task.status === 'completed');
             if (!completedTasksExist) {
-                showAlert('There are no completed tasks to clear.', 'indigo');
+                showToast('There are no completed tasks to clear.', { theme: 'indigo' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -116,7 +119,9 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteCompletedTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All completed tasks have been cleared.', 'indigo');
+                    showToast(result.message || 'All completed tasks have been cleared.', {
+                        theme: 'indigo'
+                    });
                     refreshUI();
                 } else {
                     showAlert(result.reason || 'Failed to clear completed tasks.', 'red');

@@ -19,6 +19,7 @@ import {
     showGapTaskPicker,
     showScheduleModal
 } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import { extractTaskFormData } from './form-utils.js';
 import { refreshUI, updateStartTimeField, getCurrentTimeElement } from '../dom-renderer.js';
 import { triggerConfettiAnimation } from './scheduled-renderer.js';
@@ -190,7 +191,7 @@ export function handleGapClick(gapStartISO, gapEndISO, durationMinutes) {
     const unscheduledTasks = getSortedUnscheduledTasks().filter((t) => t.status !== 'completed');
 
     if (unscheduledTasks.length === 0) {
-        showAlert('No unscheduled tasks to schedule.', 'teal');
+        showToast('No unscheduled tasks to schedule.', { theme: 'teal' });
         return;
     }
 

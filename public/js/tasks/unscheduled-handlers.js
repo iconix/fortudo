@@ -9,6 +9,7 @@ import {
     getSuggestedStartTime
 } from './manager.js';
 import { showAlert, askConfirmation, showScheduleModal } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import {
     populateUnscheduledTaskInlineEditForm,
     getUnscheduledTaskInlineFormData
@@ -52,7 +53,7 @@ export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
     const result = deleteUnscheduledTask(taskId);
     if (result.success && result.message) {
-        showAlert(result.message, 'teal');
+        showToast(result.message, { theme: 'teal' });
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'teal');
     }
