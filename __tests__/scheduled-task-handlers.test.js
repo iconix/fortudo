@@ -62,12 +62,10 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
-// Mock scheduled-task-renderer
-jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
-    triggerConfettiAnimation: jest.fn(),
-    refreshActiveTaskColor: jest.fn(),
-    renderTasks: jest.fn(() => null),
-    getScheduledTaskListElement: jest.fn()
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskCompleted: jest.fn(),
+    onTaskUpdated: jest.fn(),
+    onTaskDeleted: jest.fn()
 }));
 
 // Mock form-utils
@@ -82,6 +80,7 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showGapTaskPicker, showScheduleModal } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { onTaskCompleted, onTaskDeleted } from '../public/js/app-coordinator.js';
 
 describe('Scheduled Task Handlers', () => {
     beforeEach(() => {
@@ -143,6 +142,23 @@ describe('Scheduled Task Handlers', () => {
         });
     });
 
+    describe('handleCompleteTask', () => {
+        test('calls coordinator completion handler when task is completed', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Complete Test',
+                startTime: '09:00',
+                duration: 60
+            });
+            updateTaskState([task]);
+
+            await handleCompleteTask(task.id, 0);
+
+            expect(getTaskById(task.id).status).toBe('completed');
+            expect(onTaskCompleted).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }));
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
     describe('handleEditTask', () => {
         test('sets task to editing mode and calls refreshUI', () => {
             const task = createTaskWithDateTime({
@@ -178,6 +194,7 @@ describe('Scheduled Task Handlers', () => {
             // First click triggers confirmation, task should still exist
             expect(getTaskState()).toHaveLength(1);
             expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
         test('deletes task on confirmed click', () => {
@@ -192,7 +209,8 @@ describe('Scheduled Task Handlers', () => {
             handleDeleteTask(task.id, 0);
 
             expect(getTaskState()).toHaveLength(0);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskDeleted).toHaveBeenCalledWith(task.id);
+            expect(refreshUI).not.toHaveBeenCalled();
         });
     });
 

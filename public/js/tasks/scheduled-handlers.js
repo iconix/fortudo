@@ -10,7 +10,6 @@ import {
     updateTask,
     confirmUpdateTaskAndReschedule,
     cancelEdit,
-    getSuggestedStartTime,
     getSortedUnscheduledTasks
 } from './manager.js';
 import {
@@ -21,8 +20,7 @@ import {
 } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import { extractTaskFormData } from './form-utils.js';
-import { refreshUI, updateStartTimeField, getCurrentTimeElement } from '../dom-renderer.js';
-import { triggerConfettiAnimation } from './scheduled-renderer.js';
+import { refreshUI, getCurrentTimeElement } from '../dom-renderer.js';
 import {
     convertTo24HourTime,
     convertTo12HourTime,
@@ -31,6 +29,7 @@ import {
     getThemeForTask
 } from '../utils.js';
 import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
+import { onTaskCompleted, onTaskDeleted } from '../app-coordinator.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
     const taskToComplete = getTaskById(taskId);
@@ -74,7 +73,6 @@ export async function handleCompleteTask(taskId, _taskIndex) {
                 result.newDuration
             );
             if (lateResult.success) {
-                updateStartTimeField(getSuggestedStartTime(), true);
                 taskActuallyCompleted = true;
             } else {
                 completeTask(originalIndex);
@@ -92,10 +90,10 @@ export async function handleCompleteTask(taskId, _taskIndex) {
         taskActuallyCompleted = true;
     }
 
-    refreshUI();
-
     if (taskActuallyCompleted) {
-        triggerConfettiAnimation(taskId);
+        onTaskCompleted(getTaskById(taskId) || taskToComplete);
+    } else {
+        refreshUI();
     }
 }
 
@@ -126,10 +124,10 @@ export function handleDeleteTask(taskId, _taskIndex) {
     }
     const originalIndex = getTaskIndex(taskId);
     const result = deleteTask(originalIndex, taskToDelete.confirmingDelete);
-    if (result.success) updateStartTimeField(getSuggestedStartTime(), true);
+    if (result.success) onTaskDeleted(taskId);
     else if (!result.requiresConfirmation && result.reason)
         showAlert(result.reason, getThemeForTaskId(taskId));
-    refreshUI();
+    if (!result.success) refreshUI();
 }
 
 export function handleUnscheduleTask(taskId, _taskIndex) {
