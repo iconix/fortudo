@@ -12,6 +12,7 @@ import {
 import {
     updateTaskState,
     getTaskState,
+    getSuggestedStartTime,
     cancelEdit as cancelEditDirect
 } from '../public/js/tasks/manager.js';
 import { resetEventDelegation, renderTasks } from '../public/js/dom-renderer.js';
@@ -1277,6 +1278,12 @@ describe('App.js Callback Functions', () => {
                 }
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Click the checkbox to complete the task
                 const checkbox = document.querySelector('.checkbox');
@@ -1287,7 +1294,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmCompleteLate).toHaveBeenCalledWith(0, '10:15', 75);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 completeTaskSpy.mockRestore();
                 confirmCompleteLate.mockRestore();
@@ -1321,6 +1331,12 @@ describe('App.js Callback Functions', () => {
                     });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Click delete button twice (once to confirm, once to actually delete)
                 const deleteButtons = document.querySelectorAll('.btn-delete');
@@ -1339,7 +1355,10 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(deleteTaskSpy).toHaveBeenCalledTimes(2);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 deleteTaskSpy.mockRestore();
             });
@@ -1446,6 +1465,12 @@ describe('App.js Callback Functions', () => {
                     .mockReturnValue({ success: true });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Submit the main task form
                 const taskForm = getTaskFormElement();
@@ -1475,7 +1500,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmAddTaskAndReschedule).toHaveBeenCalled();
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 addTaskSpy.mockRestore();
                 confirmAddTaskAndReschedule.mockRestore();

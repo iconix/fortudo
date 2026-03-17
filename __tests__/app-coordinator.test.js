@@ -33,12 +33,12 @@ describe('app-coordinator', () => {
         jest.clearAllMocks();
     });
 
-    test('onTaskCompleted refreshes UI, triggers confetti for scheduled tasks, and updates start time', () => {
+    test('onTaskCompleted refreshes UI and triggers confetti for scheduled tasks without directly updating start time', () => {
         onTaskCompleted({ id: 'task-1', type: 'scheduled' });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-1');
-        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
     test('onTaskCompleted skips confetti and start-time updates for unscheduled tasks', () => {
@@ -49,10 +49,10 @@ describe('app-coordinator', () => {
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTaskAdded refreshes UI and updates start time for scheduled tasks, but not unscheduled tasks', () => {
+    test('onTaskAdded refreshes UI without directly updating start time for either task type', () => {
         onTaskAdded({ id: 'task-3', type: 'scheduled' });
         expect(refreshUI).toHaveBeenCalledTimes(1);
-        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
 
         jest.clearAllMocks();
 
@@ -61,18 +61,18 @@ describe('app-coordinator', () => {
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTaskUpdated refreshes UI and updates start time', () => {
+    test('onTaskUpdated refreshes UI without directly updating start time', () => {
         onTaskUpdated({ id: 'task-5', type: 'scheduled' });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
-        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onTaskDeleted refreshes UI and updates start time', () => {
+    test('onTaskDeleted refreshes UI without directly updating start time', () => {
         onTaskDeleted('task-6');
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
-        expect(updateStartTimeField).toHaveBeenCalledWith('10:00', true);
+        expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
     test('onDayChanged is callable and does not throw', () => {
