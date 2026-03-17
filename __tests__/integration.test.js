@@ -17,7 +17,7 @@ import {
 } from './test-utils.js';
 
 import { resetEventDelegation } from '../public/js/dom-renderer.js';
-import { refreshActiveTaskColor } from '../public/js/scheduled-task-renderer.js';
+import { refreshActiveTaskColor } from '../public/js/tasks/scheduled-renderer.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
 
@@ -44,7 +44,7 @@ import {
 } from '../public/js/storage.js';
 
 // Import task-manager after the mock since it depends on mock storage.js
-import * as taskManager from '../public/js/task-manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockPutTask = jest.mocked(mockPutTaskInternal);

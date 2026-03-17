@@ -261,7 +261,7 @@ describe('Modal Manager Tests', () => {
         describe('Schedule Modal', () => {
             test('showScheduleModal shows modal with task info', () => {
                 // Mock getTaskState to return a task with estDuration
-                jest.doMock('../public/js/task-manager.js', () => ({
+                jest.doMock('../public/js/tasks/manager.js', () => ({
                     getTaskState: () => [{ id: 'task-1', estDuration: 90 }]
                 }));
 

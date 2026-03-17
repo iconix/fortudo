@@ -6,7 +6,7 @@ import {
     getUnscheduledTaskListElement,
     getPriorityClasses,
     renderUnscheduledTasks
-} from '../public/js/unscheduled-task-renderer.js';
+} from '../public/js/tasks/unscheduled-renderer.js';
 
 describe('Unscheduled Task Renderer Tests', () => {
     beforeEach(() => {

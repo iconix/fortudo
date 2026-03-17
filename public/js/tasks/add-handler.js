@@ -4,10 +4,10 @@ import {
     adjustAndCompleteTask,
     truncateCompletedTask,
     getSuggestedStartTime
-} from '../task-manager.js';
+} from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
-import { focusTaskDescriptionInput, resetTaskFormPreviewState } from '../form-utils.js';
-import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
+import { focusTaskDescriptionInput, resetTaskFormPreviewState } from './form-utils.js';
+import { triggerConfettiAnimation } from './scheduled-renderer.js';
 import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
 import { getThemeForTaskType, logger } from '../utils.js';
 

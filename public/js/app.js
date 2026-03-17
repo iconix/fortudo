@@ -5,7 +5,7 @@ import {
     resetAllConfirmingDeleteFlags,
     getSuggestedStartTime,
     getSortedUnscheduledTasks
-} from './task-manager.js';
+} from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
@@ -13,8 +13,8 @@ import {
     focusTaskDescriptionInput,
     setupEndTimeHint,
     setupOverlapWarning
-} from './form-utils.js';
-import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './scheduled-task-renderer.js';
+} from './tasks/form-utils.js';
+import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/scheduled-renderer.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
@@ -28,15 +28,11 @@ import {
 } from './dom-renderer.js';
 import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
-import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
-import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
-import { handleAddTaskProcess } from './handlers/add-task-handler.js';
-import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js';
-import {
-    showRoomEntryScreen,
-    showMainApp,
-    updateSyncStatusUI
-} from './handlers/room-ui-handler.js';
+import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
+import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
+import { handleAddTaskProcess } from './tasks/add-handler.js';
+import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
+import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync } from './sync-manager.js';
 

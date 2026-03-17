@@ -12,8 +12,8 @@ import {
     handleCancelEdit,
     handleGapClick,
     createScheduledTaskCallbacks
-} from '../public/js/handlers/scheduled-task-handlers.js';
-import { updateTaskState, getTaskState, getTaskById } from '../public/js/task-manager.js';
+} from '../public/js/tasks/scheduled-handlers.js';
+import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock storage
@@ -59,7 +59,7 @@ jest.mock('../public/js/dom-renderer.js', () => ({
 }));
 
 // Mock scheduled-task-renderer
-jest.mock('../public/js/scheduled-task-renderer.js', () => ({
+jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
     refreshActiveTaskColor: jest.fn(),
     renderTasks: jest.fn(() => null),
@@ -67,7 +67,7 @@ jest.mock('../public/js/scheduled-task-renderer.js', () => ({
 }));
 
 // Mock form-utils
-jest.mock('../public/js/form-utils.js', () => ({
+jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),

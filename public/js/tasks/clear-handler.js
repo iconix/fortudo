@@ -4,7 +4,7 @@ import {
     deleteAllScheduledTasks,
     deleteCompletedTasks,
     getSuggestedStartTime
-} from '../task-manager.js';
+} from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
 import {
     refreshUI,

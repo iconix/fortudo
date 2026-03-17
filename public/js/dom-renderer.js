@@ -1,23 +1,23 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
-import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './task-manager.js';
-import { isScheduledTask } from './task-validators.js';
+import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './tasks/manager.js';
+import { isScheduledTask } from './tasks/validators.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
     computeOverlapPreview,
     formatOverlapWarning
-} from './form-utils.js';
+} from './tasks/form-utils.js';
 
 // Import from new modules
 import {
     renderTasks as renderScheduledTasks,
     getScheduledTaskListElement
-} from './scheduled-task-renderer.js';
+} from './tasks/scheduled-renderer.js';
 
 import {
     renderUnscheduledTasks as renderUnscheduledTasksBase,
     getUnscheduledTaskListElement
-} from './unscheduled-task-renderer.js';
+} from './tasks/unscheduled-renderer.js';
 
 // Global event callbacks storage for event delegation
 let globalScheduledTaskCallbacks = null;

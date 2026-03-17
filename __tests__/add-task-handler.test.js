@@ -2,8 +2,8 @@
  * @jest-environment jsdom
  */
 
-import { handleAddTaskProcess } from '../public/js/handlers/add-task-handler.js';
-import { updateTaskState, getTaskState } from '../public/js/task-manager.js';
+import { handleAddTaskProcess } from '../public/js/tasks/add-handler.js';
+import { updateTaskState, getTaskState } from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
@@ -46,7 +46,7 @@ jest.mock('../public/js/dom-renderer.js', () => ({
 }));
 
 // Mock scheduled-task-renderer
-jest.mock('../public/js/scheduled-task-renderer.js', () => ({
+jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
     refreshActiveTaskColor: jest.fn(),
     renderTasks: jest.fn(() => null),
@@ -54,7 +54,7 @@ jest.mock('../public/js/scheduled-task-renderer.js', () => ({
 }));
 
 // Mock form-utils
-jest.mock('../public/js/form-utils.js', () => ({
+jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
@@ -65,7 +65,10 @@ jest.mock('../public/js/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert } from '../public/js/modal-manager.js';
-import { focusTaskDescriptionInput, resetTaskFormPreviewState } from '../public/js/form-utils.js';
+import {
+    focusTaskDescriptionInput,
+    resetTaskFormPreviewState
+} from '../public/js/tasks/form-utils.js';
 
 describe('Add Task Handler', () => {
     let mockFormElement;

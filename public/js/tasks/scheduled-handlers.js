@@ -12,16 +12,16 @@ import {
     cancelEdit,
     getSuggestedStartTime,
     getSortedUnscheduledTasks
-} from '../task-manager.js';
+} from './manager.js';
 import {
     showAlert,
     askConfirmation,
     showGapTaskPicker,
     showScheduleModal
 } from '../modal-manager.js';
-import { extractTaskFormData } from '../form-utils.js';
+import { extractTaskFormData } from './form-utils.js';
 import { refreshUI, updateStartTimeField, getCurrentTimeElement } from '../dom-renderer.js';
-import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
+import { triggerConfettiAnimation } from './scheduled-renderer.js';
 import {
     convertTo24HourTime,
     convertTo12HourTime,
@@ -29,7 +29,7 @@ import {
     logger,
     getThemeForTask
 } from '../utils.js';
-import { getThemeForTaskId, handleRescheduleConfirmation } from '../confirmation-helpers.js';
+import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
     const taskToComplete = getTaskById(taskId);

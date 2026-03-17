@@ -8,8 +8,8 @@ import {
     getTaskDates,
     extractDateFromDateTime,
     convertTo12HourTime
-} from './utils.js';
-import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from './storage.js';
+} from '../utils.js';
+import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from '../storage.js';
 
 // Import from new modules
 import {
@@ -21,9 +21,9 @@ import {
     executeReschedule,
     findAdjustableTask,
     findOverlappingCompletedTask
-} from './reschedule-engine.js';
+} from '../reschedule-engine.js';
 
-import { isValidTaskData, isScheduledTask } from './task-validators.js';
+import { isValidTaskData, isScheduledTask } from './validators.js';
 
 /**
  * @typedef {Object} BaseTaskProps

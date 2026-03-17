@@ -13,9 +13,9 @@ import {
     updateTaskState,
     getTaskState,
     cancelEdit as cancelEditDirect
-} from '../public/js/task-manager.js';
+} from '../public/js/tasks/manager.js';
 import { resetEventDelegation, renderTasks } from '../public/js/dom-renderer.js';
-import { getTaskFormElement } from '../public/js/form-utils.js';
+import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -188,7 +188,7 @@ describe('App.js Callback Functions', () => {
 
             // Mock deleteTask to fail
             deleteTaskSpy = jest
-                .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                .spyOn(require('../public/js/tasks/manager.js'), 'deleteTask')
                 .mockReturnValue({
                     success: false,
                     requiresConfirmation: false,
@@ -390,7 +390,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock the completeTask to return late completion scenario
                 const completeTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'completeTask')
                     .mockReturnValueOnce({
                         success: true,
                         requiresConfirmation: true,
@@ -467,7 +467,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
                     taskData: {
@@ -530,7 +530,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     reason: 'Update failed'
                 });
@@ -562,7 +562,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
                     confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
@@ -615,7 +615,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
                     success: false,
                     reason: 'Add failed'
                 });
@@ -660,7 +660,7 @@ describe('App.js Callback Functions', () => {
 
                 // Spy on addTask to detect form submission
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockImplementation(() => {
                         formSubmitted = true;
                         return { success: true, task: {} };
@@ -711,7 +711,7 @@ describe('App.js Callback Functions', () => {
                 let formSubmitted = false;
 
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockImplementation(() => {
                         formSubmitted = true;
                         return { success: true, task: {} };
@@ -821,7 +821,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock deleteAllScheduledTasks to fail
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'deleteAllScheduledTasks'
                 ).mockReturnValue({
                     success: false,
@@ -862,7 +862,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock deleteAllScheduledTasks to succeed
                 const executeDeleteSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'deleteAllScheduledTasks')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'deleteAllScheduledTasks')
                     .mockReturnValue({
                         success: true,
                         tasksDeleted: 1
@@ -893,7 +893,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock resetAllConfirmingDeleteFlags to return false
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(false);
 
@@ -910,11 +910,11 @@ describe('App.js Callback Functions', () => {
 
                 // Mock both functions to return false
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(false);
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllEditingFlags'
                 ).mockReturnValue(false);
 
@@ -931,7 +931,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock to return true to trigger needsRender
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(true);
 
@@ -1252,7 +1252,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock completeTask to return late completion scenario
                 const completeTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'completeTask')
                     .mockReturnValue({
                         success: true,
                         requiresConfirmation: true,
@@ -1262,7 +1262,7 @@ describe('App.js Callback Functions', () => {
                     });
 
                 const confirmCompleteLate = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'confirmCompleteLate')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'confirmCompleteLate')
                     .mockReturnValue({ success: true });
 
                 // Set current time in DOM to trigger late completion
@@ -1306,7 +1306,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock deleteTask to return success on second call (after confirmation)
                 const deleteTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'deleteTask')
                     .mockReturnValueOnce({
                         success: false,
                         requiresConfirmation: true
@@ -1360,7 +1360,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock updateTask to require confirmation
                 const updateTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'updateTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'updateTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
@@ -1375,7 +1375,7 @@ describe('App.js Callback Functions', () => {
 
                 const confirmUpdateTaskAndReschedule = jest
                     .spyOn(
-                        require('../public/js/task-manager.js'),
+                        require('../public/js/tasks/manager.js'),
                         'confirmUpdateTaskAndReschedule'
                     )
                     .mockReturnValue({ success: true });
@@ -1422,7 +1422,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock addTask to require confirmation
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
@@ -1437,7 +1437,7 @@ describe('App.js Callback Functions', () => {
                     });
 
                 const confirmAddTaskAndReschedule = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'confirmAddTaskAndReschedule')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'confirmAddTaskAndReschedule')
                     .mockReturnValue({ success: true });
 
                 updateStartTimeFieldSpy.mockClear();
@@ -1492,7 +1492,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock addTask to require confirmation
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,

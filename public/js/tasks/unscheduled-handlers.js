@@ -7,15 +7,15 @@ import {
     updateUnscheduledTask,
     toggleUnscheduledTaskCompleteState,
     getSuggestedStartTime
-} from '../task-manager.js';
+} from './manager.js';
 import { showAlert, askConfirmation, showScheduleModal } from '../modal-manager.js';
 import {
     populateUnscheduledTaskInlineEditForm,
     getUnscheduledTaskInlineFormData
-} from '../form-utils.js';
+} from './form-utils.js';
 import { refreshUI } from '../dom-renderer.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { getThemeForTaskId } from '../confirmation-helpers.js';
+import { getThemeForTaskId } from './confirmation-helpers.js';
 
 export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);

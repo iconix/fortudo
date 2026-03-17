@@ -26,8 +26,8 @@ import {
     getTaskIndex,
     setTaskInlineEditing,
     resetAllInlineEditingFlags
-} from '../public/js/task-manager.js';
-import { isValidTaskData } from '../public/js/task-validators.js';
+} from '../public/js/tasks/manager.js';
+import { isValidTaskData } from '../public/js/tasks/validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
 import {
     calculateEndDateTime,
@@ -1860,7 +1860,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Unscheduled Task Sorting', () => {
-        const { getSortedUnscheduledTasks } = require('../public/js/task-manager.js');
+        const { getSortedUnscheduledTasks } = require('../public/js/tasks/manager.js');
 
         function createUnscheduledTask(priority, estDuration, status = 'incomplete') {
             return {
@@ -1955,7 +1955,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             toggleUnscheduledTaskCompleteState,
             toggleLockState,
             unscheduleTask
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('scheduleUnscheduledTask with invalid task id returns failure', () => {
             updateTaskState([]);
@@ -2046,7 +2046,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         const {
             resetAllConfirmingDeleteFlags,
             resetAllEditingFlags
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('resetAllConfirmingDeleteFlags returns false when no flags to reset', () => {
             const task = createTaskWithDateTime({
@@ -2115,7 +2115,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         const {
             deleteAllScheduledTasks,
             deleteCompletedTasks
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('deleteAllScheduledTasks removes only scheduled tasks', () => {
             const scheduledTask = createTaskWithDateTime({
@@ -2199,7 +2199,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('UpdateUnscheduledTask', () => {
-        const { updateUnscheduledTask } = require('../public/js/task-manager.js');
+        const { updateUnscheduledTask } = require('../public/js/tasks/manager.js');
 
         test('updates unscheduled task successfully', () => {
             const task = {
@@ -2234,7 +2234,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('DeleteUnscheduledTask', () => {
-        const { deleteUnscheduledTask } = require('../public/js/task-manager.js');
+        const { deleteUnscheduledTask } = require('../public/js/tasks/manager.js');
 
         test('deletes an existing unscheduled task with confirmation', () => {
             const task = {

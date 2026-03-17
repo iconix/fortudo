@@ -16,7 +16,7 @@ import {
     disableStartTimeAutoUpdate,
     refreshUI
 } from '../public/js/dom-renderer.js';
-import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/form-utils.js';
+import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/tasks/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
 import {
     convertTo12HourTime,
@@ -32,7 +32,7 @@ jest.mock('../public/js/storage.js', () => ({
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
-import { updateTaskState } from '../public/js/task-manager.js';
+import { updateTaskState } from '../public/js/tasks/manager.js';
 
 describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;

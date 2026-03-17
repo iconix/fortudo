@@ -6,7 +6,7 @@ import {
     showRoomEntryScreen,
     showMainApp,
     updateSyncStatusUI
-} from '../public/js/handlers/room-ui-handler.js';
+} from '../public/js/room-renderer.js';
 
 // Mock room-manager.js
 jest.mock('../public/js/room-manager.js', () => ({

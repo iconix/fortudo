@@ -15,7 +15,7 @@ import {
     setupOverlapWarning,
     formatOverlapWarning,
     resetTaskFormPreviewState
-} from '../public/js/form-utils.js';
+} from '../public/js/tasks/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
