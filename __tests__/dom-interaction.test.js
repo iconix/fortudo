@@ -78,10 +78,10 @@ describe('DOM Handler Interaction Tests', () => {
                 </form>
                 <div id="scheduled-task-list" class="task-list"></div>
                 <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
-                <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
+                <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
                 <div id="clear-tasks-dropdown" style="display: none;">
-                    <button id="clear-scheduled-tasks-option">Clear Scheduled</button>
                     <button id="clear-completed-tasks-option">Clear Completed</button>
+                    <button id="clear-all-tasks-option">Clear All</button>
                 </div>
             </div>
         `;
@@ -104,19 +104,19 @@ describe('DOM Handler Interaction Tests', () => {
         alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
         jest.spyOn(window, 'confirm').mockImplementation(() => true);
 
-        // Get references to form and delete button
+        // Get references to form and clear-schedule button
         const taskForm = /** @type {HTMLFormElement|null} */ (getTaskFormElement());
-        const deleteAllBtn = /** @type {HTMLButtonElement|null} */ (
-            document.getElementById('delete-all')
+        const clearScheduleButton = /** @type {HTMLButtonElement|null} */ (
+            document.getElementById('clear-schedule-button')
         );
         // Initialize event listeners with mock callbacks and correct arguments
-        initializePageEventListeners(mockAppCallbacks, taskForm, deleteAllBtn);
+        initializePageEventListeners(mockAppCallbacks, taskForm, clearScheduleButton);
 
         // Ensure all required elements exist
         expect(taskForm).not.toBeNull();
         expect(document.getElementById('scheduled-task-list')).not.toBeNull();
         expect(document.getElementById('unscheduled-task-list')).not.toBeNull();
-        expect(deleteAllBtn).not.toBeNull();
+        expect(clearScheduleButton).not.toBeNull();
         expect(document.getElementById('current-time')).not.toBeNull();
         expect(document.getElementById('current-date')).not.toBeNull();
     });
@@ -494,12 +494,12 @@ describe('DOM Handler Interaction Tests', () => {
             expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(taskFormElement);
         });
 
-        test('delete all button is not handled by initializePageEventListeners', () => {
-            // Note: Delete all button handling has been moved elsewhere
+        test('clear schedule button is not handled by initializePageEventListeners', () => {
+            // Note: Clear schedule button handling has been moved elsewhere
             // initializePageEventListeners only handles form submission and global click
-            const deleteAllBtn = document.getElementById('delete-all');
-            expect(deleteAllBtn).not.toBeNull();
-            // No onDeleteAllTasks callback is registered by initializePageEventListeners
+            const clearScheduleButton = document.getElementById('clear-schedule-button');
+            expect(clearScheduleButton).not.toBeNull();
+            // No clear-schedule callback is registered by initializePageEventListeners
         });
 
         test('global click calls onGlobalClick', () => {

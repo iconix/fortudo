@@ -382,11 +382,14 @@ with sync_playwright() as p:
         test("Schedule button for modal X test", False, "No schedule buttons")
 
     # =========================================================================
-    # TEST 10: Clear dropdown menu
+    # TEST 10: Clear controls
     # =========================================================================
     print("\nTEST 10: Clear tasks dropdown", flush=True)
     dropdown = page.locator("#clear-tasks-dropdown")
     test("Dropdown initially hidden", dropdown.is_hidden(), "Dropdown visible initially")
+
+    clear_schedule_button = page.locator("#clear-schedule-button")
+    test("Clear Schedule button exists", clear_schedule_button.count() == 1)
 
     page.locator("#clear-options-dropdown-trigger-btn").click()
     page.wait_for_timeout(300)

@@ -244,9 +244,9 @@ with sync_playwright() as p:
     screenshot(page, "07_task_completed")
 
     # =========================================================================
-    # TEST 8: Clear All Tasks
+    # TEST 8: Clear Schedule
     # =========================================================================
-    print("\nTEST 8: Clear All Tasks", flush=True)
+    print("\nTEST 8: Clear Schedule", flush=True)
     page.fill('input[name="description"]', "Temp task")
     page.fill('input[name="start-time"]', "14:00")
     page.fill('input[name="duration-hours"]', "0")
@@ -256,11 +256,11 @@ with sync_playwright() as p:
     dismiss_modals(page)
 
     unscheduled_before_clear = page.locator("#unscheduled-task-list .task-card").count()
-    page.locator("#delete-all").click()
+    page.locator("#clear-schedule-button").click()
     page.wait_for_timeout(500)
 
     confirm_modal = page.locator("#custom-confirm-modal")
-    test("Confirm modal appears for clear all", confirm_modal.is_visible(),
+    test("Confirm modal appears for clear schedule", confirm_modal.is_visible(),
          "Confirm modal did not appear")
 
     if confirm_modal.is_visible():

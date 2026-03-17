@@ -11,7 +11,7 @@ import {
     getRenderedTasksDOM,
     clearLocalStorage,
     clickCompleteCheckbox,
-    clickDeleteAllButton,
+    clickClearScheduleButton,
     setCurrentTimeInDOM,
     createTaskWithDateTime
 } from './test-utils.js';
@@ -766,7 +766,7 @@ describe('User Confirmation Flows', () => {
             ]);
             confirmSpy.mockReturnValueOnce(true);
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
@@ -795,7 +795,7 @@ describe('User Confirmation Flows', () => {
             ]);
             confirmSpy.mockReturnValueOnce(false);
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
 
@@ -823,7 +823,7 @@ describe('User Confirmation Flows', () => {
             mockPutTask.mockClear();
             mockDeleteTaskFromStorage.mockClear();
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
             expect(alertSpy).not.toHaveBeenCalled();
@@ -856,7 +856,7 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toBe('15:33'); // Verify it's set
             }
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(

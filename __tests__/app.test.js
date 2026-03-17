@@ -793,10 +793,10 @@ describe('App.js Callback Functions', () => {
                     .mockImplementation(() => {});
                 mockSaveTasks.mockClear();
 
-                // Click the delete all button when no tasks exist
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                // Click the clear schedule button when no tasks exist
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -823,9 +823,9 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
                 mockSaveTasks.mockClear();
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -859,9 +859,9 @@ describe('App.js Callback Functions', () => {
                     reason: 'Delete all failed'
                 });
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -901,9 +901,9 @@ describe('App.js Callback Functions', () => {
                     startTimeInput.value = '15:33';
                 }
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 50));
                 }
 
@@ -987,14 +987,14 @@ describe('App.js Callback Functions', () => {
 
                 // Then remove key DOM elements to test error handling
                 const taskForm = getTaskFormElement();
-                const deleteAllButton = document.getElementById('delete-all');
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
                 const taskList = document.getElementById('scheduled-task-list');
 
                 if (taskForm) {
                     taskForm.remove();
                 }
-                if (deleteAllButton) {
-                    deleteAllButton.remove();
+                if (clearScheduleButton) {
+                    clearScheduleButton.remove();
                 }
                 if (taskList) {
                     taskList.remove();

@@ -606,8 +606,8 @@ export function getCurrentDateElement() {
     return document.getElementById('current-date');
 }
 
-export function getDeleteAllButtonElement() {
-    return document.getElementById('delete-all');
+export function getClearScheduleButtonElement() {
+    return document.getElementById('clear-schedule-button');
 }
 
 export function getClearOptionsDropdownTriggerButtonElement() {
@@ -615,11 +615,7 @@ export function getClearOptionsDropdownTriggerButtonElement() {
 }
 
 export function getClearTasksDropdownMenuElement() {
-    return document.getElementById('clear-tasks-dropdown'); // This is the dropdown for the single "Clear Scheduled" option
-}
-
-export function getClearScheduledOptionElement() {
-    return document.getElementById('clear-scheduled-tasks-option');
+    return document.getElementById('clear-tasks-dropdown');
 }
 
 export function getClearAllOptionElement() {

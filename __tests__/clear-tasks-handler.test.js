@@ -44,7 +44,7 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
-    getDeleteAllButtonElement: jest.fn(),
+    getClearScheduleButtonElement: jest.fn(),
     getClearOptionsDropdownTriggerButtonElement: jest.fn(),
     getClearTasksDropdownMenuElement: jest.fn(),
     getClearAllOptionElement: jest.fn(),
@@ -81,7 +81,7 @@ import {
     updateStartTimeField,
     toggleClearTasksDropdown,
     closeClearTasksDropdown,
-    getDeleteAllButtonElement,
+    getClearScheduleButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
     getClearAllOptionElement,
@@ -96,7 +96,7 @@ describe('Clear Tasks Handler', () => {
             <form id="task-form">
                 <input type="text" name="description" />
             </form>
-            <button id="delete-all">Clear Schedule</button>
+            <button id="clear-schedule-button">Clear Schedule</button>
             <button id="clear-options-dropdown-trigger-btn">▾</button>
             <div id="clear-tasks-dropdown" class="hidden">
                 <a id="clear-completed-tasks-option" href="#">Clear Completed</a>
@@ -108,7 +108,9 @@ describe('Clear Tasks Handler', () => {
         jest.clearAllMocks();
 
         // Configure mock implementations to return actual DOM elements after clearAllMocks
-        getDeleteAllButtonElement.mockReturnValue(document.getElementById('delete-all'));
+        getClearScheduleButtonElement.mockReturnValue(
+            document.getElementById('clear-schedule-button')
+        );
         getClearOptionsDropdownTriggerButtonElement.mockReturnValue(
             document.getElementById('clear-options-dropdown-trigger-btn')
         );
@@ -128,8 +130,8 @@ describe('Clear Tasks Handler', () => {
 
         test('main clear button shows toast when no scheduled tasks', async () => {
             initializeClearTasksHandlers();
-            const deleteAllBtn = document.getElementById('delete-all');
-            deleteAllBtn.click();
+            const clearScheduleButton = document.getElementById('clear-schedule-button');
+            clearScheduleButton.click();
             await new Promise((r) => setTimeout(r, 0));
 
             expect(showToast).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
@@ -146,8 +148,8 @@ describe('Clear Tasks Handler', () => {
             updateTaskState([task]);
 
             initializeClearTasksHandlers();
-            const deleteAllBtn = document.getElementById('delete-all');
-            deleteAllBtn.click();
+            const clearScheduleButton = document.getElementById('clear-schedule-button');
+            clearScheduleButton.click();
             await new Promise((r) => setTimeout(r, 0));
 
             expect(askConfirmation).toHaveBeenCalled();

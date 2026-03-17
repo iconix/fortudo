@@ -7,7 +7,7 @@ import {
 import { showAlert, askConfirmation } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import {
-    getDeleteAllButtonElement,
+    getClearScheduleButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
     getClearAllOptionElement,
@@ -22,9 +22,9 @@ import { onTasksCleared } from '../app-coordinator.js';
  */
 export function initializeClearTasksHandlers() {
     // Main button defaults to clearing scheduled tasks
-    const deleteAllButton = getDeleteAllButtonElement();
-    if (deleteAllButton) {
-        deleteAllButton.addEventListener('click', async (event) => {
+    const clearScheduleButton = getClearScheduleButtonElement();
+    if (clearScheduleButton) {
+        clearScheduleButton.addEventListener('click', async (event) => {
             event.stopPropagation();
             const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
             if (!scheduledTasksExist) {
@@ -128,14 +128,14 @@ export function initializeClearTasksHandlers() {
     window.addEventListener('click', (event) => {
         const dropdownTrigger = getClearOptionsDropdownTriggerButtonElement();
         const dropdownMenu = getClearTasksDropdownMenuElement();
-        const mainClearAllButton = getDeleteAllButtonElement();
+        const mainClearScheduleButton = getClearScheduleButtonElement();
 
-        if (dropdownTrigger && dropdownMenu && mainClearAllButton) {
+        if (dropdownTrigger && dropdownMenu && mainClearScheduleButton) {
             const target = event.target;
             if (target instanceof Node) {
                 const isClickInsideCaret = dropdownTrigger.contains(target);
                 const isClickInsideMenu = dropdownMenu.contains(target);
-                const isClickInsideMainButton = mainClearAllButton.contains(target);
+                const isClickInsideMainButton = mainClearScheduleButton.contains(target);
 
                 if (!isClickInsideCaret && !isClickInsideMenu && !isClickInsideMainButton) {
                     closeClearTasksDropdown();

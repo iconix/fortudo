@@ -74,10 +74,10 @@ function setupDOM() {
       <span id="overlap-warning"></span>
       <div id="scheduled-task-list" class="task-list"></div>
       <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
-      <button id="delete-all" class="btn-delete-all">Delete All Tasks</button>
+      <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
       <div id="clear-tasks-dropdown" style="display: none;">
-        <button id="clear-scheduled-tasks-option">Clear Scheduled</button>
         <button id="clear-completed-tasks-option">Clear Completed</button>
+        <button id="clear-all-tasks-option">Clear All</button>
       </div>
 
       <!-- Schedule Modal for unscheduled tasks -->
@@ -355,9 +355,9 @@ async function clickCompleteCheckbox(taskIndex) {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function clickDeleteAllButton() {
-    const button = document.getElementById('delete-all');
-    if (!button) throw new Error(`Delete All button not found.`);
+async function clickClearScheduleButton() {
+    const button = document.getElementById('clear-schedule-button');
+    if (!button) throw new Error(`Clear Schedule button not found.`);
     if (button instanceof HTMLElement) {
         button.dispatchEvent(new Event('click', { bubbles: true }));
     }
@@ -441,7 +441,7 @@ export {
     getRenderedTasksDOM,
     clearLocalStorage,
     clickCompleteCheckbox,
-    clickDeleteAllButton,
+    clickClearScheduleButton,
     getEditFormForTask,
     setCurrentTimeInDOM
 };
