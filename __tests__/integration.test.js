@@ -1155,9 +1155,9 @@ describe('User Confirmation Flows', () => {
                 return textDivs;
             };
 
-            // Set current time to BEFORE the task starts (14:00 - task starts at 15:00)
-            const date = new Date().toISOString().split('T')[0];
-            const beforeTaskStart = new Date(`${date}T14:00:00`);
+            // Use the task's own local calendar date so this assertion is stable near UTC day rollover.
+            const beforeTaskStart = new Date(futureTask.startDateTime);
+            beforeTaskStart.setHours(14, 0, 0, 0);
 
             // Refresh the active task color with the simulated time
             refreshActiveTaskColor(taskManager.getTaskState(), beforeTaskStart);

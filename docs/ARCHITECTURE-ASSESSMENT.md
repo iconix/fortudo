@@ -2,28 +2,40 @@
 
 ## Strengths
 
-**Clean module separation** - Each file has a clear responsibility. `tasks/manager.js` owns task state, `dom-renderer.js` owns DOM concerns, and `reschedule-engine.js` owns scheduling logic. Dependencies flow in one direction.
+**Clear domain split** - The current structure is materially better than the earlier single-file shape. Task state lives in `tasks/manager.js`, scheduling logic lives in `reschedule-engine.js`, render concerns live in `dom-renderer.js` plus the task renderers, and boot wiring lives in `app.js`.
 
-**Event delegation** - Using 2 container listeners instead of per-element handlers is a smart optimization for a dynamic list UI.
+**Coordinator boundary is now justified** - `app-coordinator.js` is still intentionally thin, but it is no longer fake architecture. Handlers report semantic post-mutation events instead of mixing success orchestration into each flow, and scheduled completion already has a real cross-cutting side effect there via confetti.
 
-**Result object pattern** - The `{ success, reason, requiresConfirmation }` convention provides a consistent API. The multi-step confirmation flow (e.g., "shift due to locked task?" → "reschedule others?") is handled cleanly.
+**Handlers are thinner and more coherent** - Scheduled, unscheduled, add, and clear flows now follow the same shape: manager mutation first, coordinator event on success, local UI cleanup only when the action is UI-only or failed.
 
-**Coordinator boundary is now real** - Post-mutation orchestration no longer depends on scattered handler-level refreshes. `app-coordinator.js` gives the app a semantic task-event boundary that future cross-cutting features can hook into.
+**Result-object workflow scales well for confirmations** - The `{ success, reason, requiresConfirmation, confirmationType }` pattern continues to hold up well for the overlap/reschedule flows. It keeps multi-step decisions explicit instead of hiding them in exceptions or DOM state.
 
-**No unnecessary dependencies** - Vanilla JS with ES modules is appropriate for an app this size. No build step means faster iteration.
+**Event delegation remains a good fit** - Container-level listeners are still the right tradeoff for a dynamic list UI. The app avoids per-row listener churn while keeping task interactions centralized.
 
-**Good test coverage** - 160+ tests with 70% threshold enforced in CI.
+**Vanilla JS remains proportionate** - For this app size, ES modules plus JSDoc are still a reasonable choice. The code is inspectable without a build step, and iteration remains fast.
+
+**Verification depth is strong** - The branch has meaningful unit, app, integration, and E2E coverage around the scheduling and orchestration paths. That matters more than abstract architectural cleanliness here.
 
 ## Weaknesses
 
-**`app.js` is still the main orchestration entrypoint** - It is much smaller than before, but boot wiring, sync setup, and page-level listeners still accumulate there. The coordinator and extracted handlers reduced the worst coupling, but the app shell is still the place to watch as the product grows.
+**`app.js` is smaller but still the operational hub** - Boot flow, storage init, sync wiring, page listeners, refresh-from-storage behavior, and room lifecycle still concentrate there. It is not a god file in the old sense anymore, but it is still the place most likely to become overburdened as Activities land.
 
-**State isn't truly immutable** - `tasks/manager.js` mutates a module-level array. Works fine, but makes debugging state changes harder.
+**The coordinator is semantic, but still light on present-day behavior** - Today most coordinator events still collapse to `refreshUI()`, with scheduled completion confetti as the only distinct side effect. That is acceptable pre-Activities, but it means the module’s value is currently more architectural than behavioral.
 
-**Callback threading is still verbose** - Passing `scheduledTaskEventCallbacks` and `unscheduledTaskEventCallbacks` through every render call creates coupling. The coordinator improved post-mutation behavior, but render-time callback wiring is still heavier than it needs to be.
+**Render-time callback threading is still verbose** - `scheduledTaskEventCallbacks` and `unscheduledTaskEventCallbacks` still have to be carried through rendering and event setup. The coordinator cleaned up post-mutation behavior, but it did not simplify that part of the system.
 
-**No TypeScript** - JSDoc helps, but complex objects like the result types would benefit from proper interfaces.
+**State mutation is still mostly in-place** - `tasks/manager.js` mutates module-level state directly. That keeps the code simple, but it makes historical debugging and reasoning about previous vs next state harder than it would be with stricter immutability.
+
+**Task operation contracts are still hand-shaped JS objects** - The result-object pattern is useful, but the contracts are only as strong as the surrounding tests. Without TypeScript or runtime schema checks, shape drift is still a real maintenance risk.
+
+## Pressure Points
+
+**Activities will test whether the coordinator stays disciplined** - If auto-logging and related side effects attach cleanly to semantic task events, the current approach will have paid off. If feature work starts bypassing the coordinator again, the architecture will regress quickly.
+
+**Day-rollover work should only return with a real contract** - Removing the placeholder day-boundary hook was the right call. Reintroducing rollover logic should happen only once the once-per-room-per-day semantics and mutation rules are fully specified.
+
+**Batch operations may eventually want a more compact event model** - The three clear-scope coordinator functions are fine today, but if their behavior diverges later, a scoped batch event could become cleaner than maintaining parallel functions.
 
 ## Verdict
 
-**Solid 7/10** - Well-organized for a vanilla JS project of this scope. The patterns are consistent and the code is readable. The main technical debt is in `app.js` complexity, which would matter more if the app grows significantly.
+**Solid 8/10 for the current scope** - The codebase now has a credible orchestration boundary, better module separation, and enough verification to support the next feature wave. The main risks are not foundational confusion anymore; they are keeping `app.js` and the coordinator honest as Activities add real cross-cutting behavior.
