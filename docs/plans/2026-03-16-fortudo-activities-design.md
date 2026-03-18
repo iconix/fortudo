@@ -2,57 +2,57 @@
 
 ## Pyramid Summary
 
-- **~2w:** Add activity tracking to fortudo: auto-log completed tasks, manual activity logging via a third form mode, insights dashboard with plan-vs-actual timeline and category breakdowns. Toggleable per-user.
-- **~8w:** Activities are a new PouchDB document type alongside tasks, sharing the same database and sync infrastructure. Categories (with group hierarchy) provide the aggregation layer for insights. A mediator/coordinator pattern replaces scattered handler logic to support cross-cutting concerns. File structure reorganized into `tasks/` and `activities/` folders. New toast notification system replaces modal alerts for non-blocking feedback. Feature is off by default, enabled via a settings modal.
+- **~2w:** Add activity tracking to Fortudo: auto-log completed tasks, manual activity logging via a third form mode, and an insights dashboard with a plan-vs-actual timeline and category breakdowns. Toggleable per user.
+- **~8w:** Activities become a new PouchDB document type alongside tasks, sharing the same database and sync infrastructure. Categories provide the aggregation layer for insights. A coordinator boundary centralizes post-mutation side effects. File structure is reorganized into `tasks/` and `activities/` folders. A toast notification system replaces modal alerts for non-blocking feedback. The feature is off by default and enabled via a settings modal.
 - **~32w:** See full design below.
 
 ---
 
 ## Problem
 
-Fortudo handles the planning side of daily time management (scheduling tasks into time blocks) but has no way to track what actually happened. There's no record of whether tasks were completed on time, no way to log unplanned activities, and no insights into how time was actually spent. The [tracks](https://github.com/iconix/tracks) app solves the tracking/insights side but is a separate tool with no integration. The goal is to bring tracks' functionality into fortudo so planning and tracking live in one app.
+Fortudo handles the planning side of daily time management by scheduling tasks into time blocks, but it has no way to track what actually happened. There is no record of whether tasks were completed on time, no way to log unplanned activities, and no insights into how time was actually spent. The [tracks](https://github.com/iconix/tracks) app solves the tracking and insights side but is a separate tool with no integration. The goal is to bring that functionality into Fortudo so planning and tracking live in one app.
 
 ## System Context (Research Findings)
 
 ### Fortudo Architecture
 
-- **Storage:** PouchDB with per-room databases (`fortudo-{roomCode}`). Documents are plain objects with `_id` = `task.id`. No document-type discriminator exists today. An in-memory `revMap` tracks `_rev` for upserts. `saveTasks()` does destructive bulk replace (deletes all docs, re-inserts).
-- **Task schema:** `id`, `type` ('scheduled'/'unscheduled'), `description`, `startDateTime`, `endDateTime`, `duration`, `status`, `locked`, `editing`, `confirmingDelete`, `priority` (unscheduled only), `estDuration` (unscheduled only).
+- **Storage:** PouchDB with per-room databases (`fortudo-{roomCode}`). Documents are plain objects with `_id = task.id`. An in-memory `revMap` tracks `_rev` for upserts. `saveTasks()` still does destructive bulk replace, so it must stay scoped to task documents only. The tracked `public/js/config.js` now defaults `COUCHDB_URL` to `null`, which makes local-only mode explicit.
+- **Task schema:** `id`, `type` (`scheduled` / `unscheduled`), `description`, `startDateTime`, `endDateTime`, `duration`, `status`, `locked`, `editing`, `confirmingDelete`, `priority` (unscheduled only), `estDuration` (unscheduled only).
 - **ID conventions:** `sched-{timestamp}` for scheduled, `unsched-{timestamp}` for unscheduled.
-- **Module architecture:** `app.js` (orchestrator) creates callback objects, passes them through renderers to DOM event delegation. Handlers call managers for state changes, then do post-action coordination (save, refresh UI, etc.) inline.
+- **Module architecture:** `app.js` now focuses on boot, storage wiring, room lifecycle, and top-level event setup. Feature handlers live under `tasks/`. Successful task mutations are reported through `app-coordinator.js` as semantic post-mutation events. Render-time callback threading still exists through `dom-renderer.js`.
 - **Sync:** Bidirectional CouchDB replication via `sync-manager.js` with debounced sync and status callbacks.
-- **UI:** Dark Tailwind theme. Teal = scheduled, indigo = unscheduled, amber = warnings, rose = destructive. Modals for confirmations and alerts. Max width `3xl`.
+- **UI:** Dark Tailwind theme. Teal = scheduled, indigo = unscheduled, amber = warnings, rose = destructive. Modals remain for real confirmations. Toasts now handle non-blocking feedback. Max width `3xl`.
 
 ### Tracks Architecture
 
-- **Data model:** Activities have `name`, `start`, `end`, `duration` (seconds), `tag`. Start/stop time tracking model.
-- **Tag system:** Hierarchical keys with `/` separator (e.g., `work/project`). First segment = category for grouping. User-configurable with colors.
-- **Charts:** Chart.js from CDN. Doughnut (time by tag), bar (daily hours over 14 days). Insights tab with summary stats and collapsible daily timeline.
-- **Storage:** localStorage, flat array of all activities filtered by date at runtime.
+- **Data model:** Activities have `name`, `start`, `end`, `duration`, and `tag`. Tracks uses a start/stop time-tracking model.
+- **Tag system:** Hierarchical keys with `/` separator (for example `work/project`). First segment is the grouping category. User-configurable with colors.
+- **Charts:** Chart.js from CDN. Doughnut chart for time by tag, bar chart for daily hours over 14 days. Insights tab with summary stats and a collapsible daily timeline.
+- **Storage:** `localStorage`, flat array of activities filtered by date at runtime.
 
 ### Key Constraints
 
-- `saveTasks()` bulk replace must be scoped to task documents only. Activity and config documents must not be caught in this blast radius.
-- 80% test coverage threshold (75% branches) enforced by pre-commit hooks.
+- `saveTasks()` bulk replace must stay scoped to task documents only. Activity and config documents must not be caught in that blast radius.
+- 90% statement and line coverage, 90% function coverage, and 79% branch coverage are enforced by pre-commit hooks.
 - No build step. Vanilla JS with ES modules served directly via Firebase Hosting.
 
 ## Design
 
 ### Data Model
 
-**New document type — Activity:**
+**New document type - Activity:**
 
 ```js
 {
     docType: 'activity',
     id: 'activity-{timestamp}',
     description: String,
-    category: String | null,       // category key, e.g., 'work/deep'
-    startDateTime: String,         // ISO datetime
-    endDateTime: String,           // ISO datetime
-    duration: Number,              // minutes (consistent with fortudo tasks)
-    source: 'auto' | 'manual',    // auto = from completed task, manual = user-logged (future: 'habit' for habit-tracked activities)
-    sourceTaskId: String | null    // links to source task (when source = 'auto')
+    category: String | null,      // category key, e.g. 'work/deep'
+    startDateTime: String,        // ISO datetime
+    endDateTime: String,          // ISO datetime
+    duration: Number,             // minutes, matching Fortudo task duration units
+    source: 'auto' | 'manual',    // future: 'habit' is possible later
+    sourceTaskId: String | null   // source task link when source = 'auto'
 }
 ```
 
@@ -60,32 +60,32 @@ Fortudo handles the planning side of daily time management (scheduling tasks int
 
 ```js
 {
-    docType: 'task',               // new field, migrated onto existing docs
-    category: String | null,       // new field, optional
-    // ... all existing fields unchanged
+    docType: 'task',              // new field, migrated onto existing docs
+    category: String | null,      // new field, optional
+    // ... all existing task fields unchanged
 }
 ```
 
-**Config document — Categories:**
+**Config document - Categories:**
 
-Stored in PouchDB so they sync across devices.
+Stored in PouchDB so categories sync across devices.
 
 ```js
 {
     docType: 'config',
     id: 'config-categories',
     categories: [
-        { key: 'work/deep',     label: 'Deep Work',  color: '#0ea5e9', group: 'work' },
-        { key: 'work/meetings', label: 'Meetings',   color: '#6366f1', group: 'work' },
-        { key: 'work/comms',    label: 'Comms',       color: '#f59e0b', group: 'work' },
-        { key: 'work/admin',    label: 'Admin',       color: '#64748b', group: 'work' },
-        { key: 'personal',      label: 'Personal',    color: '#ec4899', group: 'personal' },
-        { key: 'break',         label: 'Break',       color: '#22c55e', group: 'break' }
+        { key: 'work/deep', label: 'Deep Work', color: '#0ea5e9', group: 'work' },
+        { key: 'work/meetings', label: 'Meetings', color: '#6366f1', group: 'work' },
+        { key: 'work/comms', label: 'Comms', color: '#f59e0b', group: 'work' },
+        { key: 'work/admin', label: 'Admin', color: '#64748b', group: 'work' },
+        { key: 'personal', label: 'Personal', color: '#ec4899', group: 'personal' },
+        { key: 'break', label: 'Break', color: '#22c55e', group: 'break' }
     ]
 }
 ```
 
-Categories use a hierarchical key format. The `group` field (derived from the first path segment) enables zoom-out aggregation in insights. The form dropdown groups options by group for easy scanning.
+Categories use a hierarchical key format. The `group` field, derived from the first path segment, supports zoomed-out aggregation in insights. The form dropdown groups options by group for easy scanning.
 
 Shared field names between tasks and activities: `description`, `startDateTime`, `endDateTime`, `duration`, `category`.
 
@@ -93,22 +93,24 @@ Shared field names between tasks and activities: `description`, `startDateTime`,
 
 **New functions in `storage.js`:**
 
-- `putActivity(activity)` — same upsert pattern as `putTask`.
-- `loadActivities()` — `db.allDocs()` filtered to `docType: 'activity'`.
-- `deleteActivity(id)` — same pattern as `deleteTask`.
-- `loadConfig(configId)` — loads a single config document by ID.
-- `putConfig(config)` — upserts a config document.
+- `putActivity(activity)` - same upsert pattern as `putTask`
+- `loadActivities()` - `db.allDocs()` filtered to `docType: 'activity'`
+- `deleteActivity(id)` - same pattern as `deleteTask`
+- `loadConfig(configId)` - loads a single config document by ID
+- `putConfig(config)` - upserts a config document
 
 **Modified functions:**
 
-- `loadTasks()` — filters to `docType: 'task'` (or documents without `docType` for backwards compatibility).
-- `saveTasks(tasks)` — scoped to only delete `docType: 'task'` documents during bulk replace.
+- `loadTasks()` - filters to `docType: 'task'`, while still accepting documents without `docType` for backwards compatibility
+- `saveTasks(tasks)` - deletes and rewrites only `docType: 'task'` documents during bulk replace
 
-**Migration:** On first load, documents without `docType` get `docType: 'task'` written back via `putTask`. If no `config-categories` document exists, defaults are seeded. Both operations are idempotent.
+**Migration:**
 
-### Architecture: Mediator/Coordinator Pattern
+On first load, documents without `docType` get `docType: 'task'` written back via `putTask`. If no `config-categories` document exists, defaults are seeded. Both operations should be idempotent.
 
-A new `app-coordinator.js` module owns runtime orchestration. `app.js` stays thin (boot, DOM setup, wiring). Handlers become thin reporters: they call the manager for state changes, then call the coordinator for cross-cutting side effects.
+### Architecture: Coordinator Boundary
+
+`app-coordinator.js` owns runtime post-mutation orchestration. `app.js` stays focused on boot, DOM setup, storage wiring, and room lifecycle. Handlers should stay thin: they call a manager for state changes, then report successful mutations through semantic coordinator events.
 
 ```js
 // app-coordinator.js
@@ -124,195 +126,227 @@ export function onAllTasksCleared() { ... }
 ```
 
 Before:
-```
-handleCompleteTask → completeTask → putTask → refreshUI → confetti → updateStartTime
+
+```txt
+handleCompleteTask -> completeTask -> putTask -> refreshUI -> confetti -> updateStartTime
 ```
 
 After:
-```
-handleCompleteTask → completeTask → coordinator.onTaskCompleted(task)
+
+```txt
+handleCompleteTask -> completeTask -> coordinator.onTaskCompleted({ task })
 ```
 
 The current implementation uses object payloads such as `coordinator.onTaskCompleted({ task })` rather than primitive arguments.
 
-The current coordinator centralizes the post-mutation effects that already exist today: `refreshUI()` for successful task mutations and scheduled-task completion confetti. The semantic event surface is intentionally narrow and pre-Activities. It gives Activities, auto-logging, and later day-rollover work a stable runtime boundary without leaving generic `onTaskUpdated()`-style glue in place.
+Pre-Activities, most coordinator events still resolve to `refreshUI()`, with scheduled-task completion confetti as the one distinct cross-cutting side effect. That is acceptable. The value of the coordinator at this stage is the semantic boundary, not a large present-day behavior surface.
 
-As Activities land, new cross-cutting behavior should attach to these semantic events instead of being re-threaded through each handler. That keeps handlers thin and preserves the coordinator as the single post-mutation boundary.
+As Activities land, new cross-cutting behavior should attach to these semantic events rather than being re-threaded through each handler. That keeps handlers thin and preserves the coordinator as the single post-mutation boundary.
 
-If the coordinator grows unwieldy with habits and day-rollover logic, it can graduate to an event bus pattern. The coordination points are already identified, making the swap straightforward. Habit tracking is a planned fast-follow (it already exists in tracks), so the coordinator is designed with that in mind.
+If the coordinator later grows unwieldy with habits, rollover, or richer activity logic, it can evolve into an event bus pattern. There is no need to force that now.
 
-**Day boundary detection:** The earlier placeholder `coordinator.onDayChanged()` hook was intentionally removed once it became clear it implied behavior that did not exist yet. Future day-rollover work should reintroduce a real semantic boundary only when the rollover mutation rules are fully specified.
+**Day boundary detection:**
+
+The earlier placeholder `coordinator.onDayChanged()` hook was intentionally removed once it became clear it implied behavior that did not exist yet. Future day-rollover work should reintroduce a real semantic boundary only when rollover mutation rules are fully specified.
 
 ### Module Structure
 
-```
+```txt
 public/js/
-├── tasks/
-│   ├── manager.js                # task state management, CRUD
-│   ├── scheduled-renderer.js     # renders scheduled task list
-│   ├── scheduled-handlers.js     # scheduled task event handlers
-│   ├── unscheduled-handlers.js   # unscheduled task event handlers
-│   ├── add-handler.js            # add task handler
-│   ├── clear-handler.js          # clear tasks handler
-│   └── form-utils.js             # task form extraction, validation
-├── activities/
-│   ├── manager.js                # activity state management, CRUD, auto-logging
-│   ├── renderer.js               # renders activity log list
-│   ├── insights-renderer.js      # insights dashboard, timeline, charts
-│   ├── handlers.js               # activity event handlers
-│   └── form-utils.js             # activity form extraction
-├── app.js                        # boot sequence, DOM setup, wiring
-├── app-coordinator.js            # runtime orchestration
-├── storage.js                    # PouchDB persistence layer
-├── dom-renderer.js               # page-level only (clock, form toggle, start time); scheduled task rendering extracted to tasks/scheduled-renderer.js
-├── modal-manager.js              # confirmation and schedule modals
-├── toast-manager.js              # non-blocking toast notifications
-├── room-manager.js               # room code management
-├── room-renderer.js              # room entry screen UI (renamed from handlers/room-ui-handler.js)
-├── sync-manager.js               # CouchDB sync
-├── reschedule-engine.js          # rescheduling logic
-├── category-manager.js           # category CRUD, config doc, defaults
-├── settings-manager.js           # feature toggles (Activities enabled)
-├── utils.js                      # shared utilities
-└── config.js                     # CouchDB URL config
+|-- tasks/
+|   |-- manager.js                # task state management, CRUD
+|   |-- scheduled-renderer.js     # renders scheduled task list
+|   |-- scheduled-handlers.js     # scheduled task event handlers
+|   |-- unscheduled-handlers.js   # unscheduled task event handlers
+|   |-- add-handler.js            # add task handler
+|   |-- clear-handler.js          # clear tasks handler
+|   `-- form-utils.js             # task form extraction, validation
+|-- activities/
+|   |-- manager.js                # activity state management, CRUD, auto-logging
+|   |-- renderer.js               # renders activity log list
+|   |-- insights-renderer.js      # insights dashboard, timeline, charts
+|   |-- handlers.js               # activity event handlers
+|   `-- form-utils.js             # activity form extraction
+|-- app.js                        # boot sequence, DOM setup, storage + room wiring
+|-- app-coordinator.js            # runtime post-mutation orchestration
+|-- storage.js                    # PouchDB persistence layer
+|-- dom-renderer.js               # page-level rendering and event wiring
+|-- modal-manager.js              # confirmation and schedule modals
+|-- toast-manager.js              # non-blocking toast notifications
+|-- room-manager.js               # room code management
+|-- room-renderer.js              # room entry screen UI
+|-- sync-manager.js               # CouchDB sync
+|-- reschedule-engine.js          # rescheduling logic
+|-- category-manager.js           # category CRUD and config-doc loading
+|-- settings-manager.js           # Activities toggle and related settings
+|-- utils.js                      # shared utilities
+`-- config.js                     # CouchDB URL config
 ```
 
-Files within feature folders are unprefixed (e.g., `tasks/manager.js` not `tasks/task-manager.js`). VS Code / Cursor shows parent folders in tabs when filenames are ambiguous (`workbench.editor.labelFormat: short`).
+Files within feature folders are unprefixed, for example `tasks/manager.js` instead of `tasks/task-manager.js`. VS Code or Cursor can show parent folders in tabs when filenames are ambiguous.
 
-**State management principle:** Renderers can read from any manager. Only the coordinator writes cross-module side effects.
+**State management principle:** Renderers can read from any manager. The coordinator owns cross-module post-mutation side effects. UI intent routing remains separate from the coordinator.
 
 ### Feature Toggle & Settings
 
-`settings-manager.js` exposes `isTracksEnabled()` and `setTracksEnabled(bool)`. Storage mechanism (localStorage vs PouchDB) is encapsulated and TBD.
+`settings-manager.js` should expose `isActivitiesEnabled()` and `setActivitiesEnabled(bool)`. The storage mechanism, `localStorage` versus PouchDB, stays encapsulated and can be finalized later.
 
-When disabled: no activity-related DOM, no category dropdown on tasks, no auto-logging, no insights tab. Tasks work exactly as today.
+When Activities are disabled: no activity-related DOM, no category dropdown on tasks, no auto-logging, and no insights tab. Tasks should continue working exactly as they do today.
 
-**Settings UI:** Gear icon in the header (next to room-code badge and sync indicator). Opens a settings modal with:
+**Settings UI:** Gear icon in the header, next to the room-code badge and sync indicator. Opens a settings modal with:
+
 - Activities toggle ("Enable Activities")
-- Category management: list of categories with colored dots, edit/delete buttons, "Add category" with label input and color picker
-- Flipping the toggle keeps the modal open, showing the toggle in its new state, a brief explanation of what will change ("Activity tracking will be enabled/disabled after reload"), and a "Reload to apply" button as the primary action. The user can close the modal without reloading if they change their mind.
+- Category management: list of categories with colored dots, edit/delete buttons, and an "Add category" flow with label input and color picker
+- Toggling the feature keeps the modal open, shows the toggle in its new state, explains what will change, and provides a "Reload to apply" primary action. The user can close the modal without reloading if they change their mind.
 
 ### UI: Activity Logging
 
-**Auto-logging:** When a scheduled task is completed and Activities is enabled, `createActivityFromTask(task)` creates an activity document copying `description`, `startDateTime`, `endDateTime`, `duration`, `category` with `source: 'auto'` and `sourceTaskId`. Silent, no notification.
+**Auto-logging:** When a scheduled task is completed and Activities are enabled, `createActivityFromTask(task)` creates an activity document copying `description`, `startDateTime`, `endDateTime`, `duration`, and `category`, with `source: 'auto'` and `sourceTaskId`. Silent, no notification.
 
-**Manual logging:** Third mode on the existing task form, alongside "Scheduled" and "Unscheduled". Accent color TBD (candidates: cyan, sky, or orange — try visually during implementation).
+**Manual logging:** Third mode on the existing task form, alongside Scheduled and Unscheduled. Accent color is still TBD. Candidates: cyan, sky, or orange.
 
-Fields: description, category dropdown (grouped by group), start time, duration (hours/minutes). No priority, no rescheduling logic.
+Fields: description, category dropdown grouped by group, start time, duration (hours/minutes). No priority and no rescheduling logic.
 
-**Category dropdown visual:** Since `<option>` elements can't be styled with colors cross-browser, the dropdown shows text labels grouped by group. A small colored dot or badge renders next to the currently selected category value outside the `<select>`.
+**Category dropdown visual:** Since `<option>` elements cannot be styled with colors consistently cross-browser, the dropdown should stay text-only and grouped by group. A small colored dot or badge can render next to the currently selected category outside the `<select>`.
 
-**Category on rendered tasks/activities:** A small colored pill badge next to the description. When no category is set, no badge is shown (no "uncategorized" label).
+**Category on rendered tasks and activities:** A small colored pill badge next to the description. When no category is set, show no badge.
 
 ### UI: Insights View
 
-Accessed via a tab toggle in the header ("Tasks" / "Insights"). Switches visibility of main content sections. Info panel stays visible in both views. The daily plan-vs-actual review is the primary focus of insights; longer-term trends are secondary (collapsed by default).
+Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switches visibility of main content sections while the info panel stays visible in both views. The daily plan-vs-actual review is the primary focus; longer-term trends are secondary and collapsed by default.
 
 **Sections:**
 
 1. **Today's Summary**
-   - Two-row plan-vs-actual timeline: top row shows planned task blocks (from scheduled times at completion), bottom row shows actual activities (auto + manual). Blocks proportionally sized by duration, colored by category.
-   - Summary stats: total planned time, total actual time, tasks completed, late count.
-   - Category breakdown bars.
+   - Two-row plan-vs-actual timeline: top row shows planned task blocks, bottom row shows actual activities (auto + manual). Blocks are proportionally sized by duration and colored by category.
+   - Summary stats: total planned time, total actual time, tasks completed, late count
+   - Category breakdown bars
 
 2. **Activity Log**
-   - Chronological list of today's activities. Each entry shows description, category color badge, time range, duration. Manual entries are editable/deletable. Auto entries link to source task.
+   - Chronological list of today's activities
+   - Each entry shows description, category badge, time range, and duration
+   - Manual entries are editable and deletable
+   - Auto entries link to their source task
 
 3. **Data Issues**
-   - Detects and highlights data quality problems: overlapping activities, end-before-start, duplicate auto-logged entries. Shown as a warning section (collapsed when no issues). Helps catch inconsistencies from auto-logging or sync conflicts.
+   - Highlights overlapping activities, end-before-start, and duplicate auto-logged entries
+   - Shown as a warning section, collapsed when there are no issues
 
 4. **Trends** (collapsed by default)
-   - Time-by-category doughnut chart, filterable by date range.
-   - Daily hours bar chart over last 14 days.
-   - Hand-rolled HTML/CSS/SVG for v1. Evaluate Chart.js if more interactivity is desired.
+   - Time-by-category doughnut chart, filterable by date range
+   - Daily-hours bar chart over the last 14 days
+   - Hand-rolled HTML/CSS/SVG for v1. Re-evaluate Chart.js only if the result feels too plain
 
 ### UI Patterns
 
-**Toast notifications:** New `toast-manager.js` replaces modal alerts for non-blocking feedback. Small notification slides in, auto-dismisses after 3-4 seconds. Modals remain for genuine confirmations requiring a decision. Introduced in Phase 1, existing `showAlert` calls migrated where appropriate.
+**Toast notifications:** `toast-manager.js` is already in place for non-blocking feedback. Toasts slide in, auto-dismiss, and replace modal alerts where no decision is required. Modals remain for genuine confirmations.
 
-**Empty states:** Each view has a meaningful empty state with guidance (e.g., "No activities tracked today — log one or complete a scheduled task", "Enable Activities in settings to start tracking").
+**Empty states:** Each view should have a meaningful empty state with guidance, for example "No activities tracked today - log one or complete a scheduled task" or "Enable Activities in settings to start tracking."
 
-**Keyboard shortcuts:** Added once form modes and tab exist.
-- `1` / `2` / `3` to switch form mode
-- `Tab` to toggle Tasks/Insights views
+**Keyboard shortcuts:** Add once form modes and the insights tab exist.
+
+- `1`, `2`, `3` to switch form mode
+- `Tab` to toggle Tasks / Insights views
 - `Esc` to close modals
 
-**Transitions:** Tab switching, chart animations, timeline build-in. Polish phase.
+**Transitions:** Tab switching, chart animations, and timeline build-in belong in the polish phase.
 
-**Mobile:** Plan-vs-actual timeline stacks vertically or supports horizontal scroll on narrow screens. Polish phase.
+**Mobile:** Plan-vs-actual timeline should either stack vertically or support horizontal scroll on narrow screens.
 
-**Onboarding:** One-time tooltip/walkthrough on first Activities enable. Polish phase.
+**Onboarding:** One-time tooltip or walkthrough on first Activities enable. Polish phase.
 
 ### Testing
 
-**TDD approach:** Red/green for all new code. Write failing tests first, implement until they pass, refactor.
+**TDD approach:** Red/green for all new code. Write failing tests first, implement until they pass, then refactor.
 
 **Unit tests needed:**
-- `activities/manager.js` — addActivity, createActivityFromTask, CRUD
-- `activities/handlers.js` — handler tests following existing patterns
-- `category-manager.js` — loading defaults, CRUD, config doc persistence
-- `settings-manager.js` — toggle read/write
-- `storage.js` — new functions, `saveTasks` scoping, migration
-- `app-coordinator.js` — coordination logic
-- `toast-manager.js` — show, auto-dismiss
 
-**Existing tests:** Import paths updated for the `tasks/` reorganization. Mechanical step done before adding new functionality.
+- `activities/manager.js` - addActivity, createActivityFromTask, CRUD
+- `activities/handlers.js` - activity handler tests following existing patterns
+- `category-manager.js` - loading defaults, CRUD, config-doc persistence
+- `settings-manager.js` - toggle read/write
+- `storage.js` - new activity/config functions, `saveTasks` scoping, migration
+- `app-coordinator.js` - activity-related coordination logic
 
-**E2E tests:** New Playwright test file for activity tracking flows.
+**Existing tests:** The `tasks/` reorganization, toast system, coordinator hardening, and current orchestration boundary are already covered. New work should extend from that baseline rather than re-proving the foundation.
+
+**E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
 ### Sync Considerations
 
-Activity documents sync via PouchDB like tasks. No special conflict handling for v1. Duplicate activities from sync conflicts are a minor data quality issue; deduplicate by `sourceTaskId` later if needed.
+Activity documents sync via PouchDB like tasks. No special conflict handling is required for v1. Duplicate activities from sync conflicts are a minor data-quality issue; deduplication by `sourceTaskId` can come later if needed.
 
-Lazy loading: activity modules always imported but gated by `isTracksEnabled()`. Chart library (if adopted) loaded lazily on first insights view open.
+Lazy loading: activity modules can be imported eagerly but gated by `isActivitiesEnabled()`. If a chart library is adopted, load it lazily on first Insights open.
 
 ## Open Questions
 
 - **Activity accent color:** cyan, sky, or orange (leaning blue/sky). Try visually during implementation.
-- **Charts:** Hand-rolled HTML/CSS/SVG for v1. If the result feels too plain, evaluate either a lightweight library (e.g., uPlot ~35KB, Frappe Charts ~17KB) as a middle ground, or Chart.js (~200KB) for full interactivity. User likes pizzazz, so this is likely to be revisited.
-- **Settings storage mechanism:** localStorage (per-device) vs PouchDB (per-room) for the Activities toggle. Decide when use cases are clearer. API is the same either way.
-- **`reschedule-engine.js` location:** Currently stays at root level. Could move into `tasks/` since it only applies to tasks. Decide during Phase 1 reorganization.
+- **Charts:** Hand-rolled HTML/CSS/SVG for v1. If that looks too plain, evaluate either a lightweight library such as uPlot or Frappe Charts, or Chart.js for full interactivity.
+- **Settings storage mechanism:** `localStorage` (per-device) versus PouchDB (per-room) for the Activities toggle. Decide once the intended behavior is clearer.
 
 ## Implementation Phases
 
-**Phase 1: Reorganize & foundation**
-- Move existing files into `tasks/`, rename `room-ui-handler.js` → `room-renderer.js`
-- Introduce `app-coordinator.js`, extract post-action logic from handlers
-- Add `toast-manager.js`, migrate non-blocking `showAlert` calls
-- Update all import paths, existing tests pass
-- Add day-boundary detection to the 1-second interval
+### Completed Foundation Work
+
+**Phase 1: Reorganize and foundation**
+
+- Move existing files into `tasks/`, rename `room-ui-handler.js` to `room-renderer.js`
+- Introduce `app-coordinator.js` and extract post-action logic from handlers
+- Add `toast-manager.js` and migrate non-blocking `showAlert` calls
+- Update import paths and keep existing tests passing
+
+**Phase 1.5: Cleanup**
+
+- Make local-only sync config explicit
+- Clarify clear-schedule naming and behavior
+- Remove the placeholder day-boundary hook instead of pretending rollover exists
+- Align docs and README with the future rollover direction
+
+**Phase 1.7: Coordinator hardening**
+
+- Replace generic coordinator calls with semantic task events
+- Tighten handler-to-coordinator contracts
+- Add manager, handler, app, and integration coverage around the boundary
+- Align architecture notes with the actual pre-Activities coordinator shape
+
+### Next Planned Work
 
 **Phase 2: Storage**
-- Add `docType` migration
-- New storage functions: `putActivity`, `loadActivities`, `deleteActivity`, `loadConfig`, `putConfig`
-- Scope `saveTasks` to `docType: 'task'` only
-- TDD throughout
 
-**Phase 3: Categories & settings**
-- `category-manager.js`, seeds defaults from config doc
-- `settings-manager.js` with Activities toggle
-- Settings modal UI: toggle + category management (add/edit/delete)
-- Category dropdown on task form (all modes)
-- Keyboard shortcuts for form modes
+- Add `docType` migration
+- Add `putActivity`, `loadActivities`, `deleteActivity`, `loadConfig`, `putConfig`
+- Scope `saveTasks` to `docType: 'task'` only
+- Add tests first and keep migration idempotent
+
+**Phase 3: Categories and settings**
+
+- Add `category-manager.js` with default seeding from the config doc
+- Add `settings-manager.js` with Activities toggle
+- Build settings modal UI: toggle plus category management
+- Add category dropdown on task form in all relevant modes
+- Add keyboard shortcuts for form modes if the UI is stable enough
 
 **Phase 4: Activity logging**
-- `activities/manager.js` with CRUD and `createActivityFromTask`
-- Third form mode ("Activity") on the task form
-- Auto-logging wired into task completion via coordinator
-- Empty states for activity views
+
+- Add `activities/manager.js` with CRUD and `createActivityFromTask`
+- Add third form mode ("Activity") on the main task form
+- Wire auto-logging into task completion via the coordinator
+- Add empty states for activity views
 
 **Phase 5: Insights view**
-- Tab toggle in header (Tasks / Insights)
-- Two-row plan-vs-actual timeline
-- Activity log list with edit/delete for manual entries
-- Category breakdown bars and summary stats
-- Trends section (doughnut + bar chart, hand-rolled)
-- Keyboard shortcut for tab toggle
 
-**Phase 6: Polish & E2E**
-- Playwright tests for activity flows
-- Activity accent color decision
-- Transitions and micro-interactions
-- Mobile timeline adaptation
-- Onboarding tooltips on first Activities enable
-- Evaluate Chart.js if charts feel too plain
+- Add header tab toggle for Tasks / Insights
+- Add two-row plan-vs-actual timeline
+- Add activity log list with edit/delete for manual entries
+- Add category breakdown bars and summary stats
+- Add trends section
+- Add keyboard shortcut for tab toggle if it still feels worthwhile
+
+**Phase 6: Polish and E2E**
+
+- Add E2E coverage for activity flows
+- Finalize activity accent color
+- Add transitions and micro-interactions
+- Adapt timeline UX for mobile
+- Add onboarding tooltips on first Activities enable
+- Evaluate Chart.js only if the hand-rolled visuals are too plain
