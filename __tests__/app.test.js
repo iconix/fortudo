@@ -20,6 +20,7 @@ import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
+    prepareStorage: jest.fn(() => Promise.resolve()),
     initStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
@@ -36,6 +37,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     triggerSync: jest.fn(() => Promise.resolve())
 }));
 import {
+    prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
     migrateDocTypes as mockMigrateDocTypesInternal,
     saveTasks as mockSaveTasksInternal,
@@ -48,6 +50,7 @@ import {
 } from '../public/js/sync-manager.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
 
+const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
@@ -118,6 +121,7 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
 
@@ -246,38 +250,37 @@ describe('App.js Callback Functions', () => {
         test('boot initializes storage without a remote URL when sync config is null', async () => {
             await setupAppWithTasks([]);
 
-            expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+            expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
         });
     });
 
-    describe('boot migration ordering', () => {
-        test('awaits migrateDocTypes before loading tasks', async () => {
-            let resolveMigration;
-            const migrationPromise = new Promise((resolve) => {
-                resolveMigration = resolve;
+    describe('storage preparation boot ordering', () => {
+        test('awaits prepareStorage before loading tasks', async () => {
+            let resolvePreparation;
+            const preparationPromise = new Promise((resolve) => {
+                resolvePreparation = resolve;
             });
-            mockMigrateDocTypes.mockReturnValue(migrationPromise);
+            mockPrepareStorage.mockReturnValue(preparationPromise);
 
             const bootPromise = setupAppWithTasks([]);
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
 
-            resolveMigration();
-            await migrationPromise;
+            resolvePreparation();
+            await preparationPromise;
             await new Promise((resolve) => setTimeout(resolve, 0));
             await bootPromise;
 
-            expect(mockInitStorage).toHaveBeenCalled();
-            expect(mockMigrateDocTypes).toHaveBeenCalled();
+            expect(mockPrepareStorage).toHaveBeenCalled();
+            expect(mockInitStorage).not.toHaveBeenCalled();
+            expect(mockMigrateDocTypes).not.toHaveBeenCalled();
             expect(mockLoadTasksFromStorage).toHaveBeenCalled();
 
-            const initOrder = mockInitStorage.mock.invocationCallOrder[0];
-            const migrateOrder = mockMigrateDocTypes.mock.invocationCallOrder[0];
+            const prepareOrder = mockPrepareStorage.mock.invocationCallOrder[0];
             const loadOrder = mockLoadTasksFromStorage.mock.invocationCallOrder[0];
 
-            expect(initOrder).toBeLessThan(migrateOrder);
-            expect(migrateOrder).toBeLessThan(loadOrder);
+            expect(prepareOrder).toBeLessThan(loadOrder);
         });
     });
 

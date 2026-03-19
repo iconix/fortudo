@@ -48,6 +48,11 @@ const insertMixedDocs = async () => {
             description: 'Legacy task without docType'
         },
         {
+            _id: 'legacy-config',
+            categories: [],
+            description: 'Legacy non-task doc without docType'
+        },
+        {
             _id: 'activity-doc',
             docType: 'activity',
             description: 'Activity doc'
@@ -89,7 +94,7 @@ describe('Storage scoping', () => {
         expect(doc).toHaveProperty('docType', 'task');
     });
 
-    test('loadTasks only returns task docs (docType "task" or no docType)', async () => {
+    test('loadTasks only returns task docs and task-shaped legacy docs', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await insertMixedDocs();
         const tasks = await loadTasks();
@@ -97,6 +102,7 @@ describe('Storage scoping', () => {
         const ids = tasks.map((t) => t.id).sort();
         expect(ids).toEqual(['legacy-task', 'task-doc']);
         expect(tasks.some((t) => t.id === 'falsy-doc')).toBe(false);
+        expect(tasks.some((t) => t.id === 'legacy-config')).toBe(false);
     });
 
     test('saveTasks only deletes task docs and preserves other docTypes', async () => {
@@ -120,6 +126,12 @@ describe('Storage scoping', () => {
         await expect(db.get('activity-doc')).resolves.toHaveProperty('docType', 'activity');
         await expect(db.get('config-doc')).resolves.toHaveProperty('docType', 'config');
         await expect(db.get('falsy-doc')).resolves.toHaveProperty('docType', '');
+        await expect(db.get('legacy-config')).resolves.toEqual(
+            expect.objectContaining({
+                _id: 'legacy-config',
+                categories: []
+            })
+        );
 
         await expect(db.get('task-doc')).rejects.toHaveProperty('status', 404);
         await expect(db.get('legacy-task')).rejects.toHaveProperty('status', 404);

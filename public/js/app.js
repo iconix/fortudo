@@ -26,7 +26,7 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
-import { initStorage, loadTasks, migrateDocTypes } from './storage.js';
+import { prepareStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
@@ -110,8 +110,7 @@ async function initAndBootApp(roomCode) {
     const couchDbUrl = COUCHDB_URL || null;
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
-    await initStorage(storageRoomCode, {}, remoteUrl);
-    await migrateDocTypes();
+    await prepareStorage(storageRoomCode, {}, remoteUrl);
 
     // Load and initialize state
     await loadTasksIntoState();

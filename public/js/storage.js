@@ -1,37 +1,199 @@
 import { logger } from './utils.js';
 import { initSync, debouncedSync, triggerSync } from './sync-manager.js';
 
+const DOC_TYPES = Object.freeze({
+    TASK: 'task',
+    ACTIVITY: 'activity',
+    CONFIG: 'config'
+});
+
+const LEGACY_TASK_TYPES = new Set(['scheduled', 'unscheduled']);
+const LEGACY_TASK_ID_PREFIXES = ['sched-', 'unsched-'];
+
 /** @type {Object|null} PouchDB database instance */
 let db = null;
 
 /** @type {Map<string, string>} In-memory map of task id -> PouchDB _rev */
-const revMap = new Map();
+const taskRevMap = new Map();
 /** @type {Map<string, string>} In-memory map of activity id -> PouchDB _rev */
 const activityRevMap = new Map();
 /** @type {Map<string, string>} In-memory map of config id -> PouchDB _rev */
 const configRevMap = new Map();
 
-const isTaskDoc = (doc) => {
-    if (!doc) {
-        return false;
+function ensureStorageInitialized() {
+    if (!db) {
+        throw new Error('Storage not initialized. Call initStorage first.');
     }
-    const hasDocType = Object.prototype.hasOwnProperty.call(doc, 'docType');
-    return !hasDocType || doc.docType === 'task';
-};
+}
 
-const isActivityDoc = (doc) => {
-    if (!doc) {
-        return false;
-    }
-    return doc.docType === 'activity';
-};
+function clearRevStores() {
+    taskRevMap.clear();
+    activityRevMap.clear();
+    configRevMap.clear();
+}
 
-const isConfigDoc = (doc) => {
-    if (!doc) {
+function getRevStore(docType) {
+    switch (docType) {
+        case DOC_TYPES.TASK:
+            return taskRevMap;
+        case DOC_TYPES.ACTIVITY:
+            return activityRevMap;
+        case DOC_TYPES.CONFIG:
+            return configRevMap;
+        default:
+            throw new Error(`Unsupported docType: ${docType}`);
+    }
+}
+
+function hasDocType(doc) {
+    return !!doc && Object.prototype.hasOwnProperty.call(doc, 'docType');
+}
+
+function hasLegacyTaskId(id) {
+    return LEGACY_TASK_ID_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+
+function isInternalDoc(doc) {
+    return !doc || !doc._id || doc._id.startsWith('_') || doc._deleted;
+}
+
+function isLegacyTaskDoc(doc) {
+    if (isInternalDoc(doc) || hasDocType(doc)) {
         return false;
     }
-    return doc.docType === 'config';
-};
+
+    return LEGACY_TASK_TYPES.has(doc.type) || hasLegacyTaskId(doc._id);
+}
+
+const isTaskDoc = (doc) => doc?.docType === DOC_TYPES.TASK || isLegacyTaskDoc(doc);
+const isActivityDoc = (doc) => doc?.docType === DOC_TYPES.ACTIVITY;
+const isConfigDoc = (doc) => doc?.docType === DOC_TYPES.CONFIG;
+
+function getStoredDocType(doc) {
+    if (isActivityDoc(doc)) {
+        return DOC_TYPES.ACTIVITY;
+    }
+    if (isConfigDoc(doc)) {
+        return DOC_TYPES.CONFIG;
+    }
+    if (isTaskDoc(doc)) {
+        return DOC_TYPES.TASK;
+    }
+    return null;
+}
+
+function normalizeStoredDoc(doc) {
+    const normalized = { ...doc };
+    normalized.id = normalized._id;
+    delete normalized._id;
+    delete normalized._rev;
+    return normalized;
+}
+
+function toStoredDoc(record, docType) {
+    const doc = { ...record, _id: record.id, docType };
+    delete doc.id;
+    return doc;
+}
+
+async function loadAllRows() {
+    ensureStorageInitialized();
+    const result = await db.allDocs({ include_docs: true });
+    return result.rows;
+}
+
+function seedRevisionStore(rows) {
+    for (const row of rows) {
+        const docType = getStoredDocType(row.doc);
+        if (!docType) {
+            continue;
+        }
+        getRevStore(docType).set(row.id, row.value.rev);
+    }
+}
+
+async function loadDocsByPredicate(predicate) {
+    const rows = await loadAllRows();
+    return rows
+        .map((row) => row.doc)
+        .filter(predicate)
+        .map(normalizeStoredDoc);
+}
+
+async function getTrackedRevision(id, docType) {
+    const revStore = getRevStore(docType);
+    const trackedRevision = revStore.get(id);
+    if (trackedRevision) {
+        return trackedRevision;
+    }
+
+    try {
+        const existingDoc = await db.get(id);
+        if (getStoredDocType(existingDoc) !== docType) {
+            return null;
+        }
+        revStore.set(id, existingDoc._rev);
+        return existingDoc._rev;
+    } catch (err) {
+        if (err.status === 404) {
+            return null;
+        }
+        throw err;
+    }
+}
+
+async function putTypedDoc(record, docType) {
+    ensureStorageInitialized();
+
+    const doc = toStoredDoc(record, docType);
+    const existingRev = await getTrackedRevision(record.id, docType);
+    if (existingRev) {
+        doc._rev = existingRev;
+    }
+
+    const result = await db.put(doc);
+    getRevStore(docType).set(record.id, result.rev);
+    debouncedSync();
+}
+
+async function deleteTypedDoc(id, docType, logLabel) {
+    ensureStorageInitialized();
+
+    const revStore = getRevStore(docType);
+    const rev = await getTrackedRevision(id, docType);
+    if (!rev) {
+        logger.warn(`${logLabel}: No rev found for id ${id}, document may not exist.`);
+        return;
+    }
+
+    try {
+        await db.remove(id, rev);
+        revStore.delete(id);
+    } catch (err) {
+        if (err.status !== 404) {
+            throw err;
+        }
+        revStore.delete(id);
+    }
+    debouncedSync();
+}
+
+async function loadTypedDocById(id, predicate) {
+    ensureStorageInitialized();
+
+    try {
+        const doc = await db.get(id);
+        if (!predicate(doc)) {
+            return null;
+        }
+        return normalizeStoredDoc(doc);
+    } catch (err) {
+        if (err.status === 404) {
+            return null;
+        }
+        throw err;
+    }
+}
 
 /**
  * Initialize storage with a room code.
@@ -44,27 +206,14 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     if (db) {
         await db.close();
     }
-    revMap.clear();
-    activityRevMap.clear();
-    configRevMap.clear();
+
+    clearRevStores();
     const PDB = window.PouchDB;
     const dbName = `fortudo-${roomCode}`;
     db = new PDB(dbName, options);
 
-    // Pre-populate revMap from existing docs
-    const result = await db.allDocs({ include_docs: true });
-    for (const row of result.rows) {
-        const doc = row.doc;
-        if (doc && isTaskDoc(doc)) {
-            revMap.set(row.id, row.value.rev);
-        }
-        if (doc && isActivityDoc(doc)) {
-            activityRevMap.set(row.id, row.value.rev);
-        }
-        if (doc && isConfigDoc(doc)) {
-            configRevMap.set(row.id, row.value.rev);
-        }
-    }
+    const rows = await loadAllRows();
+    seedRevisionStore(rows);
 
     initSync(db, remoteUrl);
     if (remoteUrl) {
@@ -74,25 +223,23 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
 }
 
 /**
+ * Initialize storage and run idempotent storage preparation steps.
+ * @param {string} roomCode
+ * @param {Object} [options]
+ * @param {string|null} [remoteUrl]
+ */
+export async function prepareStorage(roomCode, options = {}, remoteUrl = null) {
+    await initStorage(roomCode, options, remoteUrl);
+    await migrateDocTypes();
+}
+
+/**
  * Write a single task to PouchDB.
  * Handles both insert and update (upsert) via _rev tracking.
  * @param {Object} task - Task object (must have `id` field)
  */
 export async function putTask(task) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const doc = { ...task, _id: task.id };
-    doc.docType = 'task';
-    delete doc.id;
-
-    const existingRev = revMap.get(task.id);
-    if (existingRev) {
-        doc._rev = existingRev;
-    }
-
-    const result = await db.put(doc);
-    revMap.set(task.id, result.rev);
-    debouncedSync();
+    await putTypedDoc(task, DOC_TYPES.TASK);
 }
 
 /**
@@ -101,19 +248,7 @@ export async function putTask(task) {
  * @param {Object} activity - Activity object (must have `id`)
  */
 export async function putActivity(activity) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const doc = { ...activity, _id: activity.id, docType: 'activity' };
-    delete doc.id;
-
-    const existingRev = activityRevMap.get(activity.id);
-    if (existingRev) {
-        doc._rev = existingRev;
-    }
-
-    const result = await db.put(doc);
-    activityRevMap.set(activity.id, result.rev);
-    debouncedSync();
+    await putTypedDoc(activity, DOC_TYPES.ACTIVITY);
 }
 
 /**
@@ -122,19 +257,7 @@ export async function putActivity(activity) {
  * @param {Object} config - Config object (must have `id`)
  */
 export async function putConfig(config) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const doc = { ...config, _id: config.id, docType: 'config' };
-    delete doc.id;
-
-    const existingRev = configRevMap.get(config.id);
-    if (existingRev) {
-        doc._rev = existingRev;
-    }
-
-    const result = await db.put(doc);
-    configRevMap.set(config.id, result.rev);
-    debouncedSync();
+    await putTypedDoc(config, DOC_TYPES.CONFIG);
 }
 
 /**
@@ -142,22 +265,7 @@ export async function putConfig(config) {
  * @param {string} id - Task id to delete
  */
 export async function deleteTask(id) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const rev = revMap.get(id);
-    if (!rev) {
-        logger.warn(`deleteTask: No rev found for id ${id}, task may not exist.`);
-        return;
-    }
-
-    try {
-        await db.remove(id, rev);
-        revMap.delete(id);
-    } catch (err) {
-        if (err.status !== 404) throw err;
-        revMap.delete(id);
-    }
-    debouncedSync();
+    await deleteTypedDoc(id, DOC_TYPES.TASK, 'deleteTask');
 }
 
 /**
@@ -165,22 +273,7 @@ export async function deleteTask(id) {
  * @param {string} id - Activity id
  */
 export async function deleteActivity(id) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const rev = activityRevMap.get(id);
-    if (!rev) {
-        logger.warn(`deleteActivity: No rev found for id ${id}, activity may not exist.`);
-        return;
-    }
-
-    try {
-        await db.remove(id, rev);
-        activityRevMap.delete(id);
-    } catch (err) {
-        if (err.status !== 404) throw err;
-        activityRevMap.delete(id);
-    }
-    debouncedSync();
+    await deleteTypedDoc(id, DOC_TYPES.ACTIVITY, 'deleteActivity');
 }
 
 /**
@@ -189,19 +282,7 @@ export async function deleteActivity(id) {
  * @returns {Promise<Object[]>} Array of task objects
  */
 export async function loadTasks() {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const result = await db.allDocs({ include_docs: true });
-    return result.rows
-        .map((row) => row.doc)
-        .filter(isTaskDoc)
-        .map((doc) => {
-            const normalized = { ...doc };
-            normalized.id = normalized._id;
-            delete normalized._id;
-            delete normalized._rev;
-            return normalized;
-        });
+    return loadDocsByPredicate(isTaskDoc);
 }
 
 /**
@@ -209,19 +290,7 @@ export async function loadTasks() {
  * @returns {Promise<Object[]>}
  */
 export async function loadActivities() {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    const result = await db.allDocs({ include_docs: true });
-    return result.rows
-        .map((row) => row.doc)
-        .filter(isActivityDoc)
-        .map((doc) => {
-            const normalized = { ...doc };
-            normalized.id = normalized._id;
-            delete normalized._id;
-            delete normalized._rev;
-            return normalized;
-        });
+    return loadDocsByPredicate(isActivityDoc);
 }
 
 /**
@@ -231,24 +300,7 @@ export async function loadActivities() {
  * @returns {Promise<Object|null>}
  */
 export async function loadConfig(configId) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
-
-    try {
-        const doc = await db.get(configId);
-        if (!isConfigDoc(doc)) {
-            return null;
-        }
-        const normalized = { ...doc };
-        normalized.id = normalized._id;
-        delete normalized._id;
-        delete normalized._rev;
-        return normalized;
-    } catch (err) {
-        if (err.status === 404) {
-            return null;
-        }
-        throw err;
-    }
+    return loadTypedDocById(configId, isConfigDoc);
 }
 
 /**
@@ -257,39 +309,34 @@ export async function loadConfig(configId) {
  * @param {Object[]} tasks - Array of task objects to save
  */
 export async function saveTasks(tasks) {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+    ensureStorageInitialized();
 
-    // Delete all existing docs
-    const existing = await db.allDocs({ include_docs: true });
-    const deletions = existing.rows
+    const rows = await loadAllRows();
+    const deletions = rows
         .filter((row) => isTaskDoc(row.doc))
         .map((row) => ({
             _id: row.id,
             _rev: row.value.rev,
             _deleted: true
         }));
+
     if (deletions.length > 0) {
         await db.bulkDocs(deletions);
         for (const { _id } of deletions) {
-            revMap.delete(_id);
+            taskRevMap.delete(_id);
         }
     }
 
-    // Insert new tasks
     if (tasks.length > 0) {
-        const docs = tasks.map((task) => {
-            const doc = { ...task, _id: task.id };
-            doc.docType = 'task';
-            delete doc.id;
-            return doc;
-        });
+        const docs = tasks.map((task) => toStoredDoc(task, DOC_TYPES.TASK));
         const results = await db.bulkDocs(docs);
         for (const result of results) {
             if (result.ok) {
-                revMap.set(result.id, result.rev);
+                taskRevMap.set(result.id, result.rev);
             }
         }
     }
+
     debouncedSync();
 }
 
@@ -312,44 +359,30 @@ export async function destroyStorage() {
             logger.warn('destroyStorage: Error destroying database:', err);
         }
         db = null;
-        revMap.clear();
-        activityRevMap.clear();
-        configRevMap.clear();
+        clearRevStores();
     }
 }
 
 /**
- * Adds `docType: 'task'` to legacy documents that lack the field so that task
- * scoping remains stable for older data.
+ * Adds `docType: 'task'` to legacy task documents that lack the field so that
+ * task scoping remains stable for older data.
  */
 export async function migrateDocTypes() {
-    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+    ensureStorageInitialized();
 
-    const result = await db.allDocs({ include_docs: true });
-    const legacyDocs = result.rows
-        .map((row) => row.doc)
-        .filter((doc) => {
-            if (!doc || !doc._id) {
-                return false;
-            }
-            if (doc._id.startsWith('_') || doc._deleted) {
-                return false;
-            }
-            return !Object.prototype.hasOwnProperty.call(doc, 'docType');
-        });
-
+    const legacyDocs = (await loadAllRows()).map((row) => row.doc).filter(isLegacyTaskDoc);
     if (legacyDocs.length === 0) {
         return;
     }
 
     const docsToUpdate = legacyDocs.map((doc) => ({
         ...doc,
-        docType: 'task'
+        docType: DOC_TYPES.TASK
     }));
     const responses = await db.bulkDocs(docsToUpdate);
     for (const response of responses) {
         if (response.ok) {
-            revMap.set(response.id, response.rev);
+            taskRevMap.set(response.id, response.rev);
         }
     }
 

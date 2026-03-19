@@ -65,6 +65,11 @@ describe('migrateDocTypes', () => {
                 description: 'Config data'
             },
             {
+                _id: 'legacy-config',
+                categories: [],
+                description: 'Legacy config-like doc without docType'
+            },
+            {
                 _id: 'falsy-doc',
                 docType: '',
                 description: 'Handled falsy docType'
@@ -94,6 +99,9 @@ describe('migrateDocTypes', () => {
 
         const config = await db.get('config-doc');
         expect(config.docType).toBe('config');
+
+        const legacyConfig = await db.get('legacy-config');
+        expect(legacyConfig.docType).toBeUndefined();
 
         const falsy = await db.get('falsy-doc');
         expect(falsy.docType).toBe('');

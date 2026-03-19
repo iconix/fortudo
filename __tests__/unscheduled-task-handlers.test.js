@@ -17,6 +17,7 @@ import * as taskManager from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
+    prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
