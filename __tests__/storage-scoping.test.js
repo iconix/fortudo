@@ -55,6 +55,11 @@ const insertMixedDocs = async () => {
             _id: 'config-doc',
             docType: 'config',
             description: 'Config doc'
+        },
+        {
+            _id: 'falsy-doc',
+            docType: '',
+            description: 'Doc with falsy docType'
         }
     ]);
 };
@@ -67,6 +72,7 @@ describe('Storage scoping', () => {
         expect(tasks).toHaveLength(2);
         const ids = tasks.map((t) => t.id).sort();
         expect(ids).toEqual(['legacy-task', 'task-doc']);
+        expect(tasks.some((t) => t.id === 'falsy-doc')).toBe(false);
     });
 
     test('saveTasks only deletes task docs and preserves other docTypes', async () => {
@@ -89,6 +95,7 @@ describe('Storage scoping', () => {
         const db = getDb();
         await expect(db.get('activity-doc')).resolves.toHaveProperty('docType', 'activity');
         await expect(db.get('config-doc')).resolves.toHaveProperty('docType', 'config');
+        await expect(db.get('falsy-doc')).resolves.toHaveProperty('docType', '');
 
         await expect(db.get('task-doc')).rejects.toHaveProperty('status', 404);
         await expect(db.get('legacy-task')).rejects.toHaveProperty('status', 404);

@@ -11,7 +11,8 @@ const isTaskDoc = (doc) => {
     if (!doc) {
         return false;
     }
-    return !doc.docType || doc.docType === 'task';
+    const hasDocType = Object.prototype.hasOwnProperty.call(doc, 'docType');
+    return !hasDocType || doc.docType === 'task';
 };
 
 /**
