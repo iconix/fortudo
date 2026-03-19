@@ -7,9 +7,9 @@ import {
     calculateEndDateTime,
     extractTimeFromDateTime,
     convertTo12HourTime
-} from './utils.js';
-import { showAlert } from './modal-manager.js';
-import { checkOverlap } from './reschedule-engine.js';
+} from '../utils.js';
+import { showAlert } from '../modal-manager.js';
+import { checkOverlap } from '../reschedule-engine.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
@@ -369,6 +369,9 @@ export function setupOverlapWarning(
         overlapButtonClasses = defaultButtonClasses
     } = options;
 
+    buttonElement.dataset.defaultButtonHtml = defaultButtonHTML;
+    buttonElement.dataset.defaultButtonClasses = defaultButtonClasses;
+
     function updateWarning() {
         const result = computeOverlapPreview(
             startTimeInput.value,
@@ -392,6 +395,35 @@ export function setupOverlapWarning(
     startTimeInput.addEventListener('input', updateWarning);
     hoursInput.addEventListener('input', updateWarning);
     minutesInput.addEventListener('input', updateWarning);
+}
+
+/**
+ * Clears add-task form preview UI such as end-time hint and overlap warning.
+ * @param {Object} options
+ * @param {HTMLElement|null} [options.hintElement]
+ * @param {HTMLElement|null} [options.warningElement]
+ * @param {HTMLElement|null} [options.buttonElement]
+ */
+export function resetTaskFormPreviewState({ hintElement, warningElement, buttonElement }) {
+    if (hintElement) {
+        hintElement.textContent = '';
+        hintElement.classList.add('opacity-0');
+    }
+
+    if (warningElement) {
+        warningElement.textContent = '';
+    }
+
+    if (buttonElement) {
+        const defaultButtonHTML = buttonElement.dataset.defaultButtonHtml;
+        const defaultButtonClasses = buttonElement.dataset.defaultButtonClasses;
+        if (defaultButtonHTML) {
+            buttonElement.innerHTML = defaultButtonHTML;
+        }
+        if (defaultButtonClasses) {
+            buttonElement.className = defaultButtonClasses;
+        }
+    }
 }
 
 /**

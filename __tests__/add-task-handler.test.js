@@ -2,8 +2,9 @@
  * @jest-environment jsdom
  */
 
-import { handleAddTaskProcess } from '../public/js/handlers/add-task-handler.js';
-import { updateTaskState, getTaskState } from '../public/js/task-manager.js';
+import { handleAddTaskProcess } from '../public/js/tasks/add-handler.js';
+import { updateTaskState, getTaskState } from '../public/js/tasks/manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
@@ -35,10 +36,9 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
-    getDeleteAllButtonElement: jest.fn(),
+    getClearScheduleButtonElement: jest.fn(),
     getClearOptionsDropdownTriggerButtonElement: jest.fn(),
     getClearTasksDropdownMenuElement: jest.fn(),
-    getClearScheduledOptionElement: jest.fn(),
     getClearCompletedOptionElement: jest.fn(),
     toggleClearTasksDropdown: jest.fn(),
     closeClearTasksDropdown: jest.fn(),
@@ -46,25 +46,39 @@ jest.mock('../public/js/dom-renderer.js', () => ({
 }));
 
 // Mock scheduled-task-renderer
-jest.mock('../public/js/scheduled-task-renderer.js', () => ({
+jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
     refreshActiveTaskColor: jest.fn(),
     renderTasks: jest.fn(() => null),
     getScheduledTaskListElement: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskCreated: jest.fn()
+}));
+
 // Mock form-utils
-jest.mock('../public/js/form-utils.js', () => ({
+jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
+    resetTaskFormPreviewState: jest.fn(),
     populateUnscheduledTaskInlineEditForm: jest.fn(),
     getUnscheduledTaskInlineFormData: jest.fn()
 }));
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert } from '../public/js/modal-manager.js';
-import { focusTaskDescriptionInput } from '../public/js/form-utils.js';
+import { showToast } from '../public/js/toast-manager.js';
+import {
+    focusTaskDescriptionInput,
+    resetTaskFormPreviewState
+} from '../public/js/tasks/form-utils.js';
+import { onTaskCreated } from '../public/js/app-coordinator.js';
 
 describe('Add Task Handler', () => {
     let mockFormElement;
@@ -80,6 +94,9 @@ describe('Add Task Handler', () => {
                 <input type="time" name="start-time" />
                 <input type="number" name="duration-hours" value="1" />
                 <input type="number" name="duration-minutes" value="0" />
+                <span id="end-time-hint"></span>
+                <span id="overlap-warning"></span>
+                <button id="add-task-btn" type="submit">Add Task</button>
             </form>
         `;
         mockFormElement = document.getElementById('task-form');
@@ -102,8 +119,9 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Scheduled Task');
             expect(tasks[0].type).toBe('scheduled');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskCreated).toHaveBeenCalledWith({ task: tasks[0] });
             expect(focusTaskDescriptionInput).toHaveBeenCalled();
+            expect(resetTaskFormPreviewState).toHaveBeenCalled();
         });
 
         test('adds an unscheduled task successfully', async () => {
@@ -120,7 +138,47 @@ describe('Add Task Handler', () => {
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('New Unscheduled Task');
             expect(tasks[0].type).toBe('unscheduled');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskCreated).toHaveBeenCalledWith({ task: tasks[0] });
+        });
+
+        test('shows toast when addTask returns success message', async () => {
+            const taskData = {
+                description: 'Message Task',
+                taskType: 'unscheduled',
+                priority: 'high',
+                estDuration: 30
+            };
+
+            jest.spyOn(taskManager, 'addTask').mockReturnValueOnce({
+                success: true,
+                message: 'Task added successfully.'
+            });
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(showToast).toHaveBeenCalledWith('Task added successfully.', {
+                theme: 'indigo'
+            });
+        });
+
+        test('shows toast when addTask returns auto-rescheduled message', async () => {
+            const taskData = {
+                description: 'Auto Rescheduled Task',
+                startTime: '10:00',
+                duration: 30,
+                taskType: 'scheduled'
+            };
+
+            jest.spyOn(taskManager, 'addTask').mockReturnValueOnce({
+                success: true,
+                autoRescheduledMessage: 'Task auto-rescheduled.'
+            });
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(showToast).toHaveBeenCalledWith('Task auto-rescheduled.', {
+                theme: 'teal'
+            });
         });
 
         test('shows alert for invalid task data', async () => {
@@ -150,7 +208,7 @@ describe('Add Task Handler', () => {
             expect(showAlert).toHaveBeenCalled();
         });
 
-        test('calls refreshUI after operation', async () => {
+        test('calls coordinator on successful operation', async () => {
             const taskData = {
                 description: 'Refresh Test',
                 startTime: '10:00',
@@ -160,7 +218,45 @@ describe('Add Task Handler', () => {
 
             await handleAddTaskProcess(mockFormElement, taskData);
 
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskCreated).toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('clears stale preview state after successful reschedule-confirmed add', async () => {
+            updateTaskState([
+                {
+                    id: 'existing-task',
+                    description: 'Existing Task',
+                    type: 'scheduled',
+                    startDateTime: '2026-03-11T20:00:00.000Z',
+                    endDateTime: '2026-03-11T21:00:00.000Z',
+                    duration: 60,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ]);
+
+            const taskData = {
+                description: 'Overlapping Task',
+                startTime: '21:30',
+                duration: 60,
+                taskType: 'scheduled'
+            };
+
+            document.getElementById('end-time-hint').textContent = '3:08 PM';
+            document.getElementById('overlap-warning').textContent =
+                'overlaps "call gift" (2:19 PM - 2:49 PM)';
+            document.getElementById('add-task-btn').innerHTML = 'Reschedule';
+
+            await handleAddTaskProcess(mockFormElement, taskData, { reschedulePreApproved: true });
+
+            expect(resetTaskFormPreviewState).toHaveBeenCalledWith({
+                hintElement: document.getElementById('end-time-hint'),
+                warningElement: document.getElementById('overlap-warning'),
+                buttonElement: document.getElementById('add-task-btn')
+            });
         });
     });
 });

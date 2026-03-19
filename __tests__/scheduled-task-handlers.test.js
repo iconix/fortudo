@@ -12,8 +12,9 @@ import {
     handleCancelEdit,
     handleGapClick,
     createScheduledTaskCallbacks
-} from '../public/js/handlers/scheduled-task-handlers.js';
-import { updateTaskState, getTaskState, getTaskById } from '../public/js/task-manager.js';
+} from '../public/js/tasks/scheduled-handlers.js';
+import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock storage
@@ -48,26 +49,28 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
-    getDeleteAllButtonElement: jest.fn(),
+    getClearScheduleButtonElement: jest.fn(),
     getClearOptionsDropdownTriggerButtonElement: jest.fn(),
     getClearTasksDropdownMenuElement: jest.fn(),
-    getClearScheduledOptionElement: jest.fn(),
     getClearCompletedOptionElement: jest.fn(),
     toggleClearTasksDropdown: jest.fn(),
     closeClearTasksDropdown: jest.fn(),
     resetEventDelegation: jest.fn()
 }));
 
-// Mock scheduled-task-renderer
-jest.mock('../public/js/scheduled-task-renderer.js', () => ({
-    triggerConfettiAnimation: jest.fn(),
-    refreshActiveTaskColor: jest.fn(),
-    renderTasks: jest.fn(() => null),
-    getScheduledTaskListElement: jest.fn()
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskCompleted: jest.fn(),
+    onTaskEdited: jest.fn(),
+    onTaskDeleted: jest.fn(),
+    onTaskUnscheduled: jest.fn()
 }));
 
 // Mock form-utils
-jest.mock('../public/js/form-utils.js', () => ({
+jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
@@ -77,6 +80,14 @@ jest.mock('../public/js/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showGapTaskPicker, showScheduleModal } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
+import { extractTaskFormData } from '../public/js/tasks/form-utils.js';
+import {
+    onTaskCompleted,
+    onTaskEdited,
+    onTaskDeleted,
+    onTaskUnscheduled
+} from '../public/js/app-coordinator.js';
 
 describe('Scheduled Task Handlers', () => {
     beforeEach(() => {
@@ -118,7 +129,7 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleLockTask', () => {
-        test('toggles lock state and calls refreshUI', () => {
+        test('toggles lock state and routes the update through the coordinator', () => {
             const task = createTaskWithDateTime({
                 description: 'Lock Test',
                 startTime: '09:00',
@@ -129,12 +140,34 @@ describe('Scheduled Task Handlers', () => {
             handleLockTask(task.id, 0);
 
             expect(getTaskById(task.id).locked).toBe(true);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id, locked: true })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('shows alert on failure', () => {
             handleLockTask('nonexistent', 0);
             expect(showAlert).toHaveBeenCalled();
+        });
+    });
+
+    describe('handleCompleteTask', () => {
+        test('calls coordinator completion handler when task is completed', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Complete Test',
+                startTime: '09:00',
+                duration: 60
+            });
+            updateTaskState([task]);
+
+            await handleCompleteTask(task.id, 0);
+
+            expect(getTaskById(task.id).status).toBe('completed');
+            expect(onTaskCompleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
     });
 
@@ -173,6 +206,7 @@ describe('Scheduled Task Handlers', () => {
             // First click triggers confirmation, task should still exist
             expect(getTaskState()).toHaveLength(1);
             expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
         test('deletes task on confirmed click', () => {
@@ -187,12 +221,15 @@ describe('Scheduled Task Handlers', () => {
             handleDeleteTask(task.id, 0);
 
             expect(getTaskState()).toHaveLength(0);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskDeleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id, type: 'scheduled' })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
     });
 
     describe('handleUnscheduleTask', () => {
-        test('converts scheduled task to unscheduled', () => {
+        test('converts scheduled task to unscheduled and routes the update through the coordinator', () => {
             const task = createTaskWithDateTime({
                 description: 'Unschedule Test',
                 startTime: '09:00',
@@ -204,12 +241,102 @@ describe('Scheduled Task Handlers', () => {
 
             const updated = getTaskById(task.id);
             expect(updated.type).toBe('unscheduled');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskUnscheduled).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id, type: 'unscheduled' })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('shows alert for non-existent task', () => {
             handleUnscheduleTask('nonexistent', 0);
             expect(showAlert).toHaveBeenCalled();
+        });
+    });
+
+    describe('handleSaveTaskEdit', () => {
+        test('routes a successful scheduled edit through the coordinator', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Before',
+                startTime: '09:00',
+                duration: 60,
+                editing: true
+            });
+            updateTaskState([task]);
+            extractTaskFormData.mockReturnValue({
+                description: 'After',
+                startTime: '10:00',
+                duration: 45,
+                taskType: 'scheduled'
+            });
+
+            const formElement = document.createElement('form');
+
+            await handleSaveTaskEdit(task.id, formElement, 0);
+
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    id: task.id,
+                    description: 'After',
+                    duration: 45
+                })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('routes a confirmed reschedule edit through the coordinator based on the confirmed result', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Before',
+                startTime: '09:00',
+                duration: 60,
+                editing: true
+            });
+            updateTaskState([task]);
+
+            const updatedTaskObject = {
+                ...task,
+                description: 'After',
+                startDateTime: '2026-03-17T14:30:00.000Z',
+                endDateTime: '2026-03-17T15:30:00.000Z',
+                duration: 60,
+                editing: false
+            };
+
+            jest.spyOn(taskManager, 'updateTask').mockReturnValueOnce({
+                success: false,
+                requiresConfirmation: true,
+                confirmationType: 'RESCHEDULE_UPDATE',
+                taskIndex: 0,
+                updatedTaskObject,
+                reason: 'Updating this task may overlap. Reschedule others?'
+            });
+            jest.spyOn(taskManager, 'confirmUpdateTaskAndReschedule').mockReturnValueOnce({
+                success: true,
+                task: updatedTaskObject
+            });
+            extractTaskFormData.mockReturnValue({
+                description: 'After',
+                startTime: '10:30',
+                duration: 60,
+                taskType: 'scheduled'
+            });
+
+            const overlapWarning = document.createElement('div');
+            overlapWarning.className = 'edit-overlap-warning';
+            overlapWarning.textContent = 'Overlaps another task';
+
+            const formElement = document.createElement('form');
+            formElement.appendChild(overlapWarning);
+
+            await handleSaveTaskEdit(task.id, formElement, 0);
+
+            expect(taskManager.confirmUpdateTaskAndReschedule).toHaveBeenCalledWith({
+                taskIndex: 0,
+                updatedTaskObject
+            });
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: updatedTaskObject
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
     });
 
@@ -283,7 +410,9 @@ describe('Scheduled Task Handlers', () => {
 
             handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
 
-            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showToast).toHaveBeenCalledWith('No unscheduled tasks to schedule.', {
+                theme: 'teal'
+            });
             expect(showGapTaskPicker).not.toHaveBeenCalled();
         });
 
@@ -293,7 +422,9 @@ describe('Scheduled Task Handlers', () => {
 
             handleGapClick('2025-01-15T11:00:00.000Z', '2025-01-15T12:00:00.000Z', 60);
 
-            expect(showAlert).toHaveBeenCalledWith('No unscheduled tasks to schedule.', 'teal');
+            expect(showToast).toHaveBeenCalledWith('No unscheduled tasks to schedule.', {
+                theme: 'teal'
+            });
             expect(showGapTaskPicker).not.toHaveBeenCalled();
         });
 

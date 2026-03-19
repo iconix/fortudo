@@ -1,4 +1,4 @@
-import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from '../room-manager.js';
+import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from './room-manager.js';
 
 /** @type {AbortController|null} Tracks listeners for cleanup on re-show */
 let roomScreenAbortController = null;
@@ -117,7 +117,8 @@ export function showMainApp(roomCode) {
 export function updateSyncStatusUI(status) {
     const icon = document.getElementById('sync-status-icon');
     const text = document.getElementById('sync-status-text');
-    if (!icon || !text) return;
+    const indicator = document.getElementById('sync-status-indicator');
+    if (!icon || !text || !indicator) return;
 
     const configs = {
         idle: { icon: 'fa-solid fa-cloud', color: 'text-slate-500', label: 'Local' },
@@ -135,4 +136,6 @@ export function updateSyncStatusUI(status) {
     icon.className = `${config.icon} ${config.color}`;
     text.className = config.color;
     text.textContent = config.label;
+    indicator.disabled = status === 'syncing';
+    indicator.title = status === 'syncing' ? 'Syncing...' : 'Sync now';
 }

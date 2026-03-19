@@ -75,5 +75,3 @@ tmp/
 # Playwright E2E test artifacts
 test_screenshots/
 
-# App config (contains CouchDB URL, created from config.example.js)
-public/js/config.js
