@@ -279,6 +279,7 @@ export async function saveTasks(tasks) {
     if (tasks.length > 0) {
         const docs = tasks.map((task) => {
             const doc = { ...task, _id: task.id };
+            doc.docType = 'task';
             delete doc.id;
             return doc;
         });

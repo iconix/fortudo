@@ -124,4 +124,25 @@ describe('Storage scoping', () => {
         await expect(db.get('task-doc')).rejects.toHaveProperty('status', 404);
         await expect(db.get('legacy-task')).rejects.toHaveProperty('status', 404);
     });
+
+    test('saveTasks stamps docType "task" on inserted task docs', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await saveTasks([
+            {
+                id: 'bulk-without-doctype',
+                type: 'scheduled',
+                description: 'Bulk task missing docType'
+            },
+            {
+                id: 'bulk-with-doctype',
+                type: 'unscheduled',
+                description: 'Bulk task already docType',
+                docType: 'task'
+            }
+        ]);
+
+        const db = getDb();
+        await expect(db.get('bulk-without-doctype')).resolves.toHaveProperty('docType', 'task');
+        await expect(db.get('bulk-with-doctype')).resolves.toHaveProperty('docType', 'task');
+    });
 });
