@@ -21,6 +21,7 @@ import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
     initStorage: jest.fn(() => Promise.resolve()),
+    migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
     deleteTask: jest.fn(),
@@ -36,6 +37,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
 }));
 import {
     initStorage as mockInitStorageInternal,
+    migrateDocTypes as mockMigrateDocTypesInternal,
     saveTasks as mockSaveTasksInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
@@ -47,6 +49,7 @@ import {
 import * as appCoordinator from '../public/js/app-coordinator.js';
 
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
+const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
@@ -233,19 +236,36 @@ describe('App.js Callback Functions', () => {
         });
     });
 
-    describe('sync config boot behavior', () => {
-        test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
-            const config = await import('../public/js/config.js');
+describe('sync config boot behavior', () => {
+    test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
+        const config = await import('../public/js/config.js');
 
-            expect(config.COUCHDB_URL).toBeNull();
-        });
-
-        test('boot initializes storage without a remote URL when sync config is null', async () => {
-            await setupAppWithTasks([]);
-
-            expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
-        });
+        expect(config.COUCHDB_URL).toBeNull();
     });
+
+    test('boot initializes storage without a remote URL when sync config is null', async () => {
+        await setupAppWithTasks([]);
+
+        expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+    });
+});
+
+describe('boot migration ordering', () => {
+    test('runs migrateDocTypes after initStorage but before loading tasks', async () => {
+        await setupAppWithTasks([]);
+
+        expect(mockInitStorage).toHaveBeenCalled();
+        expect(mockMigrateDocTypes).toHaveBeenCalled();
+        expect(mockLoadTasksFromStorage).toHaveBeenCalled();
+
+        const initOrder = mockInitStorage.mock.invocationCallOrder[0];
+        const migrateOrder = mockMigrateDocTypes.mock.invocationCallOrder[0];
+        const loadOrder = mockLoadTasksFromStorage.mock.invocationCallOrder[0];
+
+        expect(initOrder).toBeLessThan(migrateOrder);
+        expect(migrateOrder).toBeLessThan(loadOrder);
+    });
+});
 
     describe('onCancelEdit callback', () => {
         const setupTasksForEdit = async () => {
