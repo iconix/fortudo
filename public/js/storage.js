@@ -6,6 +6,8 @@ let db = null;
 
 /** @type {Map<string, string>} In-memory map of task id -> PouchDB _rev */
 const revMap = new Map();
+/** @type {Map<string, string>} In-memory map of activity id -> PouchDB _rev */
+const activityRevMap = new Map();
 
 const isTaskDoc = (doc) => {
     if (!doc) {
@@ -13,6 +15,13 @@ const isTaskDoc = (doc) => {
     }
     const hasDocType = Object.prototype.hasOwnProperty.call(doc, 'docType');
     return !hasDocType || doc.docType === 'task';
+};
+
+const isActivityDoc = (doc) => {
+    if (!doc) {
+        return false;
+    }
+    return doc.docType === 'activity';
 };
 
 /**
@@ -27,15 +36,18 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
         await db.close();
     }
     revMap.clear();
-
+    activityRevMap.clear();
     const PDB = window.PouchDB;
     const dbName = `fortudo-${roomCode}`;
     db = new PDB(dbName, options);
 
     // Pre-populate revMap from existing docs
-    const result = await db.allDocs();
+    const result = await db.allDocs({ include_docs: true });
     for (const row of result.rows) {
         revMap.set(row.id, row.value.rev);
+        if (row.doc && row.doc.docType === 'activity') {
+            activityRevMap.set(row.id, row.value.rev);
+        }
     }
 
     initSync(db, remoteUrl);
@@ -67,6 +79,27 @@ export async function putTask(task) {
 }
 
 /**
+ * Write a single activity to PouchDB.
+ * Handles insert/update via _rev tracking and enforces docType.
+ * @param {Object} activity - Activity object (must have `id`)
+ */
+export async function putActivity(activity) {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    const doc = { ...activity, _id: activity.id, docType: 'activity' };
+    delete doc.id;
+
+    const existingRev = activityRevMap.get(activity.id);
+    if (existingRev) {
+        doc._rev = existingRev;
+    }
+
+    const result = await db.put(doc);
+    activityRevMap.set(activity.id, result.rev);
+    debouncedSync();
+}
+
+/**
  * Delete a single task from PouchDB by id.
  * @param {string} id - Task id to delete
  */
@@ -90,6 +123,29 @@ export async function deleteTask(id) {
 }
 
 /**
+ * Delete a single activity by id.
+ * @param {string} id - Activity id
+ */
+export async function deleteActivity(id) {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    const rev = activityRevMap.get(id);
+    if (!rev) {
+        logger.warn(`deleteActivity: No rev found for id ${id}, activity may not exist.`);
+        return;
+    }
+
+    try {
+        await db.remove(id, rev);
+        activityRevMap.delete(id);
+    } catch (err) {
+        if (err.status !== 404) throw err;
+        activityRevMap.delete(id);
+    }
+    debouncedSync();
+}
+
+/**
  * Load all tasks from PouchDB.
  * Maps _id back to id and strips _rev before returning.
  * @returns {Promise<Object[]>} Array of task objects
@@ -101,6 +157,26 @@ export async function loadTasks() {
     return result.rows
         .map((row) => row.doc)
         .filter(isTaskDoc)
+        .map((doc) => {
+            const normalized = { ...doc };
+            normalized.id = normalized._id;
+            delete normalized._id;
+            delete normalized._rev;
+            return normalized;
+        });
+}
+
+/**
+ * Load all activity documents.
+ * @returns {Promise<Object[]>}
+ */
+export async function loadActivities() {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    const result = await db.allDocs({ include_docs: true });
+    return result.rows
+        .map((row) => row.doc)
+        .filter(isActivityDoc)
         .map((doc) => {
             const normalized = { ...doc };
             normalized.id = normalized._id;
@@ -171,6 +247,7 @@ export async function destroyStorage() {
         }
         db = null;
         revMap.clear();
+        activityRevMap.clear();
     }
 }
 
