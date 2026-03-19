@@ -44,8 +44,11 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     // Pre-populate revMap from existing docs
     const result = await db.allDocs({ include_docs: true });
     for (const row of result.rows) {
-        revMap.set(row.id, row.value.rev);
-        if (row.doc && row.doc.docType === 'activity') {
+        const doc = row.doc;
+        if (doc && isTaskDoc(doc)) {
+            revMap.set(row.id, row.value.rev);
+        }
+        if (doc && isActivityDoc(doc)) {
             activityRevMap.set(row.id, row.value.rev);
         }
     }

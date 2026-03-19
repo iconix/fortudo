@@ -22,6 +22,7 @@ import {
     loadActivities,
     deleteActivity,
     putTask,
+    deleteTask,
     loadTasks,
     destroyStorage
 } from '../public/js/storage.js';
@@ -122,6 +123,36 @@ describe('Storage - activities', () => {
             const tasks = await loadTasks();
             expect(tasks).toHaveLength(1);
             expect(tasks[0].id).toBe('lonely-task');
+        });
+    });
+
+    describe('activity/task isolation', () => {
+        test('activity survives re-init and task APIs do not remove or overwrite it', async () => {
+            const roomCode = uniqueRoomCode();
+            await initStorage(roomCode, { adapter: 'memory' });
+            await putActivity({ id: 'shared-id', name: 'Safe focus', status: 'planned' });
+            await initStorage(roomCode, { adapter: 'memory' });
+
+            await expect(deleteTask('shared-id')).resolves.not.toThrow();
+            let activities = await loadActivities();
+            expect(activities).toHaveLength(1);
+            expect(activities[0].id).toBe('shared-id');
+
+            await expect(
+                putTask({
+                    id: 'shared-id',
+                    type: 'scheduled',
+                    description: 'Collision',
+                    status: 'incomplete'
+                })
+            ).rejects.toThrow(/conflict/i);
+
+            activities = await loadActivities();
+            expect(activities).toHaveLength(1);
+            expect(activities[0].docType).toBe('activity');
+
+            const tasks = await loadTasks();
+            expect(tasks).toHaveLength(0);
         });
     });
 });
