@@ -8,6 +8,8 @@ let db = null;
 const revMap = new Map();
 /** @type {Map<string, string>} In-memory map of activity id -> PouchDB _rev */
 const activityRevMap = new Map();
+/** @type {Map<string, string>} In-memory map of config id -> PouchDB _rev */
+const configRevMap = new Map();
 
 const isTaskDoc = (doc) => {
     if (!doc) {
@@ -24,6 +26,13 @@ const isActivityDoc = (doc) => {
     return doc.docType === 'activity';
 };
 
+const isConfigDoc = (doc) => {
+    if (!doc) {
+        return false;
+    }
+    return doc.docType === 'config';
+};
+
 /**
  * Initialize storage with a room code.
  * Creates/opens a PouchDB database scoped to the room.
@@ -37,6 +46,7 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     }
     revMap.clear();
     activityRevMap.clear();
+    configRevMap.clear();
     const PDB = window.PouchDB;
     const dbName = `fortudo-${roomCode}`;
     db = new PDB(dbName, options);
@@ -50,6 +60,9 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
         }
         if (doc && isActivityDoc(doc)) {
             activityRevMap.set(row.id, row.value.rev);
+        }
+        if (doc && isConfigDoc(doc)) {
+            configRevMap.set(row.id, row.value.rev);
         }
     }
 
@@ -99,6 +112,27 @@ export async function putActivity(activity) {
 
     const result = await db.put(doc);
     activityRevMap.set(activity.id, result.rev);
+    debouncedSync();
+}
+
+/**
+ * Write or update a config document.
+ * Enforces docType isolation and tracks revisions.
+ * @param {Object} config - Config object (must have `id`)
+ */
+export async function putConfig(config) {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    const doc = { ...config, _id: config.id, docType: 'config' };
+    delete doc.id;
+
+    const existingRev = configRevMap.get(config.id);
+    if (existingRev) {
+        doc._rev = existingRev;
+    }
+
+    const result = await db.put(doc);
+    configRevMap.set(config.id, result.rev);
     debouncedSync();
 }
 
@@ -190,6 +224,33 @@ export async function loadActivities() {
 }
 
 /**
+ * Load a single config document by id.
+ * Returns null when the document is missing or not marked as config.
+ * @param {string} configId - Config document id
+ * @returns {Promise<Object|null>}
+ */
+export async function loadConfig(configId) {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    try {
+        const doc = await db.get(configId);
+        if (!isConfigDoc(doc)) {
+            return null;
+        }
+        const normalized = { ...doc };
+        normalized.id = normalized._id;
+        delete normalized._id;
+        delete normalized._rev;
+        return normalized;
+    } catch (err) {
+        if (err.status === 404) {
+            return null;
+        }
+        throw err;
+    }
+}
+
+/**
  * Bulk replace all tasks. Deletes existing docs and inserts new ones.
  * Used for init/clear-all operations.
  * @param {Object[]} tasks - Array of task objects to save
@@ -251,6 +312,7 @@ export async function destroyStorage() {
         db = null;
         revMap.clear();
         activityRevMap.clear();
+        configRevMap.clear();
     }
 }
 
