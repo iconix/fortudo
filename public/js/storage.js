@@ -173,3 +173,39 @@ export async function destroyStorage() {
         revMap.clear();
     }
 }
+
+/**
+ * Adds `docType: 'task'` to legacy documents that lack the field so that task
+ * scoping remains stable for older data.
+ */
+export async function migrateDocTypes() {
+    if (!db) throw new Error('Storage not initialized. Call initStorage first.');
+
+    const result = await db.allDocs({ include_docs: true });
+    const legacyDocs = result.rows
+        .map((row) => row.doc)
+        .filter((doc) => {
+            if (!doc || !doc._id) {
+                return false;
+            }
+            if (doc._id.startsWith('_') || doc._deleted) {
+                return false;
+            }
+            return !Object.prototype.hasOwnProperty.call(doc, 'docType');
+        });
+
+    if (legacyDocs.length === 0) {
+        return;
+    }
+
+    const docsToUpdate = legacyDocs.map((doc) => ({
+        ...doc,
+        docType: 'task'
+    }));
+    const responses = await db.bulkDocs(docsToUpdate);
+    for (const response of responses) {
+        if (response.ok) {
+            revMap.set(response.id, response.rev);
+        }
+    }
+}
