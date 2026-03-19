@@ -7,6 +7,13 @@ let db = null;
 /** @type {Map<string, string>} In-memory map of task id -> PouchDB _rev */
 const revMap = new Map();
 
+const isTaskDoc = (doc) => {
+    if (!doc) {
+        return false;
+    }
+    return !doc.docType || doc.docType === 'task';
+};
+
 /**
  * Initialize storage with a room code.
  * Creates/opens a PouchDB database scoped to the room.
@@ -90,13 +97,16 @@ export async function loadTasks() {
     if (!db) throw new Error('Storage not initialized. Call initStorage first.');
 
     const result = await db.allDocs({ include_docs: true });
-    return result.rows.map((row) => {
-        const doc = { ...row.doc };
-        doc.id = doc._id;
-        delete doc._id;
-        delete doc._rev;
-        return doc;
-    });
+    return result.rows
+        .map((row) => row.doc)
+        .filter(isTaskDoc)
+        .map((doc) => {
+            const normalized = { ...doc };
+            normalized.id = normalized._id;
+            delete normalized._id;
+            delete normalized._rev;
+            return normalized;
+        });
 }
 
 /**
@@ -108,16 +118,20 @@ export async function saveTasks(tasks) {
     if (!db) throw new Error('Storage not initialized. Call initStorage first.');
 
     // Delete all existing docs
-    const existing = await db.allDocs();
-    if (existing.rows.length > 0) {
-        const deletions = existing.rows.map((row) => ({
+    const existing = await db.allDocs({ include_docs: true });
+    const deletions = existing.rows
+        .filter((row) => isTaskDoc(row.doc))
+        .map((row) => ({
             _id: row.id,
             _rev: row.value.rev,
             _deleted: true
         }));
+    if (deletions.length > 0) {
         await db.bulkDocs(deletions);
+        for (const { _id } of deletions) {
+            revMap.delete(_id);
+        }
     }
-    revMap.clear();
 
     // Insert new tasks
     if (tasks.length > 0) {
