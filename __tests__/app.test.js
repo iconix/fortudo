@@ -236,50 +236,50 @@ describe('App.js Callback Functions', () => {
         });
     });
 
-describe('sync config boot behavior', () => {
-    test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
-        const config = await import('../public/js/config.js');
+    describe('sync config boot behavior', () => {
+        test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
+            const config = await import('../public/js/config.js');
 
-        expect(config.COUCHDB_URL).toBeNull();
-    });
-
-    test('boot initializes storage without a remote URL when sync config is null', async () => {
-        await setupAppWithTasks([]);
-
-        expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
-    });
-});
-
-describe('boot migration ordering', () => {
-    test('awaits migrateDocTypes before loading tasks', async () => {
-        let resolveMigration;
-        const migrationPromise = new Promise((resolve) => {
-            resolveMigration = resolve;
+            expect(config.COUCHDB_URL).toBeNull();
         });
-        mockMigrateDocTypes.mockReturnValue(migrationPromise);
 
-        const bootPromise = setupAppWithTasks([]);
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        test('boot initializes storage without a remote URL when sync config is null', async () => {
+            await setupAppWithTasks([]);
 
-        expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
-
-        resolveMigration();
-        await migrationPromise;
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        await bootPromise;
-
-        expect(mockInitStorage).toHaveBeenCalled();
-        expect(mockMigrateDocTypes).toHaveBeenCalled();
-        expect(mockLoadTasksFromStorage).toHaveBeenCalled();
-
-        const initOrder = mockInitStorage.mock.invocationCallOrder[0];
-        const migrateOrder = mockMigrateDocTypes.mock.invocationCallOrder[0];
-        const loadOrder = mockLoadTasksFromStorage.mock.invocationCallOrder[0];
-
-        expect(initOrder).toBeLessThan(migrateOrder);
-        expect(migrateOrder).toBeLessThan(loadOrder);
+            expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+        });
     });
-});
+
+    describe('boot migration ordering', () => {
+        test('awaits migrateDocTypes before loading tasks', async () => {
+            let resolveMigration;
+            const migrationPromise = new Promise((resolve) => {
+                resolveMigration = resolve;
+            });
+            mockMigrateDocTypes.mockReturnValue(migrationPromise);
+
+            const bootPromise = setupAppWithTasks([]);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
+
+            resolveMigration();
+            await migrationPromise;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            await bootPromise;
+
+            expect(mockInitStorage).toHaveBeenCalled();
+            expect(mockMigrateDocTypes).toHaveBeenCalled();
+            expect(mockLoadTasksFromStorage).toHaveBeenCalled();
+
+            const initOrder = mockInitStorage.mock.invocationCallOrder[0];
+            const migrateOrder = mockMigrateDocTypes.mock.invocationCallOrder[0];
+            const loadOrder = mockLoadTasksFromStorage.mock.invocationCallOrder[0];
+
+            expect(initOrder).toBeLessThan(migrateOrder);
+            expect(migrateOrder).toBeLessThan(loadOrder);
+        });
+    });
 
     describe('onCancelEdit callback', () => {
         const setupTasksForEdit = async () => {

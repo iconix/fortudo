@@ -22,7 +22,8 @@ import {
     putConfig,
     loadConfig,
     saveTasks,
-    putTask
+    putTask,
+    getDb
 } from '../public/js/storage.js';
 
 let testDbCounter = 0;
@@ -69,6 +70,18 @@ describe('Storage - config docs', () => {
         });
         const wrongType = await loadConfig('config-categories');
         expect(wrongType).toBeNull();
+    });
+
+    test('loadConfig rethrows non-404 storage errors', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+        const db = getDb();
+        const storageError = Object.assign(new Error('boom'), { status: 500 });
+        const getSpy = jest.spyOn(db, 'get').mockRejectedValueOnce(storageError);
+
+        await expect(loadConfig('config-categories')).rejects.toThrow('boom');
+
+        getSpy.mockRestore();
     });
 
     test('putConfig updates existing config using revision tracking', async () => {

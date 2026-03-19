@@ -1,6 +1,7 @@
 /**
  * @jest-environment jsdom
  */
+/* global emit */
 
 // PouchDB/memdown requires setImmediate which jsdom doesn't provide
 const { setImmediate } = require('timers');
