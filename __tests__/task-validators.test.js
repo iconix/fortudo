@@ -10,7 +10,7 @@ import {
     isValidTaskData,
     validateTaskForRescheduling,
     validateTaskIndex
-} from '../public/js/task-validators.js';
+} from '../public/js/tasks/validators.js';
 
 describe('Task Validators Tests', () => {
     describe('isScheduledTask', () => {

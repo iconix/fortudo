@@ -7,15 +7,17 @@ import {
     updateUnscheduledTask,
     toggleUnscheduledTaskCompleteState,
     getSuggestedStartTime
-} from '../task-manager.js';
+} from './manager.js';
 import { showAlert, askConfirmation, showScheduleModal } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import {
     populateUnscheduledTaskInlineEditForm,
     getUnscheduledTaskInlineFormData
-} from '../form-utils.js';
+} from './form-utils.js';
 import { refreshUI } from '../dom-renderer.js';
+import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { getThemeForTaskId } from '../confirmation-helpers.js';
+import { getThemeForTaskId } from './confirmation-helpers.js';
 
 export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);
@@ -51,12 +53,17 @@ export function handleEditUnscheduledTask(taskId) {
 export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
     const result = deleteUnscheduledTask(taskId);
-    if (result.success && result.message) {
-        showAlert(result.message, 'teal');
+    if (result.success) {
+        showToast(result.message || 'Task deleted.', { theme: 'teal' });
+        onTaskDeleted({
+            task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
+        });
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'teal');
+        refreshUI();
+    } else {
+        refreshUI();
     }
-    refreshUI();
 }
 
 export async function handleConfirmScheduleTask(
@@ -69,18 +76,27 @@ export async function handleConfirmScheduleTask(
     if (result.requiresConfirmation) {
         const userConfirmed =
             reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
-        if (userConfirmed && result.taskData) {
-            confirmScheduleUnscheduledTask(
-                result.taskData.unscheduledTaskId,
-                result.taskData.newScheduledTaskData
+        if (userConfirmed && result.context) {
+            const confirmResult = confirmScheduleUnscheduledTask(
+                result.context.unscheduledTaskId,
+                result.context.scheduledTaskData
             );
+            if (confirmResult.success) {
+                onTaskScheduled({ task: confirmResult.task });
+            } else {
+                showAlert(confirmResult.reason || 'Task could not be scheduled.', 'indigo');
+                refreshUI();
+            }
         } else if (!userConfirmed) {
             showAlert('Task not scheduled to avoid overlap.', 'indigo');
+            refreshUI();
         }
     } else if (!result.success) {
         showAlert(result.reason, 'indigo');
+        refreshUI();
+    } else {
+        onTaskScheduled({ task: result.task });
     }
-    refreshUI();
 }
 
 export async function handleSaveUnscheduledTaskEdit(taskId) {
@@ -94,7 +110,7 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     const result = updateUnscheduledTask(taskId, updatedData);
     if (result.success) {
         setTaskInlineEditing(taskId, false);
-        refreshUI();
+        onTaskEdited({ task: result.task });
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
     }
@@ -114,7 +130,7 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
     const result = toggleUnscheduledTaskCompleteState(taskId);
     if (result && result.success) {
-        refreshUI();
+        onTaskEdited({ task: result.task });
     } else {
         showAlert(
             result.reason || 'Could not update task completion status.',

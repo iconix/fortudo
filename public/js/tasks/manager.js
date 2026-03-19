@@ -8,8 +8,8 @@ import {
     getTaskDates,
     extractDateFromDateTime,
     convertTo12HourTime
-} from './utils.js';
-import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from './storage.js';
+} from '../utils.js';
+import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from '../storage.js';
 
 // Import from new modules
 import {
@@ -21,9 +21,9 @@ import {
     executeReschedule,
     findAdjustableTask,
     findOverlappingCompletedTask
-} from './reschedule-engine.js';
+} from '../reschedule-engine.js';
 
-import { isValidTaskData, isScheduledTask } from './task-validators.js';
+import { isValidTaskData, isScheduledTask } from './validators.js';
 
 /**
  * @typedef {Object} BaseTaskProps
@@ -55,11 +55,13 @@ import { isValidTaskData, isScheduledTask } from './task-validators.js';
  * @property {boolean} [requiresConfirmation] - Whether user confirmation is required
  * @property {string} [confirmationType] - Type of confirmation required (e.g. 'COMPLETE_LATE', 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS')
  * @property {Task} [task] - The affected task if relevant
+ * @property {string} [taskId] - Convenience ID for the resulting task on success
+ * @property {Task} [proposedTask] - Canonical proposed task for confirmation flows
+ * @property {Object} [context] - Normalized confirmation context payload
  * @property {string} [oldEndTime] - Old end time for late completion
  * @property {string} [newEndTime] - New end time for late completion
  * @property {number} [newDuration] - New duration for late completion
  * @property {number} [tasksDeleted] - Number of tasks deleted in bulk operations
- * @property {Object} [taskData] - Additional task data for operations like scheduling
  */
 
 /**
@@ -442,6 +444,12 @@ const createOverlapConfirmation = (operation, data, reason) => ({
     ...data,
     reason
 });
+const createSuccessfulTaskResult = (task, extra = {}) => ({
+    success: true,
+    task,
+    taskId: task?.id,
+    ...extra
+});
 
 // ============================================================================
 // CORE TASK OPERATIONS
@@ -501,13 +509,15 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
                 return createOverlapConfirmation(
                     'NEEDS_SHIFT_DUE_TO_LOCKED',
                     {
-                        adjustedTaskObject: taskAfterLockedCheck,
-                        adjustedTaskDataForResubmission: {
-                            ...taskData,
-                            startTime: extractTimeFromDateTime(
-                                new Date(taskAfterLockedCheck.startDateTime)
-                            ),
-                            duration: taskAfterLockedCheck.duration
+                        proposedTask: taskAfterLockedCheck,
+                        context: {
+                            resubmissionTaskData: {
+                                ...taskData,
+                                startTime: extractTimeFromDateTime(
+                                    new Date(taskAfterLockedCheck.startDateTime)
+                                ),
+                                duration: taskAfterLockedCheck.duration
+                            }
                         }
                     },
                     `The task "${originalRequestedTimeTask.description}" would overlap a locked task if scheduled at ${extractTimeFromDateTime(
@@ -628,7 +638,7 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
             logger.info('addTask: Task overlaps unlocked tasks.');
             return createOverlapConfirmation(
                 'OVERLAPS_UNLOCKED_OTHERS',
-                { taskObjectToFinalize: taskObject },
+                { proposedTask: taskObject },
                 `Adding "${taskObject.description}" at ${extractTimeFromDateTime(
                     new Date(taskObject.startDateTime)
                 )} will overlap other tasks. Reschedule these other tasks?`
@@ -648,25 +658,27 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
         }
         finalizeTaskModification(affectedTasks);
         logger.info('addTask: Scheduled task added and processed.');
-        return { success: true, task: taskObject };
+        return createSuccessfulTaskResult(taskObject);
     } else {
         // Unscheduled task
         tasks.push(taskObject);
         putTask(stripUIFlags(taskObject));
         logger.info('addTask: Unscheduled task added.');
-        return { success: true, task: taskObject };
+        return createSuccessfulTaskResult(taskObject);
     }
 }
 
 export function confirmAddTaskAndReschedule(confirmedPayload) {
     logger.debug('confirmAddTaskAndReschedule called with payload:', confirmedPayload);
 
-    // confirmedPayload should contain taskObjectToFinalize (standardized name)
-    const taskToAdd = confirmedPayload.taskObjectToFinalize;
+    const taskToAdd =
+        confirmedPayload.proposedTask ??
+        confirmedPayload.task ??
+        confirmedPayload.taskObjectToFinalize;
 
     if (!taskToAdd || !taskToAdd.id || !taskToAdd.type) {
         logger.error(
-            'confirmAddTaskAndReschedule: Invalid taskObjectToFinalize in payload.',
+            'confirmAddTaskAndReschedule: Invalid proposed task in payload.',
             confirmedPayload
         );
         return { success: false, reason: 'Invalid task data for confirmation.' };
@@ -702,7 +714,7 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         }
         putTask(stripUIFlags(taskToAdd));
     }
-    return { success: true, task: taskToAdd };
+    return createSuccessfulTaskResult(taskToAdd);
 }
 
 export function updateTask(index, taskData) {
@@ -1151,7 +1163,7 @@ export function deleteTask(index, confirmed = false) {
     resetAllUIFlags();
     invalidateTaskCaches();
     deleteTaskFromStorage(taskId);
-    return { success: true };
+    return { success: true, task: taskToDelete };
 }
 
 /**
@@ -1242,10 +1254,10 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
             success: false,
             requiresConfirmation: true,
             confirmationType: 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED',
-            adjustedTaskObject: adjustedTask,
-            taskData: {
+            proposedTask: adjustedTask,
+            context: {
                 unscheduledTaskId: taskId,
-                newScheduledTaskData: {
+                scheduledTaskData: {
                     ...newScheduledTaskData,
                     startTime: extractTimeFromDateTime(new Date(adjustedTask.startDateTime))
                 }
@@ -1275,14 +1287,17 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     );
 
     if (unlockedOverlaps.length > 0) {
-        return {
-            success: false,
-            requiresConfirmation: true,
-            confirmationType: 'RESCHEDULE_SCHEDULE_UNSCHEDULED',
-            taskData: { unscheduledTaskId: taskId, newScheduledTaskData },
-            taskObjectToFinalize: tempScheduledTask,
-            reason: 'Scheduling will overlap other tasks. Reschedule them?'
-        };
+        return createOverlapConfirmation(
+            'SCHEDULE_UNSCHEDULED',
+            {
+                proposedTask: tempScheduledTask,
+                context: {
+                    unscheduledTaskId: taskId,
+                    scheduledTaskData: newScheduledTaskData
+                }
+            },
+            'Scheduling will overlap other tasks. Reschedule them?'
+        );
     }
 
     // No conflicts - proceed with scheduling
@@ -1296,7 +1311,7 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
 
     const schedAffected = performRescheduleAndReorganize(newScheduledTask);
     finalizeTaskModification(schedAffected);
-    return { success: true, task: newScheduledTask };
+    return createSuccessfulTaskResult(newScheduledTask);
 }
 
 export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTaskData) {
@@ -1332,7 +1347,7 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
 
     const confirmSchedAffected = performRescheduleAndReorganize(newScheduledTask);
     finalizeTaskModification(confirmSchedAffected);
-    return { success: true, task: newScheduledTask };
+    return createSuccessfulTaskResult(newScheduledTask);
 }
 
 export function toggleUnscheduledTaskCompleteState(taskId) {

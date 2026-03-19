@@ -9,6 +9,7 @@ import {
     getTaskState,
     updateTaskState,
     addTask,
+    scheduleUnscheduledTask,
     updateTask,
     completeTask,
     deleteTask,
@@ -17,6 +18,7 @@ import {
     deleteAllTasks,
     performReschedule,
     confirmAddTaskAndReschedule,
+    confirmScheduleUnscheduledTask,
     confirmUpdateTaskAndReschedule,
     confirmCompleteLate,
     adjustAndCompleteTask,
@@ -26,8 +28,8 @@ import {
     getTaskIndex,
     setTaskInlineEditing,
     resetAllInlineEditingFlags
-} from '../public/js/task-manager.js';
-import { isValidTaskData } from '../public/js/task-validators.js';
+} from '../public/js/tasks/manager.js';
+import { isValidTaskData } from '../public/js/tasks/validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
 import {
     calculateEndDateTime,
@@ -646,7 +648,13 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
             expect(result.confirmationType).toBe('RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS');
-            expect(result.taskObjectToFinalize).toBeDefined();
+            expect(result.proposedTask).toEqual(
+                expect.objectContaining({
+                    description: 'Overlapping Task',
+                    type: 'scheduled'
+                })
+            );
+            expect(result.taskObjectToFinalize).toBeUndefined();
             expect(result.reason).toBeDefined();
             expect(getTaskState().length).toBe(1); // Original task still there
             expect(getTaskState()[0].description).toBe('Existing Task');
@@ -722,7 +730,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         test('should add the task, reschedule, sort, and save', () => {
             // Create the full task object as confirmAddTaskAndReschedule expects
-            const taskObjectToFinalize = createTaskWithDateTime({
+            const proposedTask = createTaskWithDateTime({
                 description: 'New Task',
                 startTime: '09:30',
                 duration: 60,
@@ -731,10 +739,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
 
-            const result = confirmAddTaskAndReschedule({ taskObjectToFinalize });
+            const result = confirmAddTaskAndReschedule({ proposedTask });
 
             expect(result.success).toBe(true);
             expect(result.task).toBeDefined();
+            expect(result.taskId).toBe(result.task.id);
             const tasks = getTaskState();
             expect(tasks.length).toBe(2);
 
@@ -759,6 +768,89 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
             expect(mockPutTask).toHaveBeenCalled();
+        });
+    });
+
+    describe('scheduleUnscheduledTask contract', () => {
+        beforeEach(() => {
+            updateTaskState([]);
+            mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+            mockDeleteTaskFromStorage.mockClear();
+        });
+
+        test('returns proposedTask and normalized context when confirmation is required', () => {
+            const existingScheduledTask = createTaskWithDateTime({
+                description: 'Existing Scheduled Task',
+                startTime: '09:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            const unscheduledTask = {
+                id: 'unsched-contract-test',
+                type: 'unscheduled',
+                description: 'Unscheduled Contract Task',
+                priority: 'medium',
+                estDuration: 45,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            updateTaskState([existingScheduledTask, unscheduledTask]);
+
+            const result = scheduleUnscheduledTask(unscheduledTask.id, '09:30', 45);
+
+            expect(result.success).toBe(false);
+            expect(result.requiresConfirmation).toBe(true);
+            expect(result.confirmationType).toBe('RESCHEDULE_SCHEDULE_UNSCHEDULED');
+            expect(result.proposedTask).toEqual(
+                expect.objectContaining({
+                    description: 'Unscheduled Contract Task',
+                    type: 'scheduled'
+                })
+            );
+            expect(result.context).toEqual({
+                unscheduledTaskId: unscheduledTask.id,
+                scheduledTaskData: {
+                    description: 'Unscheduled Contract Task',
+                    startTime: '09:30',
+                    duration: 45,
+                    taskType: 'scheduled'
+                }
+            });
+            expect(result.taskData).toBeUndefined();
+            expect(result.taskObjectToFinalize).toBeUndefined();
+        });
+
+        test('returns canonical task and taskId after confirmed scheduling', () => {
+            const unscheduledTask = {
+                id: 'unsched-confirm-contract',
+                type: 'unscheduled',
+                description: 'Schedule Me',
+                priority: 'high',
+                estDuration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            };
+            updateTaskState([unscheduledTask]);
+
+            const result = confirmScheduleUnscheduledTask(unscheduledTask.id, {
+                description: 'Schedule Me',
+                startTime: '11:00',
+                duration: 30
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.task).toEqual(
+                expect.objectContaining({
+                    description: 'Schedule Me',
+                    type: 'scheduled'
+                })
+            );
+            expect(result.taskId).toBe(result.task.id);
         });
     });
 
@@ -1400,6 +1492,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('should remove a task if confirmed and save', () => {
             const result = deleteTask(0, true);
             expect(result.success).toBe(true);
+            expect(result.task).toEqual(expect.objectContaining({ description: 'Task 1' }));
             expect(getTaskState().length).toBe(1);
             expect(getTaskState()[0].description).toBe('Task 2');
             expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
@@ -1860,7 +1953,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Unscheduled Task Sorting', () => {
-        const { getSortedUnscheduledTasks } = require('../public/js/task-manager.js');
+        const { getSortedUnscheduledTasks } = require('../public/js/tasks/manager.js');
 
         function createUnscheduledTask(priority, estDuration, status = 'incomplete') {
             return {
@@ -1955,7 +2048,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             toggleUnscheduledTaskCompleteState,
             toggleLockState,
             unscheduleTask
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('scheduleUnscheduledTask with invalid task id returns failure', () => {
             updateTaskState([]);
@@ -2046,7 +2139,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         const {
             resetAllConfirmingDeleteFlags,
             resetAllEditingFlags
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('resetAllConfirmingDeleteFlags returns false when no flags to reset', () => {
             const task = createTaskWithDateTime({
@@ -2115,7 +2208,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         const {
             deleteAllScheduledTasks,
             deleteCompletedTasks
-        } = require('../public/js/task-manager.js');
+        } = require('../public/js/tasks/manager.js');
 
         test('deleteAllScheduledTasks removes only scheduled tasks', () => {
             const scheduledTask = createTaskWithDateTime({
@@ -2199,7 +2292,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('UpdateUnscheduledTask', () => {
-        const { updateUnscheduledTask } = require('../public/js/task-manager.js');
+        const { updateUnscheduledTask } = require('../public/js/tasks/manager.js');
 
         test('updates unscheduled task successfully', () => {
             const task = {
@@ -2234,7 +2327,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('DeleteUnscheduledTask', () => {
-        const { deleteUnscheduledTask } = require('../public/js/task-manager.js');
+        const { deleteUnscheduledTask } = require('../public/js/tasks/manager.js');
 
         test('deletes an existing unscheduled task with confirmation', () => {
             const task = {
@@ -2250,6 +2343,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             const result = deleteUnscheduledTask('unsched-1');
             expect(result.success).toBe(true);
+            expect(result.task).toEqual(expect.objectContaining({ id: 'unsched-1' }));
             expect(getTaskState()).toHaveLength(0);
         });
 

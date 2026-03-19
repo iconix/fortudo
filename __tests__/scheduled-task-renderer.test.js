@@ -8,7 +8,7 @@ import {
     renderBoundaryMarkerHTML,
     renderTasks,
     refreshCurrentGapHighlight
-} from '../public/js/scheduled-task-renderer.js';
+} from '../public/js/tasks/scheduled-renderer.js';
 import {
     timeToDateTime,
     calculateEndDateTime,

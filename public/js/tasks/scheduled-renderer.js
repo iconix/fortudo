@@ -5,8 +5,8 @@ import {
     isTaskRunningLate,
     isTaskCurrentlyActive,
     extractTimeFromDateTime
-} from './utils.js';
-import { findScheduleGaps } from './reschedule-engine.js';
+} from '../utils.js';
+import { findScheduleGaps } from '../reschedule-engine.js';
 import {
     computeEndTimePreview,
     computeOverlapPreview,

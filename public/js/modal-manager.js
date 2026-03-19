@@ -5,8 +5,8 @@ import {
     convertTo12HourTime,
     extractTimeFromDateTime
 } from './utils.js';
-import { getTaskState } from './task-manager.js';
-import { setupEndTimeHint, setupOverlapWarning } from './form-utils.js';
+import { getTaskState } from './tasks/manager.js';
+import { setupEndTimeHint, setupOverlapWarning } from './tasks/form-utils.js';
 
 // --- Modal Elements ---
 const customAlertModal = document.getElementById('custom-alert-modal');

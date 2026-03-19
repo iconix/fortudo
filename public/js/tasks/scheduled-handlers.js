@@ -10,18 +10,17 @@ import {
     updateTask,
     confirmUpdateTaskAndReschedule,
     cancelEdit,
-    getSuggestedStartTime,
     getSortedUnscheduledTasks
-} from '../task-manager.js';
+} from './manager.js';
 import {
     showAlert,
     askConfirmation,
     showGapTaskPicker,
     showScheduleModal
 } from '../modal-manager.js';
-import { extractTaskFormData } from '../form-utils.js';
-import { refreshUI, updateStartTimeField, getCurrentTimeElement } from '../dom-renderer.js';
-import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
+import { showToast } from '../toast-manager.js';
+import { extractTaskFormData } from './form-utils.js';
+import { refreshUI, getCurrentTimeElement } from '../dom-renderer.js';
 import {
     convertTo24HourTime,
     convertTo12HourTime,
@@ -29,7 +28,13 @@ import {
     logger,
     getThemeForTask
 } from '../utils.js';
-import { getThemeForTaskId, handleRescheduleConfirmation } from '../confirmation-helpers.js';
+import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
+import {
+    onTaskCompleted,
+    onTaskEdited,
+    onTaskDeleted,
+    onTaskUnscheduled
+} from '../app-coordinator.js';
 
 export async function handleCompleteTask(taskId, _taskIndex) {
     const taskToComplete = getTaskById(taskId);
@@ -73,7 +78,6 @@ export async function handleCompleteTask(taskId, _taskIndex) {
                 result.newDuration
             );
             if (lateResult.success) {
-                updateStartTimeField(getSuggestedStartTime(), true);
                 taskActuallyCompleted = true;
             } else {
                 completeTask(originalIndex);
@@ -91,19 +95,20 @@ export async function handleCompleteTask(taskId, _taskIndex) {
         taskActuallyCompleted = true;
     }
 
-    refreshUI();
-
     if (taskActuallyCompleted) {
-        triggerConfettiAnimation(taskId);
+        onTaskCompleted({ task: getTaskById(taskId) || taskToComplete });
+    } else {
+        refreshUI();
     }
 }
 
 export function handleLockTask(taskId, _taskIndex) {
     const result = toggleLockState(taskId);
-    if (!result.success && result.reason) {
+    if (result.success) {
+        onTaskEdited({ task: result.task });
+    } else if (result.reason) {
         showAlert(result.reason, getThemeForTaskId(taskId));
     }
-    refreshUI();
 }
 
 export function handleEditTask(taskId, _taskIndex) {
@@ -125,19 +130,21 @@ export function handleDeleteTask(taskId, _taskIndex) {
     }
     const originalIndex = getTaskIndex(taskId);
     const result = deleteTask(originalIndex, taskToDelete.confirmingDelete);
-    if (result.success) updateStartTimeField(getSuggestedStartTime(), true);
+    if (result.success) onTaskDeleted({ task: result.task || taskToDelete });
     else if (!result.requiresConfirmation && result.reason)
         showAlert(result.reason, getThemeForTaskId(taskId));
-    refreshUI();
+    if (!result.success) refreshUI();
 }
 
 export function handleUnscheduleTask(taskId, _taskIndex) {
     logger.info('Unschedule button clicked for', { taskId });
     const unscheduleResult = unscheduleTask(taskId);
-    if (!unscheduleResult.success && unscheduleResult.reason) {
+    if (unscheduleResult.success) {
+        onTaskUnscheduled({ task: unscheduleResult.task });
+    } else if (unscheduleResult.reason) {
         showAlert(unscheduleResult.reason, 'teal');
+        refreshUI();
     }
-    refreshUI();
 }
 
 export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
@@ -160,13 +167,17 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
 
     const updateResult = updateTask(originalIndex, taskData);
-    await handleRescheduleConfirmation(
+    const finalResult = await handleRescheduleConfirmation(
         updateResult,
         confirmUpdateTaskAndReschedule,
         () => cancelEdit(originalIndex),
         { reschedulePreApproved }
     );
-    refreshUI();
+    if (finalResult?.success) {
+        onTaskEdited({ task: finalResult.task });
+    } else {
+        refreshUI();
+    }
 }
 
 export function handleCancelEdit(taskId, _taskIndex) {
@@ -190,7 +201,7 @@ export function handleGapClick(gapStartISO, gapEndISO, durationMinutes) {
     const unscheduledTasks = getSortedUnscheduledTasks().filter((t) => t.status !== 'completed');
 
     if (unscheduledTasks.length === 0) {
-        showAlert('No unscheduled tasks to schedule.', 'teal');
+        showToast('No unscheduled tasks to schedule.', { theme: 'teal' });
         return;
     }
 

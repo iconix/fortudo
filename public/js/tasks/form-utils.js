@@ -7,9 +7,9 @@ import {
     calculateEndDateTime,
     extractTimeFromDateTime,
     convertTo12HourTime
-} from './utils.js';
-import { showAlert } from './modal-manager.js';
-import { checkOverlap } from './reschedule-engine.js';
+} from '../utils.js';
+import { showAlert } from '../modal-manager.js';
+import { checkOverlap } from '../reschedule-engine.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 

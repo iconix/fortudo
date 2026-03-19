@@ -12,10 +12,11 @@ import {
 import {
     updateTaskState,
     getTaskState,
+    getSuggestedStartTime,
     cancelEdit as cancelEditDirect
-} from '../public/js/task-manager.js';
+} from '../public/js/tasks/manager.js';
 import { resetEventDelegation, renderTasks } from '../public/js/dom-renderer.js';
-import { getTaskFormElement } from '../public/js/form-utils.js';
+import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -34,6 +35,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     triggerSync: jest.fn(() => Promise.resolve())
 }));
 import {
+    initStorage as mockInitStorageInternal,
     saveTasks as mockSaveTasksInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal
@@ -42,7 +44,9 @@ import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
+import * as appCoordinator from '../public/js/app-coordinator.js';
 
+const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
@@ -91,6 +95,19 @@ describe('App.js Callback Functions', () => {
         return false;
     };
 
+    const clickUnscheduleButton = async (taskIndex) => {
+        const taskWrapper = document.querySelector(`[data-task-index="${taskIndex}"]`);
+        if (!taskWrapper) return false;
+
+        const unscheduleButton = taskWrapper.querySelector('.btn-unschedule');
+        if (unscheduleButton) {
+            unscheduleButton.dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return true;
+        }
+        return false;
+    };
+
     beforeEach(async () => {
         // Reset DOM and app state
         document.body.innerHTML = '';
@@ -98,6 +115,7 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockInitStorage.mockClear();
         updateTaskState([]);
 
         // Clean up any existing spies
@@ -188,7 +206,7 @@ describe('App.js Callback Functions', () => {
 
             // Mock deleteTask to fail
             deleteTaskSpy = jest
-                .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                .spyOn(require('../public/js/tasks/manager.js'), 'deleteTask')
                 .mockReturnValue({
                     success: false,
                     requiresConfirmation: false,
@@ -212,6 +230,20 @@ describe('App.js Callback Functions', () => {
             expect(tasks).toHaveLength(2);
             expect(tasks[0].description).toBe('Task 1');
             expect(tasks[1].description).toBe('Task 2');
+        });
+    });
+
+    describe('sync config boot behavior', () => {
+        test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
+            const config = await import('../public/js/config.js');
+
+            expect(config.COUCHDB_URL).toBeNull();
+        });
+
+        test('boot initializes storage without a remote URL when sync config is null', async () => {
+            await setupAppWithTasks([]);
+
+            expect(mockInitStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
         });
     });
 
@@ -371,6 +403,43 @@ describe('App.js Callback Functions', () => {
         });
     });
 
+    describe('coordinator boundary integration', () => {
+        test('should route scheduled unschedule through the coordinator', async () => {
+            const tasks = [
+                createTaskWithDateTime({
+                    description: 'Task 1',
+                    startTime: '09:00',
+                    duration: 60
+                })
+            ];
+
+            await setupAppWithTasks(tasks);
+
+            const onTaskUnscheduledSpy = jest.spyOn(appCoordinator, 'onTaskUnscheduled');
+
+            const clicked = await clickUnscheduleButton(0);
+            expect(clicked).toBe(true);
+
+            expect(onTaskUnscheduledSpy).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    description: 'Task 1',
+                    type: 'unscheduled',
+                    priority: 'medium',
+                    estDuration: 60
+                })
+            });
+
+            const updatedTasks = getTaskState();
+            expect(updatedTasks).toHaveLength(1);
+            expect(updatedTasks[0].type).toBe('unscheduled');
+
+            const unscheduledTask = document.querySelector('#unscheduled-task-list [data-task-id]');
+            expect(unscheduledTask).toBeTruthy();
+
+            onTaskUnscheduledSpy.mockRestore();
+        });
+    });
+
     describe('Additional Branch Coverage Tests', () => {
         describe('onCompleteTask callback coverage', () => {
             test('should handle user denying late completion confirmation (real app.js callback)', async () => {
@@ -390,7 +459,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock the completeTask to return late completion scenario
                 const completeTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'completeTask')
                     .mockReturnValueOnce({
                         success: true,
                         requiresConfirmation: true,
@@ -467,15 +536,23 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
-                    taskData: {
+                    confirmationType: 'RESCHEDULE_UPDATE',
+                    taskIndex: 0,
+                    updatedTaskObject: {
+                        id: tasks[0].id,
+                        type: 'scheduled',
                         description: 'Updated Task',
-                        startTime: '09:30',
+                        status: 'incomplete',
+                        editing: false,
+                        confirmingDelete: false,
+                        locked: false,
+                        startDateTime: tasks[0].startDateTime,
+                        endDateTime: tasks[0].endDateTime,
                         duration: 120
                     },
-                    originalIndex: 0,
                     reason: 'Would cause overlap'
                 });
 
@@ -510,7 +587,7 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(alertSpy).toHaveBeenCalledWith(
-                    'Alert: Task operation cancelled to avoid overlap.'
+                    'Alert: Task update cancelled to avoid overlap.'
                 );
             });
 
@@ -530,7 +607,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock updateTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'updateTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
                     success: false,
                     reason: 'Update failed'
                 });
@@ -562,12 +639,12 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to require confirmation
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
                     success: false,
                     requiresConfirmation: true,
                     confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
                     reason: 'Would cause overlap',
-                    taskObjectToFinalize: {
+                    proposedTask: {
                         description: 'New Task',
                         startTime: '09:00',
                         duration: 60
@@ -615,7 +692,7 @@ describe('App.js Callback Functions', () => {
                 mockSaveTasks.mockClear();
 
                 // Mock addTask to fail
-                jest.spyOn(require('../public/js/task-manager.js'), 'addTask').mockReturnValue({
+                jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
                     success: false,
                     reason: 'Add failed'
                 });
@@ -660,7 +737,7 @@ describe('App.js Callback Functions', () => {
 
                 // Spy on addTask to detect form submission
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockImplementation(() => {
                         formSubmitted = true;
                         return { success: true, task: {} };
@@ -711,7 +788,7 @@ describe('App.js Callback Functions', () => {
                 let formSubmitted = false;
 
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockImplementation(() => {
                         formSubmitted = true;
                         return { success: true, task: {} };
@@ -762,19 +839,24 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
+                const toastSpy = jest
+                    .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                    .mockImplementation(() => {});
                 mockSaveTasks.mockClear();
 
-                // Click the delete all button when no tasks exist
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                // Click the clear schedule button when no tasks exist
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
                 expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-                expect(alertSpy).toHaveBeenCalledWith(
-                    'Alert: There are no scheduled tasks to clear.'
-                );
+                expect(alertSpy).not.toHaveBeenCalled();
+                expect(toastSpy).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
+                    theme: 'teal'
+                });
+                toastSpy.mockRestore();
             });
 
             test('should handle user denying delete all confirmation', async () => {
@@ -792,9 +874,9 @@ describe('App.js Callback Functions', () => {
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
                 mockSaveTasks.mockClear();
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -821,16 +903,16 @@ describe('App.js Callback Functions', () => {
 
                 // Mock deleteAllScheduledTasks to fail
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'deleteAllScheduledTasks'
                 ).mockReturnValue({
                     success: false,
                     reason: 'Delete all failed'
                 });
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
 
@@ -854,25 +936,25 @@ describe('App.js Callback Functions', () => {
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
 
-                // Mock updateStartTimeField to verify it's called with forceUpdate=true
-                const updateStartTimeFieldSpy = jest.spyOn(
-                    require('../public/js/dom-renderer.js'),
-                    'updateStartTimeField'
-                );
-
                 // Mock deleteAllScheduledTasks to succeed
                 const executeDeleteSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'deleteAllScheduledTasks')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'deleteAllScheduledTasks')
                     .mockReturnValue({
                         success: true,
                         tasksDeleted: 1
                     });
 
                 mockSaveTasks.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
-                const deleteAllButton = document.getElementById('delete-all');
-                if (deleteAllButton) {
-                    deleteAllButton.dispatchEvent(new Event('click'));
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
+                if (clearScheduleButton) {
+                    clearScheduleButton.dispatchEvent(new Event('click'));
                     await new Promise((resolve) => setTimeout(resolve, 50));
                 }
 
@@ -880,9 +962,11 @@ describe('App.js Callback Functions', () => {
                     "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
                 expect(executeDeleteSpy).toHaveBeenCalledTimes(1);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
-                updateStartTimeFieldSpy.mockRestore();
                 executeDeleteSpy.mockRestore();
             });
         });
@@ -893,7 +977,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock resetAllConfirmingDeleteFlags to return false
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(false);
 
@@ -910,11 +994,11 @@ describe('App.js Callback Functions', () => {
 
                 // Mock both functions to return false
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(false);
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllEditingFlags'
                 ).mockReturnValue(false);
 
@@ -931,7 +1015,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock to return true to trigger needsRender
                 jest.spyOn(
-                    require('../public/js/task-manager.js'),
+                    require('../public/js/tasks/manager.js'),
                     'resetAllConfirmingDeleteFlags'
                 ).mockReturnValue(true);
 
@@ -954,14 +1038,14 @@ describe('App.js Callback Functions', () => {
 
                 // Then remove key DOM elements to test error handling
                 const taskForm = getTaskFormElement();
-                const deleteAllButton = document.getElementById('delete-all');
+                const clearScheduleButton = document.getElementById('clear-schedule-button');
                 const taskList = document.getElementById('scheduled-task-list');
 
                 if (taskForm) {
                     taskForm.remove();
                 }
-                if (deleteAllButton) {
-                    deleteAllButton.remove();
+                if (clearScheduleButton) {
+                    clearScheduleButton.remove();
                 }
                 if (taskList) {
                     taskList.remove();
@@ -1252,7 +1336,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock completeTask to return late completion scenario
                 const completeTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'completeTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'completeTask')
                     .mockReturnValue({
                         success: true,
                         requiresConfirmation: true,
@@ -1262,7 +1346,7 @@ describe('App.js Callback Functions', () => {
                     });
 
                 const confirmCompleteLate = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'confirmCompleteLate')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'confirmCompleteLate')
                     .mockReturnValue({ success: true });
 
                 // Set current time in DOM to trigger late completion
@@ -1272,6 +1356,12 @@ describe('App.js Callback Functions', () => {
                 }
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Click the checkbox to complete the task
                 const checkbox = document.querySelector('.checkbox');
@@ -1282,7 +1372,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmCompleteLate).toHaveBeenCalledWith(0, '10:15', 75);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 completeTaskSpy.mockRestore();
                 confirmCompleteLate.mockRestore();
@@ -1306,7 +1399,7 @@ describe('App.js Callback Functions', () => {
 
                 // Mock deleteTask to return success on second call (after confirmation)
                 const deleteTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'deleteTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'deleteTask')
                     .mockReturnValueOnce({
                         success: false,
                         requiresConfirmation: true
@@ -1316,6 +1409,12 @@ describe('App.js Callback Functions', () => {
                     });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Click delete button twice (once to confirm, once to actually delete)
                 const deleteButtons = document.querySelectorAll('.btn-delete');
@@ -1334,7 +1433,10 @@ describe('App.js Callback Functions', () => {
                 }
 
                 expect(deleteTaskSpy).toHaveBeenCalledTimes(2);
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 deleteTaskSpy.mockRestore();
             });
@@ -1360,27 +1462,48 @@ describe('App.js Callback Functions', () => {
 
                 // Mock updateTask to require confirmation
                 const updateTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'updateTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'updateTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
-                        taskData: {
+                        confirmationType: 'RESCHEDULE_UPDATE',
+                        taskIndex: 0,
+                        updatedTaskObject: {
+                            id: tasks[0].id,
+                            type: 'scheduled',
                             description: 'Updated Task',
-                            startTime: '09:30',
+                            status: 'incomplete',
+                            editing: false,
+                            confirmingDelete: false,
+                            locked: false,
+                            startDateTime: tasks[0].startDateTime,
+                            endDateTime: tasks[0].endDateTime,
                             duration: 120
                         },
-                        originalIndex: 0,
                         reason: 'Updating this task may overlap with other tasks. Would you like to reschedule them?'
                     });
 
                 const confirmUpdateTaskAndReschedule = jest
                     .spyOn(
-                        require('../public/js/task-manager.js'),
+                        require('../public/js/tasks/manager.js'),
                         'confirmUpdateTaskAndReschedule'
                     )
-                    .mockReturnValue({ success: true });
+                    .mockReturnValue({
+                        success: true,
+                        task: {
+                            id: tasks[0].id,
+                            type: 'scheduled',
+                            description: 'Updated Task'
+                        }
+                    });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Start editing the first task
                 const editButtons = document.querySelectorAll('.btn-edit');
@@ -1400,7 +1523,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmUpdateTaskAndReschedule).toHaveBeenCalled();
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 updateTaskSpy.mockRestore();
                 confirmUpdateTaskAndReschedule.mockRestore();
@@ -1422,12 +1548,12 @@ describe('App.js Callback Functions', () => {
 
                 // Mock addTask to require confirmation
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
                         confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
-                        taskObjectToFinalize: {
+                        proposedTask: {
                             description: 'New Task',
                             startTime: '09:30',
                             duration: 60
@@ -1437,10 +1563,23 @@ describe('App.js Callback Functions', () => {
                     });
 
                 const confirmAddTaskAndReschedule = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'confirmAddTaskAndReschedule')
-                    .mockReturnValue({ success: true });
+                    .spyOn(require('../public/js/tasks/manager.js'), 'confirmAddTaskAndReschedule')
+                    .mockReturnValue({
+                        success: true,
+                        task: {
+                            id: 'sched-confirmed-add',
+                            type: 'scheduled',
+                            description: 'New Task'
+                        }
+                    });
 
                 updateStartTimeFieldSpy.mockClear();
+                const startTimeInput = document.querySelector(
+                    '#task-form input[name="start-time"]'
+                );
+                if (startTimeInput instanceof HTMLInputElement) {
+                    startTimeInput.value = '15:33';
+                }
 
                 // Submit the main task form
                 const taskForm = getTaskFormElement();
@@ -1470,7 +1609,10 @@ describe('App.js Callback Functions', () => {
 
                 expect(confirmSpy).toHaveBeenCalled();
                 expect(confirmAddTaskAndReschedule).toHaveBeenCalled();
-                expect(updateStartTimeFieldSpy).toHaveBeenCalledWith(expect.any(String), true);
+                if (startTimeInput instanceof HTMLInputElement) {
+                    expect(startTimeInput.value).toBe(getSuggestedStartTime());
+                    expect(startTimeInput.value).not.toBe('15:33');
+                }
 
                 addTaskSpy.mockRestore();
                 confirmAddTaskAndReschedule.mockRestore();
@@ -1492,12 +1634,12 @@ describe('App.js Callback Functions', () => {
 
                 // Mock addTask to require confirmation
                 const addTaskSpy = jest
-                    .spyOn(require('../public/js/task-manager.js'), 'addTask')
+                    .spyOn(require('../public/js/tasks/manager.js'), 'addTask')
                     .mockReturnValue({
                         success: false,
                         requiresConfirmation: true,
                         confirmationType: 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS',
-                        taskObjectToFinalize: {
+                        proposedTask: {
                             description: 'New Task',
                             startTime: '09:30',
                             duration: 60

@@ -102,13 +102,9 @@ For personal/household use, **Option A** is the pragmatic choice. If you add mor
 
 ## 5. Connect Fortudo
 
-Copy the config template and set your Cloudant URL:
+The repo tracks `public/js/config.js` with `COUCHDB_URL = null`, which means local-only mode is explicit by default.
 
-```bash
-cp public/js/config.example.js public/js/config.js
-```
-
-Edit `public/js/config.js`:
+To enable sync locally, edit `public/js/config.js`:
 
 ```js
 export const COUCHDB_URL = 'https://<credentials>@<host>.cloudantnosqldb.appdomain.cloud';
@@ -125,14 +121,14 @@ Preview channels use a separate database prefix to avoid touching production dat
 
 The UI still shows the original room code; only the underlying database name changes.
 
-### GitHub Actions CI/CD deployment (no checked-in config)
+### GitHub Actions CI/CD deployment (tracked default config + secret override)
 
-If you use the GitHub Actions workflow in this repo, `public/js/config.js` is generated during CI from a repository secret.
+If you use the GitHub Actions workflow in this repo, the tracked `public/js/config.js` stays at `COUCHDB_URL = null` unless CI overrides it from a repository secret.
 
 1. In GitHub, add a repository secret named `COUCHDB_URL`.
 2. Set it to your full Cloudant URL (with credentials).
 
-During the build job, the workflow creates `public/js/config.js` from this secret. If the secret is missing (e.g., PRs from forks), it falls back to `public/js/config.example.js` with `COUCHDB_URL = null`.
+During the build job, the workflow overwrites `public/js/config.js` only when the secret is present. If the secret is missing (for example on PRs from forks), the tracked local-only default remains in place.
 
 ## 6. Update Firebase Hosting headers
 

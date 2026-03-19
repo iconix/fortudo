@@ -5,7 +5,7 @@ import {
     resetAllConfirmingDeleteFlags,
     getSuggestedStartTime,
     getSortedUnscheduledTasks
-} from './task-manager.js';
+} from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
@@ -13,8 +13,8 @@ import {
     focusTaskDescriptionInput,
     setupEndTimeHint,
     setupOverlapWarning
-} from './form-utils.js';
-import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './scheduled-task-renderer.js';
+} from './tasks/form-utils.js';
+import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/scheduled-renderer.js';
 import {
     renderTasks,
     renderUnscheduledTasks,
@@ -28,17 +28,14 @@ import {
 } from './dom-renderer.js';
 import { initStorage, loadTasks } from './storage.js';
 import { logger } from './utils.js';
-import { createScheduledTaskCallbacks } from './handlers/scheduled-task-handlers.js';
-import { createUnscheduledTaskCallbacks } from './handlers/unscheduled-task-handlers.js';
-import { handleAddTaskProcess } from './handlers/add-task-handler.js';
-import { initializeClearTasksHandlers } from './handlers/clear-tasks-handler.js';
-import {
-    showRoomEntryScreen,
-    showMainApp,
-    updateSyncStatusUI
-} from './handlers/room-ui-handler.js';
+import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
+import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
+import { handleAddTaskProcess } from './tasks/add-handler.js';
+import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
+import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync } from './sync-manager.js';
+import { COUCHDB_URL } from './config.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -48,20 +45,6 @@ let unsubscribeSyncStatus = null;
 
 /** @type {Promise<void> | null} */
 let refreshFromStoragePromise = null;
-
-/**
- * Load CouchDB URL from config.js if it exists.
- * Returns null when config.js is absent (local-only mode).
- * @returns {Promise<string|null>}
- */
-async function loadCouchDbUrl() {
-    try {
-        const config = await import('./config.js');
-        return config.COUCHDB_URL || null;
-    } catch {
-        return null;
-    }
-}
 
 /**
  * Use an isolated room code for preview deployments so they never touch prod data.
@@ -124,7 +107,7 @@ async function initAndBootApp(roomCode) {
     showMainApp(roomCode);
 
     // Initialize storage (with optional CouchDB sync)
-    const couchDbUrl = await loadCouchDbUrl();
+    const couchDbUrl = COUCHDB_URL || null;
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     await initStorage(storageRoomCode, {}, remoteUrl);

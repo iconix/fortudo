@@ -6,11 +6,14 @@ import {
     handleScheduleUnscheduledTask,
     handleEditUnscheduledTask,
     handleDeleteUnscheduledTask,
+    handleConfirmScheduleTask,
+    handleSaveUnscheduledTaskEdit,
     handleCancelUnscheduledTaskEdit,
     handleToggleCompleteUnscheduledTask,
     createUnscheduledTaskCallbacks
-} from '../public/js/handlers/unscheduled-task-handlers.js';
-import { updateTaskState, getTaskState, getTaskById } from '../public/js/task-manager.js';
+} from '../public/js/tasks/unscheduled-handlers.js';
+import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
@@ -42,18 +45,27 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
-    getDeleteAllButtonElement: jest.fn(),
+    getClearScheduleButtonElement: jest.fn(),
     getClearOptionsDropdownTriggerButtonElement: jest.fn(),
     getClearTasksDropdownMenuElement: jest.fn(),
-    getClearScheduledOptionElement: jest.fn(),
     getClearCompletedOptionElement: jest.fn(),
     toggleClearTasksDropdown: jest.fn(),
     closeClearTasksDropdown: jest.fn(),
     resetEventDelegation: jest.fn()
 }));
 
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
+}));
+
+jest.mock('../public/js/app-coordinator.js', () => ({
+    onTaskEdited: jest.fn(),
+    onTaskDeleted: jest.fn(),
+    onTaskScheduled: jest.fn()
+}));
+
 // Mock scheduled-task-renderer
-jest.mock('../public/js/scheduled-task-renderer.js', () => ({
+jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
     refreshActiveTaskColor: jest.fn(),
     renderTasks: jest.fn(() => null),
@@ -61,7 +73,7 @@ jest.mock('../public/js/scheduled-task-renderer.js', () => ({
 }));
 
 // Mock form-utils
-jest.mock('../public/js/form-utils.js', () => ({
+jest.mock('../public/js/tasks/form-utils.js', () => ({
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
@@ -71,6 +83,9 @@ jest.mock('../public/js/form-utils.js', () => ({
 
 import { refreshUI } from '../public/js/dom-renderer.js';
 import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
+import { getUnscheduledTaskInlineFormData } from '../public/js/tasks/form-utils.js';
+import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../public/js/app-coordinator.js';
 
 function createUnscheduledTask(overrides = {}) {
     return {
@@ -186,6 +201,78 @@ describe('Unscheduled Task Handlers', () => {
             expect(getTaskState()).toHaveLength(1);
             expect(refreshUI).toHaveBeenCalled();
         });
+
+        test('shows default delete-success toast and calls coordinator after confirmed delete', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-confirmed-delete' });
+            updateTaskState([task]);
+
+            await handleDeleteUnscheduledTask(task.id);
+            jest.clearAllMocks();
+
+            await handleDeleteUnscheduledTask(task.id);
+
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
+            expect(onTaskDeleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: task.id, type: 'unscheduled' })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('shows delete-success toast when delete operation returns a success message', async () => {
+            jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
+                success: true,
+                message: 'Task deleted.'
+            });
+
+            await handleDeleteUnscheduledTask('unsched-task-id');
+
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
+            expect(onTaskDeleted).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: 'unsched-task-id', type: 'unscheduled' })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleConfirmScheduleTask', () => {
+        test('calls coordinator when scheduling succeeds without confirmation', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-direct-schedule' });
+            updateTaskState([task]);
+
+            await handleConfirmScheduleTask(task.id, '09:00', 30);
+
+            expect(onTaskScheduled).toHaveBeenCalledWith({
+                task: expect.objectContaining({ type: 'scheduled' })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleSaveUnscheduledTaskEdit', () => {
+        test('calls coordinator on successful save', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-inline-save',
+                isEditingInline: true,
+                description: 'Before'
+            });
+            updateTaskState([task]);
+            getUnscheduledTaskInlineFormData.mockReturnValue({
+                description: 'After',
+                priority: 'high',
+                estDuration: 45
+            });
+
+            await handleSaveUnscheduledTaskEdit(task.id);
+
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    id: task.id,
+                    description: 'After',
+                    type: 'unscheduled'
+                })
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
     });
 
     describe('handleCancelUnscheduledTaskEdit', () => {
@@ -216,7 +303,10 @@ describe('Unscheduled Task Handlers', () => {
             handleToggleCompleteUnscheduledTask(task.id);
 
             expect(getTaskById(task.id).status).toBe('completed');
-            expect(refreshUI).toHaveBeenCalled();
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: getTaskById(task.id)
+            });
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('shows alert on failure', () => {

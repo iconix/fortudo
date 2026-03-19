@@ -11,13 +11,14 @@ import {
     getRenderedTasksDOM,
     clearLocalStorage,
     clickCompleteCheckbox,
-    clickDeleteAllButton,
+    clickClearScheduleButton,
     setCurrentTimeInDOM,
     createTaskWithDateTime
 } from './test-utils.js';
 
 import { resetEventDelegation } from '../public/js/dom-renderer.js';
-import { refreshActiveTaskColor } from '../public/js/scheduled-task-renderer.js';
+import { refreshActiveTaskColor } from '../public/js/tasks/scheduled-renderer.js';
+import * as appCoordinator from '../public/js/app-coordinator.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
 
@@ -44,7 +45,7 @@ import {
 } from '../public/js/storage.js';
 
 // Import task-manager after the mock since it depends on mock storage.js
-import * as taskManager from '../public/js/task-manager.js';
+import * as taskManager from '../public/js/tasks/manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockPutTask = jest.mocked(mockPutTaskInternal);
@@ -525,6 +526,7 @@ describe('User Confirmation Flows', () => {
             await setupInitialStateAndApp([getTaskToComplete(), getSubsequentTask()]);
             setCurrentTimeInDOM('10:30 AM');
             confirmSpy.mockReturnValueOnce(true);
+            const onTaskCompletedSpy = jest.spyOn(appCoordinator, 'onTaskCompleted');
 
             await clickCompleteCheckbox(0);
 
@@ -532,6 +534,13 @@ describe('User Confirmation Flows', () => {
             expect(confirmSpy.mock.calls[0][0]).toContain(
                 'Do you want to update your schedule to show you finished at 10:30 AM'
             );
+            expect(onTaskCompletedSpy).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    description: 'Task To Complete',
+                    type: 'scheduled',
+                    status: 'completed'
+                })
+            });
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(2);
@@ -564,6 +573,8 @@ describe('User Confirmation Flows', () => {
             expect(extractTimeFromDateTime(new Date(savedSubsequentTask.startDateTime))).toBe(
                 '10:30'
             );
+
+            onTaskCompletedSpy.mockRestore();
         });
 
         test('User denies schedule update: Task completed, original time preserved, subsequent task not shifted', async () => {
@@ -765,19 +776,26 @@ describe('User Confirmation Flows', () => {
                 })
             ]);
             confirmSpy.mockReturnValueOnce(true);
+            const onScheduledTasksClearedSpy = jest.spyOn(
+                appCoordinator,
+                'onScheduledTasksCleared'
+            );
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
                 "Are you sure you want to clear all tasks from Today's Schedule"
             );
+            expect(onScheduledTasksClearedSpy).toHaveBeenCalledTimes(1);
 
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(0);
 
             expect(mockSaveTasks).toHaveBeenCalledTimes(1);
             expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+
+            onScheduledTasksClearedSpy.mockRestore();
         });
 
         test('User denies clear schedule: tasks remain unchanged', async () => {
@@ -795,7 +813,7 @@ describe('User Confirmation Flows', () => {
             ]);
             confirmSpy.mockReturnValueOnce(false);
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
 
@@ -816,16 +834,22 @@ describe('User Confirmation Flows', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
+            const toastSpy = jest
+                .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                .mockImplementation(() => {});
             mockSaveTasks.mockClear();
             mockPutTask.mockClear();
             mockDeleteTaskFromStorage.mockClear();
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).not.toHaveBeenCalled(); // No confirmation needed if no tasks
-            // App now shows an alert when there are no tasks to delete
-            expect(alertSpy).toHaveBeenCalledWith('Alert: There are no scheduled tasks to clear.');
+            expect(alertSpy).not.toHaveBeenCalled();
+            expect(toastSpy).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
+                theme: 'teal'
+            });
             expect(mockSaveTasks).not.toHaveBeenCalled();
+            toastSpy.mockRestore();
         });
 
         test('Start time field is reset after scheduled tasks are cleared', async () => {
@@ -850,7 +874,7 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toBe('15:33'); // Verify it's set
             }
 
-            await clickDeleteAllButton();
+            await clickClearScheduleButton();
 
             expect(confirmSpy).toHaveBeenCalledTimes(1);
             expect(confirmSpy.mock.calls[0][0]).toContain(
@@ -1131,9 +1155,9 @@ describe('User Confirmation Flows', () => {
                 return textDivs;
             };
 
-            // Set current time to BEFORE the task starts (14:00 - task starts at 15:00)
-            const date = new Date().toISOString().split('T')[0];
-            const beforeTaskStart = new Date(`${date}T14:00:00`);
+            // Use the task's own local calendar date so this assertion is stable near UTC day rollover.
+            const beforeTaskStart = new Date(futureTask.startDateTime);
+            beforeTaskStart.setHours(14, 0, 0, 0);
 
             // Refresh the active task color with the simulated time
             refreshActiveTaskColor(taskManager.getTaskState(), beforeTaskStart);

@@ -64,12 +64,20 @@ run tests:
 - [x] (v2) highlight gaps in schedule with dashed separator and duration label
 
 - [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
-- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` (local: copy `public/js/config.example.js` to `public/js/config.js`; CI: add `COUCHDB_URL` repo secret), and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). Preview deployments use `preview-<room>` database names to avoid touching production data.
+- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` in the tracked `public/js/config.js` for local testing or override it in CI via the `COUCHDB_URL` repo secret, and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). The repo default is `COUCHDB_URL = null`, which makes local-only mode explicit. Preview deployments use `preview-<room>` database names to avoid touching production data.
 - [x] (v3) click on scheduling gap to see list of unscheduled tasks and schedule in gap
 - [x] (v3) upgrade `jest-environment-jsdom` to v30 (breaking) and adjust tests if needed (then remove `overrides` in `package.json`)
 - [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
 
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
 - [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
+  - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
+  - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then
+  - show a toast so the user knows the task was moved out of the current day's schedule instead of silently disappearing
 - [ ] (vNext) clear schedule on a new day (unschedule incomplete tasks)
+  - reintroduce a dedicated day-rollover coordinator boundary when this ships, rather than hiding the behavior behind ad hoc timer code
+  - run once per room per local calendar day, including the first app open after midnight, so rollover is idempotent instead of tick-sensitive
+  - delete all completed tasks from the prior day
+  - convert all remaining incomplete scheduled tasks from prior days into unscheduled tasks, copying `duration` into `estDuration` and defaulting `priority` to `medium`
+  - show a summary toast after rollover so the user can see what changed
 - [ ] (vNext) add checkbox to "make a habit" → then we can have a second list that gets injected daily

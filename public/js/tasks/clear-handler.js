@@ -2,16 +2,12 @@ import {
     getTaskState,
     deleteAllTasks,
     deleteAllScheduledTasks,
-    deleteCompletedTasks,
-    getSuggestedStartTime
-} from '../task-manager.js';
+    deleteCompletedTasks
+} from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import {
-    refreshUI,
-    renderTasks,
-    renderUnscheduledTasks,
-    updateStartTimeField,
-    getDeleteAllButtonElement,
+    getClearScheduleButtonElement,
     getClearOptionsDropdownTriggerButtonElement,
     getClearTasksDropdownMenuElement,
     getClearAllOptionElement,
@@ -19,19 +15,24 @@ import {
     toggleClearTasksDropdown,
     closeClearTasksDropdown
 } from '../dom-renderer.js';
+import {
+    onScheduledTasksCleared,
+    onCompletedTasksCleared,
+    onAllTasksCleared
+} from '../app-coordinator.js';
 
 /**
  * Initialize all clear/delete task button event listeners
  */
 export function initializeClearTasksHandlers() {
     // Main button defaults to clearing scheduled tasks
-    const deleteAllButton = getDeleteAllButtonElement();
-    if (deleteAllButton) {
-        deleteAllButton.addEventListener('click', async (event) => {
+    const clearScheduleButton = getClearScheduleButtonElement();
+    if (clearScheduleButton) {
+        clearScheduleButton.addEventListener('click', async (event) => {
             event.stopPropagation();
             const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
             if (!scheduledTasksExist) {
-                showAlert('There are no scheduled tasks to clear.', 'teal');
+                showToast('There are no scheduled tasks to clear.', { theme: 'teal' });
                 return;
             }
             if (
@@ -43,9 +44,10 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteAllScheduledTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All scheduled tasks have been cleared.', 'teal');
-                    refreshUI();
-                    updateStartTimeField(getSuggestedStartTime(), true);
+                    showToast(result.message || 'All scheduled tasks have been cleared.', {
+                        theme: 'teal'
+                    });
+                    onScheduledTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
                 }
@@ -69,7 +71,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const tasksExist = getTaskState().length > 0;
             if (!tasksExist) {
-                showAlert('There are no tasks to delete.', 'red');
+                showToast('There are no tasks to delete.', { theme: 'rose' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -83,10 +85,8 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteAllTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All tasks have been deleted.', 'red');
-                    renderTasks([]);
-                    renderUnscheduledTasks([]);
-                    updateStartTimeField(getSuggestedStartTime(), true);
+                    showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
+                    onAllTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to delete all tasks.', 'red');
                 }
@@ -102,7 +102,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const completedTasksExist = getTaskState().some((task) => task.status === 'completed');
             if (!completedTasksExist) {
-                showAlert('There are no completed tasks to clear.', 'indigo');
+                showToast('There are no completed tasks to clear.', { theme: 'indigo' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -116,8 +116,10 @@ export function initializeClearTasksHandlers() {
             ) {
                 const result = deleteCompletedTasks();
                 if (result.success) {
-                    showAlert(result.message || 'All completed tasks have been cleared.', 'indigo');
-                    refreshUI();
+                    showToast(result.message || 'All completed tasks have been cleared.', {
+                        theme: 'indigo'
+                    });
+                    onCompletedTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
                 }
@@ -130,14 +132,14 @@ export function initializeClearTasksHandlers() {
     window.addEventListener('click', (event) => {
         const dropdownTrigger = getClearOptionsDropdownTriggerButtonElement();
         const dropdownMenu = getClearTasksDropdownMenuElement();
-        const mainClearAllButton = getDeleteAllButtonElement();
+        const mainClearScheduleButton = getClearScheduleButtonElement();
 
-        if (dropdownTrigger && dropdownMenu && mainClearAllButton) {
+        if (dropdownTrigger && dropdownMenu && mainClearScheduleButton) {
             const target = event.target;
             if (target instanceof Node) {
                 const isClickInsideCaret = dropdownTrigger.contains(target);
                 const isClickInsideMenu = dropdownMenu.contains(target);
-                const isClickInsideMainButton = mainClearAllButton.contains(target);
+                const isClickInsideMainButton = mainClearScheduleButton.contains(target);
 
                 if (!isClickInsideCaret && !isClickInsideMenu && !isClickInsideMainButton) {
                     closeClearTasksDropdown();

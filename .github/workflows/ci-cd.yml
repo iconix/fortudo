@@ -132,8 +132,6 @@ jobs:
               run: |
                   if [ -n "${COUCHDB_URL}" ]; then
                     printf "export const COUCHDB_URL = '%s';\n" "${COUCHDB_URL}" > public/js/config.js
-                  else
-                    cp public/js/config.example.js public/js/config.js
                   fi
               env:
                   COUCHDB_URL: ${{ secrets.COUCHDB_URL }}

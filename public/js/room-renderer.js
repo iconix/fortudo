@@ -1,4 +1,4 @@
-import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from '../room-manager.js';
+import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from './room-manager.js';
 
 /** @type {AbortController|null} Tracks listeners for cleanup on re-show */
 let roomScreenAbortController = null;

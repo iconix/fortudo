@@ -112,7 +112,12 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={"width": 1280, "height": 900})
 
     console_messages = []
+    http_404_urls = []
     page.on("console", lambda msg: console_messages.append(f"[{msg.type}] {msg.text}"))
+    page.on(
+        "response",
+        lambda response: http_404_urls.append(response.url) if response.status == 404 else None
+    )
 
     page.goto(f"http://127.0.0.1:{PORT}")
     page.wait_for_load_state("load")
@@ -377,11 +382,14 @@ with sync_playwright() as p:
         test("Schedule button for modal X test", False, "No schedule buttons")
 
     # =========================================================================
-    # TEST 10: Clear dropdown menu
+    # TEST 10: Clear controls
     # =========================================================================
     print("\nTEST 10: Clear tasks dropdown", flush=True)
     dropdown = page.locator("#clear-tasks-dropdown")
     test("Dropdown initially hidden", dropdown.is_hidden(), "Dropdown visible initially")
+
+    clear_schedule_button = page.locator("#clear-schedule-button")
+    test("Clear Schedule button exists", clear_schedule_button.count() == 1)
 
     page.locator("#clear-options-dropdown-trigger-btn").click()
     page.wait_for_timeout(300)
@@ -390,9 +398,9 @@ with sync_playwright() as p:
 
     screenshot(page, "10a_dropdown_open")
 
-    clear_sched_option = page.locator("#clear-scheduled-tasks-option")
+    clear_all_option = page.locator("#clear-all-tasks-option")
     clear_completed_option = page.locator("#clear-completed-tasks-option")
-    test("Clear Schedule option exists", clear_sched_option.count() == 1)
+    test("Clear All option exists", clear_all_option.count() == 1)
     test("Clear Completed option exists", clear_completed_option.count() == 1)
 
     page.locator("#main-app h1").click()
@@ -462,8 +470,8 @@ with sync_playwright() as p:
     # =========================================================================
     print("\nTEST 13: Console errors check", flush=True)
     error_messages = [m for m in console_messages if m.startswith("[error]")]
-    test("No console errors", len(error_messages) == 0,
-         f"Errors: {error_messages[:3]}")
+    test("No unexpected console errors", len(error_messages) == 0 and len(http_404_urls) == 0,
+         f"Errors: {error_messages[:3]}, 404s: {http_404_urls[:3]}")
 
     # Clear localStorage for cleanliness
     page.evaluate("localStorage.clear()")

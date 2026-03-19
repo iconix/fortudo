@@ -2,13 +2,14 @@ import {
     addTask,
     confirmAddTaskAndReschedule,
     adjustAndCompleteTask,
-    truncateCompletedTask,
-    getSuggestedStartTime
-} from '../task-manager.js';
+    truncateCompletedTask
+} from './manager.js';
 import { showAlert, askConfirmation } from '../modal-manager.js';
-import { focusTaskDescriptionInput, resetTaskFormPreviewState } from '../form-utils.js';
-import { triggerConfettiAnimation } from '../scheduled-task-renderer.js';
-import { refreshUI, updateStartTimeField, initializeTaskTypeToggle } from '../dom-renderer.js';
+import { showToast } from '../toast-manager.js';
+import { focusTaskDescriptionInput, resetTaskFormPreviewState } from './form-utils.js';
+import { triggerConfettiAnimation } from './scheduled-renderer.js';
+import { refreshUI, initializeTaskTypeToggle } from '../dom-renderer.js';
+import { onTaskCreated } from '../app-coordinator.js';
 import { getThemeForTaskType, logger } from '../utils.js';
 
 /**
@@ -92,8 +93,8 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         operationResult.confirmationType === 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED'
     ) {
         const userConfirmedShift = await askConfirmation(operationResult.reason, undefined, theme);
-        if (userConfirmedShift && operationResult.adjustedTaskDataForResubmission) {
-            operationResult = addTask(operationResult.adjustedTaskDataForResubmission, true);
+        if (userConfirmedShift && operationResult.context?.resubmissionTaskData) {
+            operationResult = addTask(operationResult.context.resubmissionTaskData, true);
         } else {
             showAlert(
                 'Task not added as the proposed shift due to a locked task was declined.',
@@ -112,9 +113,9 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         const userConfirmedReschedule =
             reschedulePreApproved ||
             (await askConfirmation(operationResult.reason, undefined, theme));
-        if (userConfirmedReschedule && operationResult.taskObjectToFinalize) {
+        if (userConfirmedReschedule && operationResult.proposedTask) {
             operationResult = confirmAddTaskAndReschedule({
-                taskObjectToFinalize: operationResult.taskObjectToFinalize
+                proposedTask: operationResult.proposedTask
             });
         } else {
             showAlert('Task not added as rescheduling of other tasks was declined.', theme);
@@ -142,15 +143,13 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         }
 
         initializeTaskTypeToggle();
-        if (initialTaskData.taskType === 'scheduled') {
-            updateStartTimeField(getSuggestedStartTime(), true);
-        }
         focusTaskDescriptionInput();
+        onTaskCreated({ task: operationResult.task });
 
         if (operationResult.autoRescheduledMessage) {
-            showAlert(operationResult.autoRescheduledMessage, theme);
+            showToast(operationResult.autoRescheduledMessage, { theme });
         } else if (operationResult.message) {
-            showAlert(operationResult.message, theme);
+            showToast(operationResult.message, { theme });
         }
     } else if (operationResult.reason) {
         showAlert(operationResult.reason, theme);
@@ -163,5 +162,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         showAlert('Could not process the task at this time.', theme);
     }
 
-    refreshUI();
+    if (!operationResult.success) {
+        refreshUI();
+    }
 }
