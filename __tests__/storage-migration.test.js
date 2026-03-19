@@ -18,6 +18,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     debouncedSync: jest.fn()
 }));
 
+import { debouncedSync } from '../public/js/sync-manager.js';
 import {
     initStorage,
     migrateDocTypes,
@@ -33,6 +34,7 @@ function uniqueRoomCode() {
 
 afterEach(async () => {
     await destroyStorage();
+    debouncedSync.mockClear();
 });
 
 describe('migrateDocTypes', () => {
@@ -134,5 +136,36 @@ describe('migrateDocTypes', () => {
         const tasks = await loadTasks();
         const migrated = tasks.find((task) => task.id === 'legacy-task');
         expect(migrated).toEqual(expect.objectContaining({ docType: 'task' }));
+    });
+
+    test('queues sync when migration updates docs', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        const db = getDb();
+        await db.bulkDocs([
+            {
+                _id: 'legacy-task',
+                type: 'scheduled',
+                description: 'Legacy task'
+            }
+        ]);
+
+        await migrateDocTypes();
+        expect(debouncedSync).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not queue sync when no documents need migration', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        const db = getDb();
+        await db.bulkDocs([
+            {
+                _id: 'task-doc',
+                docType: 'task',
+                type: 'scheduled',
+                description: 'Already migrated'
+            }
+        ]);
+
+        await migrateDocTypes();
+        expect(debouncedSync).not.toHaveBeenCalled();
     });
 });

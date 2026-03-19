@@ -208,4 +208,8 @@ export async function migrateDocTypes() {
             revMap.set(response.id, response.rev);
         }
     }
+
+    if (responses.some((response) => response.ok)) {
+        debouncedSync();
+    }
 }
