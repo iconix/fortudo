@@ -251,8 +251,22 @@ describe('sync config boot behavior', () => {
 });
 
 describe('boot migration ordering', () => {
-    test('runs migrateDocTypes after initStorage but before loading tasks', async () => {
-        await setupAppWithTasks([]);
+    test('awaits migrateDocTypes before loading tasks', async () => {
+        let resolveMigration;
+        const migrationPromise = new Promise((resolve) => {
+            resolveMigration = resolve;
+        });
+        mockMigrateDocTypes.mockReturnValue(migrationPromise);
+
+        const bootPromise = setupAppWithTasks([]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
+
+        resolveMigration();
+        await migrationPromise;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await bootPromise;
 
         expect(mockInitStorage).toHaveBeenCalled();
         expect(mockMigrateDocTypes).toHaveBeenCalled();

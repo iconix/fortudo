@@ -111,9 +111,7 @@ async function initAndBootApp(roomCode) {
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     await initStorage(storageRoomCode, {}, remoteUrl);
-    if (typeof migrateDocTypes === 'function') {
-        await migrateDocTypes();
-    }
+    await migrateDocTypes();
 
     // Load and initialize state
     await loadTasksIntoState();

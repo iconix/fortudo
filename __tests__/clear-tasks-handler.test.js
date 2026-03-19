@@ -8,6 +8,7 @@ import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
+    migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
     deleteTask: jest.fn(),
