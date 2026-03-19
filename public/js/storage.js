@@ -82,6 +82,7 @@ export async function putTask(task) {
     if (!db) throw new Error('Storage not initialized. Call initStorage first.');
 
     const doc = { ...task, _id: task.id };
+    doc.docType = 'task';
     delete doc.id;
 
     const existingRev = revMap.get(task.id);

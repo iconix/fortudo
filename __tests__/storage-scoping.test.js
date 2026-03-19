@@ -19,6 +19,7 @@ import {
     initStorage,
     loadTasks,
     saveTasks,
+    putTask,
     getDb,
     destroyStorage
 } from '../public/js/storage.js';
@@ -65,6 +66,29 @@ const insertMixedDocs = async () => {
 };
 
 describe('Storage scoping', () => {
+    test('putTask adds docType "task" when caller omits it', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putTask({
+            id: 'doc-without-doctype',
+            type: 'scheduled',
+            description: 'Task without docType'
+        });
+        const doc = await getDb().get('doc-without-doctype');
+        expect(doc).toHaveProperty('docType', 'task');
+    });
+
+    test('putTask keeps docType "task" when already set', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putTask({
+            id: 'doc-with-doctype',
+            type: 'unscheduled',
+            description: 'Task with docType',
+            docType: 'task'
+        });
+        const doc = await getDb().get('doc-with-doctype');
+        expect(doc).toHaveProperty('docType', 'task');
+    });
+
     test('loadTasks only returns task docs (docType "task" or no docType)', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await insertMixedDocs();
