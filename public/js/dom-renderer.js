@@ -557,37 +557,49 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
             'Task form element not found or not an HTMLFormElement for initializePageEventListeners.'
         );
     } else {
-        taskFormElement.addEventListener('submit', (event) => {
-            event.preventDefault(); // Prevent default form submission (page reload)
-            if (appCallbacks && appCallbacks.onTaskFormSubmit) {
-                appCallbacks.onTaskFormSubmit(taskFormElement);
-            } else {
-                logger.error(
-                    'onTaskFormSubmit callback not provided to initializePageEventListeners'
-                );
-            }
-        }, { signal });
+        taskFormElement.addEventListener(
+            'submit',
+            (event) => {
+                event.preventDefault(); // Prevent default form submission (page reload)
+                if (appCallbacks && appCallbacks.onTaskFormSubmit) {
+                    appCallbacks.onTaskFormSubmit(taskFormElement);
+                } else {
+                    logger.error(
+                        'onTaskFormSubmit callback not provided to initializePageEventListeners'
+                    );
+                }
+            },
+            { signal }
+        );
         logger.debug('Submit event listener added to task form.');
 
         // Allow ENTER key to submit from any input field (time/number inputs don't submit by default)
-        taskFormElement.addEventListener('keydown', (event) => {
-            if (
-                event.key === 'Enter' &&
-                event.target instanceof HTMLInputElement &&
-                event.target.type !== 'submit'
-            ) {
-                event.preventDefault();
-                taskFormElement.dispatchEvent(new Event('submit'));
-            }
-        }, { signal });
+        taskFormElement.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    event.key === 'Enter' &&
+                    event.target instanceof HTMLInputElement &&
+                    event.target.type !== 'submit'
+                ) {
+                    event.preventDefault();
+                    taskFormElement.dispatchEvent(new Event('submit'));
+                }
+            },
+            { signal }
+        );
 
         // Add listener to disable auto-update on manual input
         const startTimeInput = taskFormElement.querySelector('input[name="start-time"]');
         if (startTimeInput instanceof HTMLInputElement) {
-            startTimeInput.addEventListener('input', () => {
-                logger.debug('User manually changed start time input, disabling auto-update.');
-                disableStartTimeAutoUpdate();
-            }, { signal });
+            startTimeInput.addEventListener(
+                'input',
+                () => {
+                    logger.debug('User manually changed start time input, disabling auto-update.');
+                    disableStartTimeAutoUpdate();
+                },
+                { signal }
+            );
         } else {
             logger.warn(
                 'Start time input not found in task form for attaching input event listener during page init.'
@@ -596,11 +608,15 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
     }
 
     // Optional: Global click listener to reset flags (from V1, consider if still needed for V2)
-    document.addEventListener('click', (event) => {
-        if (appCallbacks && appCallbacks.onGlobalClick) {
-            appCallbacks.onGlobalClick(event);
-        }
-    }, { signal });
+    document.addEventListener(
+        'click',
+        (event) => {
+            if (appCallbacks && appCallbacks.onGlobalClick) {
+                appCallbacks.onGlobalClick(event);
+            }
+        },
+        { signal }
+    );
 }
 
 // --- DOM Element Getters ---
