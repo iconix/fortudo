@@ -45,7 +45,7 @@ export function initializeClearTasksHandlers() {
                 const result = deleteAllScheduledTasks();
                 if (result.success) {
                     showToast(result.message || 'All scheduled tasks have been cleared.', {
-                        theme: 'teal'
+                        theme: 'rose'
                     });
                     onScheduledTasksCleared();
                 } else {
@@ -117,7 +117,7 @@ export function initializeClearTasksHandlers() {
                 const result = deleteCompletedTasks();
                 if (result.success) {
                     showToast(result.message || 'All completed tasks have been cleared.', {
-                        theme: 'indigo'
+                        theme: 'rose'
                     });
                     onCompletedTasksCleared();
                 } else {

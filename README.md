@@ -5,12 +5,12 @@
 ## firebase hosting
 
 ```bash
-λ nvm install --lts
-λ nvm use --lts
-λ npm install -g firebase-tools
-λ firebase login
-λ firebase init  # one-time setup
-λ firebase deploy  # can also enable github actions to deploy
+nvm install --lts
+nvm use --lts
+npm install -g firebase-tools
+firebase login
+firebase init  # one-time setup
+firebase deploy  # can also enable github actions to deploy
 ```
 
 ## app tests
@@ -18,66 +18,24 @@
 set up environment:
 
 ```bash
-λ nvm install --lts
-λ nvm use --lts
-λ npm install --save-dev jest @babel/core @babel/preset-env babel-jest @testing-library/dom jest-environment-jsdom
+nvm install --lts
+nvm use --lts
+npm install --save-dev jest @babel/core @babel/preset-env babel-jest @testing-library/dom jest-environment-jsdom
 ```
 
 run tests:
 
 ```bash
-λ npm test
+npm test
 ```
 
-## repo tasks
+preview storage smoke:
 
-- [x] switch css to tailwind
-- [x] order tasks by time
-- [x] disable checkboxes on all but the first task
-  - so if you do something out of order, you gotta update the time for it so it's at the top, and then mark as done ...
-- [x] click a task to modify details
-- [x] initial reschedule algo:
-  - if you complete something early, nothing happens; if you complete something late, all other tasks are bumped later too
-  - if a task is modified to overlap with another task, confirm user wants to bump the existing task later, and accordingly bump rest of schedule as needed
-- [x] what should happen when the day rolls over? for mvp, can just provide a manual "clear all" button
-- [x] local storage for mvp
-- [ ] fix responsiveness on iphone
-- [x] host mvp on firebase
-- [x] on check, cross out task and enable next checkbox
-- [x] constrain available hours
-- [x] fix deleteTask is not defined on onclick event
-- [x] label start time and duration inputs
-- [x] max width for app ?
-- [x] visually separate the creation ui (task-form)
-- [x] move delete task button to the right ?
-- [x] on-add/form validation
-- [x] "tap again to delete"
-- [x] if task is running late, switch to yellow text as warning
+```bash
+uv run python -B -m unittest test_playwright_preview_smoke.py
+uv run --with playwright python -B scripts/playwright_preview_smoke.py <preview-url> --channel chrome
+```
 
-- [x] (v2) move away from browser alerts to custom modals
-- [x] (v2) confetti burst animation when you check off a task
-- [x] (v2) add a lock feature (🔒) that prevents a task from being auto-rescheduled
-- [x] (v2) publish preview link under shortlink
-- [x] (v2) add un-schedule button (maybe a down arrow before the edit icon?)
-- [x] (v2) clear all scheduled tasks only (drop down on main clear all button?)
-- [x] (v2) record some playwright tests (https://playwright.dev/docs/codegen-intro)
-- [x] (v2) highlight gaps in schedule with dashed separator and duration label
+## roadmap
 
-- [x] (v3) ~~try https://tinybase.org/ for local-first sync, storage, conflict-free replicated data (crdt)~~ local-first sync via PouchDB + CouchDB
-- [x] (v3) enable CouchDB sync: set up IBM Cloudant (free), enable CORS, set `COUCHDB_URL` in the tracked `public/js/config.js` for local testing or override it in CI via the `COUCHDB_URL` repo secret, and add the Cloudant domain to `Content-Security-Policy connect-src` in `firebase.json` (see `docs/COUCHDB-SETUP.md`). The repo default is `COUCHDB_URL = null`, which makes local-only mode explicit. Preview deployments use `preview-<room>` database names to avoid touching production data.
-- [x] (v3) click on scheduling gap to see list of unscheduled tasks and schedule in gap
-- [x] (v3) upgrade `jest-environment-jsdom` to v30 (breaking) and adjust tests if needed (then remove `overrides` in `package.json`)
-- [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
-
-- [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
-- [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
-  - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
-  - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then
-  - show a toast so the user knows the task was moved out of the current day's schedule instead of silently disappearing
-- [ ] (vNext) clear schedule on a new day (unschedule incomplete tasks)
-  - reintroduce a dedicated day-rollover coordinator boundary when this ships, rather than hiding the behavior behind ad hoc timer code
-  - run once per room per local calendar day, including the first app open after midnight, so rollover is idempotent instead of tick-sensitive
-  - delete all completed tasks from the prior day
-  - convert all remaining incomplete scheduled tasks from prior days into unscheduled tasks, copying `duration` into `estDuration` and defaulting `priority` to `medium`
-  - show a summary toast after rollover so the user can see what changed
-- [ ] (vNext) add checkbox to "make a habit" → then we can have a second list that gets injected daily
+See `ROADMAP.md` for the full historical and planned task list.

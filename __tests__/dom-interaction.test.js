@@ -27,6 +27,8 @@ import {
 
 // Mock storage.js before importing task-manager
 jest.mock('../public/js/storage.js', () => ({
+    prepareStorage: jest.fn(() => Promise.resolve()),
+    migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
     deleteTask: jest.fn(),
@@ -491,6 +493,21 @@ describe('DOM Handler Interaction Tests', () => {
             }
             taskFormElement.dispatchEvent(new Event('submit'));
             // onTaskFormSubmit is called with the form element
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(taskFormElement);
+        });
+
+        test('re-initializing page event listeners does not duplicate task form submit handlers', () => {
+            const taskFormElement = getTaskFormElement();
+            if (!taskFormElement) {
+                throw new Error('Task form element not found');
+            }
+
+            initializePageEventListeners(mockAppCallbacks, taskFormElement);
+            jest.clearAllMocks();
+
+            taskFormElement.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledTimes(1);
             expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(taskFormElement);
         });
 

@@ -8,6 +8,8 @@ import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock storage
 jest.mock('../public/js/storage.js', () => ({
+    prepareStorage: jest.fn(() => Promise.resolve()),
+    migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
     deleteTask: jest.fn(),
@@ -161,7 +163,7 @@ describe('Clear Tasks Handler', () => {
             expect(askConfirmation).toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(0);
             expect(showToast).toHaveBeenCalledWith('1 scheduled tasks deleted.', {
-                theme: 'teal'
+                theme: 'rose'
             });
             expect(onScheduledTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
@@ -248,7 +250,7 @@ describe('Clear Tasks Handler', () => {
             await new Promise((r) => setTimeout(r, 0));
 
             expect(showToast).toHaveBeenCalledWith('1 completed tasks deleted.', {
-                theme: 'indigo'
+                theme: 'rose'
             });
             expect(onCompletedTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();

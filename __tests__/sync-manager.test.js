@@ -203,6 +203,73 @@ describe('Sync Manager', () => {
 
             expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
         });
+
+        test('continues an in-flight sync against the db and remote captured at start', async () => {
+            let resolveFirstPush;
+            const firstPushPromise = new Promise((resolve) => {
+                resolveFirstPush = resolve;
+            });
+
+            const firstDb = {
+                replicate: {
+                    to: jest.fn().mockImplementation(() => firstPushPromise),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+            const secondDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(firstDb, 'http://remote:5984/alpha');
+            const firstTrigger = triggerSync();
+
+            initSync(secondDb, 'http://remote:5984/beta');
+            resolveFirstPush({});
+            await firstTrigger;
+
+            expect(firstDb.replicate.from).toHaveBeenCalledWith('http://remote:5984/alpha');
+            expect(secondDb.replicate.from).not.toHaveBeenCalled();
+        });
+
+        test('ignores stale sync failures after reinitialization', async () => {
+            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            let rejectFirstPush;
+            const firstPushPromise = new Promise((resolve, reject) => {
+                rejectFirstPush = reject;
+            });
+
+            const firstDb = {
+                replicate: {
+                    to: jest.fn().mockImplementation(() => firstPushPromise),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+            const secondDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(firstDb, 'http://remote:5984/alpha');
+            const staleTrigger = triggerSync();
+
+            initSync(secondDb, 'http://remote:5984/beta');
+            rejectFirstPush(new Error('database is closed'));
+            await staleTrigger;
+            await triggerSync();
+
+            expect(getSyncStatus()).toBe('synced');
+            expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+                expect.stringContaining('Sync error:')
+            );
+
+            consoleErrorSpy.mockRestore();
+        });
     });
 
     describe('debouncedSync', () => {
