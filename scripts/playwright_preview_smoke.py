@@ -343,6 +343,18 @@ def wait_for_main_app(page: Any) -> None:
     )
 
 
+def wait_for_room_code(
+    page: Any, room_code: str, timeout_s: float = 15.0, interval_s: float = 0.2
+) -> None:
+    room_display = page.locator("#room-code-display")
+    wait_until(
+        lambda: room_display.text_content().strip() == room_code,
+        f"room code display for {room_code}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
 def dismiss_open_modals(page: Any) -> None:
     for selector in ("#ok-custom-alert-modal", "#ok-custom-confirm-modal", "#cancel-custom-confirm-modal"):
         locator = page.locator(selector)
@@ -356,6 +368,7 @@ def enter_room(page: Any, room_code: str) -> None:
     page.locator("#room-code-input").fill(room_code)
     page.locator("#room-entry-form").evaluate("(form) => form.requestSubmit()")
     wait_for_main_app(page)
+    wait_for_room_code(page, room_code)
 
 
 def switch_room(page: Any, room_code: str) -> None:
@@ -365,23 +378,105 @@ def switch_room(page: Any, room_code: str) -> None:
     page.locator("#room-code-input").fill(room_code)
     page.locator("#room-entry-form").evaluate("(form) => form.requestSubmit()")
     wait_for_main_app(page)
+    wait_for_room_code(page, room_code)
+
+
+def task_form_input_selector(field_name: str) -> str:
+    return f'#task-form input[name="{field_name}"]'
+
+
+def fill_locator_value(
+    page: Any,
+    locator: Any,
+    value: str,
+    *,
+    description: str,
+    attempts: int = 3,
+    retry_delay_ms: int = 150,
+) -> None:
+    last_seen_value = ""
+    for attempt in range(attempts):
+        locator.fill(value)
+        current_value = locator.input_value()
+        if current_value == value:
+            return
+        last_seen_value = current_value
+        if attempt < attempts - 1 and retry_delay_ms > 0:
+            page.wait_for_timeout(retry_delay_ms)
+
+    raise TimeoutError(
+        f"Timed out filling {description}. Expected {value!r}, saw {last_seen_value!r}."
+    )
+
+
+def wait_for_text_in_locator(
+    page: Any,
+    selector: str,
+    expected_text: str,
+    *,
+    description: str,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> None:
+    locator = page.locator(selector)
+    wait_until(
+        lambda: expected_text in (locator.text_content() or ""),
+        description,
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
 
 
 def add_scheduled_task(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
     page.locator("#scheduled").check()
-    page.locator('input[name="description"]').fill(description)
-    page.locator('input[name="start-time"]').fill(start_time)
-    page.locator('input[name="duration-hours"]').fill(str(duration_minutes // 60))
-    page.locator('input[name="duration-minutes"]').fill(str(duration_minutes % 60))
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("description")),
+        description,
+        description="task description",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("start-time")),
+        start_time,
+        description="scheduled task start time",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("duration-hours")),
+        str(duration_minutes // 60),
+        description="scheduled task duration hours",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("duration-minutes")),
+        str(duration_minutes % 60),
+        description="scheduled task duration minutes",
+    )
     page.locator("#task-form button[type='submit']").click()
 
 
 def add_unscheduled_task(page: Any, description: str, est_minutes: int, priority: str = "medium") -> None:
     page.locator("#unscheduled").check()
-    page.locator('input[name="description"]').fill(description)
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("description")),
+        description,
+        description="task description",
+    )
     page.locator(f'input[name="priority"][value="{priority}"]').check(force=True)
-    page.locator('input[name="est-duration-hours"]').fill(str(est_minutes // 60))
-    page.locator('input[name="est-duration-minutes"]').fill(str(est_minutes % 60))
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("est-duration-hours")),
+        str(est_minutes // 60),
+        description="unscheduled task duration hours",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("est-duration-minutes")),
+        str(est_minutes % 60),
+        description="unscheduled task duration minutes",
+    )
     page.locator("#task-form button[type='submit']").click()
 
 
@@ -392,18 +487,163 @@ def ensure_task_doc_present(room_code: str, description: str, docs: list[dict[st
     raise ValueError(f"Missing task document for {room_code}: {description}")
 
 
-def assert_no_runtime_errors(console_errors: list[str], page_errors: list[str], request_failures: list[str]) -> None:
-    filtered_console_errors = [
-        message
-        for message in console_errors
-        if message != "Failed to load resource: the server responded with a status of 404 ()"
+def open_scheduled_edit_form(
+    page: Any,
+    task_id: str,
+    *,
+    attempts: int = 3,
+    form_timeout_ms: int = 4000,
+    retry_delay_ms: int = 250,
+) -> str:
+    button_selector = f'[data-task-id="{task_id}"] .btn-edit'
+    form_selector = f"#edit-task-{task_id}"
+    form_locator = page.locator(form_selector)
+    last_error: Exception | None = None
+
+    for attempt in range(attempts):
+        if form_locator.is_visible():
+            return form_selector
+
+        button_locator = page.locator(button_selector)
+        try:
+            button_locator.scroll_into_view_if_needed()
+            button_locator.click()
+            form_locator.wait_for(state="visible", timeout=form_timeout_ms)
+            return form_selector
+        except Exception as error:
+            last_error = error
+            if attempt < attempts - 1 and retry_delay_ms > 0:
+                page.wait_for_timeout(retry_delay_ms)
+
+    raise TimeoutError(f"Timed out opening scheduled edit form for {task_id}: {last_error}")
+
+
+def get_unscheduled_delete_state(page: Any, task_id: str) -> str:
+    task_selector = f'.task-card[data-task-id="{task_id}"]'
+    if page.locator(task_selector).count() == 0:
+        return "deleted"
+
+    button_classes = (
+        page.locator(f"{task_selector} .btn-delete-unscheduled").first.get_attribute("class") or ""
+    )
+    icon_classes = (
+        page.locator(f"{task_selector} .btn-delete-unscheduled i").first.get_attribute("class")
+        or ""
+    )
+    if "text-rose-400" in button_classes or "fa-check-circle" in icon_classes:
+        return "confirming"
+    return "idle"
+
+
+def delete_unscheduled_task_via_ui(
+    page: Any, task_id: str, *, timeout_s: float = 10.0, interval_s: float = 0.2
+) -> None:
+    button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
+    button_locator = page.locator(button_selector)
+    button_locator.click()
+
+    state_after_first_click = wait_until(
+        lambda: (
+            state
+            if (state := get_unscheduled_delete_state(page, task_id)) in {"confirming", "deleted"}
+            else False
+        ),
+        f"unscheduled delete confirmation for {task_id}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    if state_after_first_click == "deleted":
+        return
+
+    page.locator(button_selector).click()
+    wait_until(
+        lambda: get_unscheduled_delete_state(page, task_id) == "deleted",
+        f"unscheduled task deletion for {task_id}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def clear_all_tasks_via_ui(
+    page: Any,
+    *,
+    option_timeout_ms: int = 5000,
+    confirm_timeout_ms: int = 5000,
+    attempts: int = 3,
+    retry_delay_ms: int = 250,
+) -> None:
+    trigger = page.locator("#clear-options-dropdown-trigger-btn")
+    option = page.locator("#clear-all-tasks-option")
+    confirm_button = page.locator("#ok-custom-confirm-modal")
+    confirm_modal = page.locator("#custom-confirm-modal")
+
+    last_option_error: Exception | None = None
+    option_became_visible = False
+    for attempt in range(attempts):
+        trigger.scroll_into_view_if_needed()
+        trigger.click()
+        try:
+            option.wait_for(state="visible", timeout=option_timeout_ms)
+            option_became_visible = True
+            break
+        except Exception as error:
+            last_option_error = error
+            if retry_delay_ms > 0:
+                page.wait_for_timeout(retry_delay_ms)
+
+    if option_became_visible:
+        option.click()
+    else:
+        option.evaluate("(node) => node.click()")
+    last_confirm_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            confirm_button.wait_for(state="visible", timeout=confirm_timeout_ms)
+            break
+        except Exception as error:
+            last_confirm_error = error
+            if attempt == attempts - 1:
+                raise TimeoutError(
+                    f"Timed out waiting for clear-all confirm button: {last_confirm_error}"
+                ) from error
+            if retry_delay_ms > 0:
+                page.wait_for_timeout(retry_delay_ms)
+
+    confirm_button.click()
+    confirm_modal.wait_for(state="hidden", timeout=confirm_timeout_ms)
+
+
+def filter_runtime_errors(
+    console_errors: list[str], request_failures: list[str]
+) -> tuple[list[str], list[str]]:
+    has_only_abort_failures = bool(request_failures) and all(
+        "net::ERR_ABORTED" in failure for failure in request_failures
+    )
+
+    filtered_console_errors = []
+    for message in console_errors:
+        if message == "Failed to load resource: the server responded with a status of 404 ()":
+            continue
+        if has_only_abort_failures and "[sync-manager.js:" in message and "Sync error:" in message:
+            continue
+        filtered_console_errors.append(message)
+
+    filtered_request_failures = [
+        failure for failure in request_failures if "net::ERR_ABORTED" not in failure
     ]
-    if filtered_console_errors or page_errors or request_failures:
+    return filtered_console_errors, filtered_request_failures
+
+
+def assert_no_runtime_errors(console_errors: list[str], page_errors: list[str], request_failures: list[str]) -> None:
+    filtered_console_errors, filtered_request_failures = filter_runtime_errors(
+        console_errors, request_failures
+    )
+    if filtered_console_errors or page_errors or filtered_request_failures:
         raise ValueError(
             "Runtime errors detected.\n"
             f"Console errors: {json.dumps(filtered_console_errors[:10], indent=2)}\n"
             f"Page errors: {json.dumps(page_errors[:10], indent=2)}\n"
-            f"Request failures: {json.dumps(request_failures[:10], indent=2)}"
+            f"Request failures: {json.dumps(filtered_request_failures[:10], indent=2)}"
         )
 
 
@@ -471,18 +711,13 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 rooms["alpha"], "Playwright unscheduled task", alpha_docs
             )
 
-            page.locator(f'[data-task-id="{scheduled_doc["id"]}"] .btn-edit').click()
-            edit_form_selector = f'#edit-task-{scheduled_doc["id"]}'
+            edit_form_selector = open_scheduled_edit_form(page, scheduled_doc["id"])
             page.locator(f"{edit_form_selector} input[name='description']").fill(
                 "Playwright scheduled task edited"
             )
             page.locator(edit_form_selector).evaluate("(form) => form.requestSubmit()")
 
-            delete_button = page.locator(
-                f'[data-task-id="{unscheduled_doc["id"]}"] .btn-delete-unscheduled'
-            )
-            delete_button.click()
-            delete_button.click()
+            delete_unscheduled_task_via_ui(page, unscheduled_doc["id"])
 
             def fresh_room_storage_updated() -> bool:
                 docs = list(map(normalize_doc, read_docs(page, rooms["alpha"])))
@@ -554,6 +789,12 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
             )
 
             switch_room(page, rooms["alpha"])
+            wait_for_text_in_locator(
+                page,
+                "#scheduled-task-list",
+                "Playwright scheduled task edited",
+                description="alpha scheduled task reload",
+            )
             seed_docs(
                 page,
                 rooms["alpha"],
@@ -563,18 +804,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 ],
             )
 
-            page.evaluate(
-                """
-                () => {
-                    const option = document.getElementById('clear-all-tasks-option');
-                    if (!(option instanceof HTMLElement)) {
-                        throw new Error('Missing clear-all option');
-                    }
-                    option.click();
-                }
-                """
-            )
-            page.locator("#ok-custom-confirm-modal").click()
+            clear_all_tasks_via_ui(page)
 
             wait_until(
                 lambda: (

@@ -8,12 +8,21 @@ from scripts.playwright_preview_smoke import (
     compute_storage_room_code,
     create_run_scoped_prefix,
     create_scenario_rooms,
+    clear_all_tasks_via_ui,
+    delete_unscheduled_task_via_ui,
     derive_smoke_room_prefix,
     extract_couchdb_url,
+    fill_locator_value,
+    filter_runtime_errors,
     get_hostname_from_url,
+    get_unscheduled_delete_state,
     is_preview_host,
+    open_scheduled_edit_form,
     parse_cli_args,
     summarize_docs,
+    task_form_input_selector,
+    wait_for_text_in_locator,
+    wait_for_room_code,
 )
 
 
@@ -133,6 +142,35 @@ class SnapshotAssertionTests(unittest.TestCase):
                 },
             )
 
+    def test_filter_runtime_errors_ignores_expected_sync_abort_noise(self):
+        filtered_console_errors, filtered_request_failures = filter_runtime_errors(
+            [
+                "[💪🏾 ERROR] [sync-manager.js:91] Sync error: n",
+                "Failed to load resource: the server responded with a status of 404 ()",
+            ],
+            [
+                "GET https://example.cloudant.com/fortudo-preview-alpha/ net::ERR_ABORTED",
+            ],
+        )
+
+        self.assertEqual(filtered_console_errors, [])
+        self.assertEqual(filtered_request_failures, [])
+
+    def test_filter_runtime_errors_keeps_non_abort_failures(self):
+        filtered_console_errors, filtered_request_failures = filter_runtime_errors(
+            ["[💪🏾 ERROR] [sync-manager.js:91] Sync error: n"],
+            ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
+        )
+
+        self.assertEqual(
+            filtered_console_errors,
+            ["[💪🏾 ERROR] [sync-manager.js:91] Sync error: n"],
+        )
+        self.assertEqual(
+            filtered_request_failures,
+            ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
+        )
+
 
 class CliHelpersTests(unittest.TestCase):
     def test_parse_cli_args_defaults_to_visible_chrome(self):
@@ -178,6 +216,287 @@ class CliHelpersTests(unittest.TestCase):
     def test_non_preview_hosts_keep_unique_scoped_prefixes(self):
         scoped = create_run_scoped_prefix("127.0.0.1")
         self.assertTrue(scoped.startswith("smoke-"))
+
+    def test_task_form_input_selector_scopes_to_add_task_form(self):
+        self.assertEqual(
+            task_form_input_selector("description"),
+            '#task-form input[name="description"]',
+        )
+
+
+class FakeLocator:
+    def __init__(
+        self,
+        *,
+        visible: bool = True,
+        count: int = 1,
+        classes: str | None = None,
+        text_values: list[str] | None = None,
+    ):
+        self.visible = visible
+        self._count = count
+        self.classes = classes or ""
+        self.text_values = list(text_values or [])
+        self.wait_failures_before_visible = 0
+        self.wait_failures_before_hidden = 0
+        self.fill_failures_before_sticks = 0
+        self.scroll_failures_before_success = 0
+        self.clicks = 0
+        self.scrolls = 0
+        self.wait_calls = 0
+        self.evaluate_calls = 0
+        self.value = ""
+        self.first = self
+
+    def count(self):
+        return self._count
+
+    def is_visible(self):
+        return self.visible
+
+    def wait_for(self, *, state, timeout):
+        self.wait_calls += 1
+        if state == "visible":
+            if self.wait_failures_before_visible > 0:
+                self.wait_failures_before_visible -= 1
+                raise TimeoutError(f"not visible within {timeout}")
+            self.visible = True
+            return
+        if state == "hidden":
+            if self.wait_failures_before_hidden > 0:
+                self.wait_failures_before_hidden -= 1
+                raise TimeoutError(f"not hidden within {timeout}")
+            self.visible = False
+            return
+        raise AssertionError(f"unexpected wait state {state}")
+
+    def scroll_into_view_if_needed(self):
+        if self.scroll_failures_before_success > 0:
+            self.scroll_failures_before_success -= 1
+            raise RuntimeError("Element is not attached to the DOM")
+        self.scrolls += 1
+
+    def click(self):
+        self.clicks += 1
+
+    def evaluate(self, _script):
+        self.evaluate_calls += 1
+        self.clicks += 1
+
+    def fill(self, value):
+        if self.fill_failures_before_sticks > 0:
+            self.fill_failures_before_sticks -= 1
+            self.value = ""
+            return
+        self.value = value
+
+    def input_value(self):
+        return self.value
+
+    def get_attribute(self, name):
+        if name != "class":
+            raise AssertionError(f"unexpected attribute {name}")
+        return self.classes
+
+    def text_content(self):
+        if self.text_values:
+            if len(self.text_values) > 1:
+                return self.text_values.pop(0)
+            return self.text_values[0]
+        return ""
+
+
+class FakePage:
+    def __init__(self, locators):
+        self._locators = locators
+        self.waits = []
+
+    def locator(self, selector):
+        locator = self._locators.get(selector)
+        if locator is None:
+            raise AssertionError(f"unexpected selector {selector}")
+        return locator
+
+    def wait_for_timeout(self, timeout_ms):
+        self.waits.append(timeout_ms)
+
+
+class DeleteStatePage(FakePage):
+    def __init__(self, task_id):
+        self.task_id = task_id
+        self.state = "idle"
+        self.button = FakeLocator(classes="btn-delete-unscheduled text-gray-400")
+        self.icon = FakeLocator(classes="fa-regular fa-trash-can")
+        self.card = FakeLocator()
+        super().__init__({})
+
+    def locator(self, selector):
+        task_selector = f'.task-card[data-task-id="{self.task_id}"]'
+        if selector == task_selector:
+            self.card._count = 0 if self.state == "deleted" else 1
+            return self.card
+        if selector == f"{task_selector} .btn-delete-unscheduled":
+            self.button.classes = (
+                "btn-delete-unscheduled text-rose-400"
+                if self.state == "confirming"
+                else "btn-delete-unscheduled text-gray-400"
+            )
+            return self.button
+        if selector == f"{task_selector} .btn-delete-unscheduled i":
+            self.icon.classes = (
+                "fa-regular fa-check-circle"
+                if self.state == "confirming"
+                else "fa-regular fa-trash-can"
+            )
+            return self.icon
+        raise AssertionError(f"unexpected selector {selector}")
+
+
+class PreviewWaitHelperTests(unittest.TestCase):
+    def test_wait_for_room_code_waits_for_exact_room_match(self):
+        page = FakePage(
+            {
+                "#room-code-display": FakeLocator(
+                    text_values=["preview-smoke-alpha", "preview-smoke-legacy"]
+                )
+            }
+        )
+
+        wait_for_room_code(page, "preview-smoke-legacy", timeout_s=0.05, interval_s=0)
+
+    def test_open_scheduled_edit_form_retries_until_form_is_visible(self):
+        task_id = "sched-123"
+        button_selector = f'[data-task-id="{task_id}"] .btn-edit'
+        form_selector = f"#edit-task-{task_id}"
+        button = FakeLocator()
+        form = FakeLocator(visible=False)
+        form.wait_failures_before_visible = 1
+        page = FakePage({button_selector: button, form_selector: form})
+
+        selector = open_scheduled_edit_form(
+            page, task_id, attempts=3, form_timeout_ms=5, retry_delay_ms=0
+        )
+
+        self.assertEqual(selector, form_selector)
+        self.assertEqual(button.clicks, 2)
+        self.assertEqual(button.scrolls, 2)
+        self.assertEqual(form.wait_calls, 2)
+
+    def test_open_scheduled_edit_form_retries_after_transient_detach(self):
+        task_id = "sched-detached"
+        button_selector = f'[data-task-id="{task_id}"] .btn-edit'
+        form_selector = f"#edit-task-{task_id}"
+        button = FakeLocator()
+        button.scroll_failures_before_success = 1
+        form = FakeLocator(visible=False)
+        page = FakePage({button_selector: button, form_selector: form})
+
+        selector = open_scheduled_edit_form(
+            page, task_id, attempts=3, form_timeout_ms=5, retry_delay_ms=0
+        )
+
+        self.assertEqual(selector, form_selector)
+        self.assertEqual(button.clicks, 1)
+
+    def test_get_unscheduled_delete_state_detects_confirmation_icon(self):
+        page = DeleteStatePage("unsched-123")
+        page.state = "confirming"
+
+        self.assertEqual(get_unscheduled_delete_state(page, "unsched-123"), "confirming")
+
+    def test_delete_unscheduled_task_via_ui_waits_for_confirm_state_before_second_click(self):
+        task_id = "unsched-123"
+        page = DeleteStatePage(task_id)
+
+        original_click = page.button.click
+
+        def click_and_advance():
+            original_click()
+            if page.state == "idle":
+                page.state = "confirming"
+            elif page.state == "confirming":
+                page.state = "deleted"
+
+        page.button.click = click_and_advance
+
+        delete_unscheduled_task_via_ui(page, task_id, timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(page.button.clicks, 2)
+        self.assertEqual(page.state, "deleted")
+
+    def test_clear_all_tasks_via_ui_waits_for_dropdown_and_confirm_modal(self):
+        trigger = FakeLocator()
+        option = FakeLocator(visible=False)
+        confirm_button = FakeLocator()
+        confirm_modal = FakeLocator()
+        option.wait_failures_before_visible = 1
+        confirm_button.wait_failures_before_visible = 1
+        page = FakePage(
+            {
+                "#clear-options-dropdown-trigger-btn": trigger,
+                "#clear-all-tasks-option": option,
+                "#ok-custom-confirm-modal": confirm_button,
+                "#custom-confirm-modal": confirm_modal,
+            }
+        )
+
+        clear_all_tasks_via_ui(page, option_timeout_ms=5, confirm_timeout_ms=5)
+
+        self.assertGreaterEqual(trigger.clicks, 2)
+        self.assertEqual(option.clicks, 1)
+        self.assertEqual(confirm_button.clicks, 1)
+        self.assertGreaterEqual(option.wait_calls, 1)
+        self.assertGreaterEqual(confirm_button.wait_calls, 1)
+        self.assertGreaterEqual(confirm_modal.wait_calls, 1)
+
+    def test_clear_all_tasks_via_ui_falls_back_to_programmatic_option_click(self):
+        trigger = FakeLocator()
+        option = FakeLocator(visible=False)
+        option.wait_failures_before_visible = 3
+        confirm_button = FakeLocator()
+        confirm_modal = FakeLocator()
+        page = FakePage(
+            {
+                "#clear-options-dropdown-trigger-btn": trigger,
+                "#clear-all-tasks-option": option,
+                "#ok-custom-confirm-modal": confirm_button,
+                "#custom-confirm-modal": confirm_modal,
+            }
+        )
+
+        clear_all_tasks_via_ui(
+            page,
+            option_timeout_ms=5,
+            confirm_timeout_ms=5,
+            attempts=3,
+            retry_delay_ms=0,
+        )
+
+        self.assertEqual(option.evaluate_calls, 1)
+        self.assertEqual(confirm_button.clicks, 1)
+
+    def test_fill_locator_value_retries_until_input_matches(self):
+        page = FakePage({})
+        locator = FakeLocator()
+        locator.fill_failures_before_sticks = 1
+
+        fill_locator_value(
+            page, locator, "Playwright beta task", description="beta task description", retry_delay_ms=0
+        )
+
+        self.assertEqual(locator.value, "Playwright beta task")
+
+    def test_wait_for_text_in_locator_waits_for_expected_text(self):
+        page = FakePage({"#scheduled-task-list": FakeLocator(text_values=["Loading", "Edited task"])})
+
+        wait_for_text_in_locator(
+            page,
+            "#scheduled-task-list",
+            "Edited task",
+            description="scheduled task list",
+            timeout_s=0.05,
+            interval_s=0,
+        )
 
 
 if __name__ == "__main__":
