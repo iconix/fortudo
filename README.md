@@ -32,8 +32,8 @@ npm test
 preview storage smoke:
 
 ```bash
-uv run python -m unittest test_playwright_preview_smoke.py
-uv run --with playwright python scripts/playwright_preview_smoke.py <preview-url> --channel chrome
+uv run python -B -m unittest test_playwright_preview_smoke.py
+uv run --with playwright python -B scripts/playwright_preview_smoke.py <preview-url> --channel chrome
 ```
 
 ## roadmap

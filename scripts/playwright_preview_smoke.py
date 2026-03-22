@@ -730,9 +730,23 @@ def demo_step(page: Any, message: str, step_pause_ms: int) -> None:
     page.wait_for_timeout(step_pause_ms)
 
 
+def wait_for_demo_start(
+    *,
+    demo: bool,
+    headless: bool,
+    input_fn: Any = input,
+    output_fn: Any = print,
+) -> None:
+    if not demo or headless:
+        return
+    output_fn("[demo] Preview loaded. Press Enter to start the smoke...")
+    input_fn("")
+
+
 def run_smoke(
     preview_url: str,
     *,
+    demo: bool = False,
     headless: bool = False,
     keep_open: bool = False,
     channel: str = "chrome",
@@ -811,6 +825,7 @@ def run_smoke(
 
             page.goto(preview_url, wait_until="load")
             wait_for_app_ready(page)
+            wait_for_demo_start(demo=demo, headless=headless)
             demo_step(page, "opening alpha room", step_pause_ms)
             enter_room(page, rooms["alpha"])
             clear_room_storage(page, rooms["alpha"])
@@ -1069,7 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
     parsed = parse_cli_args(argv or [])
     if not parsed["preview_url"]:
         print(
-            "Usage: uv run --with playwright python scripts/playwright_preview_smoke.py "
+            "Usage: uv run --with playwright python -B scripts/playwright_preview_smoke.py "
             "<preview-url> [--demo] [--keep-open] [--headless] "
             "[--slow-ms N] [--step-pause-ms N] [--channel chrome|chromium]"
         )
@@ -1077,6 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
 
     run_smoke(
         parsed["preview_url"],
+        demo=parsed["demo"],
         headless=parsed["headless"],
         keep_open=parsed["keep_open"],
         channel=parsed["channel"],

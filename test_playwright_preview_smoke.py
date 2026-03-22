@@ -25,6 +25,7 @@ from scripts.playwright_preview_smoke import (
     parse_cli_args,
     summarize_docs,
     task_form_input_selector,
+    wait_for_demo_start,
     wait_for_room_code,
     wait_for_text_in_locator,
 )
@@ -298,6 +299,40 @@ class CliHelpersTests(unittest.TestCase):
         launch_options = build_launch_options(headless=True, channel="chromium", slow_mo_ms=0)
 
         self.assertEqual(launch_options, {"headless": True})
+
+    def test_wait_for_demo_start_prompts_in_visible_demo_mode(self):
+        prompts = []
+        messages = []
+
+        wait_for_demo_start(
+            demo=True,
+            headless=False,
+            input_fn=lambda prompt: prompts.append(prompt) or "",
+            output_fn=messages.append,
+        )
+
+        self.assertEqual(messages, ["[demo] Preview loaded. Press Enter to start the smoke..."])
+        self.assertEqual(prompts, [""])
+
+    def test_wait_for_demo_start_skips_prompt_outside_visible_demo_mode(self):
+        prompts = []
+        messages = []
+
+        wait_for_demo_start(
+            demo=False,
+            headless=False,
+            input_fn=lambda prompt: prompts.append(prompt) or "",
+            output_fn=messages.append,
+        )
+        wait_for_demo_start(
+            demo=True,
+            headless=True,
+            input_fn=lambda prompt: prompts.append(prompt) or "",
+            output_fn=messages.append,
+        )
+
+        self.assertEqual(messages, [])
+        self.assertEqual(prompts, [])
 
     def test_hostname_and_room_prefix_helpers(self):
         hostname = get_hostname_from_url("https://fortudo--pr53-activities-phase2-x.web.app")
