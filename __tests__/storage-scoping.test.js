@@ -12,7 +12,9 @@ window.PouchDB = PouchDB;
 
 jest.mock('../public/js/sync-manager.js', () => ({
     initSync: jest.fn(),
-    debouncedSync: jest.fn()
+    debouncedSync: jest.fn(),
+    waitForIdleSync: jest.fn(() => Promise.resolve()),
+    teardownSync: jest.fn()
 }));
 
 import {

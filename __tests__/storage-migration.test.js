@@ -16,7 +16,9 @@ window.PouchDB = PouchDB;
 // Prevent sync-manager from triggering real sync operations in tests
 jest.mock('../public/js/sync-manager.js', () => ({
     initSync: jest.fn(),
-    debouncedSync: jest.fn()
+    debouncedSync: jest.fn(),
+    waitForIdleSync: jest.fn(() => Promise.resolve()),
+    teardownSync: jest.fn()
 }));
 
 import { debouncedSync } from '../public/js/sync-manager.js';

@@ -1,5 +1,11 @@
 import { logger } from './utils.js';
-import { initSync, debouncedSync, triggerSync } from './sync-manager.js';
+import {
+    initSync,
+    debouncedSync,
+    triggerSync,
+    waitForIdleSync,
+    teardownSync
+} from './sync-manager.js';
 
 const DOC_TYPES = Object.freeze({
     TASK: 'task',
@@ -204,6 +210,8 @@ async function loadTypedDocById(id, predicate) {
  */
 export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     if (db) {
+        await waitForIdleSync();
+        teardownSync();
         await db.close();
     }
 
@@ -354,6 +362,8 @@ export function getDb() {
 export async function destroyStorage() {
     if (db) {
         try {
+            await waitForIdleSync();
+            teardownSync();
             await db.destroy();
         } catch (err) {
             logger.warn('destroyStorage: Error destroying database:', err);

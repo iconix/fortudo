@@ -15,7 +15,9 @@ window.PouchDB = PouchDB;
 // Mock sync-manager so storage tests don't trigger actual sync
 jest.mock('../public/js/sync-manager.js', () => ({
     initSync: jest.fn(),
-    debouncedSync: jest.fn()
+    debouncedSync: jest.fn(),
+    waitForIdleSync: jest.fn(() => Promise.resolve()),
+    teardownSync: jest.fn()
 }));
 
 import {
@@ -24,8 +26,10 @@ import {
     deleteTask,
     loadTasks,
     saveTasks,
+    getDb,
     destroyStorage
 } from '../public/js/storage.js';
+import { waitForIdleSync as mockWaitForIdleSync } from '../public/js/sync-manager.js';
 
 // Use a unique DB name per test to avoid cross-contamination
 let testDbCounter = 0;
@@ -48,6 +52,31 @@ describe('Storage - PouchDB', () => {
             await initStorage(roomCode, { adapter: 'memory' });
             const tasks = await loadTasks();
             expect(tasks).toEqual([]);
+        });
+
+        test('waits for in-flight sync to settle before closing the current db', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            mockWaitForIdleSync.mockClear();
+
+            const firstDb = getDb();
+            const closeSpy = jest.spyOn(firstDb, 'close');
+
+            let releaseSyncWait;
+            const syncWait = new Promise((resolve) => {
+                releaseSyncWait = resolve;
+            });
+            mockWaitForIdleSync.mockReturnValueOnce(syncWait);
+
+            const reinitPromise = initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await Promise.resolve();
+
+            expect(mockWaitForIdleSync).toHaveBeenCalledTimes(1);
+            expect(closeSpy).not.toHaveBeenCalled();
+
+            releaseSyncWait();
+            await reinitPromise;
+
+            expect(closeSpy).toHaveBeenCalledTimes(1);
         });
     });
 
