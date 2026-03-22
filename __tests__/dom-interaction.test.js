@@ -496,6 +496,21 @@ describe('DOM Handler Interaction Tests', () => {
             expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(taskFormElement);
         });
 
+        test('re-initializing page event listeners does not duplicate task form submit handlers', () => {
+            const taskFormElement = getTaskFormElement();
+            if (!taskFormElement) {
+                throw new Error('Task form element not found');
+            }
+
+            initializePageEventListeners(mockAppCallbacks, taskFormElement);
+            jest.clearAllMocks();
+
+            taskFormElement.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledTimes(1);
+            expect(mockAppCallbacks.onTaskFormSubmit).toHaveBeenCalledWith(taskFormElement);
+        });
+
         test('clear schedule button is not handled by initializePageEventListeners', () => {
             // Note: Clear schedule button handling has been moved elsewhere
             // initializePageEventListeners only handles form submission and global click

@@ -54,7 +54,7 @@ export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
     const result = deleteUnscheduledTask(taskId);
     if (result.success) {
-        showToast(result.message || 'Task deleted.', { theme: 'teal' });
+        showToast(result.message || 'Task deleted.', { theme: 'rose' });
         onTaskDeleted({
             task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
         });

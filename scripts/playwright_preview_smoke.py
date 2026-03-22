@@ -218,8 +218,11 @@ def parse_cli_args(argv: list[str]) -> dict[str, Any]:
         description="Run a visible Playwright storage smoke against a Fortudo preview URL.",
     )
     parser.add_argument("preview_url", nargs="?")
+    parser.add_argument("--demo", action="store_true")
     parser.add_argument("--keep-open", action="store_true", dest="keep_open")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--slow-ms", type=int, default=0, dest="slow_mo_ms")
+    parser.add_argument("--step-pause-ms", type=int, default=0, dest="step_pause_ms")
     parser.add_argument(
         "--channel",
         choices=("chrome", "chromium"),
@@ -227,13 +230,38 @@ def parse_cli_args(argv: list[str]) -> dict[str, Any]:
         help="Browser channel to use. Defaults to installed Chrome.",
     )
     parsed = parser.parse_args(argv)
+    keep_open = parsed.keep_open
+    headless = parsed.headless
+    slow_mo_ms = parsed.slow_mo_ms
+    step_pause_ms = parsed.step_pause_ms
+
+    if parsed.demo:
+        keep_open = True
+        headless = False
+        if slow_mo_ms == 0:
+            slow_mo_ms = 600
+        if step_pause_ms == 0:
+            step_pause_ms = 900
+
     return {
         "help": False,
         "preview_url": parsed.preview_url,
-        "keep_open": parsed.keep_open,
-        "headless": parsed.headless,
+        "demo": parsed.demo,
+        "keep_open": keep_open,
+        "headless": headless,
+        "slow_mo_ms": slow_mo_ms,
+        "step_pause_ms": step_pause_ms,
         "channel": parsed.channel,
     }
+
+
+def build_launch_options(*, headless: bool, channel: str, slow_mo_ms: int = 0) -> dict[str, Any]:
+    launch_options: dict[str, Any] = {"headless": headless}
+    if channel != "chromium":
+        launch_options["channel"] = channel
+    if slow_mo_ms > 0:
+        launch_options["slow_mo"] = slow_mo_ms
+    return launch_options
 
 
 def storage_eval_arg(page: Any, room_code: str, payload: Any | None = None) -> dict[str, Any]:
@@ -695,7 +723,22 @@ def save_failure_screenshot(page: Any) -> None:
     page.screenshot(path=str(screenshot_dir / "playwright_preview_smoke_failure.png"), full_page=True)
 
 
-def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = False, channel: str = "chrome") -> bool:
+def demo_step(page: Any, message: str, step_pause_ms: int) -> None:
+    if step_pause_ms <= 0:
+        return
+    print(f"[demo] {message}")
+    page.wait_for_timeout(step_pause_ms)
+
+
+def run_smoke(
+    preview_url: str,
+    *,
+    headless: bool = False,
+    keep_open: bool = False,
+    channel: str = "chrome",
+    slow_mo_ms: int = 0,
+    step_pause_ms: int = 0,
+) -> bool:
     from playwright.sync_api import sync_playwright
 
     hostname = get_hostname_from_url(preview_url)
@@ -711,10 +754,11 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
     response_errors: list[tuple[int, str, str]] = []
 
     with sync_playwright() as playwright:
-        launch_options: dict[str, Any] = {"headless": headless}
-        if channel != "chromium":
-            launch_options["channel"] = channel
-
+        launch_options = build_launch_options(
+            headless=headless,
+            channel=channel,
+            slow_mo_ms=slow_mo_ms,
+        )
         browser = playwright.chromium.launch(**launch_options)
         context = browser.new_context(viewport={"width": 1440, "height": 960})
         page = context.new_page()
@@ -767,11 +811,13 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
 
             page.goto(preview_url, wait_until="load")
             wait_for_app_ready(page)
+            demo_step(page, "opening alpha room", step_pause_ms)
             enter_room(page, rooms["alpha"])
             clear_room_storage(page, rooms["alpha"])
             page.reload(wait_until="load")
             wait_for_main_app(page)
 
+            demo_step(page, "adding fresh-room tasks", step_pause_ms)
             add_scheduled_task(page, "Playwright scheduled task", "09:00", 30)
             add_unscheduled_task(page, "Playwright unscheduled task", 15)
 
@@ -800,6 +846,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 "scheduled edit persistence",
             )
 
+            demo_step(page, "editing scheduled task and deleting unscheduled task", step_pause_ms)
             delete_unscheduled_task_via_ui(page, unscheduled_doc["id"])
 
             def fresh_room_storage_updated() -> bool:
@@ -838,6 +885,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 )
                 wait_for_sync_status_normal("alpha")
 
+            demo_step(page, "checking legacy migration room", step_pause_ms)
             switch_room(page, rooms["legacy"])
             clear_room_storage(page, rooms["legacy"])
             seed_docs(
@@ -895,6 +943,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 )
                 wait_for_sync_status_normal("legacy")
 
+            demo_step(page, "checking cross-type isolation in alpha", step_pause_ms)
             switch_room(page, rooms["alpha"])
             wait_for_text_in_locator(
                 page,
@@ -942,6 +991,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 )
                 wait_for_sync_status_normal("alpha clear-all")
 
+            demo_step(page, "checking beta room isolation", step_pause_ms)
             dismiss_open_modals(page)
             switch_room(page, rooms["beta"])
             clear_room_storage(page, rooms["beta"])
@@ -980,6 +1030,7 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 )
                 wait_for_sync_status_normal("beta")
 
+            demo_step(page, "returning to alpha for final sync verification", step_pause_ms)
             switch_room(page, rooms["alpha"])
             alpha_final = summarize_docs(read_docs(page, rooms["alpha"]))
             if not any(doc.get("id") == "activity-smoke" for doc in alpha_final["activities"]):
@@ -1019,7 +1070,8 @@ def main(argv: list[str] | None = None) -> int:
     if not parsed["preview_url"]:
         print(
             "Usage: uv run --with playwright python scripts/playwright_preview_smoke.py "
-            "<preview-url> [--keep-open] [--headless] [--channel chrome|chromium]"
+            "<preview-url> [--demo] [--keep-open] [--headless] "
+            "[--slow-ms N] [--step-pause-ms N] [--channel chrome|chromium]"
         )
         return 1
 
@@ -1028,6 +1080,8 @@ def main(argv: list[str] | None = None) -> int:
         headless=parsed["headless"],
         keep_open=parsed["keep_open"],
         channel=parsed["channel"],
+        slow_mo_ms=parsed["slow_mo_ms"],
+        step_pause_ms=parsed["step_pause_ms"],
     )
     return 0
 

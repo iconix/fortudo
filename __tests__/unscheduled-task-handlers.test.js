@@ -213,7 +213,7 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleDeleteUnscheduledTask(task.id);
 
-            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'rose' });
             expect(onTaskDeleted).toHaveBeenCalledWith({
                 task: expect.objectContaining({ id: task.id, type: 'unscheduled' })
             });
@@ -228,7 +228,7 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleDeleteUnscheduledTask('unsched-task-id');
 
-            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'teal' });
+            expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'rose' });
             expect(onTaskDeleted).toHaveBeenCalledWith({
                 task: expect.objectContaining({ id: 'unsched-task-id', type: 'unscheduled' })
             });

@@ -4,6 +4,7 @@ from unittest.mock import patch
 from scripts.playwright_preview_smoke import (
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
+    build_launch_options,
     build_couchdb_request_parts,
     build_remote_db_name,
     clear_all_tasks_via_ui,
@@ -267,6 +268,36 @@ class CliHelpersTests(unittest.TestCase):
         self.assertTrue(parsed["keep_open"])
         self.assertTrue(parsed["headless"])
         self.assertEqual(parsed["channel"], "chromium")
+
+    def test_parse_cli_args_demo_mode_sets_visible_demo_defaults(self):
+        parsed = parse_cli_args(["--demo", "https://example.test"])
+
+        self.assertTrue(parsed["demo"])
+        self.assertTrue(parsed["keep_open"])
+        self.assertFalse(parsed["headless"])
+        self.assertEqual(parsed["slow_mo_ms"], 600)
+        self.assertEqual(parsed["step_pause_ms"], 900)
+
+    def test_parse_cli_args_demo_mode_allows_overrides(self):
+        parsed = parse_cli_args(
+            ["--demo", "--slow-ms", "1200", "--step-pause-ms", "1500", "https://example.test"]
+        )
+
+        self.assertEqual(parsed["slow_mo_ms"], 1200)
+        self.assertEqual(parsed["step_pause_ms"], 1500)
+
+    def test_build_launch_options_adds_demo_slow_mo_for_visible_chrome(self):
+        launch_options = build_launch_options(headless=False, channel="chrome", slow_mo_ms=600)
+
+        self.assertEqual(
+            launch_options,
+            {"headless": False, "channel": "chrome", "slow_mo": 600},
+        )
+
+    def test_build_launch_options_omits_channel_for_plain_chromium(self):
+        launch_options = build_launch_options(headless=True, channel="chromium", slow_mo_ms=0)
+
+        self.assertEqual(launch_options, {"headless": True})
 
     def test_hostname_and_room_prefix_helpers(self):
         hostname = get_hostname_from_url("https://fortudo--pr53-activities-phase2-x.web.app")
