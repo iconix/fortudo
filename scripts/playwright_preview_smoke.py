@@ -160,6 +160,18 @@ def delete_remote_database(couchdb_url: str, db_name: str) -> None:
         raise
 
 
+def fetch_remote_docs(couchdb_url: str, db_name: str) -> list[dict[str, Any]]:
+    base_url, headers = build_couchdb_request_parts(couchdb_url)
+    request = Request(
+        f"{base_url}/{db_name}/_all_docs?include_docs=true",
+        headers=headers,
+        method="GET",
+    )
+    with urlopen(request) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return [row["doc"] for row in payload.get("rows", []) if row.get("doc")]
+
+
 def reset_remote_preview_rooms(preview_url: str, hostname: str, rooms: dict[str, str]) -> None:
     couchdb_url = fetch_preview_couchdb_url(preview_url)
     if not couchdb_url:
@@ -613,16 +625,35 @@ def clear_all_tasks_via_ui(
     confirm_modal.wait_for(state="hidden", timeout=confirm_timeout_ms)
 
 
+def is_expected_sync_response_error(response_error: tuple[int, str, str]) -> bool:
+    status, method, url = response_error
+    path_parts = [segment for segment in urlsplit(url).path.split("/") if segment]
+    if not path_parts:
+        return False
+
+    db_name = path_parts[0]
+    if not db_name.startswith("fortudo-"):
+        return False
+
+    if status == 404 and method == "GET":
+        return len(path_parts) == 1 or (len(path_parts) >= 2 and path_parts[1] == "_local")
+    if status == 412 and method == "PUT":
+        return len(path_parts) == 1
+    return False
+
+
 def filter_runtime_errors(
-    console_errors: list[str], request_failures: list[str]
-) -> tuple[list[str], list[str]]:
+    console_errors: list[str],
+    request_failures: list[str],
+    response_errors: list[tuple[int, str, str]],
+) -> tuple[list[str], list[str], list[tuple[int, str, str]]]:
     has_only_abort_failures = bool(request_failures) and all(
         "net::ERR_ABORTED" in failure for failure in request_failures
     )
 
     filtered_console_errors = []
     for message in console_errors:
-        if message == "Failed to load resource: the server responded with a status of 404 ()":
+        if message.startswith("Failed to load resource: the server responded with a status of "):
             continue
         if has_only_abort_failures and "[sync-manager.js:" in message and "Sync error:" in message:
             continue
@@ -631,19 +662,30 @@ def filter_runtime_errors(
     filtered_request_failures = [
         failure for failure in request_failures if "net::ERR_ABORTED" not in failure
     ]
-    return filtered_console_errors, filtered_request_failures
+    filtered_response_errors = [
+        response_error
+        for response_error in response_errors
+        if not is_expected_sync_response_error(response_error)
+    ]
+    return filtered_console_errors, filtered_request_failures, filtered_response_errors
 
 
-def assert_no_runtime_errors(console_errors: list[str], page_errors: list[str], request_failures: list[str]) -> None:
-    filtered_console_errors, filtered_request_failures = filter_runtime_errors(
-        console_errors, request_failures
+def assert_no_runtime_errors(
+    console_errors: list[str],
+    page_errors: list[str],
+    request_failures: list[str],
+    response_errors: list[tuple[int, str, str]],
+) -> None:
+    filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+        filter_runtime_errors(console_errors, request_failures, response_errors)
     )
-    if filtered_console_errors or page_errors or filtered_request_failures:
+    if filtered_console_errors or page_errors or filtered_request_failures or filtered_response_errors:
         raise ValueError(
             "Runtime errors detected.\n"
             f"Console errors: {json.dumps(filtered_console_errors[:10], indent=2)}\n"
             f"Page errors: {json.dumps(page_errors[:10], indent=2)}\n"
-            f"Request failures: {json.dumps(filtered_request_failures[:10], indent=2)}"
+            f"Request failures: {json.dumps(filtered_request_failures[:10], indent=2)}\n"
+            f"Response errors: {json.dumps(filtered_response_errors[:10], indent=2)}"
         )
 
 
@@ -658,13 +700,15 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
 
     hostname = get_hostname_from_url(preview_url)
     rooms = create_scenario_rooms(create_run_scoped_prefix(hostname))
+    couchdb_url = fetch_preview_couchdb_url(preview_url)
 
-    if is_preview_host(hostname):
+    if is_preview_host(hostname) and couchdb_url:
         reset_remote_preview_rooms(preview_url, hostname, rooms)
 
     console_errors: list[str] = []
     page_errors: list[str] = []
     request_failures: list[str] = []
+    response_errors: list[tuple[int, str, str]] = []
 
     with sync_playwright() as playwright:
         launch_options: dict[str, Any] = {"headless": headless}
@@ -688,8 +732,39 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 f"{request.method} {request.url} {request.failure}"
             ),
         )
+        page.on(
+            "response",
+            lambda response: response_errors.append(
+                (response.status, response.request.method, response.url)
+            )
+            if response.status >= 400
+            else None,
+        )
 
         try:
+            def wait_for_sync_status_normal(label: str) -> None:
+                if not couchdb_url:
+                    return
+                settled_status = wait_until(
+                    lambda: (
+                        status
+                        if (status := (page.locator("#sync-status-text").text_content() or "").strip())
+                        and status != "Syncing"
+                        else False
+                    ),
+                    f"{label} sync status",
+                    timeout_s=20.0,
+                )
+                if settled_status == "Error":
+                    raise ValueError(f"{label} sync status entered error state.")
+
+            def read_remote_summary(room_code: str) -> dict[str, list[dict[str, Any]]]:
+                if not couchdb_url:
+                    raise ValueError("Remote sync smoke requested without COUCHDB_URL configured.")
+                return summarize_docs(
+                    fetch_remote_docs(couchdb_url, build_remote_db_name(hostname, room_code))
+                )
+
             page.goto(preview_url, wait_until="load")
             wait_for_app_ready(page)
             enter_room(page, rooms["alpha"])
@@ -716,6 +791,14 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 "Playwright scheduled task edited"
             )
             page.locator(edit_form_selector).evaluate("(form) => form.requestSubmit()")
+            wait_until(
+                lambda: any(
+                    doc.get("id") == scheduled_doc["id"]
+                    and doc.get("description") == "Playwright scheduled task edited"
+                    for doc in list(map(normalize_doc, read_docs(page, rooms["alpha"])))
+                ),
+                "scheduled edit persistence",
+            )
 
             delete_unscheduled_task_via_ui(page, unscheduled_doc["id"])
 
@@ -741,6 +824,19 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 doc.get("description") for doc in alpha_summary["tasks"]
             ]:
                 raise ValueError(f"missing edited scheduled task.\n{format_snapshot(alpha_summary)}")
+            if couchdb_url:
+                wait_until(
+                    lambda: (
+                        lambda summary: any(
+                            doc.get("description") == "Playwright scheduled task edited"
+                            for doc in summary["tasks"]
+                        )
+                        and not any(doc.get("id") == unscheduled_doc["id"] for doc in summary["tasks"])
+                    )(read_remote_summary(rooms["alpha"])),
+                    "alpha remote sync",
+                    timeout_s=25.0,
+                )
+                wait_for_sync_status_normal("alpha")
 
             switch_room(page, rooms["legacy"])
             clear_room_storage(page, rooms["legacy"])
@@ -787,6 +883,17 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 summarize_docs(read_docs(page, rooms["legacy"])),
                 ["sched-legacy", "unsched-legacy"],
             )
+            if couchdb_url:
+                wait_until(
+                    lambda: (
+                        lambda summary: format_doc_ids(summary["tasks"])
+                        == ["sched-legacy", "unsched-legacy"]
+                        and not summary["legacy_tasks"]
+                    )(read_remote_summary(rooms["legacy"])),
+                    "legacy remote sync",
+                    timeout_s=25.0,
+                )
+                wait_for_sync_status_normal("legacy")
 
             switch_room(page, rooms["alpha"])
             wait_for_text_in_locator(
@@ -822,6 +929,18 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 summarize_docs(read_docs(page, rooms["alpha"])),
                 {"activity_id": "activity-smoke", "config_id": "config-categories"},
             )
+            if couchdb_url:
+                wait_until(
+                    lambda: (
+                        lambda summary: not summary["tasks"]
+                        and not summary["legacy_tasks"]
+                        and any(doc.get("id") == "activity-smoke" for doc in summary["activities"])
+                        and any(doc.get("id") == "config-categories" for doc in summary["configs"])
+                    )(read_remote_summary(rooms["alpha"])),
+                    "alpha remote clear-all sync",
+                    timeout_s=25.0,
+                )
+                wait_for_sync_status_normal("alpha clear-all")
 
             dismiss_open_modals(page)
             switch_room(page, rooms["beta"])
@@ -846,6 +965,20 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 raise ValueError(f"beta room task missing.\n{format_snapshot(beta_summary)}")
             if beta_summary["activities"] or beta_summary["configs"]:
                 raise ValueError(f"beta room leaked alpha docs.\n{format_snapshot(beta_summary)}")
+            if couchdb_url:
+                wait_until(
+                    lambda: (
+                        lambda summary: any(
+                            doc.get("description") == "Playwright beta task"
+                            for doc in summary["tasks"]
+                        )
+                        and not summary["activities"]
+                        and not summary["configs"]
+                    )(read_remote_summary(rooms["beta"])),
+                    "beta remote sync",
+                    timeout_s=25.0,
+                )
+                wait_for_sync_status_normal("beta")
 
             switch_room(page, rooms["alpha"])
             alpha_final = summarize_docs(read_docs(page, rooms["alpha"]))
@@ -857,8 +990,15 @@ def run_smoke(preview_url: str, *, headless: bool = False, keep_open: bool = Fal
                 doc.get("description") == "Playwright beta task" for doc in alpha_final["tasks"]
             ):
                 raise ValueError(f"alpha room picked up beta task data.\n{format_snapshot(alpha_final)}")
+            if couchdb_url:
+                alpha_remote_final = read_remote_summary(rooms["alpha"])
+                assert_non_task_docs_remain(
+                    alpha_remote_final,
+                    {"activity_id": "activity-smoke", "config_id": "config-categories"},
+                )
+                wait_for_sync_status_normal("alpha final")
 
-            assert_no_runtime_errors(console_errors, page_errors, request_failures)
+            assert_no_runtime_errors(console_errors, page_errors, request_failures, response_errors)
 
             if keep_open and not headless:
                 input("Smoke passed. Press Enter to close the browser...")

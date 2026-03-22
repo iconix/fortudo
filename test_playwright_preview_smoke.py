@@ -1,28 +1,31 @@
 import unittest
+from unittest.mock import patch
 
 from scripts.playwright_preview_smoke import (
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
     build_couchdb_request_parts,
     build_remote_db_name,
+    clear_all_tasks_via_ui,
     compute_storage_room_code,
     create_run_scoped_prefix,
     create_scenario_rooms,
-    clear_all_tasks_via_ui,
     delete_unscheduled_task_via_ui,
     derive_smoke_room_prefix,
     extract_couchdb_url,
+    fetch_remote_docs,
     fill_locator_value,
     filter_runtime_errors,
     get_hostname_from_url,
     get_unscheduled_delete_state,
+    is_expected_sync_response_error,
     is_preview_host,
     open_scheduled_edit_form,
     parse_cli_args,
     summarize_docs,
     task_form_input_selector,
-    wait_for_text_in_locator,
     wait_for_room_code,
+    wait_for_text_in_locator,
 )
 
 
@@ -45,10 +48,7 @@ class ComputeStorageRoomCodeTests(unittest.TestCase):
 
 class CouchDbHelpersTests(unittest.TestCase):
     def test_extract_couchdb_url_reads_string_value(self):
-        config_text = (
-            "export const COUCHDB_URL = "
-            "'https://user:pass@example.cloudant.com';"
-        )
+        config_text = "export const COUCHDB_URL = 'https://user:pass@example.cloudant.com';"
 
         self.assertEqual(
             extract_couchdb_url(config_text),
@@ -65,6 +65,26 @@ class CouchDbHelpersTests(unittest.TestCase):
 
         self.assertEqual(base_url, "https://example.cloudant.com")
         self.assertIn("Authorization", headers)
+
+    @patch("scripts.playwright_preview_smoke.urlopen")
+    def test_fetch_remote_docs_reads_all_docs(self, mock_urlopen):
+        mock_response = mock_urlopen.return_value.__enter__.return_value
+        mock_response.read.return_value = (
+            b'{"rows":[{"doc":{"_id":"task-1","docType":"task","description":"Synced"}}]}'
+        )
+
+        docs = fetch_remote_docs(
+            "https://user:pass@example.cloudant.com",
+            "fortudo-preview-smoke-alpha",
+        )
+
+        self.assertEqual(docs, [{"_id": "task-1", "docType": "task", "description": "Synced"}])
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.cloudant.com/fortudo-preview-smoke-alpha/_all_docs?include_docs=true",
+        )
+        self.assertEqual(request.get_method(), "GET")
 
 
 class SummarizeDocsTests(unittest.TestCase):
@@ -143,32 +163,89 @@ class SnapshotAssertionTests(unittest.TestCase):
             )
 
     def test_filter_runtime_errors_ignores_expected_sync_abort_noise(self):
-        filtered_console_errors, filtered_request_failures = filter_runtime_errors(
-            [
-                "[💪🏾 ERROR] [sync-manager.js:91] Sync error: n",
-                "Failed to load resource: the server responded with a status of 404 ()",
-            ],
-            [
-                "GET https://example.cloudant.com/fortudo-preview-alpha/ net::ERR_ABORTED",
-            ],
+        filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+            filter_runtime_errors(
+                [
+                    "[sync-manager.js:91] Sync error: n",
+                    "Failed to load resource: the server responded with a status of 404 ()",
+                ],
+                [
+                    "GET https://example.cloudant.com/fortudo-preview-alpha/ net::ERR_ABORTED",
+                ],
+                [],
+            )
         )
 
         self.assertEqual(filtered_console_errors, [])
         self.assertEqual(filtered_request_failures, [])
+        self.assertEqual(filtered_response_errors, [])
+
+    def test_filter_runtime_errors_ignores_expected_sync_response_noise(self):
+        filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+            filter_runtime_errors(
+                [
+                    "Failed to load resource: the server responded with a status of 404 ()",
+                    "Failed to load resource: the server responded with a status of 412 ()",
+                ],
+                [],
+                [
+                    (404, "GET", "https://example.cloudant.com/fortudo-preview-alpha/"),
+                    (412, "PUT", "https://example.cloudant.com/fortudo-preview-alpha/"),
+                ],
+            )
+        )
+
+        self.assertEqual(filtered_console_errors, [])
+        self.assertEqual(filtered_request_failures, [])
+        self.assertEqual(filtered_response_errors, [])
 
     def test_filter_runtime_errors_keeps_non_abort_failures(self):
-        filtered_console_errors, filtered_request_failures = filter_runtime_errors(
-            ["[💪🏾 ERROR] [sync-manager.js:91] Sync error: n"],
-            ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
+        filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+            filter_runtime_errors(
+                ["[sync-manager.js:91] Sync error: n"],
+                ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
+                [],
+            )
         )
 
-        self.assertEqual(
-            filtered_console_errors,
-            ["[💪🏾 ERROR] [sync-manager.js:91] Sync error: n"],
-        )
+        self.assertEqual(filtered_console_errors, ["[sync-manager.js:91] Sync error: n"])
         self.assertEqual(
             filtered_request_failures,
             ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
+        )
+        self.assertEqual(filtered_response_errors, [])
+
+    def test_expected_sync_response_error_accepts_known_cloudant_noise(self):
+        self.assertTrue(
+            is_expected_sync_response_error(
+                (404, "GET", "https://example.cloudant.com/fortudo-preview-alpha/")
+            )
+        )
+        self.assertTrue(
+            is_expected_sync_response_error(
+                (
+                    404,
+                    "GET",
+                    "https://example.cloudant.com/fortudo-preview-alpha/_local/checkpoint",
+                )
+            )
+        )
+        self.assertTrue(
+            is_expected_sync_response_error(
+                (412, "PUT", "https://example.cloudant.com/fortudo-preview-alpha/")
+            )
+        )
+
+    def test_expected_sync_response_error_rejects_unexpected_responses(self):
+        self.assertFalse(
+            is_expected_sync_response_error(
+                (412, "PUT", "https://example.cloudant.com/js/app.js")
+            )
+        )
+        self.assertFalse(
+            is_expected_sync_response_error(
+                (403, "GET", "https://example.cloudant.com/fortudo-preview-alpha/")
+            )
         )
 
 
@@ -481,7 +558,11 @@ class PreviewWaitHelperTests(unittest.TestCase):
         locator.fill_failures_before_sticks = 1
 
         fill_locator_value(
-            page, locator, "Playwright beta task", description="beta task description", retry_delay_ms=0
+            page,
+            locator,
+            "Playwright beta task",
+            description="beta task description",
+            retry_delay_ms=0,
         )
 
         self.assertEqual(locator.value, "Playwright beta task")
