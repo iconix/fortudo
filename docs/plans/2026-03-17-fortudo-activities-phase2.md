@@ -14,6 +14,38 @@
 
 ---
 
+## Status Update
+
+Phase 2 is complete and merged in PR #53.
+
+What actually landed matches the intent of this plan, with a few notable differences in final shape:
+
+- storage preparation is now exposed as `prepareStorage()` and used from `app.js`, rather than wiring `initStorage()` and `migrateDocTypes()` separately in the app boot path
+- storage revision tracking ended up type-scoped internally (`task`, `activity`, `config`) rather than using one shared revision map
+- default category seeding was intentionally deferred; Phase 2 shipped config document primitives, not category defaults
+- validation work uncovered room-switch sync lifecycle issues, so Phase 2 also includes sync handoff hardening in `sync-manager.js` and storage teardown sequencing
+- merge-readiness verification now includes the hosted preview Playwright smoke in `scripts/playwright_preview_smoke.py`
+
+What Phase 2 still does not include:
+
+- no Activities UI
+- no settings/category management UI
+- no auto-logging
+- no insights view
+
+Phase 3 should also carry forward these implementation rules from Phase 2 validation:
+
+- use `prepareStorage()` as the normal boot entry to storage work; do not reintroduce ad hoc `initStorage()` plus manual migration sequencing in app boot code
+- keep new UI listeners lifecycle-scoped across room switches and reloads; Phase 2 exposed duplicate-listener bugs during preview smoke work and fixed them in the page-level listener lifecycle
+- treat `scripts/playwright_preview_smoke.py` as part of the practical merge-readiness path and extend it rather than creating a parallel one-off storage verification path
+- for synced preview runs, preserve the current distinction between expected Cloudant noise and real runtime failures instead of treating every `404` or `412` as an app bug
+- keep destructive success feedback aligned with the current `rose` toast convention, and prefer toasts over alerts for non-blocking feedback in new Activities/category flows
+- keep preview automation on stable reusable preview room names so repeated hosted-preview runs do not keep minting new remote databases
+
+The detailed checklist below is retained as the original implementation plan and historical record. Use the notes above as the source of truth where the exact implementation shape differs from the step-by-step plan.
+
+---
+
 ## File Structure
 
 ### Files to modify
@@ -33,7 +65,7 @@
 
 Splitting storage tests into focused files keeps each test file short and scoped to one concern. The existing `__tests__/storage.test.js` stays unchanged (it covers the baseline task CRUD which should continue passing).
 
-**Note:** The spec says "If no `config-categories` document exists, defaults are seeded" under Migration. Phase 2 builds the storage primitives (`putConfig`, `loadConfig`). The actual default seeding logic belongs in `category-manager.js` (Phase 3), which is the module responsible for knowing what the default categories are.
+**Note:** The spec says "If no `config-categories` document exists, defaults are seeded" under Migration. Phase 2 deliberately stopped at the storage primitives (`putConfig`, `loadConfig`). Default seeding remains future work for `category-manager.js` / the settings phase, which is the layer that should own the default category set.
 
 ---
 
@@ -1084,7 +1116,9 @@ and survive saveTasks bulk replace."
 **Files:**
 - Modify: `public/js/app.js`
 
-The migration should run once after `initStorage` and before `loadTasksIntoState`. It runs on every boot but is idempotent, so no-ops if documents are already migrated.
+The migration should run once after storage initialization and before `loadTasksIntoState`. It runs on every boot but is idempotent, so no-ops if documents are already migrated.
+
+**What actually shipped:** the final implementation exposes `prepareStorage()` in `storage.js`, and `app.js` now calls that higher-level preparation boundary instead of calling `initStorage()` and `migrateDocTypes()` separately.
 
 - [ ] **Step 1: Add migrateDocTypes import and call to initAndBootApp**
 

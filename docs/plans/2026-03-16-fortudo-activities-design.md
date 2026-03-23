@@ -2,9 +2,9 @@
 
 ## Pyramid Summary
 
-- **~2w:** Add activity tracking to Fortudo: auto-log completed tasks, manual activity logging via a third form mode, and an insights dashboard with a plan-vs-actual timeline and category breakdowns. Toggleable per user.
-- **~8w:** Activities become a new PouchDB document type alongside tasks, sharing the same database and sync infrastructure. Categories provide the aggregation layer for insights. A coordinator boundary centralizes post-mutation side effects. File structure is reorganized into `tasks/` and `activities/` folders. A toast notification system replaces modal alerts for non-blocking feedback. The feature is off by default and enabled via a settings modal.
-- **~32w:** See full design below.
+- **~2w:** Add activity tracking to Fortudo so planning and actual time spent live in one app: categories/settings, manual and automatic activity logging, and insights built around plan-vs-actual review.
+- **~8w:** Activities now rest on a merged storage foundation: `task`, `activity`, and `config` documents coexist in the same room database, task writes are scoped safely, and preview/sync validation exists. The remaining work is user-facing behavior: categories/settings, activity creation, and insights UI layered on top of that foundation.
+- **~32w:** Fortudo evolves from a planning-only tool into a lightweight planning-and-tracking system. Categories connect tasks and activities, the coordinator remains the post-mutation seam for cross-cutting behavior like auto-logging, and insights center on reviewing planned versus actual time without splitting that workflow into a separate app.
 
 ---
 
@@ -16,11 +16,11 @@ Fortudo handles the planning side of daily time management by scheduling tasks i
 
 ### Fortudo Architecture
 
-- **Storage:** PouchDB with per-room databases (`fortudo-{roomCode}`). Documents are plain objects with `_id = task.id`. An in-memory `revMap` tracks `_rev` for upserts. `saveTasks()` still does destructive bulk replace, so it must stay scoped to task documents only. The tracked `public/js/config.js` now defaults `COUCHDB_URL` to `null`, which makes local-only mode explicit.
+- **Storage:** PouchDB with per-room databases (`fortudo-{roomCode}`). Storage now supports typed documents (`task`, `activity`, `config`) in the same room database. Legacy task docs are migrated to `docType: 'task'` during boot-time storage preparation. Task bulk replace is scoped to task documents only. Revision tracking is type-scoped internally. Preview deploys use isolated room/database names so preview testing never touches live room data.
 - **Task schema:** `id`, `type` (`scheduled` / `unscheduled`), `description`, `startDateTime`, `endDateTime`, `duration`, `status`, `locked`, `editing`, `confirmingDelete`, `priority` (unscheduled only), `estDuration` (unscheduled only).
 - **ID conventions:** `sched-{timestamp}` for scheduled, `unsched-{timestamp}` for unscheduled.
 - **Module architecture:** `app.js` now focuses on boot, storage wiring, room lifecycle, and top-level event setup. Feature handlers live under `tasks/`. Successful task mutations are reported through `app-coordinator.js` as semantic post-mutation events. Render-time callback threading still exists through `dom-renderer.js`.
-- **Sync:** Bidirectional CouchDB replication via `sync-manager.js` with debounced sync and status callbacks.
+- **Sync:** Bidirectional CouchDB replication via `sync-manager.js` with debounced sync and status callbacks. Room-switch sync handoff is now session-aware so in-flight sync from one room does not mutate the next room.
 - **UI:** Dark Tailwind theme. Teal = scheduled, indigo = unscheduled, amber = warnings, rose = destructive. Modals remain for real confirmations. Toasts now handle non-blocking feedback. Max width `3xl`.
 
 ### Tracks Architecture
@@ -106,7 +106,9 @@ Shared field names between tasks and activities: `description`, `startDateTime`,
 
 **Migration:**
 
-On first load, documents without `docType` get `docType: 'task'` written back via `putTask`. If no `config-categories` document exists, defaults are seeded. Both operations should be idempotent.
+On first load, legacy task documents without `docType` get `docType: 'task'` written back during storage preparation. That migration is idempotent.
+
+**Update after Phase 2:** config document primitives shipped, but default category seeding did not. Seeding should happen later in `category-manager.js` / settings work, not in generic storage code.
 
 ### Architecture: Coordinator Boundary
 
@@ -272,6 +274,8 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
+**Existing smoke coverage:** storage-level merge-readiness checks are now covered by `scripts/playwright_preview_smoke.py`, including legacy migration, cross-type isolation, room isolation, and synced-preview behavior.
+
 ### Sync Considerations
 
 Activity documents sync via PouchDB like tasks. No special conflict handling is required for v1. Duplicate activities from sync conflicts are a minor data-quality issue; deduplication by `sourceTaskId` can come later if needed.
@@ -309,14 +313,16 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Add manager, handler, app, and integration coverage around the boundary
 - Align architecture notes with the actual pre-Activities coordinator shape
 
-### Next Planned Work
-
 **Phase 2: Storage**
 
-- Add `docType` migration
+- Add `docType` migration for legacy task documents
 - Add `putActivity`, `loadActivities`, `deleteActivity`, `loadConfig`, `putConfig`
 - Scope `saveTasks` to `docType: 'task'` only
-- Add tests first and keep migration idempotent
+- Add storage regression tests for migration, scoping, activities, and config documents
+- Add preview smoke coverage for storage guarantees and synced preview behavior
+- Harden room-switch sync lifecycle discovered during validation
+
+### Next Planned Work
 
 **Phase 3: Categories and settings**
 
