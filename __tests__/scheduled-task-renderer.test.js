@@ -2,6 +2,12 @@
  * @jest-environment jsdom
  */
 
+jest.mock('../public/js/category-manager.js', () => ({
+    renderCategoryBadge: jest.fn((categoryKey) =>
+        categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
+    )
+}));
+
 import {
     getScheduledTaskListElement,
     renderGapHTML,
@@ -186,6 +192,21 @@ describe('Scheduled Task Renderer Tests', () => {
             const list = getScheduledTaskListElement();
             const gapEl = list.querySelector('.schedule-gap');
             expect(gapEl).toBeNull();
+        });
+
+        test('renders category badge next to the task description when category is set', () => {
+            const tasks = [
+                {
+                    ...createTask('1', '10:00', 60, { description: 'Deep Work Task' }),
+                    category: 'work/deep'
+                }
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const badge = document.querySelector('.category-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toBe('work/deep');
         });
 
         test('gap elements do not have data-task-id attribute', () => {

@@ -7,6 +7,8 @@ import {
     getUnscheduledTaskInlineFormData,
     toggleUnscheduledTaskInlineEdit,
     extractTaskFormData,
+    populateCategoryDropdown,
+    initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
     computeEndTimePreview,
@@ -17,11 +19,16 @@ import {
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
+import { getCategoryByKey } from '../public/js/category-manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock showAlert
 jest.mock('../public/js/modal-manager.js', () => ({
     showAlert: jest.fn()
+}));
+
+jest.mock('../public/js/category-manager.js', () => ({
+    getCategoryByKey: jest.fn()
 }));
 
 describe('Form Utils Tests', () => {
@@ -226,6 +233,124 @@ describe('Form Utils Tests', () => {
             const result = extractTaskFormData(form);
 
             expect(result.priority).toBe('medium');
+        });
+
+        test('extractTaskFormData includes category when set', () => {
+            const form = createScheduledTaskForm('Test task', '09:00', '1', '0');
+            form.insertAdjacentHTML(
+                'beforeend',
+                `
+                    <select name="category">
+                        <option value="">No category</option>
+                        <option value="work/deep" selected>Deep Work</option>
+                    </select>
+                `
+            );
+
+            const result = extractTaskFormData(form);
+
+            expect(result).not.toBeNull();
+            expect(result.category).toBe('work/deep');
+        });
+
+        test('extractTaskFormData omits category when empty', () => {
+            const form = createScheduledTaskForm('Test task', '09:00', '1', '0');
+            form.insertAdjacentHTML(
+                'beforeend',
+                `
+                    <select name="category">
+                        <option value="" selected>No category</option>
+                    </select>
+                `
+            );
+
+            const result = extractTaskFormData(form);
+
+            expect(result).not.toBeNull();
+            expect(result).not.toHaveProperty('category');
+        });
+    });
+
+    describe('category helpers', () => {
+        test('populateCategoryDropdown adds grouped category options', () => {
+            document.body.innerHTML = `
+                <select id="category-select">
+                    <option value="">No category</option>
+                </select>
+            `;
+
+            const select = document.getElementById('category-select');
+            populateCategoryDropdown(select, {
+                work: [{ key: 'work/deep', label: 'Deep Work' }],
+                personal: [{ key: 'personal', label: 'Personal' }]
+            });
+
+            expect(select.querySelectorAll('optgroup')).toHaveLength(2);
+            expect(select.querySelector('option[value="work/deep"]')).not.toBeNull();
+            expect(select.querySelector('option[value="personal"]')).not.toBeNull();
+        });
+
+        test('populateCategoryDropdown preserves current selection when possible', () => {
+            document.body.innerHTML = `
+                <select id="category-select">
+                    <option value="">No category</option>
+                </select>
+            `;
+
+            const select = document.getElementById('category-select');
+            populateCategoryDropdown(select, {
+                work: [{ key: 'work/deep', label: 'Deep Work' }]
+            });
+            select.value = 'work/deep';
+
+            populateCategoryDropdown(select, {
+                work: [{ key: 'work/deep', label: 'Deep Work' }],
+                break: [{ key: 'break', label: 'Break' }]
+            });
+
+            expect(select.value).toBe('work/deep');
+        });
+
+        test('initializeCategoryDropdownListener updates the color dot from selected category', () => {
+            document.body.innerHTML = `
+                <span id="category-color-indicator"></span>
+                <select id="category-select">
+                    <option value="">No category</option>
+                    <option value="work/deep">Deep Work</option>
+                </select>
+            `;
+
+            getCategoryByKey.mockImplementation((key) =>
+                key === 'work/deep' ? { key, color: '#0ea5e9' } : null
+            );
+
+            initializeCategoryDropdownListener();
+
+            const select = document.getElementById('category-select');
+            const indicator = document.getElementById('category-color-indicator');
+            select.value = 'work/deep';
+            select.dispatchEvent(new Event('change'));
+
+            expect(indicator.style.backgroundColor).toBe('rgb(14, 165, 233)');
+        });
+
+        test('initializeCategoryDropdownListener resets the color dot when no category is selected', () => {
+            document.body.innerHTML = `
+                <span id="category-color-indicator"></span>
+                <select id="category-select">
+                    <option value="" selected>No category</option>
+                </select>
+            `;
+
+            getCategoryByKey.mockReturnValue(null);
+
+            initializeCategoryDropdownListener();
+
+            const select = document.getElementById('category-select');
+            const indicator = document.getElementById('category-color-indicator');
+            select.dispatchEvent(new Event('change'));
+
+            expect(indicator.style.backgroundColor).toBe('rgb(100, 116, 139)');
         });
     });
 

@@ -663,6 +663,34 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(mockSaveTasks).not.toHaveBeenCalled();
         });
 
+        test('preserves category when adding a scheduled task', () => {
+            const result = addTask({
+                taskType: 'scheduled',
+                description: 'Categorized task',
+                startTime: '10:00',
+                duration: 60,
+                category: 'work/deep'
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.task.category).toBe('work/deep');
+            expect(getTaskState()[0].category).toBe('work/deep');
+        });
+
+        test('preserves category when adding an unscheduled task', () => {
+            const result = addTask({
+                taskType: 'unscheduled',
+                description: 'Backlog task',
+                priority: 'medium',
+                estDuration: 30,
+                category: 'personal'
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.task.category).toBe('personal');
+            expect(getTaskState()[0].category).toBe('personal');
+        });
+
         test('should not add an invalid task and not save', () => {
             const result = addTask({
                 taskType: 'scheduled',
@@ -794,6 +822,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 id: 'unsched-contract-test',
                 type: 'unscheduled',
                 description: 'Unscheduled Contract Task',
+                category: 'work/deep',
                 priority: 'medium',
                 estDuration: 45,
                 status: 'incomplete',
@@ -819,7 +848,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                     description: 'Unscheduled Contract Task',
                     startTime: '09:30',
                     duration: 45,
-                    taskType: 'scheduled'
+                    taskType: 'scheduled',
+                    category: 'work/deep'
                 }
             });
             expect(result.taskData).toBeUndefined();
@@ -831,6 +861,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 id: 'unsched-confirm-contract',
                 type: 'unscheduled',
                 description: 'Schedule Me',
+                category: 'work/deep',
                 priority: 'high',
                 estDuration: 30,
                 status: 'incomplete',
@@ -842,14 +873,16 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = confirmScheduleUnscheduledTask(unscheduledTask.id, {
                 description: 'Schedule Me',
                 startTime: '11:00',
-                duration: 30
+                duration: 30,
+                category: 'work/deep'
             });
 
             expect(result.success).toBe(true);
             expect(result.task).toEqual(
                 expect.objectContaining({
                     description: 'Schedule Me',
-                    type: 'scheduled'
+                    type: 'scheduled',
+                    category: 'work/deep'
                 })
             );
             expect(result.taskId).toBe(result.task.id);
@@ -2134,6 +2167,26 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].type).toBe('unscheduled');
             expect(tasks[0].estDuration).toBe(30);
+        });
+
+        test('unscheduleTask preserves category on the converted task', () => {
+            const task = {
+                ...createTaskWithDateTime({
+                    description: 'Categorized',
+                    startTime: '10:00',
+                    duration: 30,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }),
+                category: 'break'
+            };
+            updateTaskState([task]);
+
+            const result = unscheduleTask(task.id);
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()[0].category).toBe('break');
         });
     });
 

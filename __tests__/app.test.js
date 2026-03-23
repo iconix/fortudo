@@ -25,8 +25,10 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
-    loadTasks: jest.fn(() => [])
+    loadTasks: jest.fn(() => []),
+    loadConfig: jest.fn(() => Promise.resolve(null))
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -41,8 +43,10 @@ import {
     initStorage as mockInitStorageInternal,
     migrateDocTypes as mockMigrateDocTypesInternal,
     saveTasks as mockSaveTasksInternal,
+    putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
-    loadTasks as mockLoadTasksFromStorageInternal
+    loadTasks as mockLoadTasksFromStorageInternal,
+    loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
 import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
@@ -54,8 +58,10 @@ const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 
@@ -121,6 +127,8 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockLoadConfig.mockResolvedValue(null);
+        mockPutConfig.mockResolvedValue(undefined);
         mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
@@ -251,6 +259,20 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks([]);
 
             expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+        });
+
+        test('shows and populates the category dropdown when Activities are enabled', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const categoryRow = document.getElementById('category-dropdown-row');
+            const categorySelect = document.getElementById('category-select');
+
+            expect(categoryRow.classList.contains('hidden')).toBe(false);
+            expect(categorySelect.querySelectorAll('optgroup').length).toBeGreaterThan(0);
+            expect(categorySelect.querySelector('option[value="work/deep"]')).not.toBeNull();
         });
     });
 

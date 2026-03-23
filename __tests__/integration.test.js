@@ -29,8 +29,10 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
-    loadTasks: jest.fn(() => [])
+    loadTasks: jest.fn(() => []),
+    loadConfig: jest.fn(() => Promise.resolve(null))
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -42,8 +44,10 @@ jest.mock('../public/js/sync-manager.js', () => ({
 import {
     saveTasks as mockSaveTasksInternal,
     putTask as mockPutTaskInternal,
+    putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
-    loadTasks as mockLoadTasksFromStorageInternal
+    loadTasks as mockLoadTasksFromStorageInternal,
+    loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
 
 // Import task-manager after the mock since it depends on mock storage.js
@@ -51,8 +55,10 @@ import * as taskManager from '../public/js/tasks/manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockPutTask = jest.mocked(mockPutTaskInternal);
+const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 
 describe('User Confirmation Flows', () => {
     let alertSpy;
@@ -69,6 +75,8 @@ describe('User Confirmation Flows', () => {
         // Clear mocks
         jest.clearAllMocks();
         mockLoadTasksFromStorage.mockReturnValue([]); // Default to loading no tasks
+        mockLoadConfig.mockResolvedValue(null);
+        mockPutConfig.mockResolvedValue(undefined);
 
         // Note: Removed updateTaskState call - let the app handle task loading naturally
 

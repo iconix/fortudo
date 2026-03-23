@@ -96,6 +96,11 @@ describe('Add Task Handler', () => {
                 <input type="time" name="start-time" />
                 <input type="number" name="duration-hours" value="1" />
                 <input type="number" name="duration-minutes" value="0" />
+                <span id="category-color-indicator"></span>
+                <select id="category-select" name="category">
+                    <option value="">No category</option>
+                    <option value="work/deep">Deep Work</option>
+                </select>
                 <span id="end-time-hint"></span>
                 <span id="overlap-warning"></span>
                 <button id="add-task-btn" type="submit">Add Task</button>
@@ -222,6 +227,23 @@ describe('Add Task Handler', () => {
 
             expect(onTaskCreated).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('dispatches category change after successful reset', async () => {
+            const taskData = {
+                description: 'Category Reset Task',
+                startTime: '09:00',
+                duration: 60,
+                taskType: 'scheduled'
+            };
+            const categorySelect = document.getElementById('category-select');
+            const changeHandler = jest.fn();
+            categorySelect.addEventListener('change', changeHandler);
+            categorySelect.value = 'work/deep';
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(changeHandler).toHaveBeenCalledTimes(1);
         });
 
         test('clears stale preview state after successful reschedule-confirmed add', async () => {

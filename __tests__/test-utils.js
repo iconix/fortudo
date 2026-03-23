@@ -41,10 +41,17 @@ function setupDOM() {
           <i id="sync-status-icon"></i>
           <span id="sync-status-text"></span>
         </button>
+        <button id="settings-gear-btn" type="button"><i class="fa-solid fa-gear"></i></button>
       </div>
       <form id="task-form">
         <div class="form-group">
           <input type="text" name="description" placeholder="Task description" required />
+        </div>
+        <div id="category-dropdown-row" class="hidden">
+          <span id="category-color-indicator"></span>
+          <select name="category" id="category-select">
+            <option value="">No category</option>
+          </select>
         </div>
         <div class="task-type-toggle">
           <input type="radio" id="scheduled" name="task-type" value="scheduled" checked />
@@ -115,6 +122,11 @@ function setupDOM() {
           <button id="custom-confirm-ok">OK</button>
           <button id="custom-confirm-cancel">Cancel</button>
         </div>
+      </div>
+
+      <div id="settings-modal" class="hidden">
+        <div id="settings-content"></div>
+        <button id="close-settings-modal"></button>
       </div>
     </div>
     </div>

@@ -222,7 +222,8 @@ const createTaskObject = (taskData) => {
         status: 'incomplete',
         editing: false,
         confirmingDelete: false,
-        type: taskData.taskType || 'scheduled'
+        type: taskData.taskType || 'scheduled',
+        category: taskData.category || null
     };
 
     let finalTask;
@@ -1237,7 +1238,8 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
         description: unscheduledTask.description,
         startTime,
         duration: duration || unscheduledTask.estDuration, // Use provided duration or fall back to estimated
-        taskType: 'scheduled'
+        taskType: 'scheduled',
+        category: unscheduledTask.category || null
     };
 
     // Create temp task and get all current scheduled tasks

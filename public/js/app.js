@@ -9,6 +9,8 @@ import {
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
+    populateCategoryDropdown,
+    initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
     setupEndTimeHint,
@@ -27,6 +29,9 @@ import {
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
+import { loadCategories, getCategoryGroups } from './category-manager.js';
+import { isActivitiesEnabled } from './settings-manager.js';
+import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
@@ -114,6 +119,7 @@ async function initAndBootApp(roomCode) {
 
     // Load and initialize state
     await loadTasksIntoState();
+    await loadCategories();
 
     // Create callback objects
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
@@ -180,6 +186,16 @@ async function initAndBootApp(roomCode) {
                         .replace(/hover:to-teal-300/g, 'hover:to-amber-300')
                 }
             );
+        }
+
+        if (isActivitiesEnabled()) {
+            const categoryRow = document.getElementById('category-dropdown-row');
+            const categorySelect = document.getElementById('category-select');
+            if (categoryRow && categorySelect instanceof HTMLSelectElement) {
+                categoryRow.classList.remove('hidden');
+                populateCategoryDropdown(categorySelect, getCategoryGroups());
+                initializeCategoryDropdownListener();
+            }
         }
     }
 
@@ -273,6 +289,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
     }
+
+    initializeSettingsModalListeners(() => {
+        renderSettingsContent();
+    });
 
     const activeRoom = getActiveRoom();
     if (!activeRoom) {

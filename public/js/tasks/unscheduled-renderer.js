@@ -1,5 +1,6 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
+import { renderCategoryBadge } from '../category-manager.js';
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {
@@ -78,7 +79,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
             <div class="min-w-0 flex-1">
-                <div class="font-medium text-white ${textStrike} text-sm sm:text-base break-words">${task.description}</div>
+                <div class="font-medium text-white ${textStrike} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)}</div>
                 <div class="text-xs text-gray-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
                     <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
                         <i class="${priorityClasses.icon} mr-1 text-xs"></i>${priorityLabel} Priority

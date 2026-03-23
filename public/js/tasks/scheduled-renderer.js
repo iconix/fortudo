@@ -12,6 +12,7 @@ import {
     computeOverlapPreview,
     formatOverlapWarning
 } from './form-utils.js';
+import { renderCategoryBadge } from '../category-manager.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -132,7 +133,7 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
             </label>
             <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
-                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words">${task.description}</div>
+                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>

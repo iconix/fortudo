@@ -2,6 +2,12 @@
  * @jest-environment jsdom
  */
 
+jest.mock('../public/js/category-manager.js', () => ({
+    renderCategoryBadge: jest.fn((categoryKey) =>
+        categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
+    )
+}));
+
 import {
     getUnscheduledTaskListElement,
     getPriorityClasses,
@@ -98,6 +104,7 @@ describe('Unscheduled Task Renderer Tests', () => {
                 {
                     id: 'task-1',
                     description: 'Test task',
+                    category: 'work/deep',
                     priority: 'high',
                     estDuration: 90,
                     status: 'incomplete',
@@ -115,6 +122,7 @@ describe('Unscheduled Task Renderer Tests', () => {
             expect(taskCard.textContent).toContain('Test task');
             expect(taskCard.textContent).toContain('High Priority');
             expect(taskCard.textContent).toContain('1h 30m');
+            expect(taskCard.querySelector('.category-badge')).not.toBeNull();
         });
 
         test('renders multiple tasks', () => {

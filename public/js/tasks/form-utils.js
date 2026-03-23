@@ -10,6 +10,7 @@ import {
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
 import { checkOverlap } from '../reschedule-engine.js';
+import { getCategoryByKey } from '../category-manager.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
@@ -166,6 +167,10 @@ export function extractTaskFormData(formElement) {
     }
 
     let taskData = { description, taskType };
+    const category = formData.get('category')?.toString() || null;
+    if (category) {
+        taskData.category = category;
+    }
 
     if (taskType === 'scheduled') {
         const startTime = formData.get('start-time')?.toString();
@@ -210,6 +215,56 @@ export function extractTaskFormData(formElement) {
  */
 export function getTaskFormElement() {
     return /** @type {HTMLFormElement|null} */ (document.getElementById('task-form'));
+}
+
+/**
+ * Populate the category dropdown with grouped options.
+ * @param {HTMLSelectElement} selectElement
+ * @param {Object<string, Array<{key: string, label: string}>>} groups
+ */
+export function populateCategoryDropdown(selectElement, groups) {
+    const currentValue = selectElement.value;
+
+    while (selectElement.options.length > 1) {
+        selectElement.remove(1);
+    }
+
+    for (const [groupName, categories] of Object.entries(groups)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = groupName.charAt(0).toUpperCase() + groupName.slice(1);
+
+        for (const category of categories) {
+            const option = document.createElement('option');
+            option.value = category.key;
+            option.textContent = category.label;
+            optgroup.appendChild(option);
+        }
+
+        selectElement.appendChild(optgroup);
+    }
+
+    if (currentValue) {
+        selectElement.value = currentValue;
+    }
+}
+
+/**
+ * Attach the category dropdown listener and keep the color dot in sync.
+ */
+export function initializeCategoryDropdownListener() {
+    const select = document.getElementById('category-select');
+    const dot = document.getElementById('category-color-indicator');
+    if (!(select instanceof HTMLSelectElement) || !(dot instanceof HTMLElement)) {
+        return;
+    }
+
+    const updateIndicator = () => {
+        const category = getCategoryByKey(select.value);
+        dot.style.backgroundColor = category ? category.color : '#64748b';
+    };
+
+    select.addEventListener('change', updateIndicator);
+    updateIndicator();
 }
 
 // --- End Time Preview Functions ---
