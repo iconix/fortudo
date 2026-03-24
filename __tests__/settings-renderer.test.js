@@ -23,7 +23,8 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 import { initStorage, destroyStorage } from '../public/js/storage.js';
-import { loadCategories, getCategoryGroups } from '../public/js/category-manager.js';
+import { loadCategories, getGroupByKey, getCategoryByKey } from '../public/js/category-manager.js';
+import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 import { setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import {
@@ -49,14 +50,45 @@ function setupSettingsDOM() {
             <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-xl font-normal text-slate-200">Settings</h3>
-                    <button id="close-settings-modal" class="text-slate-400 hover:text-slate-200 p-1">
+                    <button id="close-settings-modal" type="button" class="text-slate-400 hover:text-slate-200 p-1">
                         <i class="fa-solid fa-xmark text-xl"></i>
                     </button>
                 </div>
                 <div id="settings-content"></div>
             </div>
         </div>
+        <div id="category-dropdown-row" class="hidden">
+            <span id="category-color-indicator"></span>
+            <select id="category-select" name="category">
+                <option value="">No category</option>
+            </select>
+        </div>
     `;
+}
+
+async function renderEnabledSettings(options = {}) {
+    setActivitiesEnabled(true);
+    await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+    await loadCategories();
+    renderSettingsContent(options);
+}
+
+async function submitForm(form) {
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+async function openInlineCategoryEditor(key) {
+    const editButton = document.querySelector(`.btn-edit-category[data-key="${key}"]`);
+    editButton.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return document.querySelector(`.edit-category-form[data-key="${key}"]`);
+}
+
+async function saveEditedCategoryColor(key, color) {
+    const editForm = await openInlineCategoryEditor(key);
+    editForm.querySelector('[name="edit-category-color"]').value = color;
+    await submitForm(editForm);
 }
 
 beforeEach(() => {
@@ -132,51 +164,26 @@ describe('settings-renderer', () => {
         });
 
         test('renders Activities toggle in on state when enabled', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+            await renderEnabledSettings();
 
             const toggle = document.getElementById('activities-toggle');
             expect(toggle.checked).toBe(true);
         });
 
-        test('renders category list when Activities enabled', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('renders groups and child categories in separate sections', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
 
-            const categoryItems = document.querySelectorAll('[data-category-key]');
-            const expectedVisibleRows = Object.values(getCategoryGroups()).flat().length;
-            expect(categoryItems.length).toBe(expectedVisibleRows);
-            expect(document.getElementById('category-list').textContent).toContain('Personal');
-            expect(document.getElementById('category-list').textContent).toContain('Break');
+            expect(document.getElementById('groups-list')).not.toBeNull();
+            expect(document.getElementById('categories-list')).not.toBeNull();
         });
 
-        test('group rows render without edit or delete buttons', async () => {
-            setActivitiesEnabled(true);
+        test('hides taxonomy management when Activities disabled', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await loadCategories();
             renderSettingsContent();
 
-            const groupRows = ['work', 'personal', 'break'].map((key) =>
-                document.querySelector(`[data-category-key="${key}"]`)
-            );
-            for (const row of groupRows) {
-                expect(row).not.toBeNull();
-                expect(row.querySelector('.btn-edit-category')).toBeNull();
-                expect(row.querySelector('.btn-delete-category')).toBeNull();
-            }
-        });
-
-        test('hides category list when Activities disabled', async () => {
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const categorySection = document.getElementById('category-management-section');
-            expect(categorySection.classList.contains('hidden')).toBe(true);
+            const taxonomySection = document.getElementById('taxonomy-management-section');
+            expect(taxonomySection.classList.contains('hidden')).toBe(true);
         });
 
         test('toggling Activities shows reload prompt', async () => {
@@ -193,252 +200,94 @@ describe('settings-renderer', () => {
             expect(reloadPrompt.classList.contains('hidden')).toBe(false);
         });
 
-        test('toggling Activities off shows disabled reload message and hides categories', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('toggling Activities off shows disabled reload message and hides taxonomy management', async () => {
+            await renderEnabledSettings();
 
             const toggle = document.getElementById('activities-toggle');
-            const categorySection = document.getElementById('category-management-section');
+            const taxonomySection = document.getElementById('taxonomy-management-section');
             const message = document.getElementById('reload-prompt-message');
 
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
 
-            expect(categorySection.classList.contains('hidden')).toBe(true);
+            expect(taxonomySection.classList.contains('hidden')).toBe(true);
             expect(message.textContent).toContain('Activities disabled');
         });
 
-        test('category color dots render with correct color', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('group add form creates a standalone selectable group', async () => {
+            await renderEnabledSettings();
 
-            const firstDot = document.querySelector(
-                '[data-category-key="work/deep"] .category-dot'
-            );
-            expect(firstDot).not.toBeNull();
-            expect(firstDot.style.backgroundColor).toBeTruthy();
+            document.getElementById('add-group-btn').click();
+
+            const form = document.getElementById('add-group-form');
+            form.querySelector('[name="group-label"]').value = 'Health';
+            form.querySelector('[name="group-family"]').value = 'green';
+            await submitForm(form);
+
+            expect(getGroupByKey('health')).not.toBeNull();
+            expect(document.querySelector('[data-group-key="health"]')).not.toBeNull();
         });
 
-        test('add category form creates a category in a brand-new group and refreshes list', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('group edit form changes family and refreshes linked children', async () => {
+            await renderEnabledSettings();
 
-            const addButton = document.getElementById('add-category-btn');
-            addButton.click();
+            document.querySelector('.btn-edit-group[data-key="work"]').click();
+
+            const form = document.querySelector('.edit-group-form[data-key="work"]');
+            form.querySelector('[name="edit-group-family"]').value = 'amber';
+            await submitForm(form);
+
+            expect(getGroupByKey('work').colorFamily).toBe('amber');
+            expect(getCategoryByKey('work/meetings').color).toBe(COLOR_FAMILIES.amber[1]);
+        });
+
+        test('category add form requires a parent group', async () => {
+            await renderEnabledSettings();
+
+            document.getElementById('add-category-btn').click();
 
             const form = document.getElementById('add-category-form');
-            expect(form.classList.contains('hidden')).toBe(false);
-
             form.querySelector('[name="category-label"]').value = 'Exercise';
-            form.querySelector('[name="category-color"]').value = '#10b981';
-            form.querySelector('[name="category-group"]').value = 'health';
-            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            form.querySelector('[name="parent-group"]').value = '';
+            await submitForm(form);
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
-
-            expect(document.querySelector('[data-category-key="health"]')).not.toBeNull();
-            expect(document.querySelector('[data-category-key="health/exercise"]')).not.toBeNull();
-        });
-
-        test('cancel add hides and resets the add-category form', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const addButton = document.getElementById('add-category-btn');
-            addButton.click();
-
-            const form = document.getElementById('add-category-form');
-            const labelInput = form.querySelector('[name="category-label"]');
-            labelInput.value = 'Temporary';
-
-            document.getElementById('cancel-add-category').click();
-
-            expect(form.classList.contains('hidden')).toBe(true);
-            expect(labelInput.value).toBe('');
-        });
-
-        test('add category form ignores blank submissions', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const initialCount = document.querySelectorAll('[data-category-key]').length;
-            const form = document.getElementById('add-category-form');
-            form.classList.remove('hidden');
-            form.querySelector('[name="category-label"]').value = '';
-            form.querySelector('[name="category-group"]').value = 'health';
-
-            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(document.querySelectorAll('[data-category-key]').length).toBe(initialCount);
-            expect(showToast).not.toHaveBeenCalled();
-        });
-
-        test('add category failure shows toast', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const form = document.getElementById('add-category-form');
-            form.classList.remove('hidden');
-            form.querySelector('[name="category-label"]').value = 'Admin';
-            form.querySelector('[name="category-color"]').value = '#0ea5e9';
-            form.querySelector('[name="category-group"]').value = 'work';
-
-            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(showToast).toHaveBeenCalledWith('Category "work/admin" already exists', {
+            expect(getCategoryByKey('work/exercise')).toBeNull();
+            expect(getCategoryByKey('health/exercise')).toBeNull();
+            expect(showToast).toHaveBeenCalledWith('Parent group is required', {
                 theme: 'rose'
             });
         });
 
-        test('delete button removes category from list', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('editing child color outside family unlinks the child', async () => {
+            await renderEnabledSettings();
 
-            const initialCount = document.querySelectorAll('[data-category-key]').length;
-            const deleteButton = document.querySelector(
-                '.btn-delete-category[data-key="work/admin"]'
-            );
+            await saveEditedCategoryColor('work/deep', '#22c55e');
 
-            deleteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-
-            const waitForDelete = async () => {
-                for (let attempt = 0; attempt < 10; attempt += 1) {
-                    if (
-                        document.querySelectorAll('[data-category-key]').length ===
-                        initialCount - 1
-                    ) {
-                        return;
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 25));
-                }
-            };
-            await waitForDelete();
-
-            const newCount = document.querySelectorAll('[data-category-key]').length;
-            expect(newCount).toBe(initialCount - 1);
+            expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(false);
+            expect(document.getElementById('categories-list').textContent).toContain('Unlinked');
         });
 
-        test('clicking category list background does nothing', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('editing child color back into family relinks the child', async () => {
+            await renderEnabledSettings();
 
-            const initialMarkup = document.getElementById('category-list').innerHTML;
-            document.getElementById('category-list').dispatchEvent(new MouseEvent('click'));
+            await saveEditedCategoryColor('work/deep', '#22c55e');
+            await saveEditedCategoryColor('work/deep', COLOR_FAMILIES.blue[0]);
 
-            expect(document.getElementById('category-list').innerHTML).toBe(initialMarkup);
+            expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
+            expect(document.getElementById('categories-list').textContent).toContain('Linked');
         });
 
-        test('clicking a category button without a key does nothing', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
+        test('taxonomy changes call onTaxonomyChanged callback', async () => {
+            const onTaxonomyChanged = jest.fn();
+            await renderEnabledSettings({ onTaxonomyChanged });
 
-            const button = document.createElement('button');
-            button.className = 'btn-delete-category';
-            document.getElementById('category-list').appendChild(button);
+            document.getElementById('add-group-btn').click();
+            const form = document.getElementById('add-group-form');
+            form.querySelector('[name="group-label"]').value = 'Fitness';
+            form.querySelector('[name="group-family"]').value = 'rose';
+            await submitForm(form);
 
-            button.click();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(showToast).not.toHaveBeenCalled();
-        });
-
-        test('delete failure shows toast', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const deleteButton = document.querySelector('.btn-delete-category');
-            deleteButton.dataset.key = 'missing/category';
-
-            deleteButton.click();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(showToast).toHaveBeenCalledWith('Category "missing/category" not found', {
-                theme: 'rose'
-            });
-        });
-
-        test('edit button opens inline editor and saves updates', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            document.querySelector('.btn-edit-category').click();
-
-            const editForm = document.querySelector('.edit-category-form');
-            expect(editForm).not.toBeNull();
-
-            editForm.querySelector('[name="edit-label"]').value = 'Focus Time';
-            editForm.querySelector('[name="edit-color"]').value = '#111111';
-            editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            await new Promise((resolve) => setTimeout(resolve, 50));
-
-            expect(document.getElementById('category-list').textContent).toContain('Focus Time');
-        });
-
-        test('edit form ignores blank labels', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            document.querySelector('.btn-edit-category').click();
-
-            const editForm = document.querySelector('.edit-category-form');
-            editForm.querySelector('[name="edit-label"]').value = '   ';
-            editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(document.querySelector('.edit-category-form')).not.toBeNull();
-            expect(showToast).not.toHaveBeenCalled();
-        });
-
-        test('edit failure shows toast', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            const editButton = document.querySelector('.btn-edit-category');
-            editButton.dataset.key = 'missing/category';
-            editButton.click();
-
-            expect(document.querySelector('.edit-category-form')).toBeNull();
-        });
-
-        test('cancel edit restores the category row', async () => {
-            setActivitiesEnabled(true);
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
-            renderSettingsContent();
-
-            document.querySelector('.btn-edit-category').click();
-            document.querySelector('.btn-cancel-edit-category').click();
-
-            expect(document.querySelector('.edit-category-form')).toBeNull();
-            expect(document.getElementById('category-list').textContent).toContain('Deep Work');
+            expect(onTaxonomyChanged).toHaveBeenCalled();
         });
     });
 });

@@ -126,7 +126,7 @@ function setupDOM() {
 
       <div id="settings-modal" class="hidden">
         <div id="settings-content"></div>
-        <button id="close-settings-modal"></button>
+        <button id="close-settings-modal" type="button"></button>
       </div>
     </div>
     </div>
