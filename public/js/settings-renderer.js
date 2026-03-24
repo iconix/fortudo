@@ -104,7 +104,7 @@ function renderCategoryList() {
     for (const [groupName, categories] of Object.entries(groups)) {
         html += `<div class="text-xs text-slate-500 uppercase tracking-wide mt-2 mb-1 first:mt-0">${escapeHtml(groupName)}</div>`;
         for (const category of categories) {
-            const actionButtons = category.isStandaloneGroup
+            const actionButtons = category.isGroupRecord
                 ? ''
                 : `
                     <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -199,7 +199,7 @@ function wireSettingsEvents() {
             }
 
             try {
-                await addCategory({ groupKey: group, label, color });
+                await addCategory({ groupKey: group, label, color, allowCreateGroup: true });
                 addForm.classList.add('hidden');
                 addForm.reset();
                 refreshCategoryList();

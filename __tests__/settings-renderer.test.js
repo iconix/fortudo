@@ -154,16 +154,20 @@ describe('settings-renderer', () => {
             expect(document.getElementById('category-list').textContent).toContain('Break');
         });
 
-        test('standalone group rows render without edit or delete buttons', async () => {
+        test('group rows render without edit or delete buttons', async () => {
             setActivitiesEnabled(true);
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await loadCategories();
             renderSettingsContent();
 
-            const personalRow = document.querySelector('[data-category-key="personal"]');
-            expect(personalRow).not.toBeNull();
-            expect(personalRow.querySelector('.btn-edit-category')).toBeNull();
-            expect(personalRow.querySelector('.btn-delete-category')).toBeNull();
+            const groupRows = ['work', 'personal', 'break'].map((key) =>
+                document.querySelector(`[data-category-key="${key}"]`)
+            );
+            for (const row of groupRows) {
+                expect(row).not.toBeNull();
+                expect(row.querySelector('.btn-edit-category')).toBeNull();
+                expect(row.querySelector('.btn-delete-category')).toBeNull();
+            }
         });
 
         test('hides category list when Activities disabled', async () => {
@@ -219,7 +223,7 @@ describe('settings-renderer', () => {
             expect(firstDot.style.backgroundColor).toBeTruthy();
         });
 
-        test('add category form creates new category and refreshes list', async () => {
+        test('add category form creates a category in a brand-new group and refreshes list', async () => {
             setActivitiesEnabled(true);
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await loadCategories();
@@ -233,15 +237,13 @@ describe('settings-renderer', () => {
 
             form.querySelector('[name="category-label"]').value = 'Exercise';
             form.querySelector('[name="category-color"]').value = '#10b981';
-            form.querySelector('[name="category-group"]').value = 'personal';
+            form.querySelector('[name="category-group"]').value = 'health';
             form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
             await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(
-                document.querySelector('[data-category-key="personal/exercise"]')
-            ).not.toBeNull();
-            expect(document.querySelector('[data-category-key="personal"]')).toBeNull();
+            expect(document.querySelector('[data-category-key="health"]')).not.toBeNull();
+            expect(document.querySelector('[data-category-key="health/exercise"]')).not.toBeNull();
         });
 
         test('cancel add hides and resets the add-category form', async () => {

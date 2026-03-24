@@ -145,30 +145,28 @@ export function getSelectableCategoryOptions() {
 export function getCategoryGroups() {
     return groups.reduce((result, group) => {
         const childCategories = getChildCategories(group.key);
-        if (childCategories.length === 0) {
-            result[group.key] = [
-                {
-                    key: group.key,
-                    label: group.label,
-                    color: group.color,
-                    group: group.key,
-                    groupKey: group.key,
-                    isLinkedToGroupFamily: false,
-                    isStandaloneGroup: true
-                }
-            ];
-            return result;
-        }
-
-        result[group.key] = childCategories.map((category) => ({
-            key: category.key,
-            label: category.label,
-            color: category.color,
-            group: category.groupKey,
-            groupKey: category.groupKey,
-            isLinkedToGroupFamily: category.isLinkedToGroupFamily,
-            isStandaloneGroup: false
-        }));
+        result[group.key] = [
+            {
+                key: group.key,
+                label: group.label,
+                color: group.color,
+                group: group.key,
+                groupKey: group.key,
+                isLinkedToGroupFamily: false,
+                isGroupRecord: true,
+                isStandaloneGroup: childCategories.length === 0
+            },
+            ...childCategories.map((category) => ({
+                key: category.key,
+                label: category.label,
+                color: category.color,
+                group: category.groupKey,
+                groupKey: category.groupKey,
+                isLinkedToGroupFamily: category.isLinkedToGroupFamily,
+                isGroupRecord: false,
+                isStandaloneGroup: false
+            }))
+        ];
         return result;
     }, {});
 }
@@ -257,7 +255,7 @@ export async function deleteGroup(key) {
 /**
  * Add a new child category and persist it.
  * Supports the new `{ groupKey, label }` shape and the legacy phase 3 call shape.
- * @param {{groupKey?: string, label: string, color?: string, key?: string, group?: string}} input
+ * @param {{groupKey?: string, label: string, color?: string, key?: string, group?: string, allowCreateGroup?: boolean}} input
  * @returns {Promise<void>}
  */
 export async function addCategory(input) {
@@ -266,26 +264,33 @@ export async function addCategory(input) {
         throw new Error('Category label is required');
     }
 
-    const groupKey = (input.groupKey || input.group || '').trim();
-    if (!groupKey) {
+    const requestedGroupKey = (input.groupKey || input.group || '').trim();
+    const normalizedGroupKey = slugify(requestedGroupKey);
+    if (!normalizedGroupKey) {
         throw new Error('Category group is required');
     }
 
-    const group = groups.find((entry) => entry.key === groupKey);
+    let group = groups.find((entry) => entry.key === normalizedGroupKey);
     if (!group) {
-        throw new Error(`Group "${groupKey}" not found`);
+        if (!input.allowCreateGroup) {
+            throw new Error(`Group "${normalizedGroupKey}" not found`);
+        }
+
+        group = createCompatibilityGroup(normalizedGroupKey, requestedGroupKey, input.color);
+        groups.push(group);
     }
 
-    const key = (input.key || `${groupKey}/${slugify(label)}`).trim();
+    const key = (input.key || `${group.key}/${slugify(label)}`).trim();
     ensureKeyAvailable(key, `Category "${key}" already exists`);
 
     const color =
-        input.color || pickLinkedChildColor(group.colorFamily, getChildCategories(groupKey).length);
+        input.color ||
+        pickLinkedChildColor(group.colorFamily, getChildCategories(group.key).length);
     categories.push({
         key,
         label,
         color,
-        groupKey,
+        groupKey: group.key,
         isLinkedToGroupFamily: isColorInFamily(group.colorFamily, color)
     });
 
@@ -551,6 +556,19 @@ function inferFamilyFromColor(color, fallback = 'blue') {
 
 function defaultColorFamilyForGroup(groupKey) {
     return DEFAULT_GROUP_DEFINITIONS.find((group) => group.key === groupKey)?.colorFamily || 'blue';
+}
+
+function createCompatibilityGroup(groupKey, requestedLabel, color) {
+    const colorFamily = normalizeFamilyName(
+        inferFamilyFromColor(color, defaultColorFamilyForGroup(groupKey))
+    );
+
+    return {
+        key: groupKey,
+        label: titleCase(requestedLabel || groupKey),
+        colorFamily,
+        color: typeof color === 'string' && color ? color : getFamilyBaseColor(colorFamily)
+    };
 }
 
 function getChildCategories(groupKey) {

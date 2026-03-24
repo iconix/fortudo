@@ -221,8 +221,9 @@ describe('category-manager', () => {
         });
     });
 
-    test('getCategoryGroups includes zero-child groups for legacy consumers', async () => {
+    test('getCategoryGroups includes group keys for both empty and populated groups', async () => {
         await initAndLoadCategories();
+        await addCategory({ groupKey: 'personal', label: 'Errands' });
 
         const groups = getCategoryGroups();
 
@@ -232,7 +233,13 @@ describe('category-manager', () => {
                 label: 'Personal',
                 group: 'personal',
                 groupKey: 'personal',
-                isStandaloneGroup: true
+                isGroupRecord: true
+            }),
+            expect.objectContaining({
+                key: 'personal/errands',
+                group: 'personal',
+                groupKey: 'personal',
+                isGroupRecord: false
             })
         ]);
         expect(groups.break).toEqual([
@@ -241,7 +248,7 @@ describe('category-manager', () => {
                 label: 'Break',
                 group: 'break',
                 groupKey: 'break',
-                isStandaloneGroup: true
+                isGroupRecord: true
             })
         ]);
     });
@@ -294,6 +301,30 @@ describe('category-manager', () => {
             isLinkedToGroupFamily: true
         });
         expect(COLOR_FAMILIES.rose).toContain(category.color);
+    });
+
+    test('addCategory creates a compatibility group when the requested group key does not exist', async () => {
+        await initAndLoadCategories();
+
+        await addCategory({
+            groupKey: 'health',
+            label: 'Exercise',
+            color: '#10b981',
+            allowCreateGroup: true
+        });
+
+        expect(getGroupByKey('health')).toMatchObject({
+            key: 'health',
+            label: 'Health'
+        });
+        expect(getCategoryByKey('health/exercise')).toMatchObject({
+            groupKey: 'health',
+            color: '#10b981'
+        });
+        expect(getCategoryGroups().health).toEqual([
+            expect.objectContaining({ key: 'health', isGroupRecord: true }),
+            expect.objectContaining({ key: 'health/exercise', isGroupRecord: false })
+        ]);
     });
 
     test('category CRUD validates input and allows deleting unreferenced children', async () => {
