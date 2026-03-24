@@ -21,6 +21,11 @@ describe('category-colors', () => {
         expect(COLOR_FAMILIES.blue).toContain(getFamilyBaseColor('blue'));
     });
 
+    test('COLOR_FAMILIES family arrays are frozen', () => {
+        expect(Object.isFrozen(COLOR_FAMILIES.blue)).toBe(true);
+        expect(Object.isFrozen(COLOR_FAMILIES.green)).toBe(true);
+    });
+
     test('pickLinkedChildColor returns a family variation', () => {
         const color = pickLinkedChildColor('amber', 0);
         expect(COLOR_FAMILIES.amber).toContain(color);
@@ -34,6 +39,7 @@ describe('category-colors', () => {
     test('pickLinkedChildColor handles negative and non-integer indices safely', () => {
         expect(COLOR_FAMILIES.rose).toContain(pickLinkedChildColor('rose', -1));
         expect(pickLinkedChildColor('rose', 1.7)).toBe(COLOR_FAMILIES.rose[1]);
+        expect(pickLinkedChildColor('rose', '1')).toBe(COLOR_FAMILIES.rose[1]);
     });
 
     test('isColorInFamily detects whether a concrete color belongs to the family', () => {

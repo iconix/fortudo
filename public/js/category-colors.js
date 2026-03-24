@@ -1,9 +1,18 @@
-export const COLOR_FAMILIES = Object.freeze({
+const COLOR_FAMILIES_RAW = {
     blue: ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa'],
     green: ['#15803d', '#16a34a', '#22c55e', '#4ade80'],
     amber: ['#b45309', '#d97706', '#f59e0b', '#fbbf24'],
     rose: ['#be123c', '#e11d48', '#f43f5e', '#fb7185']
-});
+};
+
+export const COLOR_FAMILIES = Object.freeze(
+    Object.fromEntries(
+        Object.entries(COLOR_FAMILIES_RAW).map(([familyName, colors]) => [
+            familyName,
+            Object.freeze(colors)
+        ])
+    )
+);
 
 /**
  * Normalize a requested family name to a known family.
@@ -32,7 +41,8 @@ export function getFamilyBaseColor(familyName) {
  */
 export function pickLinkedChildColor(familyName, index = 0) {
     const family = COLOR_FAMILIES[normalizeFamilyName(familyName)];
-    const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+    const numericIndex = Number(index);
+    const normalizedIndex = Number.isFinite(numericIndex) ? Math.trunc(numericIndex) : 0;
     const safeIndex = ((normalizedIndex % family.length) + family.length) % family.length;
     return family[safeIndex];
 }
