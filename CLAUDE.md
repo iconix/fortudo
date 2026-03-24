@@ -68,6 +68,8 @@ Tests are in `__tests__/` with a shared `test-utils.js` for mocks and helpers. J
 - Single quotes, 4-space indentation, 100 char line width
 - `prefer-const`, `no-var`, strict equality (`===`)
 - JSDoc comments for public functions
+- Refactoring is cheap. Do not defer worthwhile structural cleanup just to save time or effort when the code you are touching would clearly benefit from it. Prefer the simplest design that keeps responsibilities clear.
+- Do not over-engineer. Avoid adding layers, modules, abstractions, or public seams unless they solve a real problem in the current codebase. Simplicity is the default; extra structure must earn its keep.
 
 ## Test-Driven Development
 
