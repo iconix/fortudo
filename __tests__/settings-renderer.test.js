@@ -34,6 +34,7 @@ import {
     getSettingsModalElement,
     initializeSettingsModalListeners
 } from '../public/js/settings-renderer.js';
+import { renderTaxonomyManagementContent } from '../public/js/settings/taxonomy-settings.js';
 
 let testDbCounter = 0;
 function uniqueRoomCode() {
@@ -185,6 +186,17 @@ describe('settings-renderer', () => {
 
             expect(document.getElementById('groups-list')).not.toBeNull();
             expect(document.getElementById('categories-list')).not.toBeNull();
+        });
+
+        test('extracted taxonomy settings module renders taxonomy section content', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
+
+            const markup = renderTaxonomyManagementContent();
+
+            expect(markup).toContain('Groups');
+            expect(markup).toContain('Categories');
+            expect(markup).toContain('add-group-form');
+            expect(markup).toContain('add-category-form');
         });
 
         test('hides taxonomy management when Activities disabled', async () => {
