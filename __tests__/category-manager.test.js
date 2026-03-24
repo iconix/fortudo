@@ -406,7 +406,11 @@ describe('category-manager', () => {
 
         expect(renderCategoryBadge(null)).toBe('');
         expect(renderCategoryBadge('work')).toContain('Work');
+        expect(renderCategoryBadge('work')).toContain('color: #e2e8f0');
+        expect(renderCategoryBadge('work')).toContain('background-color: rgba(15, 23, 42, 0.9)');
         expect(renderCategoryBadge('work/deep')).toContain('Deep Work');
+        expect(renderCategoryBadge('work/deep')).toContain('color: #e2e8f0');
+        expect(renderCategoryBadge('work/deep')).not.toContain('; color: #1d4ed8;');
         expect(renderCategoryBadge('missing')).toBe('');
     });
 });

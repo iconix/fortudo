@@ -90,7 +90,7 @@ export function renderCategoryBadge(categoryKey) {
     const safeLabel = escapeHtml(badgeData.label);
     const color = badgeData.color;
 
-    return `<span class="category-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
+    return `<span class="category-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs" style="background-color: rgba(15, 23, 42, 0.9); color: #e2e8f0; border: 1px solid ${color}55; box-shadow: inset 0 0 0 1px ${color}22;">
         <span class="w-1.5 h-1.5 rounded-full inline-block" style="background-color: ${color}"></span>
         ${safeLabel}
     </span>`;
