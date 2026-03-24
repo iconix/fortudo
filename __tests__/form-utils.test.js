@@ -19,7 +19,7 @@ import {
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
-import { getCategoryByKey } from '../public/js/category-manager.js';
+import { resolveCategoryKey } from '../public/js/category-manager.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock showAlert
@@ -28,7 +28,7 @@ jest.mock('../public/js/modal-manager.js', () => ({
 }));
 
 jest.mock('../public/js/category-manager.js', () => ({
-    getCategoryByKey: jest.fn()
+    resolveCategoryKey: jest.fn()
 }));
 
 describe('Form Utils Tests', () => {
@@ -320,8 +320,8 @@ describe('Form Utils Tests', () => {
                 </select>
             `;
 
-            getCategoryByKey.mockImplementation((key) =>
-                key === 'work/deep' ? { key, color: '#0ea5e9' } : null
+            resolveCategoryKey.mockImplementation((key) =>
+                key === 'work/deep' ? { kind: 'category', record: { key, color: '#0ea5e9' } } : null
             );
 
             initializeCategoryDropdownListener();
@@ -334,6 +334,29 @@ describe('Form Utils Tests', () => {
             expect(indicator.style.backgroundColor).toBe('rgb(14, 165, 233)');
         });
 
+        test('initializeCategoryDropdownListener updates the color dot from selected group keys', () => {
+            document.body.innerHTML = `
+                <span id="category-color-indicator"></span>
+                <select id="category-select">
+                    <option value="">No category</option>
+                    <option value="personal">Personal</option>
+                </select>
+            `;
+
+            resolveCategoryKey.mockImplementation((key) =>
+                key === 'personal' ? { kind: 'group', record: { key, color: '#ec4899' } } : null
+            );
+
+            initializeCategoryDropdownListener();
+
+            const select = document.getElementById('category-select');
+            const indicator = document.getElementById('category-color-indicator');
+            select.value = 'personal';
+            select.dispatchEvent(new Event('change'));
+
+            expect(indicator.style.backgroundColor).toBe('rgb(236, 72, 153)');
+        });
+
         test('initializeCategoryDropdownListener resets the color dot when no category is selected', () => {
             document.body.innerHTML = `
                 <span id="category-color-indicator"></span>
@@ -342,7 +365,7 @@ describe('Form Utils Tests', () => {
                 </select>
             `;
 
-            getCategoryByKey.mockReturnValue(null);
+            resolveCategoryKey.mockReturnValue(null);
 
             initializeCategoryDropdownListener();
 

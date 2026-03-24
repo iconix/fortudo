@@ -10,7 +10,7 @@ import {
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
 import { checkOverlap } from '../reschedule-engine.js';
-import { getCategoryByKey } from '../category-manager.js';
+import { resolveCategoryKey } from '../category-manager.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
@@ -259,8 +259,8 @@ export function initializeCategoryDropdownListener() {
     }
 
     const updateIndicator = () => {
-        const category = getCategoryByKey(select.value);
-        dot.style.backgroundColor = category ? category.color : '#64748b';
+        const resolved = resolveCategoryKey(select.value);
+        dot.style.backgroundColor = resolved ? resolved.record.color : '#64748b';
     };
 
     select.addEventListener('change', updateIndicator);
