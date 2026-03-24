@@ -2,7 +2,8 @@ const COLOR_FAMILIES_RAW = {
     blue: ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa'],
     green: ['#15803d', '#16a34a', '#22c55e', '#4ade80'],
     amber: ['#b45309', '#d97706', '#f59e0b', '#fbbf24'],
-    rose: ['#be123c', '#e11d48', '#f43f5e', '#fb7185']
+    rose: ['#be123c', '#e11d48', '#f43f5e', '#fb7185'],
+    gray: ['#374151', '#4b5563', '#6b7280', '#9ca3af']
 };
 
 export const COLOR_FAMILIES = Object.freeze(

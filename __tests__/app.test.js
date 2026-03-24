@@ -274,7 +274,7 @@ describe('App.js Callback Functions', () => {
             expect(categorySelect.querySelectorAll('optgroup')).toHaveLength(0);
             expect(categorySelect.options[1].value).toBe('work');
             expect(categorySelect.options[2].value).toBe('work/deep');
-            expect(categorySelect.options[2].textContent).toBe('  Deep Work');
+            expect(categorySelect.options[2].textContent).toBe('› Deep Work');
             expect(categorySelect.querySelector('option[value="work/deep"]')).not.toBeNull();
         });
 

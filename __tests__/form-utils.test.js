@@ -341,7 +341,7 @@ describe('Form Utils Tests', () => {
             expect(select.options[1].value).toBe('work');
             expect(select.options[1].textContent).toBe('Work');
             expect(select.options[2].value).toBe('work/deep');
-            expect(select.options[2].textContent).toBe('  Deep Work');
+            expect(select.options[2].textContent).toBe('› Deep Work');
             expect(select.options[3].value).toBe('personal');
         });
 

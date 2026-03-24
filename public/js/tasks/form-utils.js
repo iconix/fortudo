@@ -238,7 +238,7 @@ export function populateCategoryDropdown(selectElement, options) {
         option.value = optionData.value;
         option.textContent =
             optionData.indentLevel > 0
-                ? `${'  '.repeat(optionData.indentLevel)}${optionData.label}`
+                ? `${'› '.repeat(optionData.indentLevel)}${optionData.label}`
                 : optionData.label;
         selectElement.appendChild(option);
     }
