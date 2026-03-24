@@ -104,12 +104,9 @@ function renderCategoryList() {
     for (const [groupName, categories] of Object.entries(groups)) {
         html += `<div class="text-xs text-slate-500 uppercase tracking-wide mt-2 mb-1 first:mt-0">${escapeHtml(groupName)}</div>`;
         for (const category of categories) {
-            html += `
-                <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-slate-700/30 transition-colors group">
-                    <div class="flex items-center gap-2">
-                        <span class="category-dot w-3 h-3 rounded-full inline-block" style="background-color: ${category.color}"></span>
-                        <span class="text-sm text-slate-200">${escapeHtml(category.label)}</span>
-                    </div>
+            const actionButtons = category.isStandaloneGroup
+                ? ''
+                : `
                     <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}">
                             <i class="fa-solid fa-pen"></i>
@@ -118,6 +115,15 @@ function renderCategoryList() {
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
+                `;
+
+            html += `
+                <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-slate-700/30 transition-colors group">
+                    <div class="flex items-center gap-2">
+                        <span class="category-dot w-3 h-3 rounded-full inline-block" style="background-color: ${category.color}"></span>
+                        <span class="text-sm text-slate-200">${escapeHtml(category.label)}</span>
+                    </div>
+                    ${actionButtons}
                 </div>
             `;
         }

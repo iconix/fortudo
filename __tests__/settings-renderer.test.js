@@ -23,7 +23,7 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 import { initStorage, destroyStorage } from '../public/js/storage.js';
-import { loadCategories, getCategories } from '../public/js/category-manager.js';
+import { loadCategories, getCategoryGroups } from '../public/js/category-manager.js';
 import { setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import {
@@ -148,7 +148,22 @@ describe('settings-renderer', () => {
             renderSettingsContent();
 
             const categoryItems = document.querySelectorAll('[data-category-key]');
-            expect(categoryItems.length).toBe(getCategories().categories.length);
+            const expectedVisibleRows = Object.values(getCategoryGroups()).flat().length;
+            expect(categoryItems.length).toBe(expectedVisibleRows);
+            expect(document.getElementById('category-list').textContent).toContain('Personal');
+            expect(document.getElementById('category-list').textContent).toContain('Break');
+        });
+
+        test('standalone group rows render without edit or delete buttons', async () => {
+            setActivitiesEnabled(true);
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await loadCategories();
+            renderSettingsContent();
+
+            const personalRow = document.querySelector('[data-category-key="personal"]');
+            expect(personalRow).not.toBeNull();
+            expect(personalRow.querySelector('.btn-edit-category')).toBeNull();
+            expect(personalRow.querySelector('.btn-delete-category')).toBeNull();
         });
 
         test('hides category list when Activities disabled', async () => {
@@ -210,8 +225,6 @@ describe('settings-renderer', () => {
             await loadCategories();
             renderSettingsContent();
 
-            const initialCount = document.querySelectorAll('[data-category-key]').length;
-
             const addButton = document.getElementById('add-category-btn');
             addButton.click();
 
@@ -225,8 +238,10 @@ describe('settings-renderer', () => {
 
             await new Promise((resolve) => setTimeout(resolve, 50));
 
-            const newCount = document.querySelectorAll('[data-category-key]').length;
-            expect(newCount).toBe(initialCount + 1);
+            expect(
+                document.querySelector('[data-category-key="personal/exercise"]')
+            ).not.toBeNull();
+            expect(document.querySelector('[data-category-key="personal"]')).toBeNull();
         });
 
         test('cancel add hides and resets the add-category form', async () => {

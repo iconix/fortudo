@@ -145,16 +145,30 @@ export function getSelectableCategoryOptions() {
 export function getCategoryGroups() {
     return groups.reduce((result, group) => {
         const childCategories = getChildCategories(group.key);
-        if (childCategories.length > 0) {
-            result[group.key] = childCategories.map((category) => ({
-                key: category.key,
-                label: category.label,
-                color: category.color,
-                group: category.groupKey,
-                groupKey: category.groupKey,
-                isLinkedToGroupFamily: category.isLinkedToGroupFamily
-            }));
+        if (childCategories.length === 0) {
+            result[group.key] = [
+                {
+                    key: group.key,
+                    label: group.label,
+                    color: group.color,
+                    group: group.key,
+                    groupKey: group.key,
+                    isLinkedToGroupFamily: false,
+                    isStandaloneGroup: true
+                }
+            ];
+            return result;
         }
+
+        result[group.key] = childCategories.map((category) => ({
+            key: category.key,
+            label: category.label,
+            color: category.color,
+            group: category.groupKey,
+            groupKey: category.groupKey,
+            isLinkedToGroupFamily: category.isLinkedToGroupFamily,
+            isStandaloneGroup: false
+        }));
         return result;
     }, {});
 }

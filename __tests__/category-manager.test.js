@@ -31,6 +31,7 @@ import {
     TAXONOMY_SCHEMA_VERSION,
     loadCategories,
     getCategories,
+    getCategoryGroups,
     getGroupByKey,
     getCategoryByKey,
     resolveCategoryKey,
@@ -218,6 +219,31 @@ describe('category-manager', () => {
             label: 'Personal',
             indentLevel: 0
         });
+    });
+
+    test('getCategoryGroups includes zero-child groups for legacy consumers', async () => {
+        await initAndLoadCategories();
+
+        const groups = getCategoryGroups();
+
+        expect(groups.personal).toEqual([
+            expect.objectContaining({
+                key: 'personal',
+                label: 'Personal',
+                group: 'personal',
+                groupKey: 'personal',
+                isStandaloneGroup: true
+            })
+        ]);
+        expect(groups.break).toEqual([
+            expect.objectContaining({
+                key: 'break',
+                label: 'Break',
+                group: 'break',
+                groupKey: 'break',
+                isStandaloneGroup: true
+            })
+        ]);
     });
 
     test('addGroup slugifies the label, persists schema v3.5, and rejects collisions', async () => {
