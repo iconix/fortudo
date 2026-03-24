@@ -9,7 +9,6 @@ import {
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
-    populateCategoryDropdown,
     initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
@@ -29,9 +28,10 @@ import {
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
-import { loadCategories, getSelectableCategoryOptions } from './category-manager.js';
+import { loadCategories } from './category-manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
+import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
@@ -54,14 +54,9 @@ let refreshFromStoragePromise = null;
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
 
-function refreshTaskCategoryDropdown() {
-    const categorySelect = document.getElementById('category-select');
-    if (!(categorySelect instanceof HTMLSelectElement)) {
-        return;
-    }
-
-    populateCategoryDropdown(categorySelect, getSelectableCategoryOptions());
-    categorySelect.dispatchEvent(new Event('change'));
+function refreshTaxonomyUI() {
+    refreshTaskCategoryDropdownUI();
+    refreshTaskDisplays();
 }
 
 /**
@@ -217,7 +212,7 @@ async function initAndBootApp(roomCode) {
             if (categoryRow && categorySelect instanceof HTMLSelectElement) {
                 categoryRow.classList.remove('hidden');
                 initializeCategoryDropdownListener();
-                refreshTaskCategoryDropdown();
+                refreshTaxonomyUI();
             }
         }
     }
@@ -309,8 +304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeSettingsModalListeners(() => {
         renderSettingsContent({
             onTaxonomyChanged: () => {
-                refreshTaskCategoryDropdown();
-                refreshTaskDisplays();
+                refreshTaxonomyUI();
             }
         });
     });

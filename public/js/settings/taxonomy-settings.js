@@ -1,6 +1,7 @@
 import { COLOR_FAMILIES } from '../category-colors.js';
 import {
     getCategories,
+    getSelectableCategoryOptions,
     addGroup,
     updateGroup,
     deleteGroup,
@@ -8,6 +9,7 @@ import {
     updateCategory,
     deleteCategory
 } from '../category-manager.js';
+import { populateCategoryDropdown } from '../tasks/form-utils.js';
 import { showToast } from '../toast-manager.js';
 
 let isAddGroupFormVisible = false;
@@ -80,6 +82,16 @@ export function refreshTaxonomySettingsSection(options = {}) {
     if (settingsContent) {
         settingsContent.scrollTop = scrollTop;
     }
+}
+
+export function refreshTaskCategoryDropdownUI() {
+    const categorySelect = document.getElementById('category-select');
+    if (!(categorySelect instanceof HTMLSelectElement)) {
+        return;
+    }
+
+    populateCategoryDropdown(categorySelect, getSelectableCategoryOptions());
+    categorySelect.dispatchEvent(new Event('change'));
 }
 
 function renderGroupsList() {
