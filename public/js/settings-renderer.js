@@ -44,6 +44,8 @@ export function renderSettingsContent(options = {}) {
         return;
     }
 
+    container.classList.add('settings-scroll-area');
+
     const enabled = isActivitiesEnabled();
     container.innerHTML = `
         <div class="space-y-6">

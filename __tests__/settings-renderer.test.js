@@ -34,7 +34,10 @@ import {
     getSettingsModalElement,
     initializeSettingsModalListeners
 } from '../public/js/settings-renderer.js';
-import { renderTaxonomyManagementContent } from '../public/js/settings/taxonomy-settings.js';
+import {
+    renderTaxonomyManagementContent,
+    resetTaxonomySettingsViewState
+} from '../public/js/settings/taxonomy-settings.js';
 
 let testDbCounter = 0;
 function uniqueRoomCode() {
@@ -104,6 +107,7 @@ async function saveEditedCategoryColor(key, color) {
 
 beforeEach(() => {
     setupSettingsDOM();
+    resetTaxonomySettingsViewState();
     localStorage.clear();
     jest.clearAllMocks();
 });
@@ -199,6 +203,34 @@ describe('settings-renderer', () => {
             expect(markup).toContain('add-category-form');
         });
 
+        test('renderSettingsContent applies the custom settings scroll area class', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
+
+            expect(
+                document
+                    .getElementById('settings-content')
+                    .classList.contains('settings-scroll-area')
+            ).toBe(true);
+        });
+
+        test('category add form uses a compact group slash category row with placeholders', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
+
+            await clickAndWait(document.getElementById('add-category-btn'));
+
+            const form = document.getElementById('add-category-form');
+            const parentGroup = form.querySelector('[name="parent-group"]');
+            const categoryLabel = form.querySelector('[name="category-label"]');
+            const slash = form.querySelector('[data-category-path-separator]');
+
+            expect(parentGroup.getAttribute('aria-label')).toBe('Parent group');
+            expect(parentGroup.options[0].textContent).toBe('Group');
+            expect(categoryLabel.getAttribute('placeholder')).toBe('Category name');
+            expect(slash.textContent).toBe('/');
+            expect(form.textContent).not.toContain('Parent group');
+            expect(form.textContent).not.toContain('Category name');
+        });
+
         test('hides taxonomy management when Activities disabled', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await loadCategories();
@@ -245,6 +277,7 @@ describe('settings-renderer', () => {
             form.querySelector('[name="group-label"]').value = 'Health';
             form.querySelector('[name="group-family"]').value = 'green';
             await submitForm(form);
+            await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(getGroupByKey('health')).not.toBeNull();
             expect(document.querySelector('[data-group-key="health"]')).not.toBeNull();

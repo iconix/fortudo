@@ -286,25 +286,15 @@ function renderAddCategoryForm() {
     const { groups } = getCategories();
 
     return `
-        <form id="add-category-form" class="${isAddCategoryFormVisible ? '' : 'hidden '}space-y-3 bg-slate-700/30 rounded-lg p-3 border border-slate-600">
-            <div class="space-y-1">
-                <label class="text-xs text-slate-400" for="category-label">Category name</label>
-                <input
-                    id="category-label"
-                    type="text"
-                    name="category-label"
-                    placeholder="Category name"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
-                />
-            </div>
-            <div class="space-y-1">
-                <label class="text-xs text-slate-400" for="parent-group">Parent group</label>
+        <form id="add-category-form" class="${isAddCategoryFormVisible ? '' : 'hidden '}bg-slate-700/30 rounded-lg p-3 border border-slate-600">
+            <div class="flex flex-wrap items-center gap-2">
                 <select
                     id="parent-group"
                     name="parent-group"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    aria-label="Parent group"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[9rem] flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
                 >
-                    <option value="">Select a group</option>
+                    <option value="">Group</option>
                     ${groups
                         .map(
                             (group) =>
@@ -312,10 +302,21 @@ function renderAddCategoryForm() {
                         )
                         .join('')}
                 </select>
-            </div>
-            <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
-                <button type="button" id="cancel-add-category" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
+                <span
+                    data-category-path-separator
+                    class="text-slate-500 text-lg leading-none shrink-0"
+                    aria-hidden="true"
+                >/</span>
+                <input
+                    id="category-label"
+                    type="text"
+                    name="category-label"
+                    aria-label="Category name"
+                    placeholder="Category name"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[11rem] flex-[2] border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                />
+                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-2 rounded-lg text-sm transition-colors">Save</button>
+                <button type="button" id="cancel-add-category" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-2 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
     `;
