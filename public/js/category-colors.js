@@ -11,7 +11,7 @@ export const COLOR_FAMILIES = Object.freeze({
  * @returns {keyof typeof COLOR_FAMILIES}
  */
 export function normalizeFamilyName(familyName) {
-    return COLOR_FAMILIES[familyName] ? familyName : 'blue';
+    return Object.prototype.hasOwnProperty.call(COLOR_FAMILIES, familyName) ? familyName : 'blue';
 }
 
 /**
@@ -32,7 +32,9 @@ export function getFamilyBaseColor(familyName) {
  */
 export function pickLinkedChildColor(familyName, index = 0) {
     const family = COLOR_FAMILIES[normalizeFamilyName(familyName)];
-    return family[index % family.length];
+    const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+    const safeIndex = ((normalizedIndex % family.length) + family.length) % family.length;
+    return family[safeIndex];
 }
 
 /**
@@ -42,6 +44,10 @@ export function pickLinkedChildColor(familyName, index = 0) {
  * @returns {boolean}
  */
 export function isColorInFamily(familyName, color) {
+    if (typeof color !== 'string') {
+        return false;
+    }
+
     const family = COLOR_FAMILIES[normalizeFamilyName(familyName)];
     return family.includes(color.toLowerCase());
 }

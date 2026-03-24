@@ -14,6 +14,7 @@ describe('category-colors', () => {
     test('normalizeFamilyName accepts known families and falls back to blue', () => {
         expect(normalizeFamilyName('green')).toBe('green');
         expect(normalizeFamilyName('unknown')).toBe('blue');
+        expect(normalizeFamilyName('__proto__')).toBe('blue');
     });
 
     test('getFamilyBaseColor returns a concrete color from the family', () => {
@@ -30,8 +31,19 @@ describe('category-colors', () => {
         expect(pickLinkedChildColor('rose', 1)).not.toBe(pickLinkedChildColor('rose', 2));
     });
 
+    test('pickLinkedChildColor handles negative and non-integer indices safely', () => {
+        expect(COLOR_FAMILIES.rose).toContain(pickLinkedChildColor('rose', -1));
+        expect(pickLinkedChildColor('rose', 1.7)).toBe(COLOR_FAMILIES.rose[1]);
+    });
+
     test('isColorInFamily detects whether a concrete color belongs to the family', () => {
         expect(isColorInFamily('blue', COLOR_FAMILIES.blue[0])).toBe(true);
         expect(isColorInFamily('blue', '#22c55e')).toBe(false);
+    });
+
+    test('isColorInFamily returns false for non-string colors', () => {
+        expect(isColorInFamily('blue', null)).toBe(false);
+        expect(isColorInFamily('blue', undefined)).toBe(false);
+        expect(isColorInFamily('blue', 123)).toBe(false);
     });
 });
