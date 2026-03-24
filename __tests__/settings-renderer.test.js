@@ -78,10 +78,20 @@ async function submitForm(form) {
     await new Promise((resolve) => setTimeout(resolve, 25));
 }
 
+async function clickAndWait(element) {
+    element.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function openInlineGroupEditor(key) {
+    const editButton = document.querySelector(`.btn-edit-group[data-key="${key}"]`);
+    await clickAndWait(editButton);
+    return document.querySelector(`.edit-group-form[data-key="${key}"]`);
+}
+
 async function openInlineCategoryEditor(key) {
     const editButton = document.querySelector(`.btn-edit-category[data-key="${key}"]`);
-    editButton.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await clickAndWait(editButton);
     return document.querySelector(`.edit-category-form[data-key="${key}"]`);
 }
 
@@ -217,7 +227,7 @@ describe('settings-renderer', () => {
         test('group add form creates a standalone selectable group', async () => {
             await renderEnabledSettings();
 
-            document.getElementById('add-group-btn').click();
+            await clickAndWait(document.getElementById('add-group-btn'));
 
             const form = document.getElementById('add-group-form');
             form.querySelector('[name="group-label"]').value = 'Health';
@@ -228,12 +238,42 @@ describe('settings-renderer', () => {
             expect(document.querySelector('[data-group-key="health"]')).not.toBeNull();
         });
 
+        test('add group failure shows toast for duplicate groups', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-group-btn'));
+
+            const form = document.getElementById('add-group-form');
+            form.querySelector('[name="group-label"]').value = 'Work';
+            form.querySelector('[name="group-family"]').value = 'blue';
+            await submitForm(form);
+
+            expect(showToast).toHaveBeenCalledWith('Group "work" already exists', {
+                theme: 'rose'
+            });
+        });
+
+        test('cancel add group hides and resets the form', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-group-btn'));
+
+            const form = document.getElementById('add-group-form');
+            const labelInput = form.querySelector('[name="group-label"]');
+            labelInput.value = 'Temporary';
+
+            await clickAndWait(document.getElementById('cancel-add-group'));
+
+            expect(document.getElementById('add-group-form').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.querySelector('[name="group-label"]').value).toBe('');
+        });
+
         test('group edit form changes family and refreshes linked children', async () => {
             await renderEnabledSettings();
 
-            document.querySelector('.btn-edit-group[data-key="work"]').click();
-
-            const form = document.querySelector('.edit-group-form[data-key="work"]');
+            const form = await openInlineGroupEditor('work');
             form.querySelector('[name="edit-group-family"]').value = 'amber';
             await submitForm(form);
 
@@ -241,10 +281,57 @@ describe('settings-renderer', () => {
             expect(getCategoryByKey('work/meetings').color).toBe(COLOR_FAMILIES.amber[1]);
         });
 
+        test('saving a group edit preserves an open category add draft', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-category-btn'));
+
+            const categoryAddForm = document.getElementById('add-category-form');
+            categoryAddForm.querySelector('[name="category-label"]').value = 'Draft Category';
+            categoryAddForm.querySelector('[name="parent-group"]').value = 'work';
+
+            const groupEditForm = await openInlineGroupEditor('work');
+            groupEditForm.querySelector('[name="edit-group-family"]').value = 'amber';
+            await submitForm(groupEditForm);
+
+            const refreshedCategoryAddForm = document.getElementById('add-category-form');
+            expect(refreshedCategoryAddForm.classList.contains('hidden')).toBe(false);
+            expect(refreshedCategoryAddForm.querySelector('[name="category-label"]').value).toBe(
+                'Draft Category'
+            );
+            expect(refreshedCategoryAddForm.querySelector('[name="parent-group"]').value).toBe(
+                'work'
+            );
+        });
+
+        test('saving a group edit preserves an open category edit draft', async () => {
+            await renderEnabledSettings();
+
+            const categoryEditForm = await openInlineCategoryEditor('work/deep');
+            categoryEditForm.querySelector('[name="edit-category-label"]').value =
+                'Draft Deep Work';
+            categoryEditForm.querySelector('[name="edit-category-color"]').value = '#22c55e';
+
+            const groupEditForm = await openInlineGroupEditor('work');
+            groupEditForm.querySelector('[name="edit-group-family"]').value = 'amber';
+            await submitForm(groupEditForm);
+
+            const refreshedCategoryEditForm = document.querySelector(
+                '.edit-category-form[data-key="work/deep"]'
+            );
+            expect(refreshedCategoryEditForm).not.toBeNull();
+            expect(
+                refreshedCategoryEditForm.querySelector('[name="edit-category-label"]').value
+            ).toBe('Draft Deep Work');
+            expect(
+                refreshedCategoryEditForm.querySelector('[name="edit-category-color"]').value
+            ).toBe('#22c55e');
+        });
+
         test('category add form requires a parent group', async () => {
             await renderEnabledSettings();
 
-            document.getElementById('add-category-btn').click();
+            await clickAndWait(document.getElementById('add-category-btn'));
 
             const form = document.getElementById('add-category-form');
             form.querySelector('[name="category-label"]').value = 'Exercise';
@@ -254,6 +341,52 @@ describe('settings-renderer', () => {
             expect(getCategoryByKey('work/exercise')).toBeNull();
             expect(getCategoryByKey('health/exercise')).toBeNull();
             expect(showToast).toHaveBeenCalledWith('Parent group is required', {
+                theme: 'rose'
+            });
+        });
+
+        test('add category failure shows toast for duplicate categories', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-category-btn'));
+
+            const form = document.getElementById('add-category-form');
+            form.querySelector('[name="category-label"]').value = 'Admin';
+            form.querySelector('[name="parent-group"]').value = 'work';
+            await submitForm(form);
+
+            expect(showToast).toHaveBeenCalledWith('Category "work/admin" already exists', {
+                theme: 'rose'
+            });
+        });
+
+        test('cancel add category hides and resets the form', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-category-btn'));
+
+            const form = document.getElementById('add-category-form');
+            form.querySelector('[name="category-label"]').value = 'Temporary';
+            form.querySelector('[name="parent-group"]').value = 'work';
+
+            await clickAndWait(document.getElementById('cancel-add-category'));
+
+            expect(document.getElementById('add-category-form').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.querySelector('[name="category-label"]').value).toBe('');
+            expect(document.querySelector('[name="parent-group"]').value).toBe('');
+        });
+
+        test('delete failure shows toast', async () => {
+            await renderEnabledSettings();
+
+            const deleteButton = document.querySelector('.btn-delete-category');
+            deleteButton.dataset.key = 'missing/category';
+
+            await clickAndWait(deleteButton);
+
+            expect(showToast).toHaveBeenCalledWith('Category "missing/category" not found', {
                 theme: 'rose'
             });
         });
@@ -277,11 +410,40 @@ describe('settings-renderer', () => {
             expect(document.getElementById('categories-list').textContent).toContain('Linked');
         });
 
+        test('cancel edit restores the category row', async () => {
+            await renderEnabledSettings();
+
+            await openInlineCategoryEditor('work/deep');
+            await clickAndWait(document.querySelector('.btn-cancel-edit-category'));
+
+            expect(document.querySelector('.edit-category-form[data-key="work/deep"]')).toBeNull();
+            expect(document.querySelector('[data-category-key="work/deep"]')).not.toBeNull();
+            expect(document.getElementById('categories-list').textContent).toContain('Deep Work');
+        });
+
+        test('close and reopen clears stale open forms and editors', async () => {
+            const onOpen = jest.fn(() => renderSettingsContent());
+            initializeSettingsModalListeners(onOpen);
+            await renderEnabledSettings();
+
+            await clickAndWait(document.getElementById('add-group-btn'));
+            await openInlineCategoryEditor('work/deep');
+            openSettingsModal();
+
+            await clickAndWait(document.getElementById('close-settings-modal'));
+            await clickAndWait(document.getElementById('settings-gear-btn'));
+
+            expect(document.getElementById('add-group-form').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.querySelector('.edit-category-form[data-key="work/deep"]')).toBeNull();
+        });
+
         test('taxonomy changes call onTaxonomyChanged callback', async () => {
             const onTaxonomyChanged = jest.fn();
             await renderEnabledSettings({ onTaxonomyChanged });
 
-            document.getElementById('add-group-btn').click();
+            await clickAndWait(document.getElementById('add-group-btn'));
             const form = document.getElementById('add-group-form');
             form.querySelector('[name="group-label"]').value = 'Fitness';
             form.querySelector('[name="group-family"]').value = 'rose';

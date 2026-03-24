@@ -17,6 +17,13 @@ let isAddCategoryFormVisible = false;
 let editingGroupKey = null;
 let editingCategoryKey = null;
 
+function resetSettingsViewState() {
+    isAddGroupFormVisible = false;
+    isAddCategoryFormVisible = false;
+    editingGroupKey = null;
+    editingCategoryKey = null;
+}
+
 /**
  * Get the settings modal element.
  * @returns {HTMLElement|null}
@@ -43,6 +50,7 @@ export function closeSettingsModal() {
     if (modal) {
         modal.classList.add('hidden');
     }
+    resetSettingsViewState();
 }
 
 /**
@@ -79,42 +87,48 @@ export function renderSettingsContent(options = {}) {
             </div>
 
             <div id="taxonomy-management-section" class="space-y-6 ${enabled ? '' : 'hidden'}">
-                <section class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
-                            <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
-                        </div>
-                        <button id="add-group-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
-                            <i class="fa-solid fa-plus text-xs"></i> Add
-                        </button>
-                    </div>
-                    <div id="groups-list" class="space-y-2">
-                        ${renderGroupsList()}
-                    </div>
-                    ${renderAddGroupForm()}
-                </section>
-
-                <section class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
-                            <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
-                        </div>
-                        <button id="add-category-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
-                            <i class="fa-solid fa-plus text-xs"></i> Add
-                        </button>
-                    </div>
-                    <div id="categories-list" class="space-y-3">
-                        ${renderCategoriesList()}
-                    </div>
-                    ${renderAddCategoryForm()}
-                </section>
+                ${renderTaxonomyManagementContent()}
             </div>
         </div>
     `;
 
     wireSettingsEvents();
+}
+
+function renderTaxonomyManagementContent() {
+    return `
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
+                    <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
+                </div>
+                <button id="add-group-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-plus text-xs"></i> Add
+                </button>
+            </div>
+            <div id="groups-list" class="space-y-2">
+                ${renderGroupsList()}
+            </div>
+            ${renderAddGroupForm()}
+        </section>
+
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
+                    <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
+                </div>
+                <button id="add-category-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-plus text-xs"></i> Add
+                </button>
+            </div>
+            <div id="categories-list" class="space-y-3">
+                ${renderCategoriesList()}
+            </div>
+            ${renderAddCategoryForm()}
+        </section>
+    `;
 }
 
 function renderGroupsList() {
@@ -612,7 +626,24 @@ function bindCategoryEvents() {
 }
 
 function refreshSettingsLists() {
-    renderSettingsContent(currentRenderOptions);
+    const taxonomySection = document.getElementById('taxonomy-management-section');
+    if (!taxonomySection) {
+        renderSettingsContent(currentRenderOptions);
+        return;
+    }
+
+    const settingsContent = document.getElementById('settings-content');
+    const scrollTop = settingsContent?.scrollTop ?? 0;
+    const draftState = captureTaxonomyDraftState();
+
+    taxonomySection.innerHTML = renderTaxonomyManagementContent();
+    restoreTaxonomyDraftState(draftState);
+    bindGroupEvents();
+    bindCategoryEvents();
+
+    if (settingsContent) {
+        settingsContent.scrollTop = scrollTop;
+    }
 }
 
 async function applyAndRefresh(asyncOperation, onTaxonomyChanged) {
@@ -629,6 +660,7 @@ export function initializeSettingsModalListeners(onOpen) {
     const gearButton = document.getElementById('settings-gear-btn');
     if (gearButton) {
         gearButton.addEventListener('click', () => {
+            resetSettingsViewState();
             if (onOpen) {
                 onOpen();
             }
@@ -657,6 +689,98 @@ export function initializeSettingsModalListeners(onOpen) {
 
 function titleCase(value) {
     return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function captureTaxonomyDraftState() {
+    return {
+        groupAdd: captureFormDraftState('add-group-form', ['group-label', 'group-family']),
+        categoryAdd: captureFormDraftState('add-category-form', ['category-label', 'parent-group']),
+        groupEdit: captureFormDraftState(
+            `.edit-group-form[data-key="${editingGroupKey}"]`,
+            ['edit-group-label', 'edit-group-family'],
+            true
+        ),
+        categoryEdit: captureFormDraftState(
+            `.edit-category-form[data-key="${editingCategoryKey}"]`,
+            ['edit-category-label', 'edit-category-color'],
+            true
+        )
+    };
+}
+
+function captureFormDraftState(formSelector, fieldNames, useQuerySelector = false) {
+    const form = useQuerySelector
+        ? document.querySelector(formSelector)
+        : document.getElementById(formSelector);
+    if (!form) {
+        return null;
+    }
+
+    return fieldNames.reduce(
+        (state, fieldName) => {
+            const field = form.querySelector(`[name="${fieldName}"]`);
+            state.values[fieldName] = field ? field.value : '';
+            return state;
+        },
+        {
+            isVisible: !form.classList.contains('hidden'),
+            values: {}
+        }
+    );
+}
+
+function restoreTaxonomyDraftState(draftState) {
+    restoreFormDraftState(
+        'add-group-form',
+        draftState.groupAdd,
+        isAddGroupFormVisible && !editingGroupKey
+    );
+    restoreFormDraftState(
+        'add-category-form',
+        draftState.categoryAdd,
+        isAddCategoryFormVisible && !editingCategoryKey
+    );
+    restoreFormDraftState(
+        `.edit-group-form[data-key="${editingGroupKey}"]`,
+        draftState.groupEdit,
+        !!editingGroupKey,
+        true
+    );
+    restoreFormDraftState(
+        `.edit-category-form[data-key="${editingCategoryKey}"]`,
+        draftState.categoryEdit,
+        !!editingCategoryKey,
+        true
+    );
+}
+
+function restoreFormDraftState(formSelector, draftState, shouldRestore, useQuerySelector = false) {
+    if (!draftState || !shouldRestore) {
+        return;
+    }
+
+    const form = useQuerySelector
+        ? document.querySelector(formSelector)
+        : document.getElementById(formSelector);
+    if (!form) {
+        return;
+    }
+
+    Object.entries(draftState.values).forEach(([fieldName, value]) => {
+        const field = form.querySelector(`[name="${fieldName}"]`);
+        if (!field) {
+            return;
+        }
+
+        if (field instanceof HTMLSelectElement) {
+            if (Array.from(field.options).some((option) => option.value === value)) {
+                field.value = value;
+            }
+            return;
+        }
+
+        field.value = value;
+    });
 }
 
 function escapeHtml(value) {
