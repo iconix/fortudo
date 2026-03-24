@@ -1,7 +1,7 @@
 import { isActivitiesEnabled, setActivitiesEnabled } from './settings-manager.js';
 import {
-    getCategories,
     getCategoryGroups,
+    getCategoryByKey,
     addCategory,
     updateCategory,
     deleteCategory
@@ -192,11 +192,8 @@ function wireSettingsEvents() {
                 return;
             }
 
-            const slug = label.toLowerCase().replace(/\s+/g, '-');
-            const key = group === slug ? group : `${group}/${slug}`;
-
             try {
-                await addCategory({ key, label, color, group });
+                await addCategory({ groupKey: group, label, color });
                 addForm.classList.add('hidden');
                 addForm.reset();
                 refreshCategoryList();
@@ -241,7 +238,7 @@ function renderInlineCategoryEditor(key) {
     const row = Array.from(categoryList?.querySelectorAll('[data-category-key]') || []).find(
         (element) => element.dataset.categoryKey === key
     );
-    const category = getCategories().find((entry) => entry.key === key);
+    const category = getCategoryByKey(key);
     if (!row || !category) {
         return;
     }

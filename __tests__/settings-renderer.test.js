@@ -148,7 +148,7 @@ describe('settings-renderer', () => {
             renderSettingsContent();
 
             const categoryItems = document.querySelectorAll('[data-category-key]');
-            expect(categoryItems.length).toBe(getCategories().length);
+            expect(categoryItems.length).toBe(getCategories().categories.length);
         });
 
         test('hides category list when Activities disabled', async () => {
@@ -220,7 +220,7 @@ describe('settings-renderer', () => {
 
             form.querySelector('[name="category-label"]').value = 'Exercise';
             form.querySelector('[name="category-color"]').value = '#10b981';
-            form.querySelector('[name="category-group"]').value = 'health';
+            form.querySelector('[name="category-group"]').value = 'personal';
             form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
             await new Promise((resolve) => setTimeout(resolve, 50));
@@ -294,7 +294,9 @@ describe('settings-renderer', () => {
             renderSettingsContent();
 
             const initialCount = document.querySelectorAll('[data-category-key]').length;
-            const deleteButton = document.querySelector('.btn-delete-category[data-key="break"]');
+            const deleteButton = document.querySelector(
+                '.btn-delete-category[data-key="work/admin"]'
+            );
 
             deleteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
