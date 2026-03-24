@@ -306,6 +306,42 @@ describe('App.js Callback Functions', () => {
             toastSpy.mockRestore();
         });
 
+        test('settings taxonomy changes rerender visible task badges without reload', async () => {
+            const taskWithCategory = createTaskWithDateTime({
+                description: 'Deep Work Task',
+                startTime: '09:00',
+                duration: 60
+            });
+            taskWithCategory.category = 'work/deep';
+
+            await setupAppWithTasks([taskWithCategory]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            let badge = document.querySelector('#scheduled-task-list .category-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Deep Work');
+            expect(badge.getAttribute('style')).toContain('background-color');
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.querySelector('.btn-edit-group[data-key="work"]').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            const editForm = document.querySelector('.edit-group-form[data-key="work"]');
+            editForm.querySelector('[name="edit-group-family"]').value = 'amber';
+            editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            badge = document.querySelector('#scheduled-task-list .category-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Deep Work');
+            expect(badge.getAttribute('style')).toContain('#b45309');
+        });
+
         test('settings taxonomy changes do not overwrite an in-progress start-time draft', async () => {
             await setupAppWithTasks([]);
             localStorage.setItem('fortudo-activities-enabled', 'true');
