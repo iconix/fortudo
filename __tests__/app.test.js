@@ -261,7 +261,7 @@ describe('App.js Callback Functions', () => {
             expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
         });
 
-        test('shows and populates the category dropdown when Activities are enabled', async () => {
+        test('shows and populates the category dropdown with flattened taxonomy options when Activities are enabled', async () => {
             await setupAppWithTasks([]);
             localStorage.setItem('fortudo-activities-enabled', 'true');
             document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
@@ -271,8 +271,64 @@ describe('App.js Callback Functions', () => {
             const categorySelect = document.getElementById('category-select');
 
             expect(categoryRow.classList.contains('hidden')).toBe(false);
-            expect(categorySelect.querySelectorAll('optgroup').length).toBeGreaterThan(0);
+            expect(categorySelect.querySelectorAll('optgroup')).toHaveLength(0);
+            expect(categorySelect.options[1].value).toBe('work');
+            expect(categorySelect.options[2].value).toBe('work/deep');
+            expect(categorySelect.options[2].textContent).toBe('  Deep Work');
             expect(categorySelect.querySelector('option[value="work/deep"]')).not.toBeNull();
+        });
+
+        test('settings taxonomy changes refresh the add-task dropdown live', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const toastSpy = jest
+                .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                .mockImplementation(() => {});
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.getElementById('add-group-btn').click();
+
+            const addGroupForm = document.getElementById('add-group-form');
+            addGroupForm.querySelector('[name="group-label"]').value = 'Health';
+            addGroupForm.querySelector('[name="group-family"]').value = 'green';
+            addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const categorySelect = document.getElementById('category-select');
+            expect(categorySelect.querySelector('option[value="health"]')).not.toBeNull();
+            expect(toastSpy).not.toHaveBeenCalled();
+            toastSpy.mockRestore();
+        });
+
+        test('settings taxonomy changes do not overwrite an in-progress start-time draft', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            startTimeInput.value = '13:45';
+            startTimeInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.getElementById('add-group-btn').click();
+
+            const addGroupForm = document.getElementById('add-group-form');
+            addGroupForm.querySelector('[name="group-label"]').value = 'Health';
+            addGroupForm.querySelector('[name="group-family"]').value = 'green';
+            addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            expect(startTimeInput.value).toBe('13:45');
         });
     });
 

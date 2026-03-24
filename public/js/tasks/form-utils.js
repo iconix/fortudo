@@ -167,9 +167,13 @@ export function extractTaskFormData(formElement) {
     }
 
     let taskData = { description, taskType };
-    const category = formData.get('category')?.toString() || null;
-    if (category) {
-        taskData.category = category;
+    const categoryKey = formData.get('category')?.toString() || null;
+    if (categoryKey) {
+        if (!resolveCategoryKey(categoryKey)) {
+            showAlert('Selected category is no longer available.', getThemeForTaskType(taskType));
+            return null;
+        }
+        taskData.category = categoryKey;
     }
 
     if (taskType === 'scheduled') {
@@ -218,32 +222,31 @@ export function getTaskFormElement() {
 }
 
 /**
- * Populate the category dropdown with grouped options.
+ * Populate the category dropdown with flattened taxonomy options.
  * @param {HTMLSelectElement} selectElement
- * @param {Object<string, Array<{key: string, label: string}>>} groups
+ * @param {Array<{value: string, label: string, indentLevel: number}>} options
  */
-export function populateCategoryDropdown(selectElement, groups) {
+export function populateCategoryDropdown(selectElement, options) {
     const currentValue = selectElement.value;
 
     while (selectElement.options.length > 1) {
         selectElement.remove(1);
     }
 
-    for (const [groupName, categories] of Object.entries(groups)) {
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = groupName.charAt(0).toUpperCase() + groupName.slice(1);
-
-        for (const category of categories) {
-            const option = document.createElement('option');
-            option.value = category.key;
-            option.textContent = category.label;
-            optgroup.appendChild(option);
-        }
-
-        selectElement.appendChild(optgroup);
+    for (const optionData of options) {
+        const option = document.createElement('option');
+        option.value = optionData.value;
+        option.textContent =
+            optionData.indentLevel > 0
+                ? `${'  '.repeat(optionData.indentLevel)}${optionData.label}`
+                : optionData.label;
+        selectElement.appendChild(option);
     }
 
-    if (currentValue) {
+    if (
+        currentValue &&
+        Array.from(selectElement.options).some((option) => option.value === currentValue)
+    ) {
         selectElement.value = currentValue;
     }
 }

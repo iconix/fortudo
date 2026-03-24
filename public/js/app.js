@@ -29,7 +29,7 @@ import {
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
-import { loadCategories, getCategoryGroups } from './category-manager.js';
+import { loadCategories, getSelectableCategoryOptions } from './category-manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { logger } from './utils.js';
@@ -50,6 +50,19 @@ let unsubscribeSyncStatus = null;
 
 /** @type {Promise<void> | null} */
 let refreshFromStoragePromise = null;
+
+/** @type {() => void} */
+let refreshTaskDisplays = () => {};
+
+function refreshTaskCategoryDropdown() {
+    const categorySelect = document.getElementById('category-select');
+    if (!(categorySelect instanceof HTMLSelectElement)) {
+        return;
+    }
+
+    populateCategoryDropdown(categorySelect, getSelectableCategoryOptions());
+    categorySelect.dispatchEvent(new Event('change'));
+}
 
 /**
  * Use an isolated room code for preview deployments so they never touch prod data.
@@ -124,6 +137,16 @@ async function initAndBootApp(roomCode) {
     // Create callback objects
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
     const unscheduledTaskEventCallbacks = createUnscheduledTaskCallbacks();
+    refreshTaskDisplays = () => {
+        const allTasks = getTaskState();
+        renderTasks(
+            allTasks.filter((task) => task.type === 'scheduled'),
+            scheduledTaskEventCallbacks
+        );
+        renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+        refreshActiveTaskColor(allTasks);
+        refreshCurrentGapHighlight();
+    };
 
     const appCallbacks = {
         onTaskFormSubmit: async (formElement) => {
@@ -193,8 +216,8 @@ async function initAndBootApp(roomCode) {
             const categorySelect = document.getElementById('category-select');
             if (categoryRow && categorySelect instanceof HTMLSelectElement) {
                 categoryRow.classList.remove('hidden');
-                populateCategoryDropdown(categorySelect, getCategoryGroups());
                 initializeCategoryDropdownListener();
+                refreshTaskCategoryDropdown();
             }
         }
     }
@@ -241,14 +264,7 @@ async function initAndBootApp(roomCode) {
     window.addEventListener('focus', syncOnFocus, { signal });
 
     // Initial render
-    const allTasks = getTaskState();
-    renderTasks(
-        allTasks.filter((t) => t.type === 'scheduled'),
-        scheduledTaskEventCallbacks
-    );
-    renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
-    refreshActiveTaskColor(allTasks);
-    refreshCurrentGapHighlight();
+    refreshTaskDisplays();
 
     const suggested = getSuggestedStartTime();
     logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
@@ -291,7 +307,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     initializeSettingsModalListeners(() => {
-        renderSettingsContent();
+        renderSettingsContent({
+            onTaxonomyChanged: () => {
+                refreshTaskCategoryDropdown();
+                refreshTaskDisplays();
+            }
+        });
     });
 
     const activeRoom = getActiveRoom();

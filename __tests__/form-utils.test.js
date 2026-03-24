@@ -247,10 +247,38 @@ describe('Form Utils Tests', () => {
                 `
             );
 
+            resolveCategoryKey.mockReturnValue({
+                kind: 'category',
+                record: { key: 'work/deep', color: '#0ea5e9' }
+            });
+
             const result = extractTaskFormData(form);
 
             expect(result).not.toBeNull();
             expect(result.category).toBe('work/deep');
+        });
+
+        test('extractTaskFormData includes a valid group key when selected', () => {
+            const form = createScheduledTaskForm('Test task', '09:00', '1', '0');
+            form.insertAdjacentHTML(
+                'beforeend',
+                `
+                    <select name="category">
+                        <option value="">No category</option>
+                        <option value="work" selected>Work</option>
+                    </select>
+                `
+            );
+
+            resolveCategoryKey.mockReturnValue({
+                kind: 'group',
+                record: { key: 'work', color: '#2563eb' }
+            });
+
+            const result = extractTaskFormData(form);
+
+            expect(result).not.toBeNull();
+            expect(result.category).toBe('work');
         });
 
         test('extractTaskFormData omits category when empty', () => {
@@ -269,10 +297,33 @@ describe('Form Utils Tests', () => {
             expect(result).not.toBeNull();
             expect(result).not.toHaveProperty('category');
         });
+
+        test('extractTaskFormData rejects stale category keys no longer present in taxonomy', () => {
+            const form = createScheduledTaskForm('Test task', '09:00', '1', '0');
+            form.insertAdjacentHTML(
+                'beforeend',
+                `
+                    <select name="category">
+                        <option value="">No category</option>
+                        <option value="missing/group" selected>Missing</option>
+                    </select>
+                `
+            );
+
+            resolveCategoryKey.mockReturnValue(null);
+
+            const result = extractTaskFormData(form);
+
+            expect(result).toBeNull();
+            expect(showAlert).toHaveBeenCalledWith(
+                'Selected category is no longer available.',
+                'teal'
+            );
+        });
     });
 
     describe('category helpers', () => {
-        test('populateCategoryDropdown adds grouped category options', () => {
+        test('populateCategoryDropdown renders a group option followed by indented children', () => {
             document.body.innerHTML = `
                 <select id="category-select">
                     <option value="">No category</option>
@@ -280,14 +331,18 @@ describe('Form Utils Tests', () => {
             `;
 
             const select = document.getElementById('category-select');
-            populateCategoryDropdown(select, {
-                work: [{ key: 'work/deep', label: 'Deep Work' }],
-                personal: [{ key: 'personal', label: 'Personal' }]
-            });
+            populateCategoryDropdown(select, [
+                { value: 'work', label: 'Work', indentLevel: 0 },
+                { value: 'work/deep', label: 'Deep Work', indentLevel: 1 },
+                { value: 'personal', label: 'Personal', indentLevel: 0 }
+            ]);
 
-            expect(select.querySelectorAll('optgroup')).toHaveLength(2);
-            expect(select.querySelector('option[value="work/deep"]')).not.toBeNull();
-            expect(select.querySelector('option[value="personal"]')).not.toBeNull();
+            expect(select.querySelectorAll('optgroup')).toHaveLength(0);
+            expect(select.options[1].value).toBe('work');
+            expect(select.options[1].textContent).toBe('Work');
+            expect(select.options[2].value).toBe('work/deep');
+            expect(select.options[2].textContent).toBe('  Deep Work');
+            expect(select.options[3].value).toBe('personal');
         });
 
         test('populateCategoryDropdown preserves current selection when possible', () => {
@@ -298,15 +353,17 @@ describe('Form Utils Tests', () => {
             `;
 
             const select = document.getElementById('category-select');
-            populateCategoryDropdown(select, {
-                work: [{ key: 'work/deep', label: 'Deep Work' }]
-            });
+            populateCategoryDropdown(select, [
+                { value: 'work', label: 'Work', indentLevel: 0 },
+                { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+            ]);
             select.value = 'work/deep';
 
-            populateCategoryDropdown(select, {
-                work: [{ key: 'work/deep', label: 'Deep Work' }],
-                break: [{ key: 'break', label: 'Break' }]
-            });
+            populateCategoryDropdown(select, [
+                { value: 'work', label: 'Work', indentLevel: 0 },
+                { value: 'work/deep', label: 'Deep Work', indentLevel: 1 },
+                { value: 'break', label: 'Break', indentLevel: 0 }
+            ]);
 
             expect(select.value).toBe('work/deep');
         });

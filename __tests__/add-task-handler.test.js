@@ -246,6 +246,36 @@ describe('Add Task Handler', () => {
             expect(changeHandler).toHaveBeenCalledTimes(1);
         });
 
+        test('preserves a selected child category on the created task', async () => {
+            const taskData = {
+                description: 'Child Category Task',
+                startTime: '09:00',
+                duration: 60,
+                taskType: 'scheduled',
+                category: 'work/deep'
+            };
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(getTaskState()).toHaveLength(1);
+            expect(getTaskState()[0].category).toBe('work/deep');
+        });
+
+        test('preserves a selected group category on the created task', async () => {
+            const taskData = {
+                description: 'Group Category Task',
+                startTime: '09:00',
+                duration: 60,
+                taskType: 'scheduled',
+                category: 'work'
+            };
+
+            await handleAddTaskProcess(mockFormElement, taskData);
+
+            expect(getTaskState()).toHaveLength(1);
+            expect(getTaskState()[0].category).toBe('work');
+        });
+
         test('clears stale preview state after successful reschedule-confirmed add', async () => {
             updateTaskState([
                 {
