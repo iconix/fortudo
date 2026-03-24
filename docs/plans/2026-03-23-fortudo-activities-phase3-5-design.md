@@ -51,6 +51,7 @@ Persist a single config document for activities taxonomy, but split the payload 
 ```js
 {
     id: 'config-categories',
+    schemaVersion: '3.5',
     groups: [
         {
             key: 'work',
@@ -203,6 +204,19 @@ Add-group form fields:
 - `Group name`
 - `Color family`
 
+Edit-group form fields:
+
+- `Group name`
+- `Color family`
+
+Editable behavior:
+
+- changing `Group name` updates only the group label, not the stable key
+- changing `Color family` updates the group color and cascades to linked children
+- changing both at once is allowed
+
+The group edit flow is required for phase 3.5 because the linked-child cascade behavior depends on a concrete family-edit action in the UI.
+
 ### Categories Section
 
 Display categories visually nested beneath their groups.
@@ -219,6 +233,20 @@ Add-category form fields:
 
 - `Category name`
 - `Parent group`
+
+Edit-category form fields:
+
+- `Category name`
+- `Concrete color`
+
+Editable behavior:
+
+- editing a child category may change its label
+- editing a child category may change its concrete color
+- editing a child category does not change its parent group in phase 3.5
+- editing a child category does not change its stable key in phase 3.5
+
+Moving a child category to a different parent group is explicitly out of scope for phase 3.5 because it would require coordinated key migration for all existing task references.
 
 ### Child Color Editing
 
@@ -337,6 +365,53 @@ Phase 3.5 should migrate this shape on load:
    - preserve existing `color`
    - initialize `isLinkedToGroupFamily` conservatively
 
+### Explicit Legacy Classification Rules
+
+Legacy phase 3 rows must be classified before conversion:
+
+- if `row.key === row.group`, treat the row as an existing standalone group-category
+- if `row.key !== row.group`, treat the row as a child category belonging to `row.group`
+
+This avoids duplicate keys and duplicate dropdown entries during migration.
+
+### Group Record Creation During Migration
+
+For each distinct legacy `group` string:
+
+- create exactly one group record with `key` equal to that group string
+- if a legacy row already exists where `key === group`, use that row's label and color as the starting group label/color
+- if no such standalone row exists, synthesize the group record from the group string:
+  - `key`: the legacy group string
+  - `label`: title-cased version of the group string
+  - `colorFamily`: inferred from existing child colors if possible, otherwise assigned from the default family map
+  - `color`: a concrete color from that family
+
+### Child Record Creation During Migration
+
+For legacy child rows where `key !== group`:
+
+- preserve the original `key`
+- preserve the original `label`
+- convert `group` to `groupKey`
+- preserve the original concrete `color`
+- infer `isLinkedToGroupFamily` conservatively
+
+### Fresh Install vs Existing Install
+
+Migration rules apply only when loading a legacy phase 3 config shape.
+
+For a fresh install or missing config document, phase 3.5 should seed the canonical taxonomy directly in the new split format.
+
+### Config Shape Detection
+
+Bootstrap logic should use the stored document shape to decide what to do:
+
+- no config document found: seed canonical phase 3.5 defaults
+- config document with legacy phase 3 shape (`categories` array, no `schemaVersion`): migrate
+- config document with `schemaVersion: '3.5'`: load exactly as stored
+
+This means an intentionally empty saved phase 3.5 taxonomy is preserved and not reseeded.
+
 Recommended migration default:
 
 - if the old child color is part of the inferred family, mark linked
@@ -348,6 +423,63 @@ If family inference is too ambiguous for legacy rows, default to:
 - mark legacy children unlinked
 
 This is safer than unexpectedly changing old category colors.
+
+## Seeded Default Taxonomy
+
+For fresh installs and empty config documents, phase 3.5 should seed these explicit groups and child categories:
+
+### Groups
+
+- `work` with family `blue`
+- `personal` with family `rose`
+- `break` with family `green`
+
+### Child Categories
+
+- `work/deep` labeled `Deep Work`
+- `work/meetings` labeled `Meetings`
+- `work/comms` labeled `Comms`
+- `work/admin` labeled `Admin`
+
+This preserves the spirit of the current defaults while making `personal` and `break` true standalone groups that happen to start without children.
+
+Seeding behavior rules:
+
+- missing config document: seed defaults
+- existing legacy phase 3 config document: migrate
+- existing legacy phase 3 config document with missing or empty `categories`: treat as legacy-invalid and seed defaults
+- existing phase 3.5 config document, even if empty: preserve as-is and do not reseed
+
+## Key Generation Rules
+
+### Group Keys
+
+New groups use a slugified form of the entered group name.
+
+Examples:
+
+- `Work` -> `work`
+- `Deep Focus` -> `deep-focus`
+
+If the generated group key already exists, creation should fail with a validation error and the user must choose a different name.
+
+### Child Keys
+
+New child categories use:
+
+- `<groupKey>/<child-slug>`
+
+Examples:
+
+- parent `work` + label `Deep Work` -> `work/deep-work`
+- parent `personal` + label `Errands` -> `personal/errands`
+
+If the generated child key already exists, creation should fail with a validation error and the user must choose a different name.
+
+Rename behavior:
+
+- renaming a group or child category updates labels only
+- keys remain stable after creation in phase 3.5
 
 ## Testing Strategy
 
@@ -391,6 +523,7 @@ Add coverage for:
 - selecting a child category for a task
 - badge rendering for both group and child selections
 - settings edits reflected in the main app without reload
+- fresh-install seed taxonomy matches the canonical phase 3.5 defaults
 
 ## Out of Scope
 
@@ -415,4 +548,3 @@ Phase 3.5 does not include:
 3. Refactor settings UI for groups and categories.
 4. Refresh task form dropdown rendering and live updates.
 5. Add rendering/integration coverage.
-
