@@ -22,8 +22,9 @@ describe('category-colors', () => {
     });
 
     test('COLOR_FAMILIES family arrays are frozen', () => {
-        expect(Object.isFrozen(COLOR_FAMILIES.blue)).toBe(true);
-        expect(Object.isFrozen(COLOR_FAMILIES.green)).toBe(true);
+        for (const familyName of ['blue', 'green', 'amber', 'rose']) {
+            expect(Object.isFrozen(COLOR_FAMILIES[familyName])).toBe(true);
+        }
     });
 
     test('pickLinkedChildColor returns a family variation', () => {
