@@ -35,7 +35,7 @@
   "homepage": "https://github.com/iconix/fortudo#readme",
   "devDependencies": {
     "@babel/core": "^7.29.0",
-    "@babel/preset-env": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
     "@testing-library/dom": "^10.4.0",
     "@types/jest": "^30.0.0",
     "babel-jest": "^30.0.0",
