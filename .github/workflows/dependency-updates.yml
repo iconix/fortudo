@@ -7,61 +7,6 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  update-dependencies:
-    name: Update Dependencies
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check for outdated packages
-        run: |
-          echo "Checking for outdated packages..."
-          npm outdated || true
-
-      - name: Update patch and minor versions
-        run: |
-          echo "Updating patch and minor versions..."
-          npm update
-
-      - name: Run tests after updates
-        run: |
-          npm run test
-          npm run lint
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: update dependencies'
-          title: 'chore: automated dependency updates'
-          body: |
-            This PR contains automated dependency updates.
-
-            **Changes:**
-            - Updated patch and minor versions of dependencies
-            - All tests pass
-            - Linting checks pass
-
-            Please review the changes and merge if everything looks good.
-
-            ---
-            *This PR was created automatically by GitHub Actions*
-          branch: chore/dependency-updates
-          delete-branch: true
-
   check-major-updates:
     name: Check Major Updates
     runs-on: ubuntu-latest
@@ -95,9 +40,25 @@ jobs:
               const updates = JSON.parse(output);
 
               if (Object.keys(updates).length > 0) {
+                const title = 'Major dependency updates available';
                 const updateList = Object.entries(updates)
                   .map(([pkg, version]) => `- ${pkg}: ${version}`)
                   .join('\n');
+
+                const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  labels: 'major-update',
+                  per_page: 100
+                });
+
+                const hasExistingIssue = existingIssues.some((issue) => issue.title === title);
+
+                if (hasExistingIssue) {
+                  console.log(`Open issue already exists for "${title}", skipping creation.`);
+                  return;
+                }
 
                 const issueBody = `## Major Dependency Updates Available
 
@@ -120,7 +81,7 @@ jobs:
                 await github.rest.issues.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  title: 'Major dependency updates available',
+                  title,
                   body: issueBody,
                   labels: ['dependencies', 'major-update']
                 });
