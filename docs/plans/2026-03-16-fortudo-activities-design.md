@@ -274,7 +274,7 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
-**Existing smoke coverage:** storage-level merge-readiness checks are now covered by `scripts/playwright_preview_smoke.py`, including legacy migration, cross-type isolation, room isolation, and synced-preview behavior.
+**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` now covers both storage-level merge-readiness and a seeded phase-3 UI confidence pass, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, reload persistence, and referenced-delete safety.
 
 ### Sync Considerations
 

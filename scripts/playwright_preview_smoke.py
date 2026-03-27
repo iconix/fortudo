@@ -202,6 +202,44 @@ def create_scenario_rooms(prefix: str) -> dict[str, str]:
         "alpha": f"{prefix}-alpha",
         "legacy": f"{prefix}-legacy",
         "beta": f"{prefix}-beta",
+        "taxonomy": f"{prefix}-taxonomy",
+    }
+
+
+def build_phase3_taxonomy_config_doc() -> dict[str, Any]:
+    return {
+        "_id": "config-categories",
+        "id": "config-categories",
+        "docType": "config",
+        "schemaVersion": "3.5",
+        "groups": [
+            {"key": "work", "label": "Work", "colorFamily": "blue", "color": "#2563eb"},
+            {"key": "family", "label": "Family", "colorFamily": "gray", "color": "#4b5563"},
+            {"key": "break", "label": "Break", "colorFamily": "green", "color": "#16a34a"},
+        ],
+        "categories": [
+            {
+                "key": "work/project",
+                "label": "Project",
+                "groupKey": "work",
+                "color": "#1d4ed8",
+                "isLinkedToGroupFamily": True,
+            },
+            {
+                "key": "work/comms",
+                "label": "Comms",
+                "groupKey": "work",
+                "color": "#2563eb",
+                "isLinkedToGroupFamily": True,
+            },
+            {
+                "key": "work/meeting",
+                "label": "Meeting",
+                "groupKey": "work",
+                "color": "#3b82f6",
+                "isLinkedToGroupFamily": True,
+            },
+        ],
     }
 
 
@@ -330,6 +368,64 @@ def clear_room_storage(page: Any, room_code: str) -> None:
         """,
         storage_eval_arg(page, room_code),
     )
+
+
+def set_activities_enabled(page: Any, enabled: bool = True) -> None:
+    page.evaluate(
+        """
+        (value) => {
+            window.localStorage.setItem('fortudo-activities-enabled', String(!!value));
+        }
+        """,
+        enabled,
+    )
+
+
+def open_settings_modal(page: Any) -> None:
+    page.locator("#settings-gear-btn").click()
+    page.locator("#settings-modal").wait_for(state="visible", timeout=10000)
+    page.locator("#settings-content").wait_for(state="visible", timeout=10000)
+
+
+def close_settings_modal(page: Any) -> None:
+    page.locator("#close-settings-modal").click()
+    page.locator("#settings-modal").wait_for(state="hidden", timeout=10000)
+
+
+def wait_for_toast_text(
+    page: Any,
+    expected_text: str,
+    *,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    wait_until(
+        lambda: expected_text
+        in (
+            page.locator("[data-toast-container]").text_content() or ""
+        ),
+        f"toast text {expected_text!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def add_category_via_settings(page: Any, group_key: str, label: str) -> None:
+    form = page.locator("#add-category-form")
+    if not form.is_visible():
+        page.locator("#add-category-btn").click()
+    form.wait_for(state="visible", timeout=5000)
+    page.locator('#add-category-form select[name="parent-group"]').select_option(group_key)
+    page.locator('#add-category-form input[name="category-label"]').fill(label)
+    page.locator("#add-category-form").evaluate("(form) => form.requestSubmit()")
+
+
+def update_group_family_via_settings(page: Any, group_key: str, color_family: str) -> None:
+    page.locator(f'.btn-edit-group[data-key="{group_key}"]').click()
+    form = page.locator(f'.edit-group-form[data-key="{group_key}"]')
+    form.wait_for(state="visible", timeout=5000)
+    page.locator(f'.edit-group-form[data-key="{group_key}"] select[name="edit-group-family"]').select_option(color_family)
+    form.evaluate("(node) => node.requestSubmit()")
 
 
 def wait_until(predicate: Any, description: str, timeout_s: float = 15.0, interval_s: float = 0.2) -> Any:
@@ -579,8 +675,8 @@ def delete_unscheduled_task_via_ui(
     page: Any, task_id: str, *, timeout_s: float = 10.0, interval_s: float = 0.2
 ) -> None:
     button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
-    button_locator = page.locator(button_selector)
-    button_locator.click()
+    deadline = time.time() + timeout_s
+    page.locator(button_selector).click()
 
     state_after_first_click = wait_until(
         lambda: (
@@ -595,13 +691,24 @@ def delete_unscheduled_task_via_ui(
     if state_after_first_click == "deleted":
         return
 
-    page.locator(button_selector).click()
-    wait_until(
-        lambda: get_unscheduled_delete_state(page, task_id) == "deleted",
-        f"unscheduled task deletion for {task_id}",
-        timeout_s=timeout_s,
-        interval_s=interval_s,
-    )
+    while time.time() < deadline:
+        page.locator(button_selector).click()
+        state = wait_until(
+            lambda: (
+                current_state
+                if (
+                    current_state := get_unscheduled_delete_state(page, task_id)
+                ) in {"confirming", "deleted"}
+                else False
+            ),
+            f"unscheduled task deletion state for {task_id}",
+            timeout_s=max(interval_s, 0.05),
+            interval_s=interval_s,
+        )
+        if state == "deleted":
+            return
+
+    raise TimeoutError(f"Timed out waiting for unscheduled task deletion for {task_id}")
 
 
 def clear_all_tasks_via_ui(
@@ -1063,6 +1170,261 @@ def run_smoke(
                     {"activity_id": "activity-smoke", "config_id": "config-categories"},
                 )
                 wait_for_sync_status_normal("alpha final")
+
+            demo_step(page, "checking phase 3 taxonomy and settings room", step_pause_ms)
+            switch_room(page, rooms["taxonomy"])
+            clear_room_storage(page, rooms["taxonomy"])
+            set_activities_enabled(page, True)
+            seed_docs(page, rooms["taxonomy"], [build_phase3_taxonomy_config_doc()])
+            page.reload(wait_until="load")
+            wait_for_main_app(page)
+
+            wait_until(
+                lambda: page.locator("#category-dropdown-row").is_visible(),
+                "activities-enabled category dropdown",
+            )
+            wait_until(
+                lambda: (
+                    page.locator('#category-select option[value="work/project"]').text_content() or ""
+                )
+                == "› Project",
+                "visible nested project category option",
+            )
+
+            open_settings_modal(page)
+            wait_for_text_in_locator(
+                page,
+                "#settings-content",
+                "Work",
+                description="seeded taxonomy settings content",
+            )
+            wait_for_text_in_locator(
+                page,
+                "#settings-content",
+                "Family",
+                description="seeded family group content",
+            )
+            wait_until(
+                lambda: "settings-scroll-area"
+                in (page.locator("#settings-content").get_attribute("class") or ""),
+                "settings scroll shell class",
+            )
+
+            page.locator("#add-category-btn").click()
+            page.locator("#add-category-form").wait_for(state="visible", timeout=5000)
+            separator_text = (
+                page.locator("#add-category-form [data-category-path-separator]").text_content()
+                or ""
+            ).strip()
+            if separator_text != "/":
+                raise ValueError(f"unexpected add-category separator: {separator_text!r}")
+            group_placeholder = (
+                page.locator('#add-category-form select[name="parent-group"] option').first.text_content()
+                or ""
+            ).strip()
+            if group_placeholder != "Group":
+                raise ValueError(f"unexpected add-category group placeholder: {group_placeholder!r}")
+            category_placeholder = page.locator(
+                '#add-category-form input[name="category-label"]'
+            ).get_attribute("placeholder")
+            if category_placeholder != "Category name":
+                raise ValueError(
+                    f"unexpected add-category input placeholder: {category_placeholder!r}"
+                )
+
+            add_category_via_settings(page, "break", "Walk")
+            wait_until(
+                lambda: page.locator('[data-category-key="break/walk"]').count() == 1,
+                "new break walk category row",
+            )
+            wait_until(
+                lambda: page.locator('#category-select option[value="break/walk"]').count() == 1,
+                "live dropdown refresh for added category",
+            )
+
+            update_group_family_via_settings(page, "work", "amber")
+            wait_until(
+                lambda: "#b45309"
+                in (
+                    page.locator(
+                        '[data-category-key="work/project"] .category-dot'
+                    ).get_attribute("style")
+                    or ""
+                ),
+                "linked work/project category recolor",
+            )
+            close_settings_modal(page)
+
+            page.locator("#scheduled").check()
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("description")),
+                "Taxonomy scheduled group task",
+                description="taxonomy scheduled description",
+            )
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("start-time")),
+                "11:00",
+                description="taxonomy scheduled start",
+            )
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("duration-hours")),
+                "0",
+                description="taxonomy scheduled duration hours",
+            )
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("duration-minutes")),
+                "25",
+                description="taxonomy scheduled duration minutes",
+            )
+            page.locator("#category-select").select_option("family")
+            page.locator("#task-form button[type='submit']").click()
+
+            page.locator("#unscheduled").check()
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("description")),
+                "Taxonomy child category task",
+                description="taxonomy unscheduled description",
+            )
+            page.locator('input[name="priority"][value="medium"]').check(force=True)
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("est-duration-hours")),
+                "0",
+                description="taxonomy unscheduled duration hours",
+            )
+            fill_locator_value(
+                page,
+                page.locator(task_form_input_selector("est-duration-minutes")),
+                "15",
+                description="taxonomy unscheduled duration minutes",
+            )
+            page.locator("#category-select").select_option("work/project")
+            page.locator("#task-form button[type='submit']").click()
+
+            wait_until(
+                lambda: (
+                    lambda docs: any(
+                        doc.get("description") == "Taxonomy scheduled group task"
+                        and doc.get("category") == "family"
+                        for doc in docs
+                    )
+                    and any(
+                        doc.get("description") == "Taxonomy child category task"
+                        and doc.get("category") == "work/project"
+                        for doc in docs
+                    )
+                )(list(map(normalize_doc, read_docs(page, rooms["taxonomy"])))),
+                "taxonomy task category persistence",
+            )
+
+            wait_until(
+                lambda: "Family" in (page.locator("#scheduled-task-list").text_content() or ""),
+                "scheduled group badge label",
+            )
+            wait_until(
+                lambda: "Project" in (page.locator("#unscheduled-task-list").text_content() or ""),
+                "unscheduled child badge label",
+            )
+            scheduled_badge_style = (
+                page.locator("#scheduled-task-list .category-badge").first.get_attribute("style")
+                or ""
+            )
+            unscheduled_badge_style = (
+                page.locator("#unscheduled-task-list .category-badge").first.get_attribute("style")
+                or ""
+            )
+            if "background-color: rgba(15, 23, 42, 0.9)" not in scheduled_badge_style:
+                raise ValueError(f"scheduled badge lost standardized background: {scheduled_badge_style}")
+            if "#4b5563" not in scheduled_badge_style:
+                raise ValueError(f"scheduled group badge lost gray accent: {scheduled_badge_style}")
+            if "background-color: rgba(15, 23, 42, 0.9)" not in unscheduled_badge_style:
+                raise ValueError(
+                    f"unscheduled badge lost standardized background: {unscheduled_badge_style}"
+                )
+            if "#b45309" not in unscheduled_badge_style:
+                raise ValueError(f"unscheduled child badge did not reflect amber family: {unscheduled_badge_style}")
+
+            page.reload(wait_until="load")
+            wait_for_main_app(page)
+            wait_for_text_in_locator(
+                page,
+                "#scheduled-task-list",
+                "Taxonomy scheduled group task",
+                description="taxonomy scheduled task after reload",
+            )
+            wait_for_text_in_locator(
+                page,
+                "#unscheduled-task-list",
+                "Taxonomy child category task",
+                description="taxonomy unscheduled task after reload",
+            )
+
+            open_settings_modal(page)
+            wait_for_text_in_locator(
+                page,
+                "#settings-content",
+                "Walk",
+                description="persisted added category after reload",
+            )
+            page.locator('.btn-delete-group[data-key="family"]').click()
+            wait_for_toast_text(page, 'Group "family" is referenced by tasks')
+            page.locator('.btn-delete-category[data-key="work/project"]').click()
+            wait_for_toast_text(page, 'Category "work/project" is referenced by tasks')
+            close_settings_modal(page)
+
+            taxonomy_summary = summarize_docs(read_docs(page, rooms["taxonomy"]))
+            taxonomy_config = next(
+                (doc for doc in taxonomy_summary["configs"] if doc.get("id") == "config-categories"),
+                None,
+            )
+            if not taxonomy_config:
+                raise ValueError(
+                    f"taxonomy room missing config-categories doc.\n{format_snapshot(taxonomy_summary)}"
+                )
+            if not any(group.get("key") == "work" and group.get("colorFamily") == "amber" for group in taxonomy_config.get("groups", [])):
+                raise ValueError(
+                    f"taxonomy room did not persist work family edit.\n{format_snapshot(taxonomy_summary)}"
+                )
+            if not any(category.get("key") == "break/walk" for category in taxonomy_config.get("categories", [])):
+                raise ValueError(
+                    f"taxonomy room did not persist compact add-category flow.\n{format_snapshot(taxonomy_summary)}"
+                )
+            if couchdb_url:
+                wait_until(
+                    lambda: (
+                        lambda summary: any(
+                            doc.get("description") == "Taxonomy scheduled group task"
+                            and doc.get("category") == "family"
+                            for doc in summary["tasks"]
+                        )
+                        and any(
+                            doc.get("description") == "Taxonomy child category task"
+                            and doc.get("category") == "work/project"
+                            for doc in summary["tasks"]
+                        )
+                        and any(
+                            doc.get("id") == "config-categories"
+                            and any(
+                                group.get("key") == "work"
+                                and group.get("colorFamily") == "amber"
+                                for group in doc.get("groups", [])
+                            )
+                            and any(
+                                category.get("key") == "break/walk"
+                                for category in doc.get("categories", [])
+                            )
+                            for doc in summary["configs"]
+                        )
+                    )(read_remote_summary(rooms["taxonomy"])),
+                    "taxonomy remote sync",
+                    timeout_s=25.0,
+                )
+                wait_for_sync_status_normal("taxonomy")
 
             assert_no_runtime_errors(console_errors, page_errors, request_failures, response_errors)
 

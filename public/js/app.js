@@ -156,7 +156,7 @@ async function initAndBootApp(roomCode) {
         },
         onGlobalClick: (event) => {
             const target = event.target;
-            const taskElement = target.closest('.task-item, .unscheduled-task-item');
+            const taskElement = target.closest('.task-item, .task-card');
             const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
 
             if (!taskElement && !deleteButton) {

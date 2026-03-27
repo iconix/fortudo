@@ -2,8 +2,10 @@ import unittest
 from unittest.mock import patch
 
 from scripts.playwright_preview_smoke import (
+    add_category_via_settings,
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
+    build_phase3_taxonomy_config_doc,
     build_launch_options,
     build_couchdb_request_parts,
     build_remote_db_name,
@@ -350,6 +352,7 @@ class CliHelpersTests(unittest.TestCase):
                 "alpha": "preview-pr53-smoke-alpha",
                 "legacy": "preview-pr53-smoke-legacy",
                 "beta": "preview-pr53-smoke-beta",
+                "taxonomy": "preview-pr53-smoke-taxonomy",
             },
         )
 
@@ -365,6 +368,22 @@ class CliHelpersTests(unittest.TestCase):
             task_form_input_selector("description"),
             '#task-form input[name="description"]',
         )
+
+    def test_build_phase3_taxonomy_config_doc_seeds_group_and_child_records(self):
+        config = build_phase3_taxonomy_config_doc()
+
+        self.assertEqual(config["id"], "config-categories")
+        self.assertEqual(config["schemaVersion"], "3.5")
+        self.assertEqual(
+            [group["key"] for group in config["groups"]],
+            ["work", "family", "break"],
+        )
+        self.assertEqual(config["groups"][1]["colorFamily"], "gray")
+        self.assertEqual(
+            [category["key"] for category in config["categories"]],
+            ["work/project", "work/comms", "work/meeting"],
+        )
+        self.assertTrue(all(category["isLinkedToGroupFamily"] for category in config["categories"]))
 
 
 class FakeLocator:
@@ -431,6 +450,9 @@ class FakeLocator:
             self.fill_failures_before_sticks -= 1
             self.value = ""
             return
+        self.value = value
+
+    def select_option(self, value):
         self.value = value
 
     def input_value(self):
@@ -567,6 +589,26 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(page.button.clicks, 2)
         self.assertEqual(page.state, "deleted")
 
+    def test_delete_unscheduled_task_via_ui_retries_confirm_click_until_deleted(self):
+        task_id = "unsched-retry"
+        page = DeleteStatePage(task_id)
+
+        original_click = page.button.click
+
+        def click_and_advance():
+            original_click()
+            if page.state == "idle":
+                page.state = "confirming"
+            elif page.state == "confirming" and page.button.clicks >= 3:
+                page.state = "deleted"
+
+        page.button.click = click_and_advance
+
+        delete_unscheduled_task_via_ui(page, task_id, timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(page.button.clicks, 3)
+        self.assertEqual(page.state, "deleted")
+
     def test_clear_all_tasks_via_ui_waits_for_dropdown_and_confirm_modal(self):
         trigger = FakeLocator()
         option = FakeLocator(visible=False)
@@ -644,6 +686,27 @@ class PreviewWaitHelperTests(unittest.TestCase):
             timeout_s=0.05,
             interval_s=0,
         )
+
+    def test_add_category_via_settings_does_not_toggle_form_closed_when_already_visible(self):
+        add_button = FakeLocator()
+        form = FakeLocator(visible=True)
+        group_select = FakeLocator()
+        category_input = FakeLocator()
+        page = FakePage(
+            {
+                "#add-category-btn": add_button,
+                "#add-category-form": form,
+                '#add-category-form select[name="parent-group"]': group_select,
+                '#add-category-form input[name="category-label"]': category_input,
+            }
+        )
+
+        add_category_via_settings(page, "break", "Walk")
+
+        self.assertEqual(add_button.clicks, 0)
+        self.assertEqual(form.evaluate_calls, 1)
+        self.assertEqual(group_select.value, "break")
+        self.assertEqual(category_input.value, "Walk")
 
 
 if __name__ == "__main__":

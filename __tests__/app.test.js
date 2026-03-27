@@ -1177,6 +1177,39 @@ describe('App.js Callback Functions', () => {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             });
+
+            test('should not clear unscheduled delete confirmation when clicking inside task card', async () => {
+                const unscheduledTask = {
+                    id: 'unsched-keep-confirming',
+                    type: 'unscheduled',
+                    description: 'Backlog task',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'incomplete',
+                    confirmingDelete: false
+                };
+
+                await setupAppWithTasks([unscheduledTask]);
+
+                const deleteButton = document.querySelector(
+                    '#unscheduled-task-list .btn-delete-unscheduled'
+                );
+                expect(deleteButton).toBeTruthy();
+
+                deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+
+                const editButton = document.querySelector(
+                    '#unscheduled-task-list .btn-edit-unscheduled'
+                );
+                expect(editButton).toBeTruthy();
+
+                editButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 10));
+
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+            });
         });
 
         describe('DOM element error handling', () => {
