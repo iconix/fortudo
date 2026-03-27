@@ -30,13 +30,12 @@ This directory contains the GitHub Actions workflows and configuration for the F
 **Triggers:** Weekly on Mondays at 9 AM UTC, Manual dispatch
 
 **Jobs:**
-- **Update Dependencies**: Automatically updates patch/minor versions
-- **Check Major Updates**: Creates issues for major version updates
+- **Check Major Updates**: Creates an issue when major version updates need manual review
 
 ### 4. Dependabot Configuration (`dependabot.yml`)
 - Automated dependency updates for npm packages and GitHub Actions
-- Groups minor/patch updates together
-- Excludes major updates (handled by custom workflow)
+- Groups npm minor/patch updates into a single weekly PR
+- Excludes npm major updates (surfaced by the custom workflow as issues)
 
 ## 🔧 Setup Requirements
 
@@ -75,8 +74,7 @@ Make sure these secrets are configured in your GitHub repository:
 - License compliance checking
 
 ### 🔄 Automation
-- Automated dependency updates
-- PR creation for dependency updates
+- Grouped Dependabot PRs for routine dependency updates
 - Issue creation for major updates
 - Automatic cleanup of preview deployments
 
@@ -127,12 +125,12 @@ Add these to your main README.md:
 ### Getting Help
 - Check the [Actions tab](../../actions) for detailed logs
 - Review individual workflow run details
-- Check the [Issues tab](../../issues) for automated dependency update notifications
+- Check the [Issues tab](../../issues) for major dependency update notifications
 
 ## 📝 Maintenance
 
 ### Regular Tasks
-- Review and merge automated dependency PRs
+- Review and merge grouped Dependabot dependency PRs
 - Monitor security alerts and address vulnerabilities
 - Update workflow configurations as needed
 - Review and update Node.js versions in matrix
