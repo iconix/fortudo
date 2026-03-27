@@ -43,6 +43,33 @@
     transition: transform 0.5s ease;
 }
 
+.settings-scroll-area {
+    max-height: calc(80vh - 5.5rem);
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(20, 184, 166, 0.55) rgba(51, 65, 85, 0.35);
+}
+
+.settings-scroll-area::-webkit-scrollbar {
+    width: 10px;
+}
+
+.settings-scroll-area::-webkit-scrollbar-track {
+    background: rgba(51, 65, 85, 0.35);
+    border-radius: 9999px;
+}
+
+.settings-scroll-area::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(45, 212, 191, 0.85), rgba(20, 184, 166, 0.7));
+    border-radius: 9999px;
+    border: 2px solid rgba(30, 41, 59, 0.9);
+}
+
+.settings-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(94, 234, 212, 0.95), rgba(45, 212, 191, 0.8));
+}
+
 /* === Celebration Animation === */
 .celebration-container {
     position: absolute;

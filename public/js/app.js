@@ -9,6 +9,7 @@ import {
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
+    initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
     setupEndTimeHint,
@@ -27,6 +28,10 @@ import {
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
+import { loadCategories } from './category-manager.js';
+import { isActivitiesEnabled } from './settings-manager.js';
+import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
+import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
@@ -45,6 +50,14 @@ let unsubscribeSyncStatus = null;
 
 /** @type {Promise<void> | null} */
 let refreshFromStoragePromise = null;
+
+/** @type {() => void} */
+let refreshTaskDisplays = () => {};
+
+function refreshTaxonomyUI() {
+    refreshTaskCategoryDropdownUI();
+    refreshTaskDisplays();
+}
 
 /**
  * Use an isolated room code for preview deployments so they never touch prod data.
@@ -114,10 +127,21 @@ async function initAndBootApp(roomCode) {
 
     // Load and initialize state
     await loadTasksIntoState();
+    await loadCategories();
 
     // Create callback objects
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
     const unscheduledTaskEventCallbacks = createUnscheduledTaskCallbacks();
+    refreshTaskDisplays = () => {
+        const allTasks = getTaskState();
+        renderTasks(
+            allTasks.filter((task) => task.type === 'scheduled'),
+            scheduledTaskEventCallbacks
+        );
+        renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+        refreshActiveTaskColor(allTasks);
+        refreshCurrentGapHighlight();
+    };
 
     const appCallbacks = {
         onTaskFormSubmit: async (formElement) => {
@@ -132,7 +156,7 @@ async function initAndBootApp(roomCode) {
         },
         onGlobalClick: (event) => {
             const target = event.target;
-            const taskElement = target.closest('.task-item, .unscheduled-task-item');
+            const taskElement = target.closest('.task-item, .task-card');
             const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
 
             if (!taskElement && !deleteButton) {
@@ -181,6 +205,16 @@ async function initAndBootApp(roomCode) {
                 }
             );
         }
+
+        if (isActivitiesEnabled()) {
+            const categoryRow = document.getElementById('category-dropdown-row');
+            const categorySelect = document.getElementById('category-select');
+            if (categoryRow && categorySelect instanceof HTMLSelectElement) {
+                categoryRow.classList.remove('hidden');
+                initializeCategoryDropdownListener();
+                refreshTaxonomyUI();
+            }
+        }
     }
 
     initializePageEventListeners(appCallbacks, taskFormElement);
@@ -225,14 +259,7 @@ async function initAndBootApp(roomCode) {
     window.addEventListener('focus', syncOnFocus, { signal });
 
     // Initial render
-    const allTasks = getTaskState();
-    renderTasks(
-        allTasks.filter((t) => t.type === 'scheduled'),
-        scheduledTaskEventCallbacks
-    );
-    renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
-    refreshActiveTaskColor(allTasks);
-    refreshCurrentGapHighlight();
+    refreshTaskDisplays();
 
     const suggested = getSuggestedStartTime();
     logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
@@ -273,6 +300,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
     }
+
+    initializeSettingsModalListeners(() => {
+        renderSettingsContent({
+            onTaxonomyChanged: () => {
+                refreshTaxonomyUI();
+            }
+        });
+    });
 
     const activeRoom = getActiveRoom();
     if (!activeRoom) {

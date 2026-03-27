@@ -25,8 +25,10 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
-    loadTasks: jest.fn(() => [])
+    loadTasks: jest.fn(() => []),
+    loadConfig: jest.fn(() => Promise.resolve(null))
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -41,8 +43,10 @@ import {
     initStorage as mockInitStorageInternal,
     migrateDocTypes as mockMigrateDocTypesInternal,
     saveTasks as mockSaveTasksInternal,
+    putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
-    loadTasks as mockLoadTasksFromStorageInternal
+    loadTasks as mockLoadTasksFromStorageInternal,
+    loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
 import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
@@ -54,8 +58,10 @@ const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 
@@ -121,6 +127,8 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockLoadConfig.mockResolvedValue(null);
+        mockPutConfig.mockResolvedValue(undefined);
         mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
@@ -251,6 +259,112 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks([]);
 
             expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+        });
+
+        test('shows and populates the category dropdown with flattened taxonomy options when Activities are enabled', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const categoryRow = document.getElementById('category-dropdown-row');
+            const categorySelect = document.getElementById('category-select');
+
+            expect(categoryRow.classList.contains('hidden')).toBe(false);
+            expect(categorySelect.querySelectorAll('optgroup')).toHaveLength(0);
+            expect(categorySelect.options[1].value).toBe('work');
+            expect(categorySelect.options[2].value).toBe('work/deep');
+            expect(categorySelect.options[2].textContent).toBe('› Deep Work');
+            expect(categorySelect.querySelector('option[value="work/deep"]')).not.toBeNull();
+        });
+
+        test('settings taxonomy changes refresh the add-task dropdown live', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const toastSpy = jest
+                .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+                .mockImplementation(() => {});
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.getElementById('add-group-btn').click();
+
+            const addGroupForm = document.getElementById('add-group-form');
+            addGroupForm.querySelector('[name="group-label"]').value = 'Health';
+            addGroupForm.querySelector('[name="group-family"]').value = 'green';
+            addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const categorySelect = document.getElementById('category-select');
+            expect(categorySelect.querySelector('option[value="health"]')).not.toBeNull();
+            expect(toastSpy).not.toHaveBeenCalled();
+            toastSpy.mockRestore();
+        });
+
+        test('settings taxonomy changes rerender visible task badges without reload', async () => {
+            const taskWithCategory = createTaskWithDateTime({
+                description: 'Deep Work Task',
+                startTime: '09:00',
+                duration: 60
+            });
+            taskWithCategory.category = 'work/deep';
+
+            await setupAppWithTasks([taskWithCategory]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            let badge = document.querySelector('#scheduled-task-list .category-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Deep Work');
+            expect(badge.getAttribute('style')).toContain('background-color');
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.querySelector('.btn-edit-group[data-key="work"]').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            const editForm = document.querySelector('.edit-group-form[data-key="work"]');
+            editForm.querySelector('[name="edit-group-family"]').value = 'amber';
+            editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            badge = document.querySelector('#scheduled-task-list .category-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Deep Work');
+            expect(badge.getAttribute('style')).toContain('#b45309');
+        });
+
+        test('settings taxonomy changes do not overwrite an in-progress start-time draft', async () => {
+            await setupAppWithTasks([]);
+            localStorage.setItem('fortudo-activities-enabled', 'true');
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            startTimeInput.value = '13:45';
+            startTimeInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            document.getElementById('settings-gear-btn').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            document.getElementById('add-group-btn').click();
+
+            const addGroupForm = document.getElementById('add-group-form');
+            addGroupForm.querySelector('[name="group-label"]').value = 'Health';
+            addGroupForm.querySelector('[name="group-family"]').value = 'green';
+            addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            expect(startTimeInput.value).toBe('13:45');
         });
     });
 
@@ -1062,6 +1176,39 @@ describe('App.js Callback Functions', () => {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
+            });
+
+            test('should not clear unscheduled delete confirmation when clicking inside task card', async () => {
+                const unscheduledTask = {
+                    id: 'unsched-keep-confirming',
+                    type: 'unscheduled',
+                    description: 'Backlog task',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'incomplete',
+                    confirmingDelete: false
+                };
+
+                await setupAppWithTasks([unscheduledTask]);
+
+                const deleteButton = document.querySelector(
+                    '#unscheduled-task-list .btn-delete-unscheduled'
+                );
+                expect(deleteButton).toBeTruthy();
+
+                deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+
+                const editButton = document.querySelector(
+                    '#unscheduled-task-list .btn-edit-unscheduled'
+                );
+                expect(editButton).toBeTruthy();
+
+                editButton.dispatchEvent(new Event('click', { bubbles: true }));
+                await new Promise((resolve) => setTimeout(resolve, 10));
+
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
             });
         });
 

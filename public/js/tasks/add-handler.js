@@ -127,6 +127,10 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
     if (operationResult.success) {
         const taskType = formElement.querySelector('input[name="task-type"]:checked')?.value;
         formElement.reset();
+        const categorySelect = document.getElementById('category-select');
+        if (categorySelect) {
+            categorySelect.dispatchEvent(new Event('change'));
+        }
         resetTaskFormPreviewState({
             hintElement: document.getElementById('end-time-hint'),
             warningElement: document.getElementById('overlap-warning'),

@@ -21,6 +21,7 @@ import { refreshActiveTaskColor } from '../public/js/tasks/scheduled-renderer.js
 import * as appCoordinator from '../public/js/app-coordinator.js';
 
 import { extractTimeFromDateTime } from '../public/js/utils.js';
+import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 
 // Mock storage.js to spy on saveTasks
 jest.mock('../public/js/storage.js', () => ({
@@ -29,8 +30,10 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
-    loadTasks: jest.fn(() => [])
+    loadTasks: jest.fn(() => []),
+    loadConfig: jest.fn(() => Promise.resolve(null))
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -42,8 +45,10 @@ jest.mock('../public/js/sync-manager.js', () => ({
 import {
     saveTasks as mockSaveTasksInternal,
     putTask as mockPutTaskInternal,
+    putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
-    loadTasks as mockLoadTasksFromStorageInternal
+    loadTasks as mockLoadTasksFromStorageInternal,
+    loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
 
 // Import task-manager after the mock since it depends on mock storage.js
@@ -51,8 +56,34 @@ import * as taskManager from '../public/js/tasks/manager.js';
 
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockPutTask = jest.mocked(mockPutTaskInternal);
+const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
+
+async function enableActivitiesAndBoot(tasks = []) {
+    mockLoadTasksFromStorage.mockReturnValue(tasks);
+    await setupIntegrationTestEnvironment();
+    localStorage.setItem('fortudo-activities-enabled', 'true');
+    document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
+async function addScheduledTaskWithCategory({
+    description,
+    startTime,
+    durationHours = '1',
+    durationMinutes = '0',
+    categoryKey
+}) {
+    const categorySelect = document.getElementById('category-select');
+    if (categorySelect instanceof HTMLSelectElement) {
+        categorySelect.value = categoryKey;
+        categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    await addTaskDOM(description, startTime, durationHours, durationMinutes);
+}
 
 describe('User Confirmation Flows', () => {
     let alertSpy;
@@ -69,6 +100,8 @@ describe('User Confirmation Flows', () => {
         // Clear mocks
         jest.clearAllMocks();
         mockLoadTasksFromStorage.mockReturnValue([]); // Default to loading no tasks
+        mockLoadConfig.mockResolvedValue(null);
+        mockPutConfig.mockResolvedValue(undefined);
 
         // Note: Removed updateTaskState call - let the app handle task loading naturally
 
@@ -1176,5 +1209,148 @@ describe('User Confirmation Flows', () => {
                 expect(div.classList.contains('text-slate-200')).toBe(true);
             }
         });
+    });
+});
+
+describe('Phase 3.5 Taxonomy Integration', () => {
+    beforeEach(async () => {
+        document.body.innerHTML = '';
+        clearLocalStorage();
+        resetEventDelegation();
+        jest.clearAllMocks();
+        mockLoadTasksFromStorage.mockReturnValue([]);
+        mockLoadConfig.mockResolvedValue(null);
+        mockPutConfig.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+        clearLocalStorage();
+    });
+
+    test('user can add a task using a group key directly', async () => {
+        await enableActivitiesAndBoot();
+
+        await addScheduledTaskWithCategory({
+            description: 'Group Task',
+            startTime: '09:00',
+            categoryKey: 'work'
+        });
+
+        expect(taskManager.getTaskState()).toHaveLength(1);
+        expect(taskManager.getTaskState()[0].category).toBe('work');
+    });
+
+    test('user can add a task using a child category key', async () => {
+        await enableActivitiesAndBoot();
+
+        await addScheduledTaskWithCategory({
+            description: 'Child Task',
+            startTime: '09:00',
+            categoryKey: 'work/deep'
+        });
+
+        expect(taskManager.getTaskState()).toHaveLength(1);
+        expect(taskManager.getTaskState()[0].category).toBe('work/deep');
+    });
+
+    test('changing a group family in settings updates linked child badges without reload', async () => {
+        await enableActivitiesAndBoot();
+
+        await addScheduledTaskWithCategory({
+            description: 'Linked Child Task',
+            startTime: '09:00',
+            categoryKey: 'work/deep'
+        });
+
+        document.getElementById('settings-gear-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        document.querySelector('.btn-edit-group[data-key="work"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const editForm = document.querySelector('.edit-group-form[data-key="work"]');
+        editForm.querySelector('[name="edit-group-family"]').value = 'amber';
+        editForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const badge = document.querySelector('#scheduled-task-list .category-badge');
+        expect(badge).not.toBeNull();
+        expect(badge.textContent).toContain('Deep Work');
+        expect(badge.getAttribute('style')).toContain(COLOR_FAMILIES.amber[0]);
+    });
+
+    test('deleting a referenced group or category shows an error and leaves taxonomy intact', async () => {
+        await enableActivitiesAndBoot();
+
+        const toastSpy = jest
+            .spyOn(require('../public/js/toast-manager.js'), 'showToast')
+            .mockImplementation(() => {});
+
+        document.getElementById('settings-gear-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        document.getElementById('add-group-btn').click();
+        const addGroupForm = document.getElementById('add-group-form');
+        addGroupForm.querySelector('[name="group-label"]').value = 'Health';
+        addGroupForm.querySelector('[name="group-family"]').value = 'green';
+        addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        await addScheduledTaskWithCategory({
+            description: 'Referenced Group Task',
+            startTime: '09:00',
+            categoryKey: 'health'
+        });
+        mockLoadTasksFromStorage.mockImplementation(() => taskManager.getTaskState());
+
+        document.getElementById('settings-gear-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        document.querySelector('.btn-delete-group[data-key="health"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(toastSpy).toHaveBeenCalledWith('Group "health" is referenced by tasks', {
+            theme: 'rose'
+        });
+        expect(document.querySelector('#category-select option[value="health"]')).not.toBeNull();
+
+        await addScheduledTaskWithCategory({
+            description: 'Referenced Child Task',
+            startTime: '10:30',
+            categoryKey: 'work/deep'
+        });
+        mockLoadTasksFromStorage.mockImplementation(() => taskManager.getTaskState());
+
+        document.getElementById('settings-gear-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        document.querySelector('.btn-delete-category[data-key="work/deep"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(toastSpy).toHaveBeenCalledWith('Category "work/deep" is referenced by tasks', {
+            theme: 'rose'
+        });
+        expect(document.querySelector('#category-select option[value="work/deep"]')).not.toBeNull();
+
+        toastSpy.mockRestore();
+    });
+
+    test('fresh install seeds canonical phase 3.5 taxonomy', async () => {
+        await enableActivitiesAndBoot();
+
+        const categorySelect = document.getElementById('category-select');
+        const optionValues = Array.from(categorySelect.options).map((option) => option.value);
+
+        expect(optionValues).toEqual([
+            '',
+            'work',
+            'work/deep',
+            'work/meetings',
+            'work/comms',
+            'work/admin',
+            'personal',
+            'break'
+        ]);
     });
 });
