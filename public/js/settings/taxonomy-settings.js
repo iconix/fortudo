@@ -1,14 +1,16 @@
 import { COLOR_FAMILIES } from '../category-colors.js';
 import {
-    getCategories,
-    getSelectableCategoryOptions,
+    getTaxonomySnapshot,
+    getSelectableCategoryOptions
+} from '../taxonomy/taxonomy-selectors.js';
+import {
     addGroup,
     updateGroup,
     deleteGroup,
     addCategory,
     updateCategory,
     deleteCategory
-} from '../category-manager.js';
+} from '../taxonomy/taxonomy-mutations.js';
 import { populateCategoryDropdown } from '../tasks/form-utils.js';
 import { showToast } from '../toast-manager.js';
 
@@ -95,7 +97,7 @@ export function refreshTaskCategoryDropdownUI() {
 }
 
 function renderGroupsList() {
-    const { groups } = getCategories();
+    const { groups } = getTaxonomySnapshot();
     if (groups.length === 0) {
         return '<p class="text-sm text-slate-400">No groups yet.</p>';
     }
@@ -192,7 +194,7 @@ function renderAddGroupForm() {
 }
 
 function renderCategoriesList() {
-    const { groups, categories } = getCategories();
+    const { groups, categories } = getTaxonomySnapshot();
     if (categories.length === 0) {
         return '<p class="text-sm text-slate-400">No child categories yet.</p>';
     }
@@ -283,7 +285,7 @@ function renderCategoryEditor(category) {
 }
 
 function renderAddCategoryForm() {
-    const { groups } = getCategories();
+    const { groups } = getTaxonomySnapshot();
 
     return `
         <form id="add-category-form" class="${isAddCategoryFormVisible ? '' : 'hidden '}bg-slate-700/30 rounded-lg p-3 border border-slate-600">

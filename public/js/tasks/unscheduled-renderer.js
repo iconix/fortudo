@@ -1,6 +1,6 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
-import { renderCategoryBadge } from '../category-manager.js';
+import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {

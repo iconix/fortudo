@@ -28,7 +28,7 @@ import {
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
-import { loadCategories } from './category-manager.js';
+import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
@@ -127,7 +127,7 @@ async function initAndBootApp(roomCode) {
 
     // Load and initialize state
     await loadTasksIntoState();
-    await loadCategories();
+    await loadTaxonomy();
 
     // Create callback objects
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();

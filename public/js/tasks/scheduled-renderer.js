@@ -12,7 +12,7 @@ import {
     computeOverlapPreview,
     formatOverlapWarning
 } from './form-utils.js';
-import { renderCategoryBadge } from '../category-manager.js';
+import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
