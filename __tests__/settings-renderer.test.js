@@ -24,6 +24,7 @@ jest.mock('../public/js/toast-manager.js', () => ({
 
 import { initStorage, destroyStorage } from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
+import * as settingsManager from '../public/js/settings-manager.js';
 import { loadSettings, setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
@@ -270,6 +271,30 @@ describe('settings-renderer', () => {
 
             expect(taxonomySection.classList.contains('hidden')).toBe(true);
             expect(message.textContent).toContain('Activities disabled');
+        });
+
+        test('toggle failure restores previous state and shows toast', async () => {
+            await renderDisabledSettings();
+
+            const toggle = document.getElementById('activities-toggle');
+            const taxonomySection = document.getElementById('taxonomy-management-section');
+            const reloadPrompt = document.getElementById('reload-prompt');
+            const setActivitiesEnabledSpy = jest
+                .spyOn(settingsManager, 'setActivitiesEnabled')
+                .mockRejectedValueOnce(new Error('write failed'));
+
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change'));
+            await new Promise((resolve) => setTimeout(resolve, 25));
+
+            expect(toggle.checked).toBe(false);
+            expect(taxonomySection.classList.contains('hidden')).toBe(true);
+            expect(reloadPrompt.classList.contains('hidden')).toBe(true);
+            expect(showToast).toHaveBeenCalledWith('Could not update Activities setting', {
+                theme: 'rose'
+            });
+
+            setActivitiesEnabledSpy.mockRestore();
         });
 
         test('group add form creates a standalone selectable group', async () => {

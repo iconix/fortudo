@@ -18,12 +18,14 @@ export async function loadSettings() {
 
     if (typeof localStorage !== 'undefined') {
         const legacyValue = localStorage.getItem(LEGACY_STORAGE_KEY);
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
         if (legacyValue === 'true') {
             activitiesEnabled = true;
             await putConfig({ id: SETTINGS_CONFIG_ID, activitiesEnabled: true });
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
             return;
         }
+
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
     }
 
     activitiesEnabled = false;

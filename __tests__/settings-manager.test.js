@@ -18,6 +18,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn()
 }));
 
+import * as storage from '../public/js/storage.js';
 import { initStorage, destroyStorage, loadConfig, putConfig } from '../public/js/storage.js';
 import {
     loadSettings,
@@ -72,6 +73,21 @@ describe('settings-manager', () => {
         await initAndLoadSettings();
 
         expect(localStorage.getItem('fortudo-activities-enabled')).toBeNull();
+    });
+
+    test('loadSettings preserves legacy localStorage key when migration persistence fails', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        localStorage.setItem('fortudo-activities-enabled', 'true');
+
+        const putConfigSpy = jest
+            .spyOn(storage, 'putConfig')
+            .mockRejectedValueOnce(new Error('disk full'));
+
+        await expect(loadSettings()).rejects.toThrow('disk full');
+        expect(localStorage.getItem('fortudo-activities-enabled')).toBe('true');
+        expect(isActivitiesEnabled()).toBe(true);
+
+        putConfigSpy.mockRestore();
     });
 
     test('loadSettings prefers PouchDB config over localStorage', async () => {
