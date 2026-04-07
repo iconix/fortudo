@@ -4,6 +4,7 @@ import {
     renderTaxonomyManagementContent,
     resetTaxonomySettingsViewState
 } from './settings/taxonomy-settings.js';
+import { showToast } from './toast-manager.js';
 
 /**
  * Get the settings modal element.
@@ -79,9 +80,17 @@ export function renderSettingsContent(options = {}) {
 function wireSettingsEvents(options) {
     const toggle = document.getElementById('activities-toggle');
     if (toggle) {
-        toggle.onchange = () => {
+        toggle.onchange = async () => {
             const newValue = toggle.checked;
-            setActivitiesEnabled(newValue);
+            const previousValue = !newValue;
+
+            try {
+                await setActivitiesEnabled(newValue);
+            } catch (error) {
+                toggle.checked = previousValue;
+                showToast('Could not update Activities setting', { theme: 'rose' });
+                return;
+            }
 
             const reloadPrompt = document.getElementById('reload-prompt');
             const message = document.getElementById('reload-prompt-message');

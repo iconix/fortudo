@@ -2,9 +2,9 @@
 
 ## Pyramid Summary
 
-- **~2w:** Add activity tracking to Fortudo so planning and actual time spent live in one app: categories/settings, manual and automatic activity logging, and insights built around plan-vs-actual review.
-- **~8w:** Activities now rest on a merged storage foundation: `task`, `activity`, and `config` documents coexist in the same room database, task writes are scoped safely, and preview/sync validation exists. The remaining work is user-facing behavior: categories/settings, activity creation, and insights UI layered on top of that foundation.
-- **~32w:** Fortudo evolves from a planning-only tool into a lightweight planning-and-tracking system. Categories connect tasks and activities, the coordinator remains the post-mutation seam for cross-cutting behavior like auto-logging, and insights center on reviewing planned versus actual time without splitting that workflow into a separate app.
+- **~2w:** Add activity tracking to Fortudo so planning and actual time spent live in one app: synced Activities enablement, shared task/activity taxonomy, manual and automatic activity logging, and insights built around plan-vs-actual review.
+- **~8w:** The foundation is now in place: `task`, `activity`, and `config` documents coexist safely in one room database; taxonomy and settings are PouchDB-backed; and boot/sync validation exists. The remaining work is activity CRUD, auto-logging, and insights UI layered on top of that shared local-first data model.
+- **~32w:** Fortudo evolves from a planning-only tool into a lightweight planning-and-tracking system. Tasks and activities share taxonomy, settings sync at the room level, the coordinator remains the post-mutation seam for cross-cutting behavior like auto-logging, and insights center on reviewing planned versus actual time without splitting that workflow into a separate app.
 
 ---
 
@@ -66,26 +66,40 @@ Fortudo handles the planning side of daily time management by scheduling tasks i
 }
 ```
 
-**Config document - Categories:**
+**Config document - Taxonomy:**
 
-Stored in PouchDB so categories sync across devices.
+Stored in PouchDB so task taxonomy syncs across devices sharing a room.
 
 ```js
 {
     docType: 'config',
     id: 'config-categories',
+    schemaVersion: '3.5',
+    groups: [
+        { key: 'work', label: 'Work', colorFamily: 'blue', color: '#0ea5e9' },
+        { key: 'personal', label: 'Personal', colorFamily: 'rose', color: '#ec4899' },
+        { key: 'break', label: 'Break', colorFamily: 'green', color: '#22c55e' }
+    ],
     categories: [
-        { key: 'work/deep', label: 'Deep Work', color: '#0ea5e9', group: 'work' },
-        { key: 'work/meetings', label: 'Meetings', color: '#6366f1', group: 'work' },
-        { key: 'work/comms', label: 'Comms', color: '#f59e0b', group: 'work' },
-        { key: 'work/admin', label: 'Admin', color: '#64748b', group: 'work' },
-        { key: 'personal', label: 'Personal', color: '#ec4899', group: 'personal' },
-        { key: 'break', label: 'Break', color: '#22c55e', group: 'break' }
+        {
+            key: 'work/deep',
+            groupKey: 'work',
+            label: 'Deep Work',
+            color: '#0ea5e9',
+            isLinkedToGroupFamily: true
+        },
+        {
+            key: 'work/meetings',
+            groupKey: 'work',
+            label: 'Meetings',
+            color: '#6366f1',
+            isLinkedToGroupFamily: true
+        }
     ]
 }
 ```
 
-Categories use a hierarchical key format. The `group` field, derived from the first path segment, supports zoomed-out aggregation in insights. The form dropdown groups options by group for easy scanning.
+Taxonomy now treats standalone groups and child categories as first-class records. Keys remain hierarchical using `/`, so insights can still aggregate by top-level group while the task form dropdown stays grouped for easy scanning.
 
 Shared field names between tasks and activities: `description`, `startDateTime`, `endDateTime`, `duration`, `category`.
 
@@ -108,7 +122,7 @@ Shared field names between tasks and activities: `description`, `startDateTime`,
 
 On first load, legacy task documents without `docType` get `docType: 'task'` written back during storage preparation. That migration is idempotent.
 
-**Update after Phase 2:** config document primitives shipped, but default category seeding did not. Seeding should happen later in `category-manager.js` / settings work, not in generic storage code.
+**Update after Phase 3/3.9:** generic config primitives remain in `storage.js`, while taxonomy-specific seeding, normalization, selectors, and mutations live in focused taxonomy modules. The earlier `category-manager.js` compatibility facade has been removed.
 
 ### Architecture: Coordinator Boundary
 
@@ -179,7 +193,10 @@ public/js/
 |-- room-renderer.js              # room entry screen UI
 |-- sync-manager.js               # CouchDB sync
 |-- reschedule-engine.js          # rescheduling logic
-|-- category-manager.js           # category CRUD and config-doc loading
+|-- taxonomy/
+|   |-- taxonomy-store.js        # taxonomy load/persist, seeding, normalization
+|   |-- taxonomy-selectors.js    # taxonomy snapshot queries, option helpers, badge rendering
+|   `-- taxonomy-mutations.js    # taxonomy CRUD and task-reference safety checks
 |-- settings-manager.js           # Activities toggle and related settings
 |-- utils.js                      # shared utilities
 `-- config.js                     # CouchDB URL config
@@ -191,15 +208,16 @@ Files within feature folders are unprefixed, for example `tasks/manager.js` inst
 
 ### Feature Toggle & Settings
 
-`settings-manager.js` should expose `isActivitiesEnabled()` and `setActivitiesEnabled(bool)`. The storage mechanism, `localStorage` versus PouchDB, stays encapsulated and can be finalized later.
+`settings-manager.js` now exposes `loadSettings()`, `isActivitiesEnabled()`, and `setActivitiesEnabled(bool)`. Activities enablement is stored in a PouchDB config document and read synchronously from an in-memory cache after boot. A one-time `localStorage` migration remains in place for the legacy `fortudo-activities-enabled` key.
 
 When Activities are disabled: no activity-related DOM, no category dropdown on tasks, no auto-logging, and no insights tab. Tasks should continue working exactly as they do today.
 
 **Settings UI:** Gear icon in the header, next to the room-code badge and sync indicator. Opens a settings modal with:
 
 - Activities toggle ("Enable Activities")
-- Category management: list of categories with colored dots, edit/delete buttons, and an "Add category" flow with label input and color picker
+- Taxonomy management: standalone groups plus child categories, each with edit/delete flows and grouped assignment in the task form
 - Toggling the feature keeps the modal open, shows the toggle in its new state, explains what will change, and provides a "Reload to apply" primary action. The user can close the modal without reloading if they change their mind.
+- Toggle persistence is async; failed writes should restore the prior toggle state and surface non-blocking feedback instead of leaving the UI in an inconsistent state.
 
 ### UI: Activity Logging
 
@@ -265,8 +283,10 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 - `activities/manager.js` - addActivity, createActivityFromTask, CRUD
 - `activities/handlers.js` - activity handler tests following existing patterns
-- `category-manager.js` - loading defaults, CRUD, config-doc persistence
-- `settings-manager.js` - toggle read/write
+- `taxonomy/taxonomy-store.js` - seeding, normalization, config-doc persistence
+- `taxonomy/taxonomy-selectors.js` - option helpers, resolution, badge rendering
+- `taxonomy/taxonomy-mutations.js` - taxonomy CRUD and task-reference safety checks
+- `settings-manager.js` - boot loading, PouchDB-backed toggle persistence, legacy migration, failure handling
 - `storage.js` - new activity/config functions, `saveTasks` scoping, migration
 - `app-coordinator.js` - activity-related coordination logic
 
@@ -286,7 +306,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 - **Activity accent color:** cyan, sky, or orange (leaning blue/sky). Try visually during implementation.
 - **Charts:** Hand-rolled HTML/CSS/SVG for v1. If that looks too plain, evaluate either a lightweight library such as uPlot or Frappe Charts, or Chart.js for full interactivity.
-- **Settings storage mechanism:** `localStorage` (per-device) versus PouchDB (per-room) for the Activities toggle. Decide once the intended behavior is clearer.
+- **Legacy settings migration cleanup:** remove the one-time `fortudo-activities-enabled` migration path after a later release, once it is acceptable to stop supporting users skipping directly from pre-3.9 builds.
 
 ## Implementation Phases
 
@@ -322,15 +342,24 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Add preview smoke coverage for storage guarantees and synced preview behavior
 - Harden room-switch sync lifecycle discovered during validation
 
-### Next Planned Work
+### Completed Categories/Settings Work
 
 **Phase 3: Categories and settings**
 
-- Add `category-manager.js` with default seeding from the config doc
-- Add `settings-manager.js` with Activities toggle
-- Build settings modal UI: toggle plus category management
-- Add category dropdown on task form in all relevant modes
-- Add keyboard shortcuts for form modes if the UI is stable enough
+- Add taxonomy-backed settings UI with standalone groups and child categories
+- Add grouped category assignment on the task form
+- Add taxonomy rendering on task badges and settings surfaces
+- Add initial Activities toggle and settings modal flow
+
+**Phase 3.9: Cleanup and settings migration**
+
+- Remove the `category-manager.js` compatibility facade and rewire imports directly to taxonomy modules
+- Move taxonomy responsibilities into `taxonomy-store`, `taxonomy-selectors`, and `taxonomy-mutations`
+- Migrate the Activities toggle from legacy `localStorage` to a PouchDB config document
+- Load settings during boot via `loadSettings()` before feature-gated UI checks
+- Add failure-path handling so migration does not drop legacy state on failed persistence and toggle writes revert UI state with a toast
+
+### Next Planned Work
 
 **Phase 4: Activity logging**
 

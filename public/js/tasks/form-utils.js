@@ -10,7 +10,7 @@ import {
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
 import { checkOverlap } from '../reschedule-engine.js';
-import { resolveCategoryKey } from '../category-manager.js';
+import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 

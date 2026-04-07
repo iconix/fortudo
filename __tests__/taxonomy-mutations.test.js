@@ -20,7 +20,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
 
 import { initStorage, destroyStorage, putTask } from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
-import { loadCategories } from '../public/js/category-manager.js';
+import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
 import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 import {
     addGroup,
@@ -38,7 +38,7 @@ function uniqueRoomCode() {
 
 async function initAndLoadTaxonomy() {
     await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-    await loadCategories();
+    await loadTaxonomy();
 }
 
 afterEach(async () => {
@@ -46,6 +46,37 @@ afterEach(async () => {
 });
 
 describe('taxonomy-mutations', () => {
+    test('addGroup slugifies labels, persists, and rejects collisions', async () => {
+        await initAndLoadTaxonomy();
+
+        await addGroup({ label: 'Deep Focus', colorFamily: 'amber' });
+
+        expect(getGroupByKey('deep-focus')).toMatchObject({
+            key: 'deep-focus',
+            label: 'Deep Focus',
+            colorFamily: 'amber'
+        });
+
+        await expect(addGroup({ label: 'Deep Focus', colorFamily: 'blue' })).rejects.toThrow(
+            'already exists'
+        );
+    });
+
+    test('group mutations validate input, update labels, and allow safe deletion', async () => {
+        await initAndLoadTaxonomy();
+
+        await expect(addGroup({ label: '   ' })).rejects.toThrow('Group label is required');
+        await expect(updateGroup('missing', { label: 'Nope' })).rejects.toThrow('not found');
+
+        await addGroup({ label: 'Errands', colorFamily: 'rose' });
+        await updateGroup('errands', { label: 'Errands And Life' });
+
+        expect(getGroupByKey('errands').label).toBe('Errands And Life');
+
+        await deleteGroup('errands');
+        expect(getGroupByKey('errands')).toBeNull();
+    });
+
     test('updateGroup cascades family changes only to linked children', async () => {
         await initAndLoadTaxonomy();
 
@@ -55,6 +86,12 @@ describe('taxonomy-mutations', () => {
         expect(getGroupByKey('work').colorFamily).toBe('amber');
         expect(getCategoryByKey('work/deep').color).toBe('#22c55e');
         expect(COLOR_FAMILIES.amber).toContain(getCategoryByKey('work/meetings').color);
+    });
+
+    test('deleteGroup blocks when child categories still belong to it', async () => {
+        await initAndLoadTaxonomy();
+
+        await expect(deleteGroup('work')).rejects.toThrow('still has child categories');
     });
 
     test('deleteGroup blocks when tasks reference the group key', async () => {
@@ -79,6 +116,36 @@ describe('taxonomy-mutations', () => {
         expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
     });
 
+    test('addCategory validates inputs and can create compatibility groups', async () => {
+        await initAndLoadTaxonomy();
+
+        await expect(addCategory({ groupKey: 'work', label: '   ' })).rejects.toThrow(
+            'Category label is required'
+        );
+        await expect(addCategory({ label: 'Errands' })).rejects.toThrow(
+            'Category group is required'
+        );
+        await expect(addCategory({ groupKey: 'missing', label: 'Errands' })).rejects.toThrow(
+            'Group "missing" not found'
+        );
+
+        await addCategory({
+            groupKey: 'health',
+            label: 'Exercise',
+            color: '#10b981',
+            allowCreateGroup: true
+        });
+
+        expect(getGroupByKey('health')).toMatchObject({
+            key: 'health',
+            label: 'Health'
+        });
+        expect(getCategoryByKey('health/exercise')).toMatchObject({
+            groupKey: 'health',
+            color: '#10b981'
+        });
+    });
+
     test('addGroup, addCategory, and deleteCategory keep persisted taxonomy writable', async () => {
         await initAndLoadTaxonomy();
 
@@ -91,5 +158,22 @@ describe('taxonomy-mutations', () => {
         await deleteCategory('health/exercise');
 
         expect(getCategoryByKey('health/exercise')).toBeNull();
+    });
+
+    test('category mutations validate lookup failures and block deleting referenced keys', async () => {
+        await initAndLoadTaxonomy();
+
+        await expect(updateCategory('missing', { label: 'Nope' })).rejects.toThrow('not found');
+        await expect(deleteCategory('missing')).rejects.toThrow('not found');
+
+        await putTask({
+            id: 'task-category-reference',
+            type: 'unscheduled',
+            description: 'Deep work task',
+            status: 'incomplete',
+            category: 'work/deep'
+        });
+
+        await expect(deleteCategory('work/deep')).rejects.toThrow('referenced by tasks');
     });
 });

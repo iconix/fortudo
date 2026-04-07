@@ -19,7 +19,7 @@ import {
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
-import { resolveCategoryKey } from '../public/js/category-manager.js';
+import { resolveCategoryKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock showAlert
@@ -27,7 +27,7 @@ jest.mock('../public/js/modal-manager.js', () => ({
     showAlert: jest.fn()
 }));
 
-jest.mock('../public/js/category-manager.js', () => ({
+jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     resolveCategoryKey: jest.fn()
 }));
 
