@@ -29,7 +29,7 @@ import {
 } from './dom-renderer.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
-import { isActivitiesEnabled } from './settings-manager.js';
+import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
@@ -124,6 +124,9 @@ async function initAndBootApp(roomCode) {
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     await prepareStorage(storageRoomCode, {}, remoteUrl);
+
+    // Load settings before any UI checks that depend on cached flags.
+    await loadSettings();
 
     // Load and initialize state
     await loadTasksIntoState();

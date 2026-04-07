@@ -79,9 +79,9 @@ export function renderSettingsContent(options = {}) {
 function wireSettingsEvents(options) {
     const toggle = document.getElementById('activities-toggle');
     if (toggle) {
-        toggle.onchange = () => {
+        toggle.onchange = async () => {
             const newValue = toggle.checked;
-            setActivitiesEnabled(newValue);
+            await setActivitiesEnabled(newValue);
 
             const reloadPrompt = document.getElementById('reload-prompt');
             const message = document.getElementById('reload-prompt-message');

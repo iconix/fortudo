@@ -24,7 +24,7 @@ jest.mock('../public/js/toast-manager.js', () => ({
 
 import { initStorage, destroyStorage } from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
-import { setActivitiesEnabled } from '../public/js/settings-manager.js';
+import { loadSettings, setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
 import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
@@ -74,6 +74,13 @@ function setupSettingsDOM() {
 async function renderEnabledSettings(options = {}) {
     await initStorage(uniqueRoomCode(), { adapter: 'memory' });
     await setActivitiesEnabled(true);
+    await loadTaxonomy();
+    renderSettingsContent(options);
+}
+
+async function renderDisabledSettings(options = {}) {
+    await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+    await loadSettings();
     await loadTaxonomy();
     renderSettingsContent(options);
 }
@@ -170,9 +177,7 @@ describe('settings-renderer', () => {
         });
 
         test('renders Activities toggle in off state by default', async () => {
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadTaxonomy();
-            renderSettingsContent();
+            await renderDisabledSettings();
 
             const toggle = document.getElementById('activities-toggle');
             expect(toggle).not.toBeNull();
@@ -233,22 +238,19 @@ describe('settings-renderer', () => {
         });
 
         test('hides taxonomy management when Activities disabled', async () => {
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadTaxonomy();
-            renderSettingsContent();
+            await renderDisabledSettings();
 
             const taxonomySection = document.getElementById('taxonomy-management-section');
             expect(taxonomySection.classList.contains('hidden')).toBe(true);
         });
 
         test('toggling Activities shows reload prompt', async () => {
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadTaxonomy();
-            renderSettingsContent();
+            await renderDisabledSettings();
 
             const toggle = document.getElementById('activities-toggle');
             toggle.checked = true;
             toggle.dispatchEvent(new Event('change'));
+            await new Promise((resolve) => setTimeout(resolve, 25));
 
             const reloadPrompt = document.getElementById('reload-prompt');
             expect(reloadPrompt).not.toBeNull();
@@ -264,6 +266,7 @@ describe('settings-renderer', () => {
 
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
+            await new Promise((resolve) => setTimeout(resolve, 25));
 
             expect(taxonomySection.classList.contains('hidden')).toBe(true);
             expect(message.textContent).toContain('Activities disabled');
