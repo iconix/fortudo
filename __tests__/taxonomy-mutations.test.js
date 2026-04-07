@@ -20,7 +20,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
 
 import { initStorage, destroyStorage, putTask } from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
-import { loadCategories } from '../public/js/category-manager.js';
+import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
 import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 import {
     addGroup,
@@ -38,7 +38,7 @@ function uniqueRoomCode() {
 
 async function initAndLoadTaxonomy() {
     await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-    await loadCategories();
+    await loadTaxonomy();
 }
 
 afterEach(async () => {

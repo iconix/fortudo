@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-jest.mock('../public/js/category-manager.js', () => ({
+jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     renderCategoryBadge: jest.fn((categoryKey) =>
         categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
     )

@@ -23,10 +23,11 @@ jest.mock('../public/js/toast-manager.js', () => ({
 }));
 
 import { initStorage, destroyStorage } from '../public/js/storage.js';
-import { loadCategories, getGroupByKey, getCategoryByKey } from '../public/js/category-manager.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 import { setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
+import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 import {
     openSettingsModal,
     closeSettingsModal,
@@ -71,9 +72,9 @@ function setupSettingsDOM() {
 }
 
 async function renderEnabledSettings(options = {}) {
-    setActivitiesEnabled(true);
     await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-    await loadCategories();
+    await setActivitiesEnabled(true);
+    await loadTaxonomy();
     renderSettingsContent(options);
 }
 
@@ -170,7 +171,7 @@ describe('settings-renderer', () => {
 
         test('renders Activities toggle in off state by default', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
+            await loadTaxonomy();
             renderSettingsContent();
 
             const toggle = document.getElementById('activities-toggle');
@@ -233,7 +234,7 @@ describe('settings-renderer', () => {
 
         test('hides taxonomy management when Activities disabled', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
+            await loadTaxonomy();
             renderSettingsContent();
 
             const taxonomySection = document.getElementById('taxonomy-management-section');
@@ -242,7 +243,7 @@ describe('settings-renderer', () => {
 
         test('toggling Activities shows reload prompt', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await loadCategories();
+            await loadTaxonomy();
             renderSettingsContent();
 
             const toggle = document.getElementById('activities-toggle');
