@@ -36,6 +36,7 @@ from scripts.playwright_preview_smoke import (
     summarize_docs,
     task_form_input_selector,
     wait_for_activity_doc,
+    wait_for_input_value,
     wait_for_activity_failure_alert,
     wait_for_demo_start,
     wait_for_room_code,
@@ -642,6 +643,34 @@ class PreviewWaitHelperTests(unittest.TestCase):
         result = wait_for_activity_doc(page, "room-a", "Focus block", timeout_s=0.05, interval_s=0)
 
         self.assertEqual(result["id"], "activity-1")
+
+    def test_wait_for_input_value_waits_until_field_matches(self):
+        input_locator = FakeLocator()
+        input_locator.value = ""
+        input_locator.text_values = []
+        page = FakePage({"#activity-edit-description": input_locator})
+
+        original_input_value = input_locator.input_value
+        calls = {"count": 0}
+
+        def delayed_value():
+            calls["count"] += 1
+            if calls["count"] >= 2:
+                input_locator.value = "Playwright editable activity"
+            return original_input_value()
+
+        input_locator.input_value = delayed_value
+
+        result = wait_for_input_value(
+            page,
+            "#activity-edit-description",
+            "Playwright editable activity",
+            description="activity edit modal description preload",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(result, "Playwright editable activity")
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
         checkbox = FakeLocator()

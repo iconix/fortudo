@@ -714,6 +714,26 @@ def wait_for_text_in_locator(
     )
 
 
+def wait_for_input_value(
+    page: Any,
+    selector: str,
+    expected_value: str,
+    *,
+    description: str,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> str:
+    locator = page.locator(selector)
+    return wait_until(
+        lambda: (
+            value if (value := locator.input_value()) == expected_value else False
+        ),
+        description,
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
 def add_scheduled_task(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
     page.locator("#scheduled").check()
     fill_locator_value(
@@ -1720,7 +1740,12 @@ def run_smoke(
                 f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
             ).click()
             page.locator("#activity-edit-modal").wait_for(state="visible", timeout=10000)
-            current_modal_value = page.locator("#activity-edit-description").input_value()
+            current_modal_value = wait_for_input_value(
+                page,
+                "#activity-edit-description",
+                "Playwright editable activity",
+                description="activity edit modal description preload",
+            )
             if current_modal_value != "Playwright editable activity":
                 raise ValueError(
                     "activity edit modal lost the current description after rerender: "
