@@ -49,14 +49,19 @@ describe('activity handlers', () => {
             activity: { id: 'activity-1', description: 'Deep work' }
         });
 
-        await handleAddActivity({
-            description: 'Deep work',
-            startDateTime: '2026-04-07T09:00:00.000Z',
-            endDateTime: '2026-04-07T10:00:00.000Z',
-            duration: 60,
-            category: null,
-            source: 'manual',
-            sourceTaskId: null
+        await expect(
+            handleAddActivity({
+                description: 'Deep work',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T10:00:00.000Z',
+                duration: 60,
+                category: null,
+                source: 'manual',
+                sourceTaskId: null
+            })
+        ).resolves.toEqual({
+            success: true,
+            activity: { id: 'activity-1', description: 'Deep work' }
         });
 
         expect(onActivityCreated).toHaveBeenCalledWith({
@@ -65,20 +70,43 @@ describe('activity handlers', () => {
         expect(showToast).toHaveBeenCalledWith('Activity logged.', { theme: 'sky' });
     });
 
-    test('handleAddActivity shows alert on failure', async () => {
+    test('handleAddActivity shows alert on validation failure and returns it', async () => {
         addActivity.mockResolvedValue({
             success: false,
             reason: 'Activity description is required.'
         });
 
-        await handleAddActivity({});
+        await expect(handleAddActivity({})).resolves.toEqual({
+            success: false,
+            reason: 'Activity description is required.'
+        });
 
         expect(showAlert).toHaveBeenCalledWith('Activity description is required.', 'sky');
         expect(onActivityCreated).not.toHaveBeenCalled();
     });
 
+    test('handleAddActivity catches storage rejections and returns fallback failure', async () => {
+        addActivity.mockRejectedValue(new Error('disk full'));
+
+        await expect(
+            handleAddActivity({
+                description: 'Deep work',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T10:00:00.000Z',
+                duration: 60
+            })
+        ).resolves.toEqual({
+            success: false,
+            reason: 'Could not log activity.'
+        });
+
+        expect(showAlert).toHaveBeenCalledWith('Could not log activity.', 'sky');
+        expect(onActivityCreated).not.toHaveBeenCalled();
+        expect(showToast).not.toHaveBeenCalled();
+    });
+
     test('handleAddActivity returns early when payload resolves to null', async () => {
-        await handleAddActivity(null);
+        await expect(handleAddActivity(null)).resolves.toBeUndefined();
 
         expect(addActivity).not.toHaveBeenCalled();
         expect(showAlert).not.toHaveBeenCalled();
@@ -91,7 +119,12 @@ describe('activity handlers', () => {
             activity: { id: 'activity-1', description: 'Updated work' }
         });
 
-        await handleEditActivity('activity-1', { description: 'Updated work' });
+        await expect(
+            handleEditActivity('activity-1', { description: 'Updated work' })
+        ).resolves.toEqual({
+            success: true,
+            activity: { id: 'activity-1', description: 'Updated work' }
+        });
 
         expect(editActivity).toHaveBeenCalledWith('activity-1', { description: 'Updated work' });
         expect(onActivityEdited).toHaveBeenCalledWith({
@@ -105,10 +138,30 @@ describe('activity handlers', () => {
             success: false
         });
 
-        await handleEditActivity('activity-1', { description: 'Updated work' });
+        await expect(
+            handleEditActivity('activity-1', { description: 'Updated work' })
+        ).resolves.toEqual({
+            success: false,
+            reason: 'Could not update activity.'
+        });
 
         expect(showAlert).toHaveBeenCalledWith('Could not update activity.', 'sky');
         expect(onActivityEdited).not.toHaveBeenCalled();
+    });
+
+    test('handleEditActivity catches storage rejections and returns fallback failure', async () => {
+        editActivity.mockRejectedValue(new Error('write failed'));
+
+        await expect(
+            handleEditActivity('activity-1', { description: 'Updated work' })
+        ).resolves.toEqual({
+            success: false,
+            reason: 'Could not update activity.'
+        });
+
+        expect(showAlert).toHaveBeenCalledWith('Could not update activity.', 'sky');
+        expect(onActivityEdited).not.toHaveBeenCalled();
+        expect(showToast).not.toHaveBeenCalled();
     });
 
     test('handleSaveActivityEdit proxies to edit flow', async () => {
@@ -131,7 +184,10 @@ describe('activity handlers', () => {
             activity: { id: 'activity-1', description: 'Deep work' }
         });
 
-        await handleDeleteActivity('activity-1');
+        await expect(handleDeleteActivity('activity-1')).resolves.toEqual({
+            success: true,
+            activity: { id: 'activity-1', description: 'Deep work' }
+        });
 
         expect(removeActivity).toHaveBeenCalledWith('activity-1');
         expect(onActivityDeleted).toHaveBeenCalledWith({
@@ -145,10 +201,26 @@ describe('activity handlers', () => {
             success: false
         });
 
-        await handleDeleteActivity('activity-1');
+        await expect(handleDeleteActivity('activity-1')).resolves.toEqual({
+            success: false,
+            reason: 'Could not delete activity.'
+        });
 
         expect(showAlert).toHaveBeenCalledWith('Could not delete activity.', 'sky');
         expect(onActivityDeleted).not.toHaveBeenCalled();
+    });
+
+    test('handleDeleteActivity catches storage rejections and returns fallback failure', async () => {
+        removeActivity.mockRejectedValue(new Error('delete failed'));
+
+        await expect(handleDeleteActivity('activity-1')).resolves.toEqual({
+            success: false,
+            reason: 'Could not delete activity.'
+        });
+
+        expect(showAlert).toHaveBeenCalledWith('Could not delete activity.', 'sky');
+        expect(onActivityDeleted).not.toHaveBeenCalled();
+        expect(showToast).not.toHaveBeenCalled();
     });
 
     test('createActivityCallbacks exposes handler references', () => {

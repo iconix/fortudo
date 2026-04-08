@@ -16,14 +16,25 @@ export async function handleAddActivity(activityDataOrForm) {
         return;
     }
 
-    const result = await addActivity(activityData);
+    let result;
+    try {
+        result = await addActivity(activityData);
+    } catch {
+        showAlert('Could not log activity.', 'sky');
+        return { success: false, reason: 'Could not log activity.' };
+    }
+
     if (!result.success) {
         showAlert(result.reason || 'Could not log activity.', 'sky');
-        return;
+        return {
+            success: false,
+            reason: result.reason || 'Could not log activity.'
+        };
     }
 
     onActivityCreated({ activity: result.activity });
     showToast('Activity logged.', { theme: 'sky' });
+    return result;
 }
 
 export async function handleEditActivity(activityId, updatesOrForm) {
@@ -32,14 +43,25 @@ export async function handleEditActivity(activityId, updatesOrForm) {
         return;
     }
 
-    const result = await editActivity(activityId, updates);
+    let result;
+    try {
+        result = await editActivity(activityId, updates);
+    } catch {
+        showAlert('Could not update activity.', 'sky');
+        return { success: false, reason: 'Could not update activity.' };
+    }
+
     if (!result.success) {
         showAlert(result.reason || 'Could not update activity.', 'sky');
-        return;
+        return {
+            success: false,
+            reason: result.reason || 'Could not update activity.'
+        };
     }
 
     onActivityEdited({ activity: result.activity });
     showToast('Activity updated.', { theme: 'sky' });
+    return result;
 }
 
 export async function handleSaveActivityEdit(activityId, formElement) {
@@ -47,14 +69,25 @@ export async function handleSaveActivityEdit(activityId, formElement) {
 }
 
 export async function handleDeleteActivity(activityId) {
-    const result = await removeActivity(activityId);
+    let result;
+    try {
+        result = await removeActivity(activityId);
+    } catch {
+        showAlert('Could not delete activity.', 'sky');
+        return { success: false, reason: 'Could not delete activity.' };
+    }
+
     if (!result.success) {
         showAlert(result.reason || 'Could not delete activity.', 'sky');
-        return;
+        return {
+            success: false,
+            reason: result.reason || 'Could not delete activity.'
+        };
     }
 
     onActivityDeleted({ activity: result.activity });
     showToast('Activity deleted.', { theme: 'sky' });
+    return result;
 }
 
 export function createActivityCallbacks() {

@@ -8,7 +8,18 @@ jest.mock('../public/js/dom-renderer.js', () => ({
 }));
 
 jest.mock('../public/js/activities/manager.js', () => ({
-    addActivity: jest.fn(() => Promise.resolve()),
+    addActivity: jest.fn(() =>
+        Promise.resolve({
+            success: true,
+            activity: {
+                id: 'activity-from-task',
+                docType: 'activity',
+                description: 'Generated activity',
+                source: 'auto',
+                sourceTaskId: 'task-1'
+            }
+        })
+    ),
     createActivityFromTask: jest.fn((task) => ({
         id: 'activity-from-task',
         docType: 'activity',
@@ -20,6 +31,10 @@ jest.mock('../public/js/activities/manager.js', () => ({
 
 jest.mock('../public/js/settings-manager.js', () => ({
     isActivitiesEnabled: jest.fn(() => false)
+}));
+
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
 }));
 
 jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
@@ -38,6 +53,7 @@ import { addActivity, createActivityFromTask } from '../public/js/activities/man
 import { refreshUI, updateStartTimeField } from '../public/js/dom-renderer.js';
 import { isActivitiesEnabled } from '../public/js/settings-manager.js';
 import { triggerConfettiAnimation } from '../public/js/tasks/scheduled-renderer.js';
+import { showToast } from '../public/js/toast-manager.js';
 
 describe('app-coordinator', () => {
     beforeEach(() => {
@@ -119,13 +135,14 @@ describe('app-coordinator', () => {
         expect(refreshUI).toHaveBeenCalledTimes(1);
     });
 
-    test('onTaskCompleted auto-logs scheduled tasks when activities are enabled', () => {
+    test('onTaskCompleted auto-logs scheduled tasks when activities are enabled', async () => {
         isActivitiesEnabled.mockReturnValue(true);
 
         const task = { id: 'task-9', type: 'scheduled', description: 'Write notes' };
         appCoordinator.onTaskCompleted({ task });
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(refreshUI).toHaveBeenCalledTimes(2);
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-9');
         expect(createActivityFromTask).toHaveBeenCalledWith(task);
         expect(addActivity).toHaveBeenCalledWith({
@@ -151,6 +168,30 @@ describe('app-coordinator', () => {
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-9b');
         expect(createActivityFromTask).toHaveBeenCalled();
         expect(addActivity).toHaveBeenCalled();
+        expect(showToast).toHaveBeenCalledWith('Task completed, but activity auto-log failed.', {
+            theme: 'amber'
+        });
+    });
+
+    test('onTaskCompleted refreshes again after a successful auto-log write', async () => {
+        isActivitiesEnabled.mockReturnValue(true);
+        addActivity.mockResolvedValueOnce({
+            success: true,
+            activity: {
+                id: 'activity-42',
+                docType: 'activity',
+                description: 'Write notes',
+                source: 'auto',
+                sourceTaskId: 'task-42'
+            }
+        });
+
+        appCoordinator.onTaskCompleted({
+            task: { id: 'task-42', type: 'scheduled', description: 'Write notes' }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(refreshUI).toHaveBeenCalledTimes(2);
     });
 
     test('onTaskCompleted does not auto-log scheduled tasks when activities are disabled', () => {

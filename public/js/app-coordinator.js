@@ -2,6 +2,7 @@ import { refreshUI } from './dom-renderer.js';
 import { addActivity, createActivityFromTask } from './activities/manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
+import { showToast } from './toast-manager.js';
 import { logger } from './utils.js';
 
 function refreshWhenPresent(value) {
@@ -62,9 +63,18 @@ export function onTaskCompleted({ task }) {
     if (isActivitiesEnabled()) {
         const activity = createActivityFromTask(task);
         if (activity) {
-            void addActivity(activity).catch((error) => {
-                logger.error('Failed to auto-log completed task as activity:', error);
-            });
+            void addActivity(activity)
+                .then((result) => {
+                    if (result?.success && result.activity) {
+                        onActivityCreated({ activity: result.activity });
+                    }
+                })
+                .catch((error) => {
+                    logger.error('Failed to auto-log completed task as activity:', error);
+                    showToast('Task completed, but activity auto-log failed.', {
+                        theme: 'amber'
+                    });
+                });
         }
     }
 }

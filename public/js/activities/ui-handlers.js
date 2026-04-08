@@ -4,6 +4,13 @@ import { renderActivities } from './renderer.js';
 import { handleAddActivity, handleEditActivity, handleDeleteActivity } from './handlers.js';
 import { showActivityEditModal } from '../modal-manager.js';
 
+function clearDeleteConfirmState(deps) {
+    const wasConfirming = deps.resetAllConfirmingDeleteFlags();
+    if (wasConfirming) {
+        deps.refreshUI();
+    }
+}
+
 export function syncActivitiesUI(enabled) {
     const activityToggleOption = document.getElementById('activity-toggle-option');
     const activitiesContainer = document.getElementById('activities-container');
@@ -52,7 +59,11 @@ export async function handleActivityAwareFormSubmit(formElement, deps) {
         return;
     }
 
-    await handleAddActivity(activityData);
+    const result = await handleAddActivity(activityData);
+    if (!result?.success) {
+        return;
+    }
+
     formElement.reset();
     deps.resetTaskFormPreviewState({
         hintElement: document.getElementById('end-time-hint'),
@@ -84,9 +95,10 @@ export function handleActivityListClick(target, deps) {
         const activityItem = editActivityButton.closest('[data-activity-id]');
         const activityId =
             editActivityButton.dataset.activityId || activityItem?.getAttribute('data-activity-id');
+        const currentDescription =
+            activityItem?.querySelector('.text-sm.text-slate-200')?.textContent?.trim() || '';
+        clearDeleteConfirmState(deps);
         if (activityId) {
-            const currentDescription =
-                activityItem?.querySelector('.text-sm.text-slate-200')?.textContent?.trim() || '';
             void showActivityEditModal(currentDescription).then((nextDescription) => {
                 if (
                     typeof nextDescription === 'string' &&
@@ -108,6 +120,7 @@ export function handleActivityListClick(target, deps) {
         const activityId =
             deleteActivityButton.dataset.activityId ||
             activityItem?.getAttribute('data-activity-id');
+        clearDeleteConfirmState(deps);
         if (activityId) {
             void handleDeleteActivity(activityId);
         }
@@ -118,10 +131,7 @@ export function handleActivityListClick(target, deps) {
     const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
 
     if (!taskElement && !deleteButton) {
-        const wasConfirming = deps.resetAllConfirmingDeleteFlags();
-        if (wasConfirming) {
-            deps.refreshUI();
-        }
+        clearDeleteConfirmState(deps);
     }
 
     return false;

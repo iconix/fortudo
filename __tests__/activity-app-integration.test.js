@@ -7,7 +7,7 @@ jest.mock('../public/js/activities/form-utils.js', () => ({
 }));
 
 jest.mock('../public/js/activities/handlers.js', () => ({
-    handleAddActivity: jest.fn(() => Promise.resolve()),
+    handleAddActivity: jest.fn(() => Promise.resolve({ success: true })),
     handleEditActivity: jest.fn(() => Promise.resolve()),
     handleDeleteActivity: jest.fn(() => Promise.resolve())
 }));
@@ -142,6 +142,37 @@ describe('activity app integration', () => {
         expect(form.querySelector('input[value="activity"]').checked).toBe(true);
     });
 
+    test('preserves activity form input when activity save fails', async () => {
+        const form = document.getElementById('task-form');
+        const descriptionInput = form.querySelector('input[name="description"]');
+        form.querySelector('input[value="scheduled"]').checked = false;
+        form.querySelector('input[value="activity"]').checked = true;
+        descriptionInput.value = 'Pairing';
+        extractActivityFormData.mockReturnValue({
+            description: 'Pairing',
+            startDateTime: '2026-04-07T10:00:00.000Z',
+            endDateTime: '2026-04-07T11:00:00.000Z',
+            duration: 60,
+            source: 'manual'
+        });
+        handleAddActivity.mockResolvedValue({ success: false, reason: 'Could not log activity.' });
+        const resetTaskFormPreviewStateMock = jest.fn();
+        const initializeTaskTypeToggleMock = jest.fn();
+        const focusTaskDescriptionInputMock = jest.fn();
+
+        await handleActivityAwareFormSubmit(form, {
+            activitiesEnabled: true,
+            resetTaskFormPreviewState: resetTaskFormPreviewStateMock,
+            initializeTaskTypeToggle: initializeTaskTypeToggleMock,
+            focusTaskDescriptionInput: focusTaskDescriptionInputMock,
+            handleTaskSubmit: jest.fn()
+        });
+
+        expect(descriptionInput.value).toBe('Pairing');
+        expect(resetTaskFormPreviewStateMock).not.toHaveBeenCalled();
+        expect(initializeTaskTypeToggleMock).not.toHaveBeenCalled();
+    });
+
     test('falls back to task submission for non-activity forms', async () => {
         const form = document.getElementById('task-form');
         const handleTaskSubmitMock = jest.fn();
@@ -187,16 +218,21 @@ describe('activity app integration', () => {
             </article>
         `;
 
+        const refreshUIMock = jest.fn();
+        const resetAllConfirmingDeleteFlagsMock = jest.fn(() => true);
+
         const handled = await handleActivityListClick(
             activityList.querySelector('.btn-edit-activity span'),
             {
-                refreshUI: jest.fn(),
-                resetAllConfirmingDeleteFlags: jest.fn()
+                refreshUI: refreshUIMock,
+                resetAllConfirmingDeleteFlags: resetAllConfirmingDeleteFlagsMock
             }
         );
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(handled).toBe(true);
+        expect(resetAllConfirmingDeleteFlagsMock).toHaveBeenCalled();
+        expect(refreshUIMock).toHaveBeenCalled();
         expect(showActivityEditModal).toHaveBeenCalledWith('Current');
         expect(handleEditActivity).toHaveBeenCalledWith('activity-1', {
             description: 'Updated'
@@ -210,17 +246,63 @@ describe('activity app integration', () => {
                 <button class="btn-delete-activity"><span>Delete</span></button>
             </article>
         `;
+        const refreshUIMock = jest.fn();
+        const resetAllConfirmingDeleteFlagsMock = jest.fn(() => true);
 
         const handled = await handleActivityListClick(
             activityList.querySelector('.btn-delete-activity span'),
             {
-                refreshUI: jest.fn(),
-                resetAllConfirmingDeleteFlags: jest.fn()
+                refreshUI: refreshUIMock,
+                resetAllConfirmingDeleteFlags: resetAllConfirmingDeleteFlagsMock
             }
         );
 
         expect(handled).toBe(true);
+        expect(resetAllConfirmingDeleteFlagsMock).toHaveBeenCalled();
+        expect(refreshUIMock).toHaveBeenCalled();
         expect(handleDeleteActivity).toHaveBeenCalledWith('activity-2');
+    });
+
+    test('activity actions still resolve ids and descriptions when refresh rerenders the list', async () => {
+        showActivityEditModal.mockResolvedValue('Updated after rerender');
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article data-activity-id="activity-9">
+                <span class="text-sm text-slate-200">Before rerender</span>
+                <button class="btn-edit-activity"><span>Edit</span></button>
+                <button class="btn-delete-activity"><span>Delete</span></button>
+            </article>
+        `;
+        const rerenderingRefreshMock = jest.fn(() => {
+            activityList.innerHTML = '<div>rerendered</div>';
+        });
+
+        await handleActivityListClick(activityList.querySelector('.btn-edit-activity span'), {
+            refreshUI: rerenderingRefreshMock,
+            resetAllConfirmingDeleteFlags: jest.fn(() => true)
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(showActivityEditModal).toHaveBeenCalledWith('Before rerender');
+        expect(handleEditActivity).toHaveBeenCalledWith('activity-9', {
+            description: 'Updated after rerender'
+        });
+
+        activityList.innerHTML = `
+            <article data-activity-id="activity-10">
+                <button class="btn-delete-activity"><span>Delete</span></button>
+            </article>
+        `;
+        const deleteRefreshMock = jest.fn(() => {
+            activityList.innerHTML = '<div>rerendered again</div>';
+        });
+
+        await handleActivityListClick(activityList.querySelector('.btn-delete-activity span'), {
+            refreshUI: deleteRefreshMock,
+            resetAllConfirmingDeleteFlags: jest.fn(() => true)
+        });
+
+        expect(handleDeleteActivity).toHaveBeenCalledWith('activity-10');
     });
 
     test('clears confirming delete state for non-task non-activity clicks', async () => {
