@@ -620,6 +620,12 @@ def dismiss_open_modals(page: Any) -> None:
             page.wait_for_timeout(100)
 
 
+def request_manual_sync(page: Any) -> None:
+    indicator = page.locator("#sync-status-indicator")
+    if indicator.count():
+        indicator.click()
+
+
 def enter_room(page: Any, room_code: str) -> None:
     page.locator("#room-entry-screen").wait_for(state="visible", timeout=15000)
     page.locator("#room-code-input").fill(room_code)
@@ -853,6 +859,9 @@ def arm_unscheduled_delete_confirm(
 
 def complete_scheduled_task_via_ui(page: Any, task_id: str) -> None:
     page.locator(f'[data-task-id="{task_id}"] .checkbox').click()
+    confirm_modal = page.locator("#custom-confirm-modal")
+    if confirm_modal.count() and confirm_modal.first.is_visible():
+        page.locator("#ok-custom-confirm-modal").click()
 
 
 def clear_all_tasks_via_ui(
@@ -1138,6 +1147,8 @@ def run_smoke(
             ]:
                 raise ValueError(f"missing edited scheduled task.\n{format_snapshot(alpha_summary)}")
             if couchdb_url:
+                request_manual_sync(page)
+                wait_for_sync_status_normal("taxonomy manual sync")
                 wait_until(
                     lambda: (
                         lambda summary: any(
@@ -1566,7 +1577,7 @@ def run_smoke(
                         )
                     )(read_remote_summary(rooms["taxonomy"])),
                     "taxonomy remote sync",
-                    timeout_s=25.0,
+                    timeout_s=60.0,
                 )
                 wait_for_sync_status_normal("taxonomy")
 

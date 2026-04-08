@@ -31,6 +31,7 @@ from scripts.playwright_preview_smoke import (
     open_scheduled_edit_form,
     parse_cli_args,
     queue_activity_smoke_failure,
+    request_manual_sync,
     supports_activity_smoke_failure_host,
     summarize_docs,
     task_form_input_selector,
@@ -554,6 +555,14 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(payload["failureKind"], "manual-add")
         self.assertEqual(payload["count"], 2)
 
+    def test_request_manual_sync_clicks_indicator_when_present(self):
+        indicator = FakeLocator()
+        page = FakePage({"#sync-status-indicator": indicator})
+
+        request_manual_sync(page)
+
+        self.assertEqual(indicator.clicks, 1)
+
     def test_add_activity_uses_activity_mode_and_shared_duration_inputs(self):
         activity_radio = FakeLocator()
         description = FakeLocator()
@@ -623,11 +632,34 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
         checkbox = FakeLocator()
-        page = FakePage({'[data-task-id="sched-123"] .checkbox': checkbox})
+        page = FakePage(
+            {
+                '[data-task-id="sched-123"] .checkbox': checkbox,
+                "#custom-confirm-modal": FakeLocator(visible=False),
+                "#ok-custom-confirm-modal": FakeLocator(),
+            }
+        )
 
         complete_scheduled_task_via_ui(page, "sched-123")
 
         self.assertEqual(checkbox.clicks, 1)
+
+    def test_complete_scheduled_task_via_ui_confirms_late_completion_modal(self):
+        checkbox = FakeLocator()
+        confirm_modal = FakeLocator(visible=True)
+        confirm_button = FakeLocator()
+        page = FakePage(
+            {
+                '[data-task-id="sched-123"] .checkbox': checkbox,
+                "#custom-confirm-modal": confirm_modal,
+                "#ok-custom-confirm-modal": confirm_button,
+            }
+        )
+
+        complete_scheduled_task_via_ui(page, "sched-123")
+
+        self.assertEqual(checkbox.clicks, 1)
+        self.assertEqual(confirm_button.clicks, 1)
 
     def test_arm_unscheduled_delete_confirm_waits_for_confirming_state(self):
         page = DeleteStatePage("unsched-123")
