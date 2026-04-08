@@ -179,6 +179,19 @@ describe('app-coordinator', () => {
         expect(refreshUI).not.toHaveBeenCalled();
     });
 
+    test('payload-based refresh handlers ignore missing task or activity payloads', () => {
+        appCoordinator.onTaskCreated({ task: null });
+        appCoordinator.onTaskEdited({ task: null });
+        appCoordinator.onTaskScheduled({ task: null });
+        appCoordinator.onTaskUnscheduled({ task: null });
+        appCoordinator.onTaskDeleted({ task: null });
+        appCoordinator.onActivityEdited({ activity: null });
+        appCoordinator.onActivityDeleted({ activity: null });
+
+        expect(refreshUI).not.toHaveBeenCalled();
+        expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
     test('onScheduledTasksCleared refreshes UI without directly updating start time', () => {
         appCoordinator.onScheduledTasksCleared();
 

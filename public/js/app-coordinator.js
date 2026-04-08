@@ -4,6 +4,19 @@ import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
 import { logger } from './utils.js';
 
+function refreshWhenPresent(value) {
+    if (!value) {
+        return false;
+    }
+
+    refreshUI();
+    return true;
+}
+
+function refreshForClearEvent() {
+    refreshUI();
+}
+
 /**
  * Semantic post-mutation coordinator boundary for task state changes.
  * Handlers should report successful mutations through specific event types:
@@ -21,38 +34,25 @@ import { logger } from './utils.js';
  * - onAllTasksCleared()
  */
 export function onTaskCreated({ task }) {
-    if (!task) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(task);
 }
 
 export function onTaskEdited({ task }) {
-    if (!task) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(task);
 }
 
 export function onTaskScheduled({ task }) {
-    if (!task) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(task);
 }
 
 export function onTaskUnscheduled({ task }) {
-    if (!task) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(task);
 }
 
 export function onTaskCompleted({ task }) {
-    if (!task) {
+    if (!refreshWhenPresent(task)) {
         return;
     }
-    refreshUI();
     if (task.type !== 'scheduled') {
         return;
     }
@@ -70,41 +70,29 @@ export function onTaskCompleted({ task }) {
 }
 
 export function onTaskDeleted({ task }) {
-    if (!task) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(task);
 }
 
 export function onActivityCreated({ activity }) {
-    if (!activity) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(activity);
 }
 
 export function onActivityEdited({ activity }) {
-    if (!activity) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(activity);
 }
 
 export function onActivityDeleted({ activity }) {
-    if (!activity) {
-        return;
-    }
-    refreshUI();
+    refreshWhenPresent(activity);
 }
 
 export function onScheduledTasksCleared() {
-    refreshUI();
+    refreshForClearEvent();
 }
 
 export function onCompletedTasksCleared() {
-    refreshUI();
+    refreshForClearEvent();
 }
 
 export function onAllTasksCleared() {
-    refreshUI();
+    refreshForClearEvent();
 }
