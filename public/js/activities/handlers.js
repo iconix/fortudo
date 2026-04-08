@@ -2,6 +2,7 @@ import { showAlert } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import { extractActivityFormData } from './form-utils.js';
 import { addActivity, editActivity, removeActivity } from './manager.js';
+import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
 
 function resolveActivityPayload(activityDataOrForm) {
@@ -18,6 +19,9 @@ export async function handleAddActivity(activityDataOrForm) {
 
     let result;
     try {
+        if (consumeActivitySmokeFailure('manual-add')) {
+            throw new Error('Smoke forced manual activity add failure.');
+        }
         result = await addActivity(activityData);
     } catch {
         showAlert('Could not log activity.', 'sky');

@@ -1,5 +1,6 @@
 import { refreshUI } from './dom-renderer.js';
 import { addActivity, createActivityFromTask } from './activities/manager.js';
+import { consumeActivitySmokeFailure } from './activities/smoke-hooks.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
 import { showToast } from './toast-manager.js';
@@ -63,7 +64,11 @@ export function onTaskCompleted({ task }) {
     if (isActivitiesEnabled()) {
         const activity = createActivityFromTask(task);
         if (activity) {
-            void addActivity(activity)
+            const autoLogPromise = consumeActivitySmokeFailure('auto-log')
+                ? Promise.reject(new Error('Smoke forced activity auto-log failure.'))
+                : addActivity(activity);
+
+            void autoLogPromise
                 .then((result) => {
                     if (result?.success && result.activity) {
                         onActivityCreated({ activity: result.activity });

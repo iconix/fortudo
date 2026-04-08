@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 COUCHDB_URL_RE = re.compile(r"COUCHDB_URL\s*=\s*(?:'([^']*)'|null)")
+ACTIVITY_SMOKE_FAILURES_KEY = "fortudo-smoke-activity-failures"
 
 
 def normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
@@ -197,12 +198,18 @@ def is_preview_host(hostname: str) -> bool:
     )
 
 
+def supports_activity_smoke_failure_host(hostname: str) -> bool:
+    host = str(hostname or "")
+    return host in {"localhost", "127.0.0.1"} or is_preview_host(host)
+
+
 def create_scenario_rooms(prefix: str) -> dict[str, str]:
     return {
         "alpha": f"{prefix}-alpha",
         "legacy": f"{prefix}-legacy",
         "beta": f"{prefix}-beta",
         "taxonomy": f"{prefix}-taxonomy",
+        "activities": f"{prefix}-activities",
     }
 
 
@@ -381,6 +388,38 @@ def set_activities_enabled(page: Any, enabled: bool = True) -> None:
     )
 
 
+def queue_activity_smoke_failure(page: Any, failure_kind: str, count: int = 1) -> None:
+    hostname = get_hostname_from_url(page.url)
+    if not supports_activity_smoke_failure_host(hostname):
+        raise ValueError(
+            "Activity failure injection requires a preview or local host; "
+            f"got {hostname!r}."
+        )
+
+    page.evaluate(
+        """
+        ({ key, failureKind, count }) => {
+            const rawValue = window.localStorage.getItem(key);
+            let failures = {};
+            if (rawValue) {
+                try {
+                    failures = JSON.parse(rawValue) || {};
+                } catch {
+                    failures = {};
+                }
+            }
+            failures[failureKind] = Number(failures[failureKind] || 0) + Number(count || 0);
+            window.localStorage.setItem(key, JSON.stringify(failures));
+        }
+        """,
+        {
+            "key": ACTIVITY_SMOKE_FAILURES_KEY,
+            "failureKind": failure_kind,
+            "count": count,
+        },
+    )
+
+
 def open_settings_modal(page: Any) -> None:
     page.locator("#settings-gear-btn").click()
     page.locator("#settings-modal").wait_for(state="visible", timeout=10000)
@@ -408,6 +447,79 @@ def wait_for_toast_text(
         timeout_s=timeout_s,
         interval_s=interval_s,
     )
+
+
+def add_activity(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
+    page.locator("#activity").check()
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("description")),
+        description,
+        description="activity description",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("start-time")),
+        start_time,
+        description="activity start time",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("duration-hours")),
+        str(duration_minutes // 60),
+        description="activity duration hours",
+    )
+    fill_locator_value(
+        page,
+        page.locator(task_form_input_selector("duration-minutes")),
+        str(duration_minutes % 60),
+        description="activity duration minutes",
+    )
+    page.locator("#task-form button[type='submit']").click()
+
+
+def ensure_activity_doc_present(
+    room_code: str, description: str, docs: list[dict[str, Any]]
+) -> dict[str, Any]:
+    for doc in docs:
+        normalized = normalize_doc(doc)
+        if normalized.get("docType") == "activity" and normalized.get("description") == description:
+            return normalized
+    raise ValueError(f"Missing activity document for {room_code}: {description}")
+
+
+def wait_for_activity_failure_alert(
+    page: Any,
+    room_code: str,
+    description: str,
+    *,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    outcome = wait_until(
+        lambda: (
+            "alert"
+            if page.locator("#custom-alert-modal").is_visible()
+            else (
+                "persisted"
+                if any(
+                    normalize_doc(doc).get("docType") == "activity"
+                    and normalize_doc(doc).get("description") == description
+                    for doc in read_docs(page, room_code)
+                )
+                else False
+            )
+        ),
+        f"activity failure outcome for {description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    if outcome == "persisted":
+        raise ValueError(
+            f"Activity failure hook did not fire for {description!r}; the activity was persisted."
+        )
+    if outcome != "alert":
+        raise TimeoutError(f"Timed out waiting for activity failure alert for {description!r}")
 
 
 def add_category_via_settings(page: Any, group_key: str, label: str) -> None:
@@ -709,6 +821,29 @@ def delete_unscheduled_task_via_ui(
             return
 
     raise TimeoutError(f"Timed out waiting for unscheduled task deletion for {task_id}")
+
+
+def arm_unscheduled_delete_confirm(
+    page: Any, task_id: str, *, timeout_s: float = 10.0, interval_s: float = 0.2
+) -> None:
+    button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
+    page.locator(button_selector).click()
+    state = wait_until(
+        lambda: (
+            current_state
+            if (current_state := get_unscheduled_delete_state(page, task_id)) == "confirming"
+            else False
+        ),
+        f"unscheduled delete confirm arm for {task_id}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    if state != "confirming":
+        raise TimeoutError(f"Timed out arming unscheduled delete confirmation for {task_id}")
+
+
+def complete_scheduled_task_via_ui(page: Any, task_id: str) -> None:
+    page.locator(f'[data-task-id="{task_id}"] .checkbox').click()
 
 
 def clear_all_tasks_via_ui(
@@ -1425,6 +1560,166 @@ def run_smoke(
                     timeout_s=25.0,
                 )
                 wait_for_sync_status_normal("taxonomy")
+
+            demo_step(page, "checking activities room flows", step_pause_ms)
+            switch_room(page, rooms["activities"])
+            clear_room_storage(page, rooms["activities"])
+            set_activities_enabled(page, True)
+            page.reload(wait_until="load")
+            wait_for_main_app(page)
+
+            add_activity(page, "Playwright manual activity", "13:00", 30)
+            wait_until(
+                lambda: any(
+                    doc.get("description") == "Playwright manual activity"
+                    for doc in read_docs(page, rooms["activities"])
+                ),
+                "manual activity persistence",
+            )
+            wait_for_text_in_locator(
+                page,
+                "#activity-list",
+                "Playwright manual activity",
+                description="manual activity render",
+            )
+
+            queue_activity_smoke_failure(page, "manual-add", 1)
+            add_activity(page, "Playwright failed activity", "13:45", 15)
+            wait_for_activity_failure_alert(
+                page,
+                rooms["activities"],
+                "Playwright failed activity",
+            )
+            wait_for_text_in_locator(
+                page,
+                "#custom-alert-message",
+                "Could not log activity.",
+                description="manual activity failure alert",
+            )
+            failed_activity_description = page.locator(
+                task_form_input_selector("description")
+            ).input_value()
+            if failed_activity_description != "Playwright failed activity":
+                raise ValueError(
+                    "manual activity failure cleared the form unexpectedly: "
+                    f"{failed_activity_description!r}"
+                )
+            page.locator("#ok-custom-alert-modal").click()
+            page.locator("#custom-alert-modal").wait_for(state="hidden", timeout=10000)
+            if any(
+                doc.get("description") == "Playwright failed activity"
+                for doc in read_docs(page, rooms["activities"])
+            ):
+                raise ValueError("failed manual activity unexpectedly persisted")
+
+            add_scheduled_task(page, "Playwright auto-log success", "14:15", 20)
+            success_task_doc = ensure_task_doc_present(
+                rooms["activities"],
+                "Playwright auto-log success",
+                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
+            )
+            complete_scheduled_task_via_ui(page, success_task_doc["id"])
+            wait_until(
+                lambda: any(
+                    doc.get("docType") == "activity"
+                    and doc.get("description") == "Playwright auto-log success"
+                    and doc.get("source") == "auto"
+                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+                ),
+                "successful auto-log activity persistence",
+            )
+            wait_for_text_in_locator(
+                page,
+                "#activity-list",
+                "Playwright auto-log success",
+                description="successful auto-log activity render",
+            )
+
+            add_scheduled_task(page, "Playwright auto-log failure", "14:45", 20)
+            failing_task_doc = ensure_task_doc_present(
+                rooms["activities"],
+                "Playwright auto-log failure",
+                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
+            )
+            queue_activity_smoke_failure(page, "auto-log", 1)
+            complete_scheduled_task_via_ui(page, failing_task_doc["id"])
+            wait_for_toast_text(page, "Task completed, but activity auto-log failed.")
+            wait_until(
+                lambda: any(
+                    doc.get("id") == failing_task_doc["id"] and doc.get("status") == "completed"
+                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+                ),
+                "failed auto-log task completion persistence",
+            )
+            if any(
+                doc.get("docType") == "activity"
+                and doc.get("description") == "Playwright auto-log failure"
+                for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+            ):
+                raise ValueError("failed auto-log unexpectedly created an activity")
+
+            add_unscheduled_task(page, "Playwright delete confirm task", 15)
+            delete_confirm_task_doc = ensure_task_doc_present(
+                rooms["activities"],
+                "Playwright delete confirm task",
+                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
+            )
+
+            add_activity(page, "Playwright editable activity", "15:30", 15)
+            editable_activity_doc = ensure_activity_doc_present(
+                rooms["activities"],
+                "Playwright editable activity",
+                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
+            )
+            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+            page.locator(
+                f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
+            ).click()
+            page.locator("#activity-edit-modal").wait_for(state="visible", timeout=10000)
+            current_modal_value = page.locator("#activity-edit-description").input_value()
+            if current_modal_value != "Playwright editable activity":
+                raise ValueError(
+                    "activity edit modal lost the current description after rerender: "
+                    f"{current_modal_value!r}"
+                )
+            fill_locator_value(
+                page,
+                page.locator("#activity-edit-description"),
+                "Playwright editable activity updated",
+                description="activity edit modal description",
+            )
+            page.locator("#activity-edit-form").evaluate("(form) => form.requestSubmit()")
+            page.locator("#activity-edit-modal").wait_for(state="hidden", timeout=10000)
+            wait_until(
+                lambda: any(
+                    doc.get("id") == editable_activity_doc["id"]
+                    and doc.get("description") == "Playwright editable activity updated"
+                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+                ),
+                "activity edit after delete-confirm rerender",
+            )
+            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+                raise ValueError("delete confirm state was not cleared by activity edit")
+
+            add_activity(page, "Playwright delete activity", "16:00", 10)
+            deletable_activity_doc = ensure_activity_doc_present(
+                rooms["activities"],
+                "Playwright delete activity",
+                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
+            )
+            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+            page.locator(
+                f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
+            ).click()
+            wait_until(
+                lambda: not any(
+                    doc.get("id") == deletable_activity_doc["id"]
+                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+                ),
+                "activity delete after delete-confirm rerender",
+            )
+            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+                raise ValueError("delete confirm state was not cleared by activity delete")
 
             assert_no_runtime_errors(console_errors, page_errors, request_failures, response_errors)
 
