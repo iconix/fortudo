@@ -137,6 +137,22 @@ describe('app-coordinator', () => {
         });
     });
 
+    test('onTaskCompleted tolerates auto-log persistence failures', async () => {
+        isActivitiesEnabled.mockReturnValue(true);
+        addActivity.mockRejectedValueOnce(new Error('storage failed'));
+
+        appCoordinator.onTaskCompleted({
+            task: { id: 'task-9b', type: 'scheduled', description: 'Write notes' }
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-9b');
+        expect(createActivityFromTask).toHaveBeenCalled();
+        expect(addActivity).toHaveBeenCalled();
+    });
+
     test('onTaskCompleted does not auto-log scheduled tasks when activities are disabled', () => {
         isActivitiesEnabled.mockReturnValue(false);
 

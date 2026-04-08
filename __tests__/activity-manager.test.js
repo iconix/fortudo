@@ -112,6 +112,53 @@ describe('activity manager', () => {
         });
     });
 
+    describe('state management', () => {
+        test('updateActivityState normalizes defaults and sorts by start time', () => {
+            const state = updateActivityState([
+                {
+                    id: 'activity-2',
+                    description: 'Later',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 30
+                },
+                {
+                    id: 'activity-1',
+                    description: 'Earlier',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30
+                }
+            ]);
+
+            expect(state.map((activity) => activity.id)).toEqual(['activity-1', 'activity-2']);
+            expect(state[0]).toEqual(
+                expect.objectContaining({
+                    docType: 'activity',
+                    category: null,
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            );
+        });
+
+        test('getActivityState returns clones instead of mutable internal references', async () => {
+            await addActivity({
+                description: 'Original',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T10:00:00.000Z',
+                duration: 60,
+                source: 'manual',
+                sourceTaskId: null
+            });
+
+            const state = getActivityState();
+            state[0].description = 'Mutated externally';
+
+            expect(getActivityState()[0].description).toBe('Original');
+        });
+    });
+
     describe('getTodaysActivities', () => {
         beforeEach(() => {
             jest.useFakeTimers();
@@ -234,6 +281,39 @@ describe('activity manager', () => {
 
             expect(result.success).toBe(false);
             expect(result.reason).toMatch(/description/i);
+        });
+
+        test('rejects edit when duration becomes zero', async () => {
+            const { activity } = await addActivity({
+                description: 'Original',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T10:00:00.000Z',
+                duration: 60,
+                source: 'manual',
+                sourceTaskId: null
+            });
+
+            const result = await editActivity(activity.id, { duration: 0 });
+
+            expect(result.success).toBe(false);
+            expect(result.reason).toMatch(/duration/i);
+        });
+
+        test('preserves the existing description when edit updates omit it', async () => {
+            const { activity } = await addActivity({
+                description: 'Original',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T10:00:00.000Z',
+                duration: 60,
+                source: 'manual',
+                sourceTaskId: null
+            });
+
+            const result = await editActivity(activity.id, { duration: 90 });
+
+            expect(result.success).toBe(true);
+            expect(result.activity.description).toBe('Original');
+            expect(result.activity.duration).toBe(90);
         });
     });
 

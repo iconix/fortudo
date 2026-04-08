@@ -107,4 +107,64 @@ describe('activity renderer', () => {
         expect(container.innerHTML).not.toContain('<script>');
         expect(container.textContent).toContain('<script>alert("x")</script>');
     });
+
+    test('uses the default activity-list container when none is provided', () => {
+        renderActivities([
+            {
+                id: 'activity-default',
+                description: 'Default target',
+                category: null,
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T09:30:00.000Z',
+                duration: 30,
+                source: 'manual',
+                sourceTaskId: null
+            }
+        ]);
+
+        expect(document.getElementById('activity-list').textContent).toContain('Default target');
+    });
+
+    test('returns cleanly when no container can be resolved', () => {
+        document.body.innerHTML = '';
+
+        expect(() =>
+            renderActivities([
+                {
+                    id: 'activity-missing-target',
+                    description: 'No target',
+                    category: null,
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ])
+        ).not.toThrow();
+    });
+
+    test('escapes activity ids and auto source task ids in attributes', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-"><bad',
+                    description: 'Standup',
+                    category: null,
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30,
+                    source: 'auto',
+                    sourceTaskId: 'sched-"><bad'
+                }
+            ],
+            container
+        );
+
+        expect(container.innerHTML).not.toContain('data-source-task-id="sched-"><bad"');
+        expect(container.innerHTML).not.toContain('data-activity-id="activity-"><bad"');
+        expect(container.querySelector('.activity-source-link')).not.toBeNull();
+    });
 });

@@ -2,6 +2,7 @@ import { refreshUI } from './dom-renderer.js';
 import { addActivity, createActivityFromTask } from './activities/manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
+import { logger } from './utils.js';
 
 /**
  * Semantic post-mutation coordinator boundary for task state changes.
@@ -61,7 +62,9 @@ export function onTaskCompleted({ task }) {
     if (isActivitiesEnabled()) {
         const activity = createActivityFromTask(task);
         if (activity) {
-            void addActivity(activity);
+            void addActivity(activity).catch((error) => {
+                logger.error('Failed to auto-log completed task as activity:', error);
+            });
         }
     }
 }

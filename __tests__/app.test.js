@@ -393,6 +393,89 @@ describe('App.js Callback Functions', () => {
             expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-42');
         });
 
+        test('activity edit does nothing for cancelled blank or unchanged prompt responses', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <article class="activity-card" data-activity-id="activity-43">
+                    <span class="text-sm text-slate-200">Current activity</span>
+                    <button type="button" class="btn-edit-activity">Edit</button>
+                </article>
+            `;
+            const promptSpy = jest
+                .spyOn(window, 'prompt')
+                .mockReturnValueOnce(null)
+                .mockReturnValueOnce('   ')
+                .mockReturnValueOnce('Current activity');
+
+            const editButton = activityList.querySelector('.btn-edit-activity');
+            editButton.dispatchEvent(new Event('click', { bubbles: true }));
+            editButton.dispatchEvent(new Event('click', { bubbles: true }));
+            editButton.dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(promptSpy).toHaveBeenCalledTimes(3);
+            expect(mockHandleEditActivity).not.toHaveBeenCalled();
+            promptSpy.mockRestore();
+        });
+
+        test('activity actions can resolve ids from the ancestor activity element', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <article class="activity-card" data-activity-id="activity-44">
+                    <span class="text-sm text-slate-200">Ancestor id activity</span>
+                    <button type="button" class="btn-edit-activity"><span>Edit</span></button>
+                    <button type="button" class="btn-delete-activity"><span>Delete</span></button>
+                </article>
+            `;
+            const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Changed from ancestor');
+
+            activityList
+                .querySelector('.btn-edit-activity span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-44', {
+                description: 'Changed from ancestor'
+            });
+            expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-44');
+            promptSpy.mockRestore();
+        });
+
+        test('invalid activity form submission keeps focus flow and skips add handler', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityRadio = document.getElementById('activity');
+            const descriptionInput = document.querySelector('#task-form input[name="description"]');
+            const addTaskButton = document.getElementById('add-task-btn');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            descriptionInput.value = '';
+
+            getTaskFormElement().dispatchEvent(
+                new Event('submit', { bubbles: true, cancelable: true })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleAddActivity).not.toHaveBeenCalled();
+            expect(document.activeElement).toBe(descriptionInput);
+            expect(activityRadio.checked).toBe(true);
+            expect(addTaskButton.textContent).toContain('Log Activity');
+        });
+
         test('shows and populates the category dropdown with flattened taxonomy options when Activities are enabled', async () => {
             await setupAppWithTasks([]);
             localStorage.setItem('fortudo-activities-enabled', 'true');
