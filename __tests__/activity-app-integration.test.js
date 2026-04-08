@@ -212,9 +212,9 @@ describe('activity app integration', () => {
         showActivityEditModal.mockResolvedValue('  Updated  ');
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
-            <article data-activity-id="activity-1">
+            <article class="activity-item" data-activity-id="activity-1">
                 <span class="text-sm text-slate-200">Current</span>
-                <button class="btn-edit-activity"><span>Edit</span></button>
+                <button class="btn-edit-activity" data-activity-id="activity-1"><span>Edit</span></button>
             </article>
         `;
 
@@ -239,10 +239,32 @@ describe('activity app integration', () => {
         });
     });
 
+    test('activity edit resolves current description from the row when the button also has a data-activity-id', async () => {
+        showActivityEditModal.mockResolvedValue('Updated');
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article class="activity-item" data-activity-id="activity-11">
+                <span class="text-sm text-slate-200">Row description</span>
+                <button class="btn-edit-activity" data-activity-id="activity-11"><span>Edit</span></button>
+            </article>
+        `;
+
+        await handleActivityListClick(activityList.querySelector('.btn-edit-activity span'), {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(showActivityEditModal).toHaveBeenCalledWith('Row description');
+        expect(handleEditActivity).toHaveBeenCalledWith('activity-11', {
+            description: 'Updated'
+        });
+    });
+
     test('handles activity delete clicks', async () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
-            <article data-activity-id="activity-2">
+            <article class="activity-item" data-activity-id="activity-2">
                 <button class="btn-delete-activity"><span>Delete</span></button>
             </article>
         `;
@@ -267,7 +289,7 @@ describe('activity app integration', () => {
         showActivityEditModal.mockResolvedValue('Updated after rerender');
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
-            <article data-activity-id="activity-9">
+            <article class="activity-item" data-activity-id="activity-9">
                 <span class="text-sm text-slate-200">Before rerender</span>
                 <button class="btn-edit-activity"><span>Edit</span></button>
                 <button class="btn-delete-activity"><span>Delete</span></button>
@@ -289,7 +311,7 @@ describe('activity app integration', () => {
         });
 
         activityList.innerHTML = `
-            <article data-activity-id="activity-10">
+            <article class="activity-item" data-activity-id="activity-10">
                 <button class="btn-delete-activity"><span>Delete</span></button>
             </article>
         `;
@@ -324,7 +346,7 @@ describe('activity app integration', () => {
     test('does not edit activity when modal result is null blank or unchanged', async () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
-            <article data-activity-id="activity-3">
+            <article class="activity-item" data-activity-id="activity-3">
                 <span class="text-sm text-slate-200">Current</span>
                 <button class="btn-edit-activity"><span>Edit</span></button>
             </article>

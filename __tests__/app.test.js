@@ -379,7 +379,8 @@ describe('App.js Callback Functions', () => {
 
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
-                <article class="activity-card" data-activity-id="activity-42">
+                <article class="activity-item" data-activity-id="activity-42">
+                    <span class="text-sm text-slate-200">Renderer-shaped activity</span>
                     <button type="button" class="btn-edit-activity" data-activity-id="activity-42">Edit</button>
                     <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
                 </article>
@@ -394,7 +395,7 @@ describe('App.js Callback Functions', () => {
                 .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(mockShowActivityEditModal).toHaveBeenCalledWith('');
+            expect(mockShowActivityEditModal).toHaveBeenCalledWith('Renderer-shaped activity');
             expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-42', {
                 description: 'Updated activity'
             });
@@ -408,7 +409,7 @@ describe('App.js Callback Functions', () => {
 
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
-                <article class="activity-card" data-activity-id="activity-43">
+                <article class="activity-item" data-activity-id="activity-43">
                     <span class="text-sm text-slate-200">Current activity</span>
                     <button type="button" class="btn-edit-activity">Edit</button>
                 </article>
@@ -435,7 +436,7 @@ describe('App.js Callback Functions', () => {
 
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
-                <article class="activity-card" data-activity-id="activity-44">
+                <article class="activity-item" data-activity-id="activity-44">
                     <span class="text-sm text-slate-200">Ancestor id activity</span>
                     <button type="button" class="btn-edit-activity"><span>Edit</span></button>
                     <button type="button" class="btn-delete-activity"><span>Delete</span></button>

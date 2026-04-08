@@ -35,8 +35,10 @@ from scripts.playwright_preview_smoke import (
     supports_activity_smoke_failure_host,
     summarize_docs,
     task_form_input_selector,
+    wait_for_task_doc,
     wait_for_activity_doc,
     wait_for_input_value,
+    wait_for_activity_row_text,
     wait_for_activity_failure_alert,
     wait_for_demo_start,
     wait_for_room_code,
@@ -228,6 +230,21 @@ class SnapshotAssertionTests(unittest.TestCase):
             filtered_request_failures,
             ["GET https://example.cloudant.com/fortudo-preview-alpha/ 403 Forbidden"],
         )
+        self.assertEqual(filtered_response_errors, [])
+
+    def test_filter_runtime_errors_ignores_expected_smoke_forced_auto_log_failure(self):
+        filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+            filter_runtime_errors(
+                [
+                    "[💪🏾 ERROR] [app-coordinator.js:78] Failed to auto-log completed task as activity: Error: Smoke forced activity auto-log failure."
+                ],
+                [],
+                [],
+            )
+        )
+
+        self.assertEqual(filtered_console_errors, [])
+        self.assertEqual(filtered_request_failures, [])
         self.assertEqual(filtered_response_errors, [])
 
     def test_expected_sync_response_error_accepts_known_cloudant_noise(self):
@@ -644,6 +661,18 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
         self.assertEqual(result["id"], "activity-1")
 
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_task_doc_waits_until_task_persists(self, mock_read_docs):
+        mock_read_docs.side_effect = [
+            [],
+            [{"_id": "task-1", "docType": "task", "description": "Focus task"}],
+        ]
+        page = FakePage({})
+
+        result = wait_for_task_doc(page, "room-a", "Focus task", timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(result["id"], "task-1")
+
     def test_wait_for_input_value_waits_until_field_matches(self):
         input_locator = FakeLocator()
         input_locator.value = ""
@@ -671,6 +700,20 @@ class PreviewWaitHelperTests(unittest.TestCase):
         )
 
         self.assertEqual(result, "Playwright editable activity")
+
+    def test_wait_for_activity_row_text_uses_activity_scoped_selector(self):
+        row = FakeLocator(text_values=["", "Focus block"])
+        page = FakePage({'div.activity-item[data-activity-id="activity-1"]': row})
+
+        result = wait_for_activity_row_text(
+            page,
+            "activity-1",
+            "Focus block",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(result, "Focus block")
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
         checkbox = FakeLocator()

@@ -92,7 +92,7 @@ export function handleActivityListClick(target, deps) {
 
     const editActivityButton = target.closest('.btn-edit-activity');
     if (editActivityButton instanceof HTMLElement) {
-        const activityItem = editActivityButton.closest('[data-activity-id]');
+        const activityItem = editActivityButton.closest('.activity-item[data-activity-id]');
         const activityId =
             editActivityButton.dataset.activityId || activityItem?.getAttribute('data-activity-id');
         const currentDescription =
@@ -116,7 +116,7 @@ export function handleActivityListClick(target, deps) {
 
     const deleteActivityButton = target.closest('.btn-delete-activity');
     if (deleteActivityButton instanceof HTMLElement) {
-        const activityItem = deleteActivityButton.closest('[data-activity-id]');
+        const activityItem = deleteActivityButton.closest('.activity-item[data-activity-id]');
         const activityId =
             deleteActivityButton.dataset.activityId ||
             activityItem?.getAttribute('data-activity-id');

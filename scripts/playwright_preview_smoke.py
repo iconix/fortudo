@@ -734,6 +734,26 @@ def wait_for_input_value(
     )
 
 
+def wait_for_activity_row_text(
+    page: Any,
+    activity_id: str,
+    expected_text: str,
+    *,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> str:
+    selector = f'div.activity-item[data-activity-id="{activity_id}"]'
+    locator = page.locator(selector)
+    return wait_until(
+        lambda: (
+            text if expected_text in (text := (locator.text_content() or "")) else False
+        ),
+        f"activity row text for {activity_id}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
 def add_scheduled_task(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
     page.locator("#scheduled").check()
     fill_locator_value(
@@ -792,6 +812,29 @@ def ensure_task_doc_present(room_code: str, description: str, docs: list[dict[st
         if doc.get("description") == description:
             return normalize_doc(doc)
     raise ValueError(f"Missing task document for {room_code}: {description}")
+
+
+def wait_for_task_doc(
+    page: Any,
+    room_code: str,
+    description: str,
+    *,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> dict[str, Any]:
+    return wait_until(
+        lambda: next(
+            (
+                normalized
+                for normalized in map(normalize_doc, read_docs(page, room_code))
+                if normalized.get("description") == description
+            ),
+            False,
+        ),
+        f"task persistence for {description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
 
 
 def open_scheduled_edit_form(
@@ -988,6 +1031,10 @@ def filter_runtime_errors(
         if message.startswith("Failed to load resource: the server responded with a status of "):
             continue
         if has_only_abort_failures and "[sync-manager.js:" in message and "Sync error:" in message:
+            continue
+        if "Failed to auto-log completed task as activity:" in message and (
+            "Smoke forced activity auto-log failure." in message
+        ):
             continue
         filtered_console_errors.append(message)
 
@@ -1677,10 +1724,10 @@ def run_smoke(
                 raise ValueError("failed manual activity unexpectedly persisted")
 
             add_active_scheduled_task(page, "Playwright auto-log success", 20)
-            success_task_doc = ensure_task_doc_present(
+            success_task_doc = wait_for_task_doc(
+                page,
                 rooms["activities"],
                 "Playwright auto-log success",
-                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
             )
             complete_scheduled_task_via_ui(page, success_task_doc["id"])
             wait_until(
@@ -1700,10 +1747,10 @@ def run_smoke(
             )
 
             add_active_scheduled_task(page, "Playwright auto-log failure", 20)
-            failing_task_doc = ensure_task_doc_present(
+            failing_task_doc = wait_for_task_doc(
+                page,
                 rooms["activities"],
                 "Playwright auto-log failure",
-                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
             )
             queue_activity_smoke_failure(page, "auto-log", 1)
             complete_scheduled_task_via_ui(page, failing_task_doc["id"])
@@ -1723,16 +1770,21 @@ def run_smoke(
                 raise ValueError("failed auto-log unexpectedly created an activity")
 
             add_unscheduled_task(page, "Playwright delete confirm task", 15)
-            delete_confirm_task_doc = ensure_task_doc_present(
+            delete_confirm_task_doc = wait_for_task_doc(
+                page,
                 rooms["activities"],
                 "Playwright delete confirm task",
-                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
             )
 
             add_activity(page, "Playwright editable activity", "15:30", 15)
             editable_activity_doc = wait_for_activity_doc(
                 page,
                 rooms["activities"],
+                "Playwright editable activity",
+            )
+            wait_for_activity_row_text(
+                page,
+                editable_activity_doc["id"],
                 "Playwright editable activity",
             )
             arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
@@ -1774,6 +1826,11 @@ def run_smoke(
             deletable_activity_doc = wait_for_activity_doc(
                 page,
                 rooms["activities"],
+                "Playwright delete activity",
+            )
+            wait_for_activity_row_text(
+                page,
+                deletable_activity_doc["id"],
                 "Playwright delete activity",
             )
             arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
