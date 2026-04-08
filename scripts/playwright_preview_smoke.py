@@ -478,6 +478,15 @@ def add_activity(page: Any, description: str, start_time: str, duration_minutes:
     page.locator("#task-form button[type='submit']").click()
 
 
+def add_active_scheduled_task(page: Any, description: str, duration_minutes: int) -> None:
+    page.locator("#scheduled").check()
+    start_time = page.locator(task_form_input_selector("start-time")).input_value()
+    if not start_time:
+        raise ValueError("Scheduled task form did not provide a suggested start time.")
+
+    add_scheduled_task(page, description, start_time, duration_minutes)
+
+
 def ensure_activity_doc_present(
     room_code: str, description: str, docs: list[dict[str, Any]]
 ) -> dict[str, Any]:
@@ -1612,7 +1621,7 @@ def run_smoke(
             ):
                 raise ValueError("failed manual activity unexpectedly persisted")
 
-            add_scheduled_task(page, "Playwright auto-log success", "14:15", 20)
+            add_active_scheduled_task(page, "Playwright auto-log success", 20)
             success_task_doc = ensure_task_doc_present(
                 rooms["activities"],
                 "Playwright auto-log success",
@@ -1635,7 +1644,7 @@ def run_smoke(
                 description="successful auto-log activity render",
             )
 
-            add_scheduled_task(page, "Playwright auto-log failure", "14:45", 20)
+            add_active_scheduled_task(page, "Playwright auto-log failure", 20)
             failing_task_doc = ensure_task_doc_present(
                 rooms["activities"],
                 "Playwright auto-log failure",

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from scripts.playwright_preview_smoke import (
     add_activity,
+    add_active_scheduled_task,
     add_category_via_settings,
     arm_unscheduled_delete_confirm,
     assert_migrated_task_docs,
@@ -579,6 +580,35 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(start_time.value, "13:00")
         self.assertEqual(duration_hours.value, "1")
         self.assertEqual(duration_minutes.value, "30")
+        self.assertEqual(submit_button.clicks, 1)
+
+    def test_add_active_scheduled_task_uses_current_suggested_start_time(self):
+        scheduled_radio = FakeLocator()
+        description = FakeLocator()
+        start_time = FakeLocator()
+        duration_hours = FakeLocator()
+        duration_minutes = FakeLocator()
+        submit_button = FakeLocator()
+        page = FakePage(
+            {
+                "#scheduled": scheduled_radio,
+                task_form_input_selector("description"): description,
+                task_form_input_selector("start-time"): start_time,
+                task_form_input_selector("duration-hours"): duration_hours,
+                task_form_input_selector("duration-minutes"): duration_minutes,
+                "#task-form button[type='submit']": submit_button,
+            }
+        )
+        scheduled_radio.check = lambda: setattr(scheduled_radio, "value", "checked")
+        start_time.value = "14:10"
+
+        add_active_scheduled_task(page, "Playwright active task", 20)
+
+        self.assertEqual(scheduled_radio.value, "checked")
+        self.assertEqual(description.value, "Playwright active task")
+        self.assertEqual(start_time.value, "14:10")
+        self.assertEqual(duration_hours.value, "0")
+        self.assertEqual(duration_minutes.value, "20")
         self.assertEqual(submit_button.clicks, 1)
 
     def test_ensure_activity_doc_present_requires_activity_doc_type(self):
