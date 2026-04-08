@@ -1158,6 +1158,33 @@ describe('DOM Handler Interaction Tests', () => {
             expect(startTimeInput.hasAttribute('required')).toBe(true);
         });
 
+        test('switching to unscheduled applies the backlog-specific form styling and requirements', () => {
+            const unscheduledRadio = document.getElementById('unscheduled');
+            const timeInputs = document.getElementById('time-inputs');
+            const priorityInput = document.getElementById('priority-input');
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            const descriptionInput = document.querySelector('input[name="description"]');
+            const durationHoursInput = document.querySelector('input[name="duration-hours"]');
+            const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
+            const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+
+            if (!(unscheduledRadio instanceof HTMLInputElement)) {
+                throw new Error('Unscheduled radio not found');
+            }
+
+            unscheduledRadio.checked = true;
+            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(timeInputs.classList.contains('hidden')).toBe(true);
+            expect(priorityInput.classList.contains('hidden')).toBe(false);
+            expect(startTimeInput.hasAttribute('required')).toBe(false);
+            expect(addTaskButton.textContent).toContain('Add Task');
+            expect(descriptionInput.getAttribute('placeholder')).toBe('Describe your task...');
+            expect(descriptionInput.classList.contains('focus:border-indigo-400')).toBe(true);
+            expect(durationHoursInput.classList.contains('focus:border-indigo-400')).toBe(true);
+            expect(durationMinutesInput.classList.contains('focus:border-indigo-400')).toBe(true);
+        });
+
         test('can submit form multiple times in unscheduled mode without validation error', () => {
             // This test ensures the fix for the "invalid form control not focusable" error
             const unscheduledRadio = document.getElementById('unscheduled');

@@ -77,10 +77,6 @@ export async function loadActivitiesState(loadActivities = loadActivitiesFromSto
     return getActivityState();
 }
 
-export async function loadActivityState(loadActivities = loadActivitiesFromStorage) {
-    return loadActivitiesState(loadActivities);
-}
-
 export async function addActivity(activityData) {
     const description = activityData?.description?.trim();
 
@@ -144,10 +140,6 @@ export async function editActivity(activityId, updates = {}) {
     return { success: true, activity: cloneActivity(nextActivity) };
 }
 
-export async function updateActivity(activityId, updates = {}) {
-    return editActivity(activityId, updates);
-}
-
 export async function removeActivity(activityId) {
     const existing = getActivityById(activityId);
 
@@ -159,10 +151,6 @@ export async function removeActivity(activityId) {
     activities = activities.filter((activity) => activity.id !== activityId);
 
     return { success: true, activity: cloneActivity(existing) };
-}
-
-export async function deleteActivity(activityId) {
-    return removeActivity(activityId);
 }
 
 export function createActivityFromTask(task) {

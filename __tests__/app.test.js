@@ -40,7 +40,6 @@ jest.mock('../public/js/sync-manager.js', () => ({
     triggerSync: jest.fn(() => Promise.resolve())
 }));
 jest.mock('../public/js/activities/manager.js', () => ({
-    loadActivityState: jest.fn(() => Promise.resolve([])),
     loadActivitiesState: jest.fn(() => Promise.resolve([])),
     getActivityState: jest.fn(() => []),
     getTodaysActivities: jest.fn(() => [])
@@ -76,7 +75,6 @@ import {
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
 import {
-    loadActivityState as mockLoadActivityStateInternal,
     loadActivitiesState as mockLoadActivitiesStateInternal,
     getActivityState as mockGetActivityStateInternal,
     getTodaysActivities as mockGetTodaysActivitiesInternal
@@ -101,7 +99,6 @@ const mockLoadActivitiesFromStorage = jest.mocked(mockLoadActivitiesFromStorageI
 const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
-const mockLoadActivityState = jest.mocked(mockLoadActivityStateInternal);
 const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
 const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
 const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
@@ -176,7 +173,7 @@ describe('App.js Callback Functions', () => {
         mockLoadActivitiesFromStorage.mockReturnValue([]);
         mockLoadConfig.mockResolvedValue(null);
         mockPutConfig.mockResolvedValue(undefined);
-        mockLoadActivityState.mockResolvedValue([]);
+        mockLoadActivitiesState.mockResolvedValue([]);
         mockGetActivityState.mockReturnValue([]);
         mockRenderActivities.mockClear();
         mockHandleAddActivity.mockClear();

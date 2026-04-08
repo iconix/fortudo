@@ -8,17 +8,15 @@ jest.mock('../public/js/storage.js', () => ({
     deleteActivity: jest.fn(() => Promise.resolve())
 }));
 
+import * as activityManager from '../public/js/activities/manager.js';
 import {
     addActivity,
     getActivityState,
     getActivityById,
     getTodaysActivities,
     loadActivitiesState,
-    loadActivityState,
     removeActivity,
     editActivity,
-    updateActivity,
-    deleteActivity as deleteActivityAlias,
     resetActivityState,
     updateActivityState,
     createActivityFromTask
@@ -362,53 +360,13 @@ describe('activity manager', () => {
             expect(getActivityState()).toEqual([]);
         });
 
-        test('loadActivityState aliases loadActivitiesState', async () => {
-            const result = await loadActivityState(async () => [
-                {
-                    id: 'activity-1',
-                    description: 'Stored',
-                    startDateTime: '2026-04-07T09:00:00.000Z',
-                    endDateTime: '2026-04-07T10:00:00.000Z',
-                    duration: 60
-                }
-            ]);
-
-            expect(result).toHaveLength(1);
-            expect(getActivityState()[0].id).toBe('activity-1');
-        });
-    });
-
-    describe('aliases', () => {
-        test('updateActivity proxies to editActivity', async () => {
-            const { activity } = await addActivity({
-                description: 'Original',
-                startDateTime: '2026-04-07T09:00:00.000Z',
-                endDateTime: '2026-04-07T10:00:00.000Z',
-                duration: 60,
-                source: 'manual',
-                sourceTaskId: null
-            });
-
-            const result = await updateActivity(activity.id, { description: 'Updated' });
-
-            expect(result.success).toBe(true);
-            expect(result.activity.description).toBe('Updated');
-        });
-
-        test('deleteActivity proxies to removeActivity', async () => {
-            const { activity } = await addActivity({
-                description: 'To remove',
-                startDateTime: '2026-04-07T09:00:00.000Z',
-                endDateTime: '2026-04-07T10:00:00.000Z',
-                duration: 60,
-                source: 'manual',
-                sourceTaskId: null
-            });
-
-            const result = await deleteActivityAlias(activity.id);
-
-            expect(result.success).toBe(true);
-            expect(getActivityById(activity.id)).toBeNull();
+        test('exports only the canonical activity CRUD and loading names', () => {
+            expect(activityManager.loadActivitiesState).toBe(loadActivitiesState);
+            expect(activityManager.editActivity).toBe(editActivity);
+            expect(activityManager.removeActivity).toBe(removeActivity);
+            expect(activityManager.loadActivityState).toBeUndefined();
+            expect(activityManager.updateActivity).toBeUndefined();
+            expect(activityManager.deleteActivity).toBeUndefined();
         });
     });
 
