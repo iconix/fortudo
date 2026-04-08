@@ -51,6 +51,12 @@ describe('toast-manager', () => {
         expect(toast.className).toContain('teal');
     });
 
+    test('showToast accepts the sky theme color', () => {
+        showToast('Sky message', { theme: 'sky' });
+        const toast = getToastContainer().children[0];
+        expect(toast.className).toContain('sky');
+    });
+
     test('multiple toasts stack in the container', () => {
         showToast('First');
         showToast('Second');

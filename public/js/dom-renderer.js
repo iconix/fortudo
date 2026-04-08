@@ -1,6 +1,9 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './tasks/manager.js';
 import { isScheduledTask } from './tasks/validators.js';
+import { getTodaysActivities } from './activities/manager.js';
+import { renderActivities } from './activities/renderer.js';
+import { isActivitiesEnabled } from './settings-manager.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -72,11 +75,36 @@ export function startRealTimeClock() {
 export function initializeTaskTypeToggle() {
     const scheduledRadio = document.getElementById('scheduled');
     const unscheduledRadio = document.getElementById('unscheduled');
+    const activityRadio = document.getElementById('activity');
     const timeInputs = document.getElementById('time-inputs');
     const priorityInput = document.getElementById('priority-input');
     const addTaskButton = document.querySelector('#task-form button[type="submit"]');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
+    const durationHoursInput = document.querySelector('input[name="duration-hours"]');
+    const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
+
+    const setInputTheme = (theme) => {
+        const focusClassMap = {
+            teal: 'focus:border-teal-400',
+            indigo: 'focus:border-indigo-400',
+            sky: 'focus:border-sky-400'
+        };
+        const themeClass = focusClassMap[theme];
+        [descriptionInput, startTimeInput, durationHoursInput, durationMinutesInput].forEach(
+            (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return;
+                }
+                Object.values(focusClassMap).forEach((className) => {
+                    element.classList.remove(className);
+                });
+                if (themeClass) {
+                    element.classList.add(themeClass);
+                }
+            }
+        );
+    };
 
     if (
         scheduledRadio instanceof HTMLInputElement &&
@@ -90,26 +118,47 @@ export function initializeTaskTypeToggle() {
             if (scheduledRadio.checked) {
                 timeInputs.classList.remove('hidden');
                 priorityInput.classList.add('hidden');
-                // Re-enable required on start-time when showing scheduled inputs
                 if (startTimeInput) startTimeInput.setAttribute('required', '');
                 addTaskButton.className =
                     'shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                addTaskButton.innerHTML = '<i class="fa-regular fa-plus mr-2"></i>Add Task';
                 descriptionInput.className =
-                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all';
+                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+                descriptionInput.setAttribute('placeholder', 'Describe your task...');
+                setInputTheme('teal');
+                return;
+            }
+
+            if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
+                timeInputs.classList.remove('hidden');
+                priorityInput.classList.add('hidden');
+                if (startTimeInput) startTimeInput.setAttribute('required', '');
+                addTaskButton.className =
+                    'shrink-0 bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+                addTaskButton.innerHTML = '<i class="fa-regular fa-clock mr-2"></i>Log Activity';
+                descriptionInput.className =
+                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+                descriptionInput.setAttribute('placeholder', 'What did you work on?');
+                setInputTheme('sky');
             } else {
                 timeInputs.classList.add('hidden');
                 priorityInput.classList.remove('hidden');
-                // Remove required from start-time when hiding scheduled inputs
                 if (startTimeInput) startTimeInput.removeAttribute('required');
                 addTaskButton.className =
                     'shrink-0 bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
                 descriptionInput.className =
-                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all';
+                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+                addTaskButton.innerHTML = '<i class="fa-regular fa-plus mr-2"></i>Add Task';
+                descriptionInput.setAttribute('placeholder', 'Describe your task...');
+                setInputTheme('indigo');
             }
         };
 
         scheduledRadio.addEventListener('change', toggleVisibility);
         unscheduledRadio.addEventListener('change', toggleVisibility);
+        if (activityRadio instanceof HTMLInputElement) {
+            activityRadio.addEventListener('change', toggleVisibility);
+        }
         toggleVisibility(); // Initial call
 
         // Add page visibility change listener to re-sync form state when user returns to tab
@@ -480,6 +529,9 @@ export function refreshUI() {
     const tasks = getTaskState();
     renderTasks(tasks.filter(isScheduledTask));
     renderUnscheduledTasks(getSortedUnscheduledTasks());
+    if (isActivitiesEnabled()) {
+        renderActivities(getTodaysActivities(), document.getElementById('activity-list'));
+    }
     updateStartTimeField(getSuggestedStartTime(), true);
 }
 

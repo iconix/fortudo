@@ -9,12 +9,14 @@ import {
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
+    resetTaskFormPreviewState,
     initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
     setupEndTimeHint,
     setupOverlapWarning
 } from './tasks/form-utils.js';
+import { extractActivityFormData } from './activities/form-utils.js';
 import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/scheduled-renderer.js';
 import {
     renderTasks,
@@ -27,6 +29,13 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
+import { renderActivities } from './activities/renderer.js';
+import { getTodaysActivities, loadActivitiesState } from './activities/manager.js';
+import {
+    handleAddActivity,
+    handleEditActivity,
+    handleDeleteActivity
+} from './activities/handlers.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
@@ -59,6 +68,30 @@ function refreshTaxonomyUI() {
     refreshTaskDisplays();
 }
 
+function syncActivitiesUI(enabled) {
+    const activityToggleOption = document.getElementById('activity-toggle-option');
+    const activitiesContainer = document.getElementById('activities-container');
+
+    if (activityToggleOption) {
+        activityToggleOption.classList.toggle('hidden', !enabled);
+    }
+
+    if (activitiesContainer) {
+        activitiesContainer.classList.toggle('hidden', !enabled);
+    }
+
+    if (!enabled) {
+        const activityRadio = document.getElementById('activity');
+        const scheduledRadio = document.getElementById('scheduled');
+        if (activityRadio instanceof HTMLInputElement) {
+            activityRadio.checked = false;
+        }
+        if (scheduledRadio instanceof HTMLInputElement) {
+            scheduledRadio.checked = true;
+        }
+    }
+}
+
 /**
  * Use an isolated room code for preview deployments so they never touch prod data.
  * @param {string} roomCode
@@ -82,13 +115,20 @@ async function loadTasksIntoState() {
     updateTaskState(loadedTasks, { persist: false });
 }
 
+async function loadAppState() {
+    await loadTasksIntoState();
+    if (isActivitiesEnabled()) {
+        await loadActivitiesState();
+    }
+}
+
 async function refreshFromStorage() {
     if (refreshFromStoragePromise) {
         return refreshFromStoragePromise;
     }
 
     refreshFromStoragePromise = (async () => {
-        await loadTasksIntoState();
+        await loadAppState();
         refreshUI();
         refreshActiveTaskColor(getTaskState());
         refreshCurrentGapHighlight();
@@ -127,9 +167,10 @@ async function initAndBootApp(roomCode) {
 
     // Load settings before any UI checks that depend on cached flags.
     await loadSettings();
+    syncActivitiesUI(isActivitiesEnabled());
 
     // Load and initialize state
-    await loadTasksIntoState();
+    await loadAppState();
     await loadTaxonomy();
 
     // Create callback objects
@@ -142,12 +183,50 @@ async function initAndBootApp(roomCode) {
             scheduledTaskEventCallbacks
         );
         renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+        if (isActivitiesEnabled()) {
+            renderActivities(
+                getTodaysActivities(),
+                /** @type {HTMLElement|null} */ (document.getElementById('activity-list'))
+            );
+        }
         refreshActiveTaskColor(allTasks);
         refreshCurrentGapHighlight();
     };
 
     const appCallbacks = {
         onTaskFormSubmit: async (formElement) => {
+            const selectedTaskType = new FormData(formElement).get('task-type')?.toString();
+            if (isActivitiesEnabled() && selectedTaskType === 'activity') {
+                const activityData = extractActivityFormData(formElement);
+                if (!activityData) {
+                    focusTaskDescriptionInput();
+                    return;
+                }
+
+                await handleAddActivity(activityData);
+                formElement.reset();
+                resetTaskFormPreviewState({
+                    hintElement: document.getElementById('end-time-hint'),
+                    warningElement: document.getElementById('overlap-warning'),
+                    buttonElement: document.getElementById('add-task-btn')
+                });
+
+                const categorySelect = document.getElementById('category-select');
+                if (categorySelect) {
+                    categorySelect.dispatchEvent(new Event('change'));
+                }
+
+                const activityRadio = formElement.querySelector(
+                    'input[name="task-type"][value="activity"]'
+                );
+                if (activityRadio instanceof HTMLInputElement) {
+                    activityRadio.checked = true;
+                }
+                initializeTaskTypeToggle();
+                focusTaskDescriptionInput();
+                return;
+            }
+
             const taskData = extractTaskFormData(formElement);
             if (!taskData) {
                 focusTaskDescriptionInput();
@@ -159,6 +238,50 @@ async function initAndBootApp(roomCode) {
         },
         onGlobalClick: (event) => {
             const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            const editActivityButton = target.closest('.btn-edit-activity');
+            if (editActivityButton instanceof HTMLElement) {
+                const activityItem = editActivityButton.closest('[data-activity-id]');
+                const activityId =
+                    editActivityButton.dataset.activityId ||
+                    activityItem?.getAttribute('data-activity-id');
+                if (activityId) {
+                    const currentDescription =
+                        activityItem
+                            ?.querySelector('.text-sm.text-slate-200')
+                            ?.textContent?.trim() || '';
+                    const nextDescription = window.prompt(
+                        'Edit activity description:',
+                        currentDescription
+                    );
+                    if (
+                        nextDescription !== null &&
+                        nextDescription.trim() !== '' &&
+                        nextDescription.trim() !== currentDescription
+                    ) {
+                        void handleEditActivity(activityId, {
+                            description: nextDescription.trim()
+                        });
+                    }
+                }
+                return;
+            }
+
+            const deleteActivityButton = target.closest('.btn-delete-activity');
+            if (deleteActivityButton instanceof HTMLElement) {
+                const activityItem = deleteActivityButton.closest('[data-activity-id]');
+                const activityId =
+                    deleteActivityButton.dataset.activityId ||
+                    activityItem?.getAttribute('data-activity-id');
+                if (activityId) {
+                    void handleDeleteActivity(activityId);
+                }
+                return;
+            }
+
             const taskElement = target.closest('.task-item, .task-card');
             const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
 

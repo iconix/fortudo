@@ -213,6 +213,24 @@ describe('Form Utils Tests', () => {
             expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'indigo');
         });
 
+        test('rejects activity mode when extracting task creation data', () => {
+            document.body.innerHTML = `
+                <form id="task-form">
+                    <input type="text" name="description" value="Deep work session" />
+                    <input type="radio" name="task-type" value="activity" checked />
+                    <input type="time" name="start-time" value="10:30" />
+                    <input type="number" name="duration-hours" value="1" />
+                    <input type="number" name="duration-minutes" value="15" />
+                </form>
+            `;
+            const form = document.getElementById('task-form');
+
+            const result = extractTaskFormData(form);
+
+            expect(result).toBeNull();
+            expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'sky');
+        });
+
         test('trims description whitespace', () => {
             const form = createScheduledTaskForm('  Test task  ', '10:30', '1', '0');
             const result = extractTaskFormData(form);

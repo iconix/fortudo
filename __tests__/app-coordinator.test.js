@@ -7,6 +7,21 @@ jest.mock('../public/js/dom-renderer.js', () => ({
     updateStartTimeField: jest.fn()
 }));
 
+jest.mock('../public/js/activities/manager.js', () => ({
+    addActivity: jest.fn(() => Promise.resolve()),
+    createActivityFromTask: jest.fn((task) => ({
+        id: 'activity-from-task',
+        docType: 'activity',
+        description: task.description,
+        source: 'auto',
+        sourceTaskId: task.id
+    }))
+}));
+
+jest.mock('../public/js/settings-manager.js', () => ({
+    isActivitiesEnabled: jest.fn(() => false)
+}));
+
 jest.mock('../public/js/tasks/scheduled-renderer.js', () => ({
     triggerConfettiAnimation: jest.fn(),
     refreshActiveTaskColor: jest.fn(),
@@ -19,27 +34,36 @@ jest.mock('../public/js/tasks/manager.js', () => ({
 }));
 
 import * as appCoordinator from '../public/js/app-coordinator.js';
+import { addActivity, createActivityFromTask } from '../public/js/activities/manager.js';
 import { refreshUI, updateStartTimeField } from '../public/js/dom-renderer.js';
+import { isActivitiesEnabled } from '../public/js/settings-manager.js';
 import { triggerConfettiAnimation } from '../public/js/tasks/scheduled-renderer.js';
 
 describe('app-coordinator', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        isActivitiesEnabled.mockReturnValue(false);
     });
 
     test('onTaskCompleted refreshes UI and triggers confetti for scheduled tasks without directly updating start time', () => {
+        isActivitiesEnabled.mockReturnValue(false);
         appCoordinator.onTaskCompleted({ task: { id: 'task-1', type: 'scheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-1');
+        expect(createActivityFromTask).not.toHaveBeenCalled();
+        expect(addActivity).not.toHaveBeenCalled();
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
     test('onTaskCompleted skips confetti and start-time updates for unscheduled tasks', () => {
+        isActivitiesEnabled.mockReturnValue(true);
         appCoordinator.onTaskCompleted({ task: { id: 'task-2', type: 'unscheduled' } });
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(triggerConfettiAnimation).not.toHaveBeenCalled();
+        expect(createActivityFromTask).not.toHaveBeenCalled();
+        expect(addActivity).not.toHaveBeenCalled();
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
@@ -75,6 +99,68 @@ describe('app-coordinator', () => {
 
         expect(refreshUI).toHaveBeenCalledTimes(1);
         expect(updateStartTimeField).not.toHaveBeenCalled();
+    });
+
+    test('onActivityCreated refreshes UI when given an activity', () => {
+        appCoordinator.onActivityCreated({ activity: { id: 'activity-1' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+    });
+
+    test('onActivityEdited refreshes UI when given an activity', () => {
+        appCoordinator.onActivityEdited({ activity: { id: 'activity-2' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+    });
+
+    test('onActivityDeleted refreshes UI when given an activity', () => {
+        appCoordinator.onActivityDeleted({ activity: { id: 'activity-3' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+    });
+
+    test('onTaskCompleted auto-logs scheduled tasks when activities are enabled', () => {
+        isActivitiesEnabled.mockReturnValue(true);
+
+        const task = { id: 'task-9', type: 'scheduled', description: 'Write notes' };
+        appCoordinator.onTaskCompleted({ task });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-9');
+        expect(createActivityFromTask).toHaveBeenCalledWith(task);
+        expect(addActivity).toHaveBeenCalledWith({
+            id: 'activity-from-task',
+            docType: 'activity',
+            description: 'Write notes',
+            source: 'auto',
+            sourceTaskId: 'task-9'
+        });
+    });
+
+    test('onTaskCompleted does not auto-log scheduled tasks when activities are disabled', () => {
+        isActivitiesEnabled.mockReturnValue(false);
+
+        appCoordinator.onTaskCompleted({ task: { id: 'task-10', type: 'scheduled' } });
+
+        expect(refreshUI).toHaveBeenCalledTimes(1);
+        expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-10');
+        expect(createActivityFromTask).not.toHaveBeenCalled();
+        expect(addActivity).not.toHaveBeenCalled();
+    });
+
+    test('onTaskCompleted ignores missing task payloads', () => {
+        appCoordinator.onTaskCompleted({ task: null });
+
+        expect(refreshUI).not.toHaveBeenCalled();
+        expect(triggerConfettiAnimation).not.toHaveBeenCalled();
+        expect(createActivityFromTask).not.toHaveBeenCalled();
+        expect(addActivity).not.toHaveBeenCalled();
+    });
+
+    test('onActivityCreated ignores missing activity payloads', () => {
+        appCoordinator.onActivityCreated({ activity: null });
+
+        expect(refreshUI).not.toHaveBeenCalled();
     });
 
     test('onScheduledTasksCleared refreshes UI without directly updating start time', () => {

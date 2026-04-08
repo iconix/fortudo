@@ -1,4 +1,6 @@
 import { refreshUI } from './dom-renderer.js';
+import { addActivity, createActivityFromTask } from './activities/manager.js';
+import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
 
 /**
@@ -10,6 +12,9 @@ import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
  * - onTaskUnscheduled({ task })
  * - onTaskCompleted({ task })
  * - onTaskDeleted({ task })
+ * - onActivityCreated({ activity })
+ * - onActivityEdited({ activity })
+ * - onActivityDeleted({ activity })
  * - onScheduledTasksCleared()
  * - onCompletedTasksCleared()
  * - onAllTasksCleared()
@@ -47,13 +52,43 @@ export function onTaskCompleted({ task }) {
         return;
     }
     refreshUI();
-    if (task.type === 'scheduled') {
-        triggerConfettiAnimation(task.id);
+    if (task.type !== 'scheduled') {
+        return;
+    }
+
+    triggerConfettiAnimation(task.id);
+
+    if (isActivitiesEnabled()) {
+        const activity = createActivityFromTask(task);
+        if (activity) {
+            void addActivity(activity);
+        }
     }
 }
 
 export function onTaskDeleted({ task }) {
     if (!task) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onActivityCreated({ activity }) {
+    if (!activity) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onActivityEdited({ activity }) {
+    if (!activity) {
+        return;
+    }
+    refreshUI();
+}
+
+export function onActivityDeleted({ activity }) {
+    if (!activity) {
         return;
     }
     refreshUI();

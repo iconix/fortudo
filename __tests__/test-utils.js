@@ -58,6 +58,10 @@ function setupDOM() {
           <label for="scheduled">Scheduled</label>
           <input type="radio" id="unscheduled" name="task-type" value="unscheduled" />
           <label for="unscheduled">Unscheduled</label>
+          <div id="activity-toggle-option" class="hidden">
+            <input type="radio" id="activity" name="task-type" value="activity" />
+            <label for="activity">Activity</label>
+          </div>
         </div>
         <div id="time-inputs">
           <div class="form-group">
@@ -81,6 +85,9 @@ function setupDOM() {
       <span id="overlap-warning"></span>
       <div id="scheduled-task-list" class="task-list"></div>
       <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
+      <div id="activities-container" class="hidden">
+        <div id="activity-list"></div>
+      </div>
       <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
       <div id="clear-tasks-dropdown" style="display: none;">
         <button id="clear-completed-tasks-option">Clear Completed</button>

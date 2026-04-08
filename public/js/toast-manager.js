@@ -3,6 +3,7 @@ let container = null;
 const THEME_CLASSES = {
     teal: 'bg-teal-900/90 border-teal-700 text-teal-200',
     indigo: 'bg-indigo-900/90 border-indigo-700 text-indigo-200',
+    sky: 'bg-sky-900/90 border-sky-700 text-sky-200',
     amber: 'bg-amber-900/90 border-amber-700 text-amber-200',
     rose: 'bg-rose-900/90 border-rose-700 text-rose-200',
     default: 'bg-slate-800/90 border-slate-600 text-slate-200'

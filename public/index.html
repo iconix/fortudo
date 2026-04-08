@@ -146,6 +146,21 @@
                                 >Unscheduled
                             </label>
                         </div>
+                        <div
+                            id="activity-toggle-option"
+                            class="hidden flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors"
+                        >
+                            <input
+                                id="activity"
+                                type="radio"
+                                name="task-type"
+                                value="activity"
+                                class="mr-2 h-4 w-4 text-sky-400 focus:ring-sky-400"
+                            />
+                            <label for="activity" class="text-slate-300 flex items-center text-sm">
+                                <i class="fa-regular fa-clock mr-1 text-sky-400/75"></i>Activity
+                            </label>
+                        </div>
                     </div>
 
                     <div class="mb-2 sm:mb-3">
@@ -373,6 +388,20 @@
                     </div>
                     <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
                         <!-- tasks will be generated here by JavaScript -->
+                    </div>
+                </div>
+
+                <div
+                    id="activities-container"
+                    class="hidden text-left mb-4 sm:mb-6 px-2 sm:px-0"
+                >
+                    <div class="flex justify-between items-center mb-2 sm:mb-3">
+                        <h3 class="text-lg sm:text-xl font-normal text-sky-400 pl-2 flex items-center">
+                            <i class="fa-regular fa-clock mr-2"></i>Today's Activities
+                        </h3>
+                    </div>
+                    <div id="activity-list" class="grid grid-cols-1 gap-2">
+                        <!-- activities will be generated here by JavaScript -->
                     </div>
                 </div>
 
