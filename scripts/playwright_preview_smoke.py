@@ -497,6 +497,30 @@ def ensure_activity_doc_present(
     raise ValueError(f"Missing activity document for {room_code}: {description}")
 
 
+def wait_for_activity_doc(
+    page: Any,
+    room_code: str,
+    description: str,
+    *,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> dict[str, Any]:
+    return wait_until(
+        lambda: next(
+            (
+                normalized
+                for normalized in map(normalize_doc, read_docs(page, room_code))
+                if normalized.get("docType") == "activity"
+                and normalized.get("description") == description
+            ),
+            False,
+        ),
+        f"activity persistence for {description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
 def wait_for_activity_failure_alert(
     page: Any,
     room_code: str,
@@ -1686,10 +1710,10 @@ def run_smoke(
             )
 
             add_activity(page, "Playwright editable activity", "15:30", 15)
-            editable_activity_doc = ensure_activity_doc_present(
+            editable_activity_doc = wait_for_activity_doc(
+                page,
                 rooms["activities"],
                 "Playwright editable activity",
-                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
             )
             arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
             page.locator(
@@ -1722,10 +1746,10 @@ def run_smoke(
                 raise ValueError("delete confirm state was not cleared by activity edit")
 
             add_activity(page, "Playwright delete activity", "16:00", 10)
-            deletable_activity_doc = ensure_activity_doc_present(
+            deletable_activity_doc = wait_for_activity_doc(
+                page,
                 rooms["activities"],
                 "Playwright delete activity",
-                list(map(normalize_doc, read_docs(page, rooms["activities"]))),
             )
             arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
             page.locator(

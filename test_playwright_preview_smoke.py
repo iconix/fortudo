@@ -35,6 +35,7 @@ from scripts.playwright_preview_smoke import (
     supports_activity_smoke_failure_host,
     summarize_docs,
     task_form_input_selector,
+    wait_for_activity_doc,
     wait_for_activity_failure_alert,
     wait_for_demo_start,
     wait_for_room_code,
@@ -627,6 +628,18 @@ class PreviewWaitHelperTests(unittest.TestCase):
         ]
 
         result = ensure_activity_doc_present("room-a", "Focus block", docs)
+
+        self.assertEqual(result["id"], "activity-1")
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_activity_doc_waits_until_activity_persists(self, mock_read_docs):
+        mock_read_docs.side_effect = [
+            [],
+            [{"_id": "activity-1", "docType": "activity", "description": "Focus block"}],
+        ]
+        page = FakePage({})
+
+        result = wait_for_activity_doc(page, "room-a", "Focus block", timeout_s=0.05, interval_s=0)
 
         self.assertEqual(result["id"], "activity-1")
 
