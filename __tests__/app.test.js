@@ -53,6 +53,13 @@ jest.mock('../public/js/activities/handlers.js', () => ({
     handleEditActivity: jest.fn(),
     handleDeleteActivity: jest.fn(() => Promise.resolve())
 }));
+jest.mock('../public/js/modal-manager.js', () => {
+    const actual = jest.requireActual('../public/js/modal-manager.js');
+    return {
+        ...actual,
+        showActivityEditModal: jest.fn(() => Promise.resolve(null))
+    };
+});
 import {
     prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
@@ -81,6 +88,7 @@ import {
     handleDeleteActivity as mockHandleDeleteActivityInternal
 } from '../public/js/activities/handlers.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
+import { showActivityEditModal as mockShowActivityEditModalInternal } from '../public/js/modal-manager.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
@@ -101,6 +109,7 @@ const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
 const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
 const mockHandleDeleteActivity = jest.mocked(mockHandleDeleteActivityInternal);
+const mockShowActivityEditModal = jest.mocked(mockShowActivityEditModalInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -173,6 +182,7 @@ describe('App.js Callback Functions', () => {
         mockHandleAddActivity.mockClear();
         mockHandleEditActivity.mockClear();
         mockHandleDeleteActivity.mockClear();
+        mockShowActivityEditModal.mockClear();
         mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
@@ -377,7 +387,7 @@ describe('App.js Callback Functions', () => {
                     <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
                 </article>
             `;
-            jest.spyOn(window, 'prompt').mockReturnValue('Updated activity');
+            mockShowActivityEditModal.mockResolvedValue('Updated activity');
 
             activityList
                 .querySelector('.btn-edit-activity')
@@ -387,13 +397,14 @@ describe('App.js Callback Functions', () => {
                 .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
+            expect(mockShowActivityEditModal).toHaveBeenCalledWith('');
             expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-42', {
                 description: 'Updated activity'
             });
             expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-42');
         });
 
-        test('activity edit does nothing for cancelled blank or unchanged prompt responses', async () => {
+        test('activity edit does nothing for cancelled blank or unchanged modal responses', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
             await setupAppWithTasks([]);
@@ -405,11 +416,10 @@ describe('App.js Callback Functions', () => {
                     <button type="button" class="btn-edit-activity">Edit</button>
                 </article>
             `;
-            const promptSpy = jest
-                .spyOn(window, 'prompt')
-                .mockReturnValueOnce(null)
-                .mockReturnValueOnce('   ')
-                .mockReturnValueOnce('Current activity');
+            mockShowActivityEditModal
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce('   ')
+                .mockResolvedValueOnce('Current activity');
 
             const editButton = activityList.querySelector('.btn-edit-activity');
             editButton.dispatchEvent(new Event('click', { bubbles: true }));
@@ -417,9 +427,8 @@ describe('App.js Callback Functions', () => {
             editButton.dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(promptSpy).toHaveBeenCalledTimes(3);
+            expect(mockShowActivityEditModal).toHaveBeenCalledTimes(3);
             expect(mockHandleEditActivity).not.toHaveBeenCalled();
-            promptSpy.mockRestore();
         });
 
         test('activity actions can resolve ids from the ancestor activity element', async () => {
@@ -435,7 +444,7 @@ describe('App.js Callback Functions', () => {
                     <button type="button" class="btn-delete-activity"><span>Delete</span></button>
                 </article>
             `;
-            const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Changed from ancestor');
+            mockShowActivityEditModal.mockResolvedValue('Changed from ancestor');
 
             activityList
                 .querySelector('.btn-edit-activity span')
@@ -445,11 +454,11 @@ describe('App.js Callback Functions', () => {
                 .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
+            expect(mockShowActivityEditModal).toHaveBeenCalledWith('Ancestor id activity');
             expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-44', {
                 description: 'Changed from ancestor'
             });
             expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-44');
-            promptSpy.mockRestore();
         });
 
         test('invalid activity form submission keeps focus flow and skips add handler', async () => {

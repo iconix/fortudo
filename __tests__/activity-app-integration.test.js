@@ -20,6 +20,10 @@ jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivities: jest.fn()
 }));
 
+jest.mock('../public/js/modal-manager.js', () => ({
+    showActivityEditModal: jest.fn(() => Promise.resolve(null))
+}));
+
 import {
     syncActivitiesUI,
     renderTodayActivities,
@@ -34,6 +38,7 @@ import {
 } from '../public/js/activities/handlers.js';
 import { getTodaysActivities } from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
+import { showActivityEditModal } from '../public/js/modal-manager.js';
 
 describe('activity app integration', () => {
     beforeEach(() => {
@@ -172,8 +177,8 @@ describe('activity app integration', () => {
         expect(focusTaskDescriptionInputMock).toHaveBeenCalled();
     });
 
-    test('handles activity edit clicks and trims prompt output', async () => {
-        const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('  Updated  ');
+    test('handles activity edit clicks through the edit modal result', async () => {
+        showActivityEditModal.mockResolvedValue('  Updated  ');
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
             <article data-activity-id="activity-1">
@@ -189,12 +194,13 @@ describe('activity app integration', () => {
                 resetAllConfirmingDeleteFlags: jest.fn()
             }
         );
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(handled).toBe(true);
+        expect(showActivityEditModal).toHaveBeenCalledWith('Current');
         expect(handleEditActivity).toHaveBeenCalledWith('activity-1', {
             description: 'Updated'
         });
-        promptSpy.mockRestore();
     });
 
     test('handles activity delete clicks', async () => {
@@ -231,5 +237,39 @@ describe('activity app integration', () => {
         expect(handled).toBe(false);
         expect(resetAllConfirmingDeleteFlagsMock).toHaveBeenCalled();
         expect(refreshUIMock).toHaveBeenCalled();
+    });
+
+    test('does not edit activity when modal result is null blank or unchanged', async () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article data-activity-id="activity-3">
+                <span class="text-sm text-slate-200">Current</span>
+                <button class="btn-edit-activity"><span>Edit</span></button>
+            </article>
+        `;
+        const target = activityList.querySelector('.btn-edit-activity span');
+
+        showActivityEditModal.mockResolvedValueOnce(null);
+        await handleActivityListClick(target, {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        showActivityEditModal.mockResolvedValueOnce('   ');
+        await handleActivityListClick(target, {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        showActivityEditModal.mockResolvedValueOnce('Current');
+        await handleActivityListClick(target, {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(handleEditActivity).not.toHaveBeenCalled();
     });
 });

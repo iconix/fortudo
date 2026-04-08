@@ -131,6 +131,18 @@ function setupDOM() {
         </div>
       </div>
 
+      <div id="activity-edit-modal" class="hidden">
+        <div class="modal-content">
+          <h2 id="activity-edit-title"></h2>
+          <button id="close-activity-edit-modal" type="button">X</button>
+          <form id="activity-edit-form">
+            <input id="activity-edit-description" name="activity-description" type="text" />
+            <button id="cancel-activity-edit-modal" type="button">Cancel</button>
+            <button id="save-activity-edit-modal" type="submit">Save</button>
+          </form>
+        </div>
+      </div>
+
       <div id="settings-modal" class="hidden">
         <div id="settings-content"></div>
         <button id="close-settings-modal" type="button"></button>

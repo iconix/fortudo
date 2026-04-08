@@ -2,6 +2,7 @@ import { extractActivityFormData } from './form-utils.js';
 import { getTodaysActivities } from './manager.js';
 import { renderActivities } from './renderer.js';
 import { handleAddActivity, handleEditActivity, handleDeleteActivity } from './handlers.js';
+import { showActivityEditModal } from '../modal-manager.js';
 
 export function syncActivitiesUI(enabled) {
     const activityToggleOption = document.getElementById('activity-toggle-option');
@@ -86,16 +87,17 @@ export function handleActivityListClick(target, deps) {
         if (activityId) {
             const currentDescription =
                 activityItem?.querySelector('.text-sm.text-slate-200')?.textContent?.trim() || '';
-            const nextDescription = window.prompt('Edit activity description:', currentDescription);
-            if (
-                nextDescription !== null &&
-                nextDescription.trim() !== '' &&
-                nextDescription.trim() !== currentDescription
-            ) {
-                void handleEditActivity(activityId, {
-                    description: nextDescription.trim()
-                });
-            }
+            void showActivityEditModal(currentDescription).then((nextDescription) => {
+                if (
+                    typeof nextDescription === 'string' &&
+                    nextDescription.trim() !== '' &&
+                    nextDescription.trim() !== currentDescription
+                ) {
+                    void handleEditActivity(activityId, {
+                        description: nextDescription.trim()
+                    });
+                }
+            });
         }
         return true;
     }
