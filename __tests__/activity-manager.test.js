@@ -249,7 +249,7 @@ describe('activity manager', () => {
             expect(putActivity).toHaveBeenCalledWith(result.activity);
         });
 
-        test('rejects edit of auto-logged activity', async () => {
+        test('allows edit of auto-logged activity while preserving provenance fields', async () => {
             const { activity } = await addActivity({
                 description: 'Auto',
                 startDateTime: '2026-04-07T09:00:00.000Z',
@@ -259,10 +259,17 @@ describe('activity manager', () => {
                 sourceTaskId: 'sched-123'
             });
 
-            const result = await editActivity(activity.id, { description: 'Changed' });
+            const result = await editActivity(activity.id, {
+                description: 'Changed',
+                duration: 75,
+                endDateTime: '2026-04-07T10:15:00.000Z'
+            });
 
-            expect(result.success).toBe(false);
-            expect(result.reason).toMatch(/auto/i);
+            expect(result.success).toBe(true);
+            expect(result.activity.description).toBe('Changed');
+            expect(result.activity.duration).toBe(75);
+            expect(result.activity.source).toBe('auto');
+            expect(result.activity.sourceTaskId).toBe('sched-123');
         });
 
         test('rejects edit when trimmed description becomes empty', async () => {

@@ -1,9 +1,8 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './tasks/manager.js';
 import { isScheduledTask } from './tasks/validators.js';
-import { getTodaysActivities } from './activities/manager.js';
-import { renderActivities } from './activities/renderer.js';
 import { isActivitiesEnabled } from './settings-manager.js';
+import { renderTodayActivities } from './activities/ui-handlers.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -565,7 +564,7 @@ export function refreshUI() {
     renderTasks(tasks.filter(isScheduledTask));
     renderUnscheduledTasks(getSortedUnscheduledTasks());
     if (isActivitiesEnabled()) {
-        renderActivities(getTodaysActivities(), document.getElementById('activity-list'));
+        renderTodayActivities(true);
     }
     updateStartTimeField(getSuggestedStartTime(), true);
 }

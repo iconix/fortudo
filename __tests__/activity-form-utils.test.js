@@ -10,7 +10,10 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     resolveCategoryKey: jest.fn()
 }));
 
-import { extractActivityFormData } from '../public/js/activities/form-utils.js';
+import {
+    extractActivityFormData,
+    extractActivityEditFormData
+} from '../public/js/activities/form-utils.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { resolveCategoryKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 import { calculateEndDateTime, timeToDateTime } from '../public/js/utils.js';
@@ -116,5 +119,30 @@ describe('activity form utils', () => {
 
         expect(result).toBeNull();
         expect(showAlert).toHaveBeenCalledWith('Selected category is no longer available.', 'sky');
+    });
+
+    test('extracts inline activity edit form data using the activity date instead of today', () => {
+        const form = createActivityForm({
+            description: 'Edited deep work',
+            startTime: '13:15',
+            durationHours: '1',
+            durationMinutes: '30',
+            category: 'work/deep'
+        });
+        form.dataset.activityDate = '2026-04-05';
+        resolveCategoryKey.mockReturnValue({
+            kind: 'category',
+            record: { key: 'work/deep', color: '#0ea5e9' }
+        });
+
+        const result = extractActivityEditFormData(form);
+
+        expect(result).toEqual({
+            description: 'Edited deep work',
+            category: 'work/deep',
+            startDateTime: timeToDateTime('13:15', '2026-04-05'),
+            endDateTime: calculateEndDateTime(timeToDateTime('13:15', '2026-04-05'), 90),
+            duration: 90
+        });
     });
 });

@@ -9,7 +9,8 @@ jest.mock('../public/js/activities/form-utils.js', () => ({
 jest.mock('../public/js/activities/handlers.js', () => ({
     handleAddActivity: jest.fn(() => Promise.resolve({ success: true })),
     handleEditActivity: jest.fn(() => Promise.resolve()),
-    handleDeleteActivity: jest.fn(() => Promise.resolve())
+    handleDeleteActivity: jest.fn(() => Promise.resolve()),
+    handleSaveActivityEdit: jest.fn(() => Promise.resolve({ success: true }))
 }));
 
 jest.mock('../public/js/activities/manager.js', () => ({
@@ -20,29 +21,26 @@ jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivities: jest.fn()
 }));
 
-jest.mock('../public/js/modal-manager.js', () => ({
-    showActivityEditModal: jest.fn(() => Promise.resolve(null))
-}));
-
 import {
     syncActivitiesUI,
     renderTodayActivities,
     handleActivityAwareFormSubmit,
-    handleActivityListClick
+    handleActivityListClick,
+    resetActivityInlineEditState
 } from '../public/js/activities/ui-handlers.js';
 import { extractActivityFormData } from '../public/js/activities/form-utils.js';
 import {
     handleAddActivity,
-    handleEditActivity,
-    handleDeleteActivity
+    handleDeleteActivity,
+    handleSaveActivityEdit
 } from '../public/js/activities/handlers.js';
 import { getTodaysActivities } from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
-import { showActivityEditModal } from '../public/js/modal-manager.js';
 
 describe('activity app integration', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        resetActivityInlineEditState();
         document.body.innerHTML = `
             <div id="activity-toggle-option" class="hidden"></div>
             <div id="activities-container" class="hidden"></div>
@@ -97,7 +95,8 @@ describe('activity app integration', () => {
         expect(getTodaysActivities).toHaveBeenCalled();
         expect(renderActivities).toHaveBeenCalledWith(
             activities,
-            document.getElementById('activity-list')
+            document.getElementById('activity-list'),
+            expect.objectContaining({ editingActivityId: null })
         );
     });
 
@@ -208,8 +207,7 @@ describe('activity app integration', () => {
         expect(focusTaskDescriptionInputMock).toHaveBeenCalled();
     });
 
-    test('handles activity edit clicks through the edit modal result', async () => {
-        showActivityEditModal.mockResolvedValue('  Updated  ');
+    test('clicking activity edit enters inline edit mode for that row', async () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
             <article class="activity-item" data-activity-id="activity-1">
@@ -217,6 +215,7 @@ describe('activity app integration', () => {
                 <button class="btn-edit-activity" data-activity-id="activity-1"><span>Edit</span></button>
             </article>
         `;
+        getTodaysActivities.mockReturnValue([{ id: 'activity-1', description: 'Current' }]);
 
         const refreshUIMock = jest.fn();
         const resetAllConfirmingDeleteFlagsMock = jest.fn(() => true);
@@ -228,24 +227,56 @@ describe('activity app integration', () => {
                 resetAllConfirmingDeleteFlags: resetAllConfirmingDeleteFlagsMock
             }
         );
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        renderTodayActivities(true);
 
         expect(handled).toBe(true);
         expect(resetAllConfirmingDeleteFlagsMock).toHaveBeenCalled();
         expect(refreshUIMock).toHaveBeenCalled();
-        expect(showActivityEditModal).toHaveBeenCalledWith('Current');
-        expect(handleEditActivity).toHaveBeenCalledWith('activity-1', {
-            description: 'Updated'
-        });
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            [{ id: 'activity-1', description: 'Current' }],
+            document.getElementById('activity-list'),
+            expect.objectContaining({ editingActivityId: 'activity-1' })
+        );
     });
 
-    test('activity edit resolves current description from the row when the button also has a data-activity-id', async () => {
-        showActivityEditModal.mockResolvedValue('Updated');
+    test('saving inline activity edits delegates the form to the activity edit handler', async () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
-            <article class="activity-item" data-activity-id="activity-11">
-                <span class="text-sm text-slate-200">Row description</span>
-                <button class="btn-edit-activity" data-activity-id="activity-11"><span>Edit</span></button>
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="15" />
+                <select name="category"><option value="work/deep" selected>Deep Work</option></select>
+                <button class="btn-save-activity-edit" type="button"><span>Save</span></button>
+            </form>
+        `;
+        const refreshUIMock = jest.fn();
+
+        const handled = await handleActivityListClick(
+            activityList.querySelector('.btn-save-activity-edit span'),
+            {
+                refreshUI: refreshUIMock,
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(handled).toBe(true);
+        expect(handleSaveActivityEdit).toHaveBeenCalledWith(
+            'activity-11',
+            activityList.querySelector('form')
+        );
+        expect(refreshUIMock).toHaveBeenCalled();
+    });
+
+    test('canceling inline activity edit clears the inline edit state', async () => {
+        getTodaysActivities.mockReturnValue([{ id: 'activity-12', description: 'Current' }]);
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article class="activity-item" data-activity-id="activity-12">
+                <span class="text-sm text-slate-200">Current</span>
+                <button class="btn-edit-activity"><span>Edit</span></button>
             </article>
         `;
 
@@ -253,12 +284,71 @@ describe('activity app integration', () => {
             refreshUI: jest.fn(),
             resetAllConfirmingDeleteFlags: jest.fn()
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(showActivityEditModal).toHaveBeenCalledWith('Row description');
-        expect(handleEditActivity).toHaveBeenCalledWith('activity-11', {
-            description: 'Updated'
-        });
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-12" data-activity-date="2026-04-07">
+                <button class="btn-cancel-activity-edit" type="button"><span>Cancel</span></button>
+            </form>
+        `;
+
+        const handled = await handleActivityListClick(
+            activityList.querySelector('.btn-cancel-activity-edit span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        expect(handled).toBe(true);
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            [{ id: 'activity-12', description: 'Current' }],
+            document.getElementById('activity-list'),
+            expect.objectContaining({ editingActivityId: null })
+        );
+    });
+
+    test('handles auto activity edit clicks while preserving provenance in the ui path', async () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article class="activity-item" data-activity-id="activity-auto-1">
+                <span class="text-sm text-slate-200">Auto activity</span>
+                <span class="activity-source-link" data-source-task-id="sched-1">auto</span>
+                <button class="btn-edit-activity" data-activity-id="activity-auto-1"><span>Edit</span></button>
+                <button class="btn-delete-activity" data-activity-id="activity-auto-1"><span>Delete</span></button>
+            </article>
+        `;
+        getTodaysActivities.mockReturnValue([
+            {
+                id: 'activity-auto-1',
+                description: 'Auto activity',
+                source: 'auto',
+                sourceTaskId: 'sched-1'
+            }
+        ]);
+
+        const handled = await handleActivityListClick(
+            activityList.querySelector('.btn-edit-activity span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        expect(handled).toBe(true);
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            [
+                {
+                    id: 'activity-auto-1',
+                    description: 'Auto activity',
+                    source: 'auto',
+                    sourceTaskId: 'sched-1'
+                }
+            ],
+            document.getElementById('activity-list'),
+            expect.objectContaining({ editingActivityId: 'activity-auto-1' })
+        );
     });
 
     test('handles activity delete clicks', async () => {
@@ -285,8 +375,7 @@ describe('activity app integration', () => {
         expect(handleDeleteActivity).toHaveBeenCalledWith('activity-2');
     });
 
-    test('activity actions still resolve ids and descriptions when refresh rerenders the list', async () => {
-        showActivityEditModal.mockResolvedValue('Updated after rerender');
+    test('activity actions still resolve ids when refresh rerenders the list', async () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
             <article class="activity-item" data-activity-id="activity-9">
@@ -303,12 +392,8 @@ describe('activity app integration', () => {
             refreshUI: rerenderingRefreshMock,
             resetAllConfirmingDeleteFlags: jest.fn(() => true)
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(showActivityEditModal).toHaveBeenCalledWith('Before rerender');
-        expect(handleEditActivity).toHaveBeenCalledWith('activity-9', {
-            description: 'Updated after rerender'
-        });
+        expect(rerenderingRefreshMock).toHaveBeenCalled();
 
         activityList.innerHTML = `
             <article class="activity-item" data-activity-id="activity-10">
@@ -343,37 +428,49 @@ describe('activity app integration', () => {
         expect(refreshUIMock).toHaveBeenCalled();
     });
 
-    test('does not edit activity when modal result is null blank or unchanged', async () => {
+    test('save failure keeps the activity row in inline edit mode', async () => {
+        handleSaveActivityEdit.mockResolvedValue({
+            success: false,
+            reason: 'Could not update activity.'
+        });
+        getTodaysActivities.mockReturnValue([{ id: 'activity-3', description: 'Current' }]);
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `
             <article class="activity-item" data-activity-id="activity-3">
-                <span class="text-sm text-slate-200">Current</span>
-                <button class="btn-edit-activity"><span>Edit</span></button>
+                <button class="btn-edit-activity" type="button"><span>Edit</span></button>
             </article>
         `;
-        const target = activityList.querySelector('.btn-edit-activity span');
 
-        showActivityEditModal.mockResolvedValueOnce(null);
-        await handleActivityListClick(target, {
+        await handleActivityListClick(activityList.querySelector('.btn-edit-activity span'), {
             refreshUI: jest.fn(),
             resetAllConfirmingDeleteFlags: jest.fn()
         });
-        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        showActivityEditModal.mockResolvedValueOnce('   ');
-        await handleActivityListClick(target, {
-            refreshUI: jest.fn(),
-            resetAllConfirmingDeleteFlags: jest.fn()
-        });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-3" data-activity-date="2026-04-07">
+                <input name="description" value="Current" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="0" />
+                <select name="category"></select>
+                <button class="btn-save-activity-edit" type="button"><span>Save</span></button>
+            </form>
+        `;
 
-        showActivityEditModal.mockResolvedValueOnce('Current');
-        await handleActivityListClick(target, {
-            refreshUI: jest.fn(),
-            resetAllConfirmingDeleteFlags: jest.fn()
-        });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        const handled = await handleActivityListClick(
+            activityList.querySelector('.btn-save-activity-edit span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
 
-        expect(handleEditActivity).not.toHaveBeenCalled();
+        expect(handled).toBe(true);
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            [{ id: 'activity-3', description: 'Current' }],
+            document.getElementById('activity-list'),
+            expect.objectContaining({ editingActivityId: 'activity-3' })
+        );
     });
 });

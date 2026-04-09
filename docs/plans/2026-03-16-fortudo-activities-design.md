@@ -319,7 +319,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 ### Phase 4 Design Decisions (resolved)
 
-1. **Activities visible from Phase 4.** A simple chronological list of today's activities renders below the task list. This becomes the "Activity Log" section of Phase 5 Insights, so the renderer work isn't throwaway. Edit/delete on manual entries ships in Phase 4; auto entries show source task link.
+1. **Activities visible from Phase 4.** A simple chronological list of today's activities renders below the task list. This becomes the "Activity Log" section of Phase 5 Insights, so the renderer work isn't throwaway. Edit/delete ships in Phase 4 for both manual and auto-logged activities; auto entries retain visible provenance and `sourceTaskId` metadata as an edited copy of the completed task.
 
 2. **Third form mode routing.** `extractActivityFormData()` lives in `activities/form-utils.js` (separate from tasks). Submit routes through `activities/handlers.js`, not the task `add-handler.js`. `dom-renderer.js` gains a three-way mode toggle but delegates to the appropriate module. Manual activity creation flows through `coordinator.onActivityCreated({ activity })`, keeping the coordinator as the consistent post-mutation boundary.
 
@@ -391,6 +391,14 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Wire auto-logging into scheduled task completion via `coordinator.onTaskCompleted`
 - Add `activities/renderer.js` with chronological today's-activities list (edit/delete for manual, source link for auto)
 - Add empty states for activity views
+
+**Phase 4.5: Category editing parity**
+
+- Keep full-field inline editing on activities, including category changes
+- Add category editing to scheduled task inline edit forms
+- Add category editing to unscheduled task inline edit forms
+- Align task and activity edit layouts so category editing no longer exists only on activities
+- Add renderer, form-utils, handler, app, and smoke coverage for task category edit flows
 
 **Phase 5: Insights view**
 

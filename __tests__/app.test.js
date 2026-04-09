@@ -50,15 +50,9 @@ jest.mock('../public/js/activities/renderer.js', () => ({
 jest.mock('../public/js/activities/handlers.js', () => ({
     handleAddActivity: jest.fn(() => Promise.resolve()),
     handleEditActivity: jest.fn(),
-    handleDeleteActivity: jest.fn(() => Promise.resolve())
+    handleDeleteActivity: jest.fn(() => Promise.resolve()),
+    handleSaveActivityEdit: jest.fn(() => Promise.resolve({ success: true }))
 }));
-jest.mock('../public/js/modal-manager.js', () => {
-    const actual = jest.requireActual('../public/js/modal-manager.js');
-    return {
-        ...actual,
-        showActivityEditModal: jest.fn(() => Promise.resolve(null))
-    };
-});
 import {
     prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
@@ -83,10 +77,10 @@ import { renderActivities as mockRenderActivitiesInternal } from '../public/js/a
 import {
     handleAddActivity as mockHandleAddActivityInternal,
     handleEditActivity as mockHandleEditActivityInternal,
-    handleDeleteActivity as mockHandleDeleteActivityInternal
+    handleDeleteActivity as mockHandleDeleteActivityInternal,
+    handleSaveActivityEdit as mockHandleSaveActivityEditInternal
 } from '../public/js/activities/handlers.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
-import { showActivityEditModal as mockShowActivityEditModalInternal } from '../public/js/modal-manager.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
@@ -106,7 +100,7 @@ const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
 const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
 const mockHandleDeleteActivity = jest.mocked(mockHandleDeleteActivityInternal);
-const mockShowActivityEditModal = jest.mocked(mockShowActivityEditModalInternal);
+const mockHandleSaveActivityEdit = jest.mocked(mockHandleSaveActivityEditInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -179,7 +173,7 @@ describe('App.js Callback Functions', () => {
         mockHandleAddActivity.mockClear();
         mockHandleEditActivity.mockClear();
         mockHandleDeleteActivity.mockClear();
-        mockShowActivityEditModal.mockClear();
+        mockHandleSaveActivityEdit.mockClear();
         mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
@@ -323,7 +317,8 @@ describe('App.js Callback Functions', () => {
             expect(mockLoadActivitiesState).toHaveBeenCalled();
             expect(mockRenderActivities).toHaveBeenCalledWith(
                 [activity],
-                document.getElementById('activity-list')
+                document.getElementById('activity-list'),
+                expect.objectContaining({ editingActivityId: null })
             );
             expect(
                 document.getElementById('activity-toggle-option')?.classList.contains('hidden')
@@ -372,7 +367,7 @@ describe('App.js Callback Functions', () => {
             expect(descriptionInput.getAttribute('placeholder')).toBe('What did you work on?');
         });
 
-        test('activity list delegates edit and delete controls to the activity handlers', async () => {
+        test('activity list delegates inline activity save and delete controls to the activity handlers', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
             await setupAppWithTasks([]);
@@ -380,29 +375,43 @@ describe('App.js Callback Functions', () => {
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
                 <article class="activity-item" data-activity-id="activity-42">
-                    <span class="text-sm text-slate-200">Renderer-shaped activity</span>
                     <button type="button" class="btn-edit-activity" data-activity-id="activity-42">Edit</button>
                     <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
                 </article>
             `;
-            mockShowActivityEditModal.mockResolvedValue('Updated activity');
 
             activityList
                 .querySelector('.btn-edit-activity')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-42" data-activity-date="2026-04-07">
+                    <input name="description" value="Updated activity" />
+                    <input name="start-time" value="09:00" />
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="0" />
+                    <select name="category"></select>
+                    <button type="button" class="btn-save-activity-edit">Save</button>
+                </form>
+                <article class="activity-item" data-activity-id="activity-42">
+                    <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
+                </article>
+            `;
+            activityList
+                .querySelector('.btn-save-activity-edit')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             activityList
                 .querySelector('.btn-delete-activity')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(mockShowActivityEditModal).toHaveBeenCalledWith('Renderer-shaped activity');
-            expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-42', {
-                description: 'Updated activity'
-            });
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-42',
+                expect.any(HTMLFormElement)
+            );
             expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-42');
         });
 
-        test('activity edit does nothing for cancelled blank or unchanged modal responses', async () => {
+        test('activity cancel exits inline edit mode without saving', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
             await setupAppWithTasks([]);
@@ -410,23 +419,23 @@ describe('App.js Callback Functions', () => {
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
                 <article class="activity-item" data-activity-id="activity-43">
-                    <span class="text-sm text-slate-200">Current activity</span>
                     <button type="button" class="btn-edit-activity">Edit</button>
                 </article>
             `;
-            mockShowActivityEditModal
-                .mockResolvedValueOnce(null)
-                .mockResolvedValueOnce('   ')
-                .mockResolvedValueOnce('Current activity');
 
             const editButton = activityList.querySelector('.btn-edit-activity');
             editButton.dispatchEvent(new Event('click', { bubbles: true }));
-            editButton.dispatchEvent(new Event('click', { bubbles: true }));
-            editButton.dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-43" data-activity-date="2026-04-07">
+                    <button type="button" class="btn-cancel-activity-edit">Cancel</button>
+                </form>
+            `;
+            activityList
+                .querySelector('.btn-cancel-activity-edit')
+                .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(mockShowActivityEditModal).toHaveBeenCalledTimes(3);
-            expect(mockHandleEditActivity).not.toHaveBeenCalled();
+            expect(mockHandleSaveActivityEdit).not.toHaveBeenCalled();
         });
 
         test('activity actions can resolve ids from the ancestor activity element', async () => {
@@ -437,25 +446,34 @@ describe('App.js Callback Functions', () => {
             const activityList = document.getElementById('activity-list');
             activityList.innerHTML = `
                 <article class="activity-item" data-activity-id="activity-44">
-                    <span class="text-sm text-slate-200">Ancestor id activity</span>
                     <button type="button" class="btn-edit-activity"><span>Edit</span></button>
                     <button type="button" class="btn-delete-activity"><span>Delete</span></button>
                 </article>
             `;
-            mockShowActivityEditModal.mockResolvedValue('Changed from ancestor');
 
             activityList
                 .querySelector('.btn-edit-activity span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-44" data-activity-date="2026-04-07">
+                    <button type="button" class="btn-save-activity-edit"><span>Save</span></button>
+                </form>
+                <article class="activity-item" data-activity-id="activity-44">
+                    <button type="button" class="btn-delete-activity"><span>Delete</span></button>
+                </article>
+            `;
+            activityList
+                .querySelector('.btn-save-activity-edit span')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             activityList
                 .querySelector('.btn-delete-activity span')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(mockShowActivityEditModal).toHaveBeenCalledWith('Ancestor id activity');
-            expect(mockHandleEditActivity).toHaveBeenCalledWith('activity-44', {
-                description: 'Changed from ancestor'
-            });
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-44',
+                expect.any(HTMLFormElement)
+            );
             expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-44');
         });
 

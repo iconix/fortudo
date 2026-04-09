@@ -7,7 +7,7 @@ import {
 import { showAlert } from '../modal-manager.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 
-export function extractActivityFormData(formElement) {
+function extractActivityFields(formElement, options = {}) {
     const formData = new FormData(formElement);
     const description = formData.get('description')?.toString().trim();
     const startTime = formData.get('start-time')?.toString();
@@ -37,8 +37,8 @@ export function extractActivityFormData(formElement) {
         return null;
     }
 
-    const date = extractDateFromDateTime(new Date());
-    const startDateTime = timeToDateTime(startTime, date);
+    const baseDate = options.baseDate || extractDateFromDateTime(new Date());
+    const startDateTime = timeToDateTime(startTime, baseDate);
     const endDateTime = calculateEndDateTime(startDateTime, durationResult.duration);
 
     return {
@@ -46,8 +46,25 @@ export function extractActivityFormData(formElement) {
         category: categoryKey || null,
         startDateTime,
         endDateTime,
-        duration: durationResult.duration,
+        duration: durationResult.duration
+    };
+}
+
+export function extractActivityFormData(formElement) {
+    const fields = extractActivityFields(formElement);
+    if (!fields) {
+        return null;
+    }
+
+    return {
+        ...fields,
         source: 'manual',
         sourceTaskId: null
     };
+}
+
+export function extractActivityEditFormData(formElement) {
+    return extractActivityFields(formElement, {
+        baseDate: formElement?.dataset?.activityDate || extractDateFromDateTime(new Date())
+    });
 }

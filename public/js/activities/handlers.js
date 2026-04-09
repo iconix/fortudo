@@ -1,14 +1,18 @@
 import { showAlert } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
-import { extractActivityFormData } from './form-utils.js';
+import { extractActivityFormData, extractActivityEditFormData } from './form-utils.js';
 import { addActivity, editActivity, removeActivity } from './manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
 
 function resolveActivityPayload(activityDataOrForm) {
-    return activityDataOrForm instanceof HTMLFormElement
-        ? extractActivityFormData(activityDataOrForm)
-        : activityDataOrForm;
+    if (!(activityDataOrForm instanceof HTMLFormElement)) {
+        return activityDataOrForm;
+    }
+
+    return activityDataOrForm.dataset.activityEdit === 'true'
+        ? extractActivityEditFormData(activityDataOrForm)
+        : extractActivityFormData(activityDataOrForm);
 }
 
 export async function handleAddActivity(activityDataOrForm) {

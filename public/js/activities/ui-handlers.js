@@ -1,8 +1,13 @@
 import { extractActivityFormData } from './form-utils.js';
 import { getTodaysActivities } from './manager.js';
 import { renderActivities } from './renderer.js';
-import { handleAddActivity, handleEditActivity, handleDeleteActivity } from './handlers.js';
-import { showActivityEditModal } from '../modal-manager.js';
+import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from './handlers.js';
+
+let editingActivityId = null;
+
+export function resetActivityInlineEditState() {
+    editingActivityId = null;
+}
 
 function clearDeleteConfirmState(deps) {
     const wasConfirming = deps.resetAllConfirmingDeleteFlags();
@@ -24,6 +29,7 @@ export function syncActivitiesUI(enabled) {
     }
 
     if (!enabled) {
+        editingActivityId = null;
         const activityRadio = document.getElementById('activity');
         const scheduledRadio = document.getElementById('scheduled');
         if (activityRadio instanceof HTMLInputElement) {
@@ -42,7 +48,8 @@ export function renderTodayActivities(enabled) {
 
     renderActivities(
         getTodaysActivities(),
-        /** @type {HTMLElement|null} */ (document.getElementById('activity-list'))
+        /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
+        { editingActivityId }
     );
 }
 
@@ -95,20 +102,33 @@ export function handleActivityListClick(target, deps) {
         const activityItem = editActivityButton.closest('.activity-item[data-activity-id]');
         const activityId =
             editActivityButton.dataset.activityId || activityItem?.getAttribute('data-activity-id');
-        const currentDescription =
-            activityItem?.querySelector('.text-sm.text-slate-200')?.textContent?.trim() || '';
         clearDeleteConfirmState(deps);
         if (activityId) {
-            void showActivityEditModal(currentDescription).then((nextDescription) => {
-                if (
-                    typeof nextDescription === 'string' &&
-                    nextDescription.trim() !== '' &&
-                    nextDescription.trim() !== currentDescription
-                ) {
-                    void handleEditActivity(activityId, {
-                        description: nextDescription.trim()
-                    });
+            editingActivityId = activityId;
+            deps.refreshUI();
+        }
+        return true;
+    }
+
+    const cancelActivityEditButton = target.closest('.btn-cancel-activity-edit');
+    if (cancelActivityEditButton instanceof HTMLElement) {
+        editingActivityId = null;
+        deps.refreshUI();
+        return true;
+    }
+
+    const saveActivityEditButton = target.closest('.btn-save-activity-edit');
+    if (saveActivityEditButton instanceof HTMLElement) {
+        const editForm = saveActivityEditButton.closest(
+            'form.activity-inline-edit-form[data-activity-id]'
+        );
+        const activityId = editForm?.getAttribute('data-activity-id');
+        if (activityId && editForm instanceof HTMLFormElement) {
+            void handleSaveActivityEdit(activityId, editForm).then((result) => {
+                if (result?.success) {
+                    editingActivityId = null;
                 }
+                deps.refreshUI();
             });
         }
         return true;
@@ -122,6 +142,9 @@ export function handleActivityListClick(target, deps) {
             activityItem?.getAttribute('data-activity-id');
         clearDeleteConfirmState(deps);
         if (activityId) {
+            if (editingActivityId === activityId) {
+                editingActivityId = null;
+            }
             void handleDeleteActivity(activityId);
         }
         return true;

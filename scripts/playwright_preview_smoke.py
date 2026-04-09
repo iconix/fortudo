@@ -1791,26 +1791,34 @@ def run_smoke(
             page.locator(
                 f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
             ).click()
-            page.locator("#activity-edit-modal").wait_for(state="visible", timeout=10000)
+            page.locator(
+                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+            ).wait_for(state="visible", timeout=10000)
             current_modal_value = wait_for_input_value(
                 page,
-                "#activity-edit-description",
+                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]',
                 "Playwright editable activity",
-                description="activity edit modal description preload",
+                description="activity inline edit description preload",
             )
             if current_modal_value != "Playwright editable activity":
                 raise ValueError(
-                    "activity edit modal lost the current description after rerender: "
+                    "activity inline edit lost the current description after rerender: "
                     f"{current_modal_value!r}"
                 )
             fill_locator_value(
                 page,
-                page.locator("#activity-edit-description"),
+                page.locator(
+                    f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]'
+                ),
                 "Playwright editable activity updated",
-                description="activity edit modal description",
+                description="activity inline edit description",
             )
-            page.locator("#activity-edit-form").evaluate("(form) => form.requestSubmit()")
-            page.locator("#activity-edit-modal").wait_for(state="hidden", timeout=10000)
+            page.locator(
+                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
+            ).click()
+            page.locator(
+                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+            ).wait_for(state="hidden", timeout=10000)
             wait_until(
                 lambda: any(
                     doc.get("id") == editable_activity_doc["id"]

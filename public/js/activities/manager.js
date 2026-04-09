@@ -112,10 +112,6 @@ export async function editActivity(activityId, updates = {}) {
         return { success: false, reason: 'Activity not found.' };
     }
 
-    if (existing.source === 'auto') {
-        return { success: false, reason: 'Auto-logged activities cannot be edited.' };
-    }
-
     const nextActivity = normalizeActivity({
         ...existing,
         ...updates,

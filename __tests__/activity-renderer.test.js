@@ -3,7 +3,10 @@
  */
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
-    renderCategoryBadge: jest.fn(() => '<span class="category-badge">Deep Work</span>')
+    renderCategoryBadge: jest.fn(() => '<span class="category-badge">Deep Work</span>'),
+    getSelectableCategoryOptions: jest.fn(() => [
+        { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+    ])
 }));
 
 import { renderActivities } from '../public/js/activities/renderer.js';
@@ -60,7 +63,7 @@ describe('activity renderer', () => {
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
     });
 
-    test('renders auto activity with source indicator and no edit/delete actions', () => {
+    test('renders auto activity with source indicator and edit/delete actions', () => {
         const container = document.getElementById('activity-list');
 
         renderActivities(
@@ -81,8 +84,44 @@ describe('activity renderer', () => {
 
         expect(container.textContent).toContain('auto');
         expect(container.querySelector('.activity-source-link')).not.toBeNull();
-        expect(container.querySelector('.btn-edit-activity')).toBeNull();
-        expect(container.querySelector('.btn-delete-activity')).toBeNull();
+        expect(container.querySelector('.btn-edit-activity')).not.toBeNull();
+        expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
+    });
+
+    test('renders inline edit form instead of the summary row for the editing activity', () => {
+        const container = document.getElementById('activity-list');
+        const displayStartTime = extractTimeFromDateTime(new Date('2026-04-07T09:00:00.000Z'));
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-editing',
+                    description: 'Deep work',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 90,
+                    source: 'auto',
+                    sourceTaskId: 'sched-1'
+                }
+            ],
+            container,
+            { editingActivityId: 'activity-editing' }
+        );
+
+        const editForm = container.querySelector('form.activity-inline-edit-form');
+        expect(editForm).not.toBeNull();
+        expect(editForm.dataset.activityId).toBe('activity-editing');
+        expect(editForm.dataset.activityDate).toBe('2026-04-07');
+        expect(editForm.querySelector('input[name="description"]').value).toBe('Deep work');
+        expect(editForm.querySelector('input[name="start-time"]').value).toBe(displayStartTime);
+        expect(editForm.querySelector('input[name="duration-hours"]').value).toBe('1');
+        expect(editForm.querySelector('input[name="duration-minutes"]').value).toBe('30');
+        expect(editForm.querySelector('select[name="category"]').value).toBe('work/deep');
+        expect(editForm.textContent).toContain('auto');
+        expect(editForm.querySelector('.btn-delete-activity')).toBeNull();
+        expect(editForm.querySelector('.btn-cancel-activity-edit')).not.toBeNull();
+        expect(editForm.querySelector('.btn-save-activity-edit')).not.toBeNull();
     });
 
     test('escapes activity descriptions', () => {
