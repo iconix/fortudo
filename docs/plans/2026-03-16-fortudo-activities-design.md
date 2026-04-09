@@ -392,7 +392,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Add `activities/renderer.js` with chronological today's-activities list (edit/delete for manual, source link for auto)
 - Add empty states for activity views
 
-**Phase 4.5: Category editing parity**
+**Phase 4.7: Category editing parity**
 
 - Keep full-field inline editing on activities, including category changes
 - Add category editing to scheduled task inline edit forms
