@@ -37,10 +37,9 @@ import {
     syncActivitiesUI,
     renderTodayActivities,
     handleActivityAwareFormSubmit,
-    handleActivityListClick,
-    initializeTimerUI,
-    syncTimerFormState
+    handleActivityListClick
 } from './activities/ui-handlers.js';
+import { initializeTimerUI, syncTimerFormState } from './activities/timer-ui.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';

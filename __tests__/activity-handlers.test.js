@@ -6,9 +6,8 @@ jest.mock('../public/js/activities/manager.js', () => ({
     addActivity: jest.fn(),
     editActivity: jest.fn(),
     removeActivity: jest.fn(),
-    startTimer: jest.fn(),
-    stopTimer: jest.fn(),
-    getRunningActivity: jest.fn()
+    startTimerReplacingCurrent: jest.fn(),
+    stopTimer: jest.fn()
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
@@ -38,9 +37,8 @@ import {
     addActivity,
     editActivity,
     removeActivity,
-    startTimer,
-    stopTimer,
-    getRunningActivity
+    startTimerReplacingCurrent,
+    stopTimer
 } from '../public/js/activities/manager.js';
 import {
     onActivityCreated,
@@ -245,14 +243,14 @@ describe('activity handlers', () => {
     });
 
     test('handleStartTimer starts a timer and shows a toast', async () => {
-        getRunningActivity.mockReturnValue(null);
-        startTimer.mockResolvedValue({
+        startTimerReplacingCurrent.mockResolvedValue({
             success: true,
             runningActivity: {
                 description: 'Focus block',
                 category: 'work/deep',
                 startDateTime: '2026-04-09T10:00:00.000Z'
-            }
+            },
+            stoppedActivity: null
         });
 
         const result = await handleStartTimer({
@@ -260,7 +258,7 @@ describe('activity handlers', () => {
             category: 'work/deep'
         });
 
-        expect(startTimer).toHaveBeenCalledWith({
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({
             description: 'Focus block',
             category: 'work/deep'
         });
@@ -270,16 +268,9 @@ describe('activity handlers', () => {
     });
 
     test('handleStartTimer auto-stops an existing timer before starting a new one', async () => {
-        getRunningActivity.mockReturnValueOnce({
-            description: 'Current timer',
-            startDateTime: '2026-04-09T09:30:00.000Z'
-        });
-        stopTimer.mockResolvedValueOnce({
+        startTimerReplacingCurrent.mockResolvedValueOnce({
             success: true,
-            activity: { id: 'activity-1', description: 'Current timer', duration: 30 }
-        });
-        startTimer.mockResolvedValueOnce({
-            success: true,
+            stoppedActivity: { id: 'activity-1', description: 'Current timer', duration: 30 },
             runningActivity: {
                 description: 'Next timer',
                 startDateTime: '2026-04-09T10:00:00.000Z'
@@ -288,20 +279,18 @@ describe('activity handlers', () => {
 
         const result = await handleStartTimer({ description: 'Next timer', category: null });
 
-        expect(stopTimer).toHaveBeenCalled();
         expect(onActivityCreated).toHaveBeenCalledWith({
             activity: { id: 'activity-1', description: 'Current timer', duration: 30 }
         });
-        expect(startTimer).toHaveBeenCalledWith({ description: 'Next timer', category: null });
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({
+            description: 'Next timer',
+            category: null
+        });
         expect(result.success).toBe(true);
     });
 
     test('handleStartTimer stops when auto-stop fails', async () => {
-        getRunningActivity.mockReturnValueOnce({
-            description: 'Current timer',
-            startDateTime: '2026-04-09T09:30:00.000Z'
-        });
-        stopTimer.mockResolvedValueOnce({
+        startTimerReplacingCurrent.mockResolvedValueOnce({
             success: false,
             reason: 'Could not stop timer.'
         });
@@ -312,7 +301,26 @@ describe('activity handlers', () => {
             success: false,
             reason: 'Could not stop timer.'
         });
-        expect(startTimer).not.toHaveBeenCalled();
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({ description: 'Next timer' });
+    });
+
+    test('handleStartTimer still emits the stopped activity when replacement start fails', async () => {
+        startTimerReplacingCurrent.mockResolvedValueOnce({
+            success: false,
+            reason: 'Description is required to start a timer.',
+            stoppedActivity: { id: 'activity-9', description: 'Stopped timer', duration: 15 }
+        });
+
+        const result = await handleStartTimer({ description: '' });
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'Description is required to start a timer.'
+        });
+        expect(onActivityCreated).toHaveBeenCalledWith({
+            activity: { id: 'activity-9', description: 'Stopped timer', duration: 15 }
+        });
+        expect(showAlert).toHaveBeenCalledWith('Description is required to start a timer.', 'sky');
     });
 
     test('handleStopTimer emits coordinator + toast on success', async () => {

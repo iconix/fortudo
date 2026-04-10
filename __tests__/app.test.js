@@ -46,13 +46,15 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getActivityState: jest.fn(() => []),
     getTodaysActivities: jest.fn(() => [])
 }));
+jest.mock('../public/js/activities/timer-ui.js', () => ({
+    hideTimerDisplay: jest.fn(),
+    disposeTimerUI: jest.fn(),
+    initializeTimerUI: jest.fn(),
+    syncTimerFormState: jest.fn()
+}));
 jest.mock('../public/js/activities/ui-handlers.js', () => {
     const actual = jest.requireActual('../public/js/activities/ui-handlers.js');
-    return {
-        ...actual,
-        initializeTimerUI: jest.fn(),
-        syncTimerFormState: jest.fn()
-    };
+    return actual;
 });
 jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivities: jest.fn()
@@ -88,7 +90,7 @@ import {
 import {
     initializeTimerUI as mockInitializeTimerUIInternal,
     syncTimerFormState as mockSyncTimerFormStateInternal
-} from '../public/js/activities/ui-handlers.js';
+} from '../public/js/activities/timer-ui.js';
 import { renderActivities as mockRenderActivitiesInternal } from '../public/js/activities/renderer.js';
 import {
     handleAddActivity as mockHandleAddActivityInternal,

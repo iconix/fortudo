@@ -10,19 +10,29 @@ jest.mock('../public/js/storage.js', () => ({
     deleteConfig: jest.fn(() => Promise.resolve())
 }));
 
+jest.mock('../public/js/activities/running-activity-repository.js', () => ({
+    loadRunningActivityConfig: jest.fn(() => Promise.resolve(null)),
+    saveRunningActivityConfig: jest.fn(() => Promise.resolve()),
+    deleteRunningActivityConfig: jest.fn(() => Promise.resolve())
+}));
+
 import {
     loadRunningActivity,
     getRunningActivity,
     startTimer,
+    startTimerReplacingCurrent,
     stopTimer,
     stopTimerAt,
     updateRunningActivity,
     resetActivityState,
     getActivityState
 } from '../public/js/activities/manager.js';
-import { putConfig, loadConfig, deleteConfig, putActivity } from '../public/js/storage.js';
-
-const RUNNING_ACTIVITY_CONFIG_ID = 'config-running-activity';
+import { putActivity } from '../public/js/storage.js';
+import {
+    loadRunningActivityConfig,
+    saveRunningActivityConfig,
+    deleteRunningActivityConfig
+} from '../public/js/activities/running-activity-repository.js';
 
 describe('Timer state primitives', () => {
     beforeEach(() => {
@@ -48,8 +58,7 @@ describe('Timer state primitives', () => {
 
     describe('loadRunningActivity', () => {
         test('loads running activity from PouchDB config doc', async () => {
-            loadConfig.mockResolvedValueOnce({
-                id: RUNNING_ACTIVITY_CONFIG_ID,
+            loadRunningActivityConfig.mockResolvedValueOnce({
                 description: 'Working on feature',
                 category: 'work/deep',
                 startDateTime: '2026-04-09T10:00:00.000Z'
@@ -65,7 +74,7 @@ describe('Timer state primitives', () => {
         });
 
         test('sets null when no config doc exists', async () => {
-            loadConfig.mockResolvedValueOnce(null);
+            loadRunningActivityConfig.mockResolvedValueOnce(null);
 
             await loadRunningActivity();
 
@@ -112,14 +121,11 @@ describe('startTimer', () => {
     test('persists config doc to PouchDB', async () => {
         await startTimer({ description: 'Test', category: null });
 
-        expect(putConfig).toHaveBeenCalledWith(
-            expect.objectContaining({
-                id: RUNNING_ACTIVITY_CONFIG_ID,
-                description: 'Test',
-                category: null,
-                startDateTime: '2026-04-09T14:00:00.000Z'
-            })
-        );
+        expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            description: 'Test',
+            category: null,
+            startDateTime: '2026-04-09T14:00:00.000Z'
+        });
     });
 
     test('updates in-memory cache', async () => {
@@ -140,7 +146,7 @@ describe('startTimer', () => {
 
         expect(result.success).toBe(false);
         expect(result.reason).toMatch(/description/i);
-        expect(putConfig).not.toHaveBeenCalled();
+        expect(saveRunningActivityConfig).not.toHaveBeenCalled();
     });
 
     test('rejects when timer is already running', async () => {
@@ -151,7 +157,7 @@ describe('startTimer', () => {
 
         expect(result.success).toBe(false);
         expect(result.reason).toMatch(/already running/i);
-        expect(putConfig).not.toHaveBeenCalled();
+        expect(saveRunningActivityConfig).not.toHaveBeenCalled();
     });
 
     test('defaults category to null when not provided', async () => {
@@ -214,7 +220,7 @@ describe('stopTimer', () => {
         jest.setSystemTime(new Date('2026-04-09T10:30:00.000Z'));
         await stopTimer();
 
-        expect(deleteConfig).toHaveBeenCalledWith(RUNNING_ACTIVITY_CONFIG_ID);
+        expect(deleteRunningActivityConfig).toHaveBeenCalled();
     });
 
     test('clears the in-memory cache', async () => {
@@ -326,12 +332,11 @@ describe('updateRunningActivity', () => {
         expect(result.success).toBe(true);
         expect(result.runningActivity.description).toBe('Updated');
         expect(getRunningActivity().description).toBe('Updated');
-        expect(putConfig).toHaveBeenCalledWith(
-            expect.objectContaining({
-                id: RUNNING_ACTIVITY_CONFIG_ID,
-                description: 'Updated'
-            })
-        );
+        expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            description: 'Updated',
+            category: null,
+            startDateTime: '2026-04-09T10:00:00.000Z'
+        });
     });
 
     test('updates category on running timer', async () => {
@@ -375,5 +380,73 @@ describe('updateRunningActivity', () => {
 
         expect(result.success).toBe(false);
         expect(result.reason).toMatch(/no timer/i);
+    });
+});
+
+describe('startTimerReplacingCurrent', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        resetActivityState();
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    test('starts a new timer without stopping when none is running', async () => {
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+
+        const result = await startTimerReplacingCurrent({ description: 'First timer' });
+
+        expect(result).toEqual({
+            success: true,
+            runningActivity: {
+                description: 'First timer',
+                category: null,
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            },
+            stoppedActivity: null
+        });
+    });
+
+    test('stops the current timer before starting the next one', async () => {
+        jest.setSystemTime(new Date('2026-04-09T09:30:00.000Z'));
+        await startTimer({ description: 'Current timer' });
+
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        const result = await startTimerReplacingCurrent({ description: 'Next timer' });
+
+        expect(result.success).toBe(true);
+        expect(result.stoppedActivity).toEqual(
+            expect.objectContaining({
+                description: 'Current timer',
+                duration: 30,
+                source: 'timer'
+            })
+        );
+        expect(result.runningActivity).toEqual({
+            description: 'Next timer',
+            category: null,
+            startDateTime: '2026-04-09T10:00:00.000Z'
+        });
+    });
+
+    test('returns the stopped activity when replacement start fails after stopping', async () => {
+        jest.setSystemTime(new Date('2026-04-09T09:30:00.000Z'));
+        await startTimer({ description: 'Current timer' });
+
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        const result = await startTimerReplacingCurrent({ description: '' });
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'Description is required to start a timer.',
+            stoppedActivity: expect.objectContaining({
+                description: 'Current timer',
+                duration: 30,
+                source: 'timer'
+            })
+        });
     });
 });

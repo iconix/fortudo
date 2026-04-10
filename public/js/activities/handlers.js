@@ -5,9 +5,8 @@ import {
     addActivity,
     editActivity,
     removeActivity,
-    startTimer,
-    stopTimer,
-    getRunningActivity
+    startTimerReplacingCurrent,
+    stopTimer
 } from './manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
@@ -107,23 +106,11 @@ export async function handleDeleteActivity(activityId) {
 
 export async function handleStartTimer(timerData) {
     try {
-        const runningActivity = getRunningActivity();
-        if (runningActivity) {
-            const stopResult = await stopTimer();
-            if (!stopResult?.success) {
-                showAlert(stopResult?.reason || 'Could not stop timer.', 'sky');
-                return {
-                    success: false,
-                    reason: stopResult?.reason || 'Could not stop timer.'
-                };
-            }
-
-            if (stopResult.activity) {
-                onActivityCreated({ activity: stopResult.activity });
-            }
+        const result = await startTimerReplacingCurrent(timerData);
+        if (result?.stoppedActivity) {
+            onActivityCreated({ activity: result.stoppedActivity });
         }
 
-        const result = await startTimer(timerData);
         if (!result?.success) {
             showAlert(result?.reason || 'Could not start timer.', 'sky');
             return {

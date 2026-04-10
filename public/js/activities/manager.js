@@ -1,16 +1,17 @@
 import {
     putActivity,
     loadActivities as loadActivitiesFromStorage,
-    deleteActivity as deleteActivityFromStorage,
-    putConfig,
-    loadConfig,
-    deleteConfig
+    deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
 import { extractDateFromDateTime } from '../utils.js';
+import {
+    loadRunningActivityConfig,
+    saveRunningActivityConfig,
+    deleteRunningActivityConfig
+} from './running-activity-repository.js';
 
 /** @type {Array<Object>} */
 let activities = [];
-const RUNNING_ACTIVITY_CONFIG_ID = 'config-running-activity';
 let runningActivity = null;
 
 function cloneActivity(activity) {
@@ -208,15 +209,7 @@ export function createActivityFromTask(task) {
 }
 
 export async function loadRunningActivity() {
-    const config = await loadConfig(RUNNING_ACTIVITY_CONFIG_ID);
-    runningActivity = config
-        ? {
-              description: config.description,
-              category: config.category || null,
-              startDateTime: config.startDateTime
-          }
-        : null;
-
+    runningActivity = await loadRunningActivityConfig();
     return getRunningActivity();
 }
 
@@ -240,13 +233,35 @@ export async function startTimer({ description, category } = {}) {
         startDateTime: new Date().toISOString()
     };
 
-    await putConfig({
-        id: RUNNING_ACTIVITY_CONFIG_ID,
-        ...timerState
-    });
+    await saveRunningActivityConfig(timerState);
 
     runningActivity = timerState;
     return { success: true, runningActivity: getRunningActivity() };
+}
+
+export async function startTimerReplacingCurrent(timerData) {
+    let stoppedActivity = null;
+
+    if (runningActivity) {
+        const stopResult = await stopTimer();
+        if (!stopResult?.success) {
+            return stopResult;
+        }
+        stoppedActivity = stopResult.activity || null;
+    }
+
+    const startResult = await startTimer(timerData);
+    if (!startResult?.success) {
+        return {
+            ...startResult,
+            stoppedActivity
+        };
+    }
+
+    return {
+        ...startResult,
+        stoppedActivity
+    };
 }
 
 export async function stopTimer() {
@@ -276,7 +291,7 @@ export async function stopTimerAt(endDateTime) {
     await putActivity(activity);
     activities.push(activity);
     sortByStartDateTime(activities);
-    await deleteConfig(RUNNING_ACTIVITY_CONFIG_ID);
+    await deleteRunningActivityConfig();
     runningActivity = null;
 
     return { success: true, activity: cloneActivity(activity) };
@@ -307,10 +322,7 @@ export async function updateRunningActivity(updates = {}) {
             : runningActivity.startDateTime
     };
 
-    await putConfig({
-        id: RUNNING_ACTIVITY_CONFIG_ID,
-        ...nextRunningActivity
-    });
+    await saveRunningActivityConfig(nextRunningActivity);
 
     runningActivity = nextRunningActivity;
     return { success: true, runningActivity: getRunningActivity() };
