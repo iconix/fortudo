@@ -2,19 +2,27 @@
  * @jest-environment jsdom
  */
 
+jest.mock('../public/js/modal-manager.js', () => ({
+    showAlert: jest.fn()
+}));
+
 jest.mock('../public/js/activities/form-utils.js', () => ({
     extractActivityFormData: jest.fn()
 }));
 
 jest.mock('../public/js/activities/handlers.js', () => ({
     handleAddActivity: jest.fn(() => Promise.resolve({ success: true })),
+    handleStartTimer: jest.fn(() => Promise.resolve({ success: true })),
+    handleStopTimer: jest.fn(() => Promise.resolve({ success: true })),
     handleEditActivity: jest.fn(() => Promise.resolve()),
     handleDeleteActivity: jest.fn(() => Promise.resolve()),
     handleSaveActivityEdit: jest.fn(() => Promise.resolve({ success: true }))
 }));
 
 jest.mock('../public/js/activities/manager.js', () => ({
-    getTodaysActivities: jest.fn(() => [])
+    getTodaysActivities: jest.fn(() => []),
+    getRunningActivity: jest.fn(() => null),
+    updateRunningActivity: jest.fn(() => Promise.resolve({ success: true }))
 }));
 
 jest.mock('../public/js/activities/renderer.js', () => ({
@@ -26,20 +34,35 @@ import {
     renderTodayActivities,
     handleActivityAwareFormSubmit,
     handleActivityListClick,
+    showTimerDisplay,
+    hideTimerDisplay,
+    syncTimerFormState,
+    initializeTimerUI,
     resetActivityInlineEditState
 } from '../public/js/activities/ui-handlers.js';
 import { extractActivityFormData } from '../public/js/activities/form-utils.js';
 import {
     handleAddActivity,
+    handleStartTimer,
+    handleStopTimer,
     handleDeleteActivity,
     handleSaveActivityEdit
 } from '../public/js/activities/handlers.js';
-import { getTodaysActivities } from '../public/js/activities/manager.js';
+import {
+    getTodaysActivities,
+    getRunningActivity,
+    updateRunningActivity
+} from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
+import { showAlert } from '../public/js/modal-manager.js';
 
 describe('activity app integration', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        getRunningActivity.mockReturnValue(null);
+        updateRunningActivity.mockResolvedValue({ success: true });
+        handleStartTimer.mockResolvedValue({ success: true });
+        handleStopTimer.mockResolvedValue({ success: true });
         resetActivityInlineEditState();
         document.body.innerHTML = `
             <div id="activity-toggle-option" class="hidden"></div>
@@ -49,10 +72,25 @@ describe('activity app integration', () => {
             <div id="activity-list"></div>
             <div id="end-time-hint"></div>
             <div id="overlap-warning"></div>
+            <div id="task-form-fields">
+                <div id="time-inputs"></div>
+            </div>
+            <div id="timer-display" class="hidden">
+                <input id="timer-description" />
+                <select id="timer-category"></select>
+                <input id="timer-start-time" type="time" />
+                <div id="timer-elapsed"></div>
+                <button id="timer-stop-btn" type="button">Stop</button>
+            </div>
+            <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
             <button id="add-task-btn" type="submit">Add Task</button>
             <select id="category-select"></select>
             <form id="task-form">
                 <input name="description" />
+                <select name="category">
+                    <option value="">No category</option>
+                    <option value="work/deep">Deep Work</option>
+                </select>
                 <input type="radio" name="task-type" value="scheduled" checked />
                 <input type="radio" name="task-type" value="activity" />
             </form>
@@ -472,5 +510,310 @@ describe('activity app integration', () => {
             document.getElementById('activity-list'),
             expect.objectContaining({ editingActivityId: 'activity-3' })
         );
+    });
+
+    describe('timer display', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-09T11:00:00.000Z'));
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        test('showTimerDisplay hides form fields and shows timer state', () => {
+            showTimerDisplay({
+                description: 'Timer work',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            expect(document.getElementById('task-form-fields').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                false
+            );
+            expect(document.getElementById('timer-description').value).toBe('Timer work');
+            expect(document.getElementById('timer-category').value).toBe('work/deep');
+            expect(document.getElementById('timer-start-time').value).toBe(
+                `${String(new Date('2026-04-09T10:00:00.000Z').getHours()).padStart(2, '0')}:${String(
+                    new Date('2026-04-09T10:00:00.000Z').getMinutes()
+                ).padStart(2, '0')}`
+            );
+            expect(document.getElementById('timer-elapsed').textContent).toBe('01:00:00');
+        });
+
+        test('elapsed counter updates while timer is visible', () => {
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            jest.advanceTimersByTime(30000);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('01:00:30');
+        });
+
+        test('hideTimerDisplay restores the form and stops elapsed updates', () => {
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            hideTimerDisplay();
+            const textAfterHide = document.getElementById('timer-elapsed').textContent;
+            jest.advanceTimersByTime(5000);
+
+            expect(document.getElementById('task-form-fields').classList.contains('hidden')).toBe(
+                false
+            );
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.getElementById('timer-elapsed').textContent).toBe(textAfterHide);
+        });
+    });
+
+    describe('timer form state', () => {
+        test('shows timer display when activity tab is selected and timer is running', () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            syncTimerFormState();
+
+            expect(document.getElementById('task-form-fields').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                false
+            );
+            expect(document.getElementById('start-timer-btn').classList.contains('hidden')).toBe(
+                false
+            );
+        });
+
+        test('shows start timer button when activity tab is selected and no timer is running', () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue(null);
+
+            syncTimerFormState();
+
+            expect(document.getElementById('task-form-fields').classList.contains('hidden')).toBe(
+                false
+            );
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.getElementById('start-timer-btn').classList.contains('hidden')).toBe(
+                false
+            );
+        });
+
+        test('keeps timer hidden on non-activity tabs', () => {
+            document.getElementById('scheduled').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            syncTimerFormState();
+
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                true
+            );
+            expect(document.getElementById('start-timer-btn').classList.contains('hidden')).toBe(
+                true
+            );
+        });
+    });
+
+    test('activity form submission returns early when a timer is running', async () => {
+        const form = document.getElementById('task-form');
+        form.querySelector('input[value="scheduled"]').checked = false;
+        form.querySelector('input[value="activity"]').checked = true;
+        getRunningActivity.mockReturnValue({
+            description: 'Running',
+            startDateTime: '2026-04-09T10:00:00.000Z'
+        });
+        const handleTaskSubmitMock = jest.fn();
+
+        await handleActivityAwareFormSubmit(form, {
+            activitiesEnabled: true,
+            resetTaskFormPreviewState: jest.fn(),
+            initializeTaskTypeToggle: jest.fn(),
+            focusTaskDescriptionInput: jest.fn(),
+            handleTaskSubmit: handleTaskSubmitMock
+        });
+
+        expect(handleAddActivity).not.toHaveBeenCalled();
+        expect(handleTaskSubmitMock).not.toHaveBeenCalled();
+    });
+
+    describe('initializeTimerUI', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        test('start timer button uses form values and refreshes UI on success', async () => {
+            document.getElementById('activity').checked = true;
+            document.querySelector('#task-form input[name="description"]').value = 'Feature work';
+            document.querySelector('#task-form select[name="category"]').value = 'work/deep';
+            handleStartTimer.mockResolvedValue({ success: true });
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStartTimer).toHaveBeenCalledWith({
+                description: 'Feature work',
+                category: 'work/deep'
+            });
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('re-initializing timer UI does not duplicate start/stop handlers', async () => {
+            document.getElementById('activity').checked = true;
+            document.querySelector('#task-form input[name="description"]').value = 'Feature work';
+            handleStartTimer.mockResolvedValue({ success: true });
+            handleStopTimer.mockResolvedValue({ success: true });
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            initializeTimerUI({ refreshUI });
+
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            document
+                .getElementById('timer-stop-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStartTimer).toHaveBeenCalledTimes(1);
+            expect(handleStopTimer).toHaveBeenCalledTimes(1);
+        });
+
+        test('stop timer button delegates to handler and refreshes UI', async () => {
+            handleStopTimer.mockResolvedValue({ success: true });
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            document
+                .getElementById('timer-stop-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStopTimer).toHaveBeenCalled();
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('timer field edits persist running activity changes', async () => {
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity
+                .mockResolvedValueOnce({
+                    success: true,
+                    runningActivity: {
+                        description: 'Updated',
+                        category: 'work/deep',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    }
+                })
+                .mockResolvedValueOnce({
+                    success: true,
+                    runningActivity: {
+                        description: 'Updated',
+                        category: 'work/deep',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    }
+                })
+                .mockResolvedValueOnce({
+                    success: true,
+                    runningActivity: {
+                        description: 'Updated',
+                        category: 'work/deep',
+                        startDateTime: '2026-04-09T09:30:00.000Z'
+                    }
+                });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = 'Updated';
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const categoryInput = document.getElementById('timer-category');
+            categoryInput.innerHTML = '<option value="work/deep">Deep Work</option>';
+            categoryInput.value = 'work/deep';
+            categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const startTimeInput = document.getElementById('timer-start-time');
+            startTimeInput.value = '09:30';
+            startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            const expectedStartDate = new Date('2026-04-09T10:00:00.000Z');
+            expectedStartDate.setHours(9, 30, 0, 0);
+
+            expect(updateRunningActivity).toHaveBeenCalledWith({ description: 'Updated' });
+            expect(updateRunningActivity).toHaveBeenCalledWith({ category: 'work/deep' });
+            expect(updateRunningActivity).toHaveBeenCalledWith({
+                startDateTime: expectedStartDate.toISOString()
+            });
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:30:00');
+        });
+
+        test('failed timer description edits rollback the visible value and alert', async () => {
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: false,
+                reason: 'Description is required while a timer is running.'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = '';
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(descriptionInput.value).toBe('Running');
+            expect(showAlert).toHaveBeenCalledWith(
+                'Description is required while a timer is running.',
+                'sky'
+            );
+        });
     });
 });

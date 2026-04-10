@@ -41,9 +41,19 @@ jest.mock('../public/js/sync-manager.js', () => ({
 }));
 jest.mock('../public/js/activities/manager.js', () => ({
     loadActivitiesState: jest.fn(() => Promise.resolve([])),
+    loadRunningActivity: jest.fn(() => Promise.resolve(null)),
+    getRunningActivity: jest.fn(() => null),
     getActivityState: jest.fn(() => []),
     getTodaysActivities: jest.fn(() => [])
 }));
+jest.mock('../public/js/activities/ui-handlers.js', () => {
+    const actual = jest.requireActual('../public/js/activities/ui-handlers.js');
+    return {
+        ...actual,
+        initializeTimerUI: jest.fn(),
+        syncTimerFormState: jest.fn()
+    };
+});
 jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivities: jest.fn()
 }));
@@ -70,9 +80,15 @@ import {
 } from '../public/js/sync-manager.js';
 import {
     loadActivitiesState as mockLoadActivitiesStateInternal,
+    loadRunningActivity as mockLoadRunningActivityInternal,
+    getRunningActivity as mockGetRunningActivityInternal,
     getActivityState as mockGetActivityStateInternal,
     getTodaysActivities as mockGetTodaysActivitiesInternal
 } from '../public/js/activities/manager.js';
+import {
+    initializeTimerUI as mockInitializeTimerUIInternal,
+    syncTimerFormState as mockSyncTimerFormStateInternal
+} from '../public/js/activities/ui-handlers.js';
 import { renderActivities as mockRenderActivitiesInternal } from '../public/js/activities/renderer.js';
 import {
     handleAddActivity as mockHandleAddActivityInternal,
@@ -94,8 +110,12 @@ const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
+const mockLoadRunningActivity = jest.mocked(mockLoadRunningActivityInternal);
+const mockGetRunningActivity = jest.mocked(mockGetRunningActivityInternal);
 const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
 const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
+const mockInitializeTimerUI = jest.mocked(mockInitializeTimerUIInternal);
+const mockSyncTimerFormState = jest.mocked(mockSyncTimerFormStateInternal);
 const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
 const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
@@ -168,8 +188,12 @@ describe('App.js Callback Functions', () => {
         mockLoadConfig.mockResolvedValue(null);
         mockPutConfig.mockResolvedValue(undefined);
         mockLoadActivitiesState.mockResolvedValue([]);
+        mockLoadRunningActivity.mockResolvedValue(null);
+        mockGetRunningActivity.mockReturnValue(null);
         mockGetActivityState.mockReturnValue([]);
         mockRenderActivities.mockClear();
+        mockInitializeTimerUI.mockClear();
+        mockSyncTimerFormState.mockClear();
         mockHandleAddActivity.mockClear();
         mockHandleEditActivity.mockClear();
         mockHandleDeleteActivity.mockClear();
@@ -326,6 +350,26 @@ describe('App.js Callback Functions', () => {
             expect(
                 document.getElementById('activities-container')?.classList.contains('hidden')
             ).toBe(false);
+        });
+
+        test('when a timer is restored on boot, app loads it and initializes timer UI', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadRunningActivity.mockResolvedValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+            mockGetRunningActivity.mockReturnValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+
+            await setupAppWithTasks([]);
+
+            expect(mockLoadRunningActivity).toHaveBeenCalled();
+            expect(mockInitializeTimerUI).toHaveBeenCalledWith({
+                refreshUI: expect.any(Function)
+            });
+            expect(mockSyncTimerFormState).toHaveBeenCalled();
         });
 
         test('activity mode submits through the activity handler and uses activity UI state', async () => {

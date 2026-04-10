@@ -78,6 +78,21 @@ describe('activity manager', () => {
             expect(result.reason).toMatch(/duration/i);
         });
 
+        test('allows activity with zero duration when source is timer', async () => {
+            const result = await addActivity({
+                description: 'Instant stop',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T09:00:00.000Z',
+                duration: 0,
+                source: 'timer',
+                sourceTaskId: null
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.activity.duration).toBe(0);
+            expect(putActivity).toHaveBeenCalledWith(expect.objectContaining({ source: 'timer' }));
+        });
+
         test('rejects activity with missing times', async () => {
             const result = await addActivity({
                 description: 'Test',
@@ -378,6 +393,14 @@ describe('activity manager', () => {
     });
 
     describe('createActivityFromTask', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
         test('maps a scheduled task into auto activity data', () => {
             const activity = createActivityFromTask({
                 id: 'sched-1',
@@ -409,6 +432,23 @@ describe('activity manager', () => {
 
             expect(activity.category).toBeNull();
             expect(activity.sourceTaskId).toBeNull();
+        });
+
+        test('shifts auto-log times when a task is completed before its planned start', () => {
+            jest.setSystemTime(new Date('2026-04-07T09:00:00.000Z'));
+
+            const activity = createActivityFromTask({
+                id: 'sched-2',
+                description: 'Deep work',
+                category: 'work/deep',
+                startDateTime: '2026-04-07T10:00:00.000Z',
+                endDateTime: '2026-04-07T11:00:00.000Z',
+                duration: 60
+            });
+
+            expect(activity.startDateTime).toBe('2026-04-07T08:00:00.000Z');
+            expect(activity.endDateTime).toBe('2026-04-07T09:00:00.000Z');
+            expect(activity.duration).toBe(60);
         });
     });
 });

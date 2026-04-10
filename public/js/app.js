@@ -28,12 +28,18 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
-import { loadActivitiesState } from './activities/manager.js';
+import {
+    loadActivitiesState,
+    loadRunningActivity,
+    getRunningActivity
+} from './activities/manager.js';
 import {
     syncActivitiesUI,
     renderTodayActivities,
     handleActivityAwareFormSubmit,
-    handleActivityListClick
+    handleActivityListClick,
+    initializeTimerUI,
+    syncTimerFormState
 } from './activities/ui-handlers.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
@@ -94,6 +100,7 @@ async function loadAppState() {
     await loadTasksIntoState();
     if (isActivitiesEnabled()) {
         await loadActivitiesState();
+        await loadRunningActivity();
     }
 }
 
@@ -243,6 +250,7 @@ async function initAndBootApp(roomCode) {
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
+    initializeTimerUI({ refreshUI: refreshTaskDisplays });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
@@ -284,6 +292,17 @@ async function initAndBootApp(roomCode) {
 
     // Initial render
     refreshTaskDisplays();
+    if (isActivitiesEnabled() && getRunningActivity()) {
+        syncTimerFormState();
+
+        const activityToggle = document.getElementById('activity-toggle-option');
+        if (activityToggle) {
+            activityToggle.classList.add('ring-2', 'ring-sky-400/50');
+            setTimeout(() => {
+                activityToggle.classList.remove('ring-2', 'ring-sky-400/50');
+            }, 3000);
+        }
+    }
 
     const suggested = getSuggestedStartTime();
     logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);

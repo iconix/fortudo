@@ -120,6 +120,7 @@ export function initializeTaskTypeToggle() {
     const timeInputs = document.getElementById('time-inputs');
     const priorityInput = document.getElementById('priority-input');
     const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+    const startTimerButton = document.getElementById('start-timer-btn');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
     const durationHoursInput = document.querySelector('input[name="duration-hours"]');
@@ -164,6 +165,9 @@ export function initializeTaskTypeToggle() {
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
         setInputTheme(config.inputTheme);
+        if (startTimerButton instanceof HTMLElement) {
+            startTimerButton.classList.toggle('hidden', mode !== 'activity');
+        }
     };
 
     if (

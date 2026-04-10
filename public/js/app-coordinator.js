@@ -1,5 +1,10 @@
 import { refreshUI } from './dom-renderer.js';
-import { addActivity, createActivityFromTask } from './activities/manager.js';
+import {
+    addActivity,
+    createActivityFromTask,
+    getRunningActivity,
+    stopTimerAt
+} from './activities/manager.js';
 import { consumeActivitySmokeFailure } from './activities/smoke-hooks.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { triggerConfettiAnimation } from './tasks/scheduled-renderer.js';
@@ -17,6 +22,24 @@ function refreshWhenPresent(value) {
 
 function refreshForClearEvent() {
     refreshUI();
+}
+
+function toMs(dateTime) {
+    const value = new Date(dateTime).getTime();
+    return Number.isNaN(value) ? null : value;
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+    const aStart = toMs(startA);
+    const aEnd = toMs(endA);
+    const bStart = toMs(startB);
+    const bEnd = toMs(endB);
+
+    if ([aStart, aEnd, bStart, bEnd].some((value) => value === null)) {
+        return false;
+    }
+
+    return aStart < bEnd && bStart < aEnd;
 }
 
 /**
@@ -69,8 +92,23 @@ export function onTaskCompleted({ task }) {
                 : addActivity(activity);
 
             void autoLogPromise
-                .then((result) => {
+                .then(async (result) => {
                     if (result?.success && result.activity) {
+                        const runningActivity = getRunningActivity();
+                        if (
+                            runningActivity &&
+                            rangesOverlap(
+                                runningActivity.startDateTime,
+                                new Date().toISOString(),
+                                result.activity.startDateTime,
+                                result.activity.endDateTime
+                            )
+                        ) {
+                            const stopResult = await stopTimerAt(result.activity.startDateTime);
+                            if (stopResult?.success && stopResult.activity) {
+                                onActivityCreated({ activity: stopResult.activity });
+                            }
+                        }
                         onActivityCreated({ activity: result.activity });
                     }
                 })

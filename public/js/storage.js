@@ -285,6 +285,14 @@ export async function deleteActivity(id) {
 }
 
 /**
+ * Delete a single config document by id.
+ * @param {string} id - Config document id
+ */
+export async function deleteConfig(id) {
+    await deleteTypedDoc(id, DOC_TYPES.CONFIG, 'deleteConfig');
+}
+
+/**
  * Load all tasks from PouchDB.
  * Maps _id back to id and strips _rev before returning.
  * @returns {Promise<Object[]>} Array of task objects

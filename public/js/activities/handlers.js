@@ -1,7 +1,14 @@
 import { showAlert } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
 import { extractActivityFormData, extractActivityEditFormData } from './form-utils.js';
-import { addActivity, editActivity, removeActivity } from './manager.js';
+import {
+    addActivity,
+    editActivity,
+    removeActivity,
+    startTimer,
+    stopTimer,
+    getRunningActivity
+} from './manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
 
@@ -95,6 +102,65 @@ export async function handleDeleteActivity(activityId) {
 
     onActivityDeleted({ activity: result.activity });
     showToast('Activity deleted.', { theme: 'sky' });
+    return result;
+}
+
+export async function handleStartTimer(timerData) {
+    try {
+        const runningActivity = getRunningActivity();
+        if (runningActivity) {
+            const stopResult = await stopTimer();
+            if (!stopResult?.success) {
+                showAlert(stopResult?.reason || 'Could not stop timer.', 'sky');
+                return {
+                    success: false,
+                    reason: stopResult?.reason || 'Could not stop timer.'
+                };
+            }
+
+            if (stopResult.activity) {
+                onActivityCreated({ activity: stopResult.activity });
+            }
+        }
+
+        const result = await startTimer(timerData);
+        if (!result?.success) {
+            showAlert(result?.reason || 'Could not start timer.', 'sky');
+            return {
+                success: false,
+                reason: result?.reason || 'Could not start timer.'
+            };
+        }
+
+        showToast('Timer started.', { theme: 'sky' });
+        return result;
+    } catch {
+        showAlert('Could not start timer.', 'sky');
+        return { success: false, reason: 'Could not start timer.' };
+    }
+}
+
+export async function handleStopTimer() {
+    let result;
+    try {
+        result = await stopTimer();
+    } catch {
+        showAlert('Could not stop timer.', 'sky');
+        return { success: false, reason: 'Could not stop timer.' };
+    }
+
+    if (!result?.success) {
+        showAlert(result?.reason || 'Could not stop timer.', 'sky');
+        return {
+            success: false,
+            reason: result?.reason || 'Could not stop timer.'
+        };
+    }
+
+    if (result.activity) {
+        onActivityCreated({ activity: result.activity });
+    }
+    showToast('Timer stopped.', { theme: 'sky' });
     return result;
 }
 

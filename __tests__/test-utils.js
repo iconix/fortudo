@@ -44,6 +44,7 @@ function setupDOM() {
         <button id="settings-gear-btn" type="button"><i class="fa-solid fa-gear"></i></button>
       </div>
       <form id="task-form">
+        <div id="task-form-fields">
         <div class="form-group">
           <input type="text" name="description" placeholder="Task description" required />
         </div>
@@ -81,6 +82,15 @@ function setupDOM() {
           <input type="number" name="est-duration" placeholder="Est. minutes" />
         </div>
         <button type="submit" id="add-task-btn">Add Task</button>
+        </div>
+        <div id="timer-display" class="hidden">
+          <input id="timer-description" />
+          <select id="timer-category"></select>
+          <input id="timer-start-time" type="time" />
+          <div id="timer-elapsed"></div>
+          <button id="timer-stop-btn" type="button">Stop</button>
+        </div>
+        <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
       </form>
       <span id="overlap-warning"></span>
       <div id="scheduled-task-list" class="task-list"></div>

@@ -24,9 +24,24 @@ jest.mock('../public/js/activities/manager.js', () => ({
         id: 'activity-from-task',
         docType: 'activity',
         description: task.description,
+        startDateTime: task.startDateTime,
+        endDateTime: task.endDateTime,
         source: 'auto',
         sourceTaskId: task.id
-    }))
+    })),
+    getRunningActivity: jest.fn(() => null),
+    stopTimerAt: jest.fn(() =>
+        Promise.resolve({
+            success: true,
+            activity: {
+                id: 'activity-timer-stop',
+                docType: 'activity',
+                description: 'Stopped timer',
+                source: 'timer',
+                sourceTaskId: null
+            }
+        })
+    )
 }));
 
 jest.mock('../public/js/settings-manager.js', () => ({
@@ -49,7 +64,12 @@ jest.mock('../public/js/tasks/manager.js', () => ({
 }));
 
 import * as appCoordinator from '../public/js/app-coordinator.js';
-import { addActivity, createActivityFromTask } from '../public/js/activities/manager.js';
+import {
+    addActivity,
+    createActivityFromTask,
+    getRunningActivity,
+    stopTimerAt
+} from '../public/js/activities/manager.js';
 import { refreshUI, updateStartTimeField } from '../public/js/dom-renderer.js';
 import { isActivitiesEnabled } from '../public/js/settings-manager.js';
 import { triggerConfettiAnimation } from '../public/js/tasks/scheduled-renderer.js';
@@ -203,6 +223,120 @@ describe('app-coordinator', () => {
         expect(triggerConfettiAnimation).toHaveBeenCalledWith('task-10');
         expect(createActivityFromTask).not.toHaveBeenCalled();
         expect(addActivity).not.toHaveBeenCalled();
+    });
+
+    test('onTaskCompleted stops a running timer when the auto-log overlaps it', async () => {
+        isActivitiesEnabled.mockReturnValue(true);
+        getRunningActivity.mockReturnValue({
+            description: 'Running timer',
+            category: 'work/deep',
+            startDateTime: '2026-04-09T09:45:00.000Z'
+        });
+        addActivity.mockResolvedValueOnce({
+            success: true,
+            activity: {
+                id: 'activity-from-task',
+                docType: 'activity',
+                description: 'Write notes',
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                endDateTime: '2026-04-09T10:30:00.000Z',
+                source: 'auto',
+                sourceTaskId: 'task-overlap'
+            }
+        });
+        createActivityFromTask.mockReturnValue({
+            id: 'activity-from-task',
+            docType: 'activity',
+            description: 'Write notes',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            endDateTime: '2026-04-09T10:30:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'task-overlap'
+        });
+
+        appCoordinator.onTaskCompleted({
+            task: { id: 'task-overlap', type: 'scheduled', description: 'Write notes' }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(stopTimerAt).toHaveBeenCalledWith('2026-04-09T10:00:00.000Z');
+        expect(refreshUI).toHaveBeenCalledTimes(3);
+    });
+
+    test('onTaskCompleted leaves a running timer alone when the auto-log does not overlap it', async () => {
+        isActivitiesEnabled.mockReturnValue(true);
+        getRunningActivity.mockReturnValue({
+            description: 'Running timer',
+            category: 'work/deep',
+            startDateTime: '2026-04-09T11:30:00.000Z'
+        });
+        addActivity.mockResolvedValueOnce({
+            success: true,
+            activity: {
+                id: 'activity-from-task',
+                docType: 'activity',
+                description: 'Write notes',
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                endDateTime: '2026-04-09T10:30:00.000Z',
+                source: 'auto',
+                sourceTaskId: 'task-no-overlap'
+            }
+        });
+        createActivityFromTask.mockReturnValue({
+            id: 'activity-from-task',
+            docType: 'activity',
+            description: 'Write notes',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            endDateTime: '2026-04-09T10:30:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'task-no-overlap'
+        });
+
+        appCoordinator.onTaskCompleted({
+            task: { id: 'task-no-overlap', type: 'scheduled', description: 'Write notes' }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(stopTimerAt).not.toHaveBeenCalled();
+        expect(refreshUI).toHaveBeenCalledTimes(2);
+    });
+
+    test('onTaskCompleted does not stop a timer when the ranges only touch at the boundary', async () => {
+        isActivitiesEnabled.mockReturnValue(true);
+        getRunningActivity.mockReturnValue({
+            description: 'Running timer',
+            category: 'work/deep',
+            startDateTime: '2026-04-09T10:30:00.000Z'
+        });
+        addActivity.mockResolvedValueOnce({
+            success: true,
+            activity: {
+                id: 'activity-from-task',
+                docType: 'activity',
+                description: 'Write notes',
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                endDateTime: '2026-04-09T10:30:00.000Z',
+                source: 'auto',
+                sourceTaskId: 'task-touching'
+            }
+        });
+        createActivityFromTask.mockReturnValue({
+            id: 'activity-from-task',
+            docType: 'activity',
+            description: 'Write notes',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            endDateTime: '2026-04-09T10:30:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'task-touching'
+        });
+
+        appCoordinator.onTaskCompleted({
+            task: { id: 'task-touching', type: 'scheduled', description: 'Write notes' }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(stopTimerAt).not.toHaveBeenCalled();
+        expect(refreshUI).toHaveBeenCalledTimes(2);
     });
 
     test('onTaskCompleted ignores missing task payloads', () => {

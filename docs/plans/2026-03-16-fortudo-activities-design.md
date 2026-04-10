@@ -2,9 +2,9 @@
 
 ## Pyramid Summary
 
-- **~2w:** Add activity tracking to Fortudo so planning and actual time spent live in one app: synced Activities enablement, shared task/activity taxonomy, manual and automatic activity logging, and insights built around plan-vs-actual review.
-- **~8w:** The foundation is now in place: `task`, `activity`, and `config` documents coexist safely in one room database; taxonomy and settings are PouchDB-backed; and boot/sync validation exists. The remaining work is activity CRUD, auto-logging, and insights UI layered on top of that shared local-first data model.
-- **~32w:** Fortudo evolves from a planning-only tool into a lightweight planning-and-tracking system. Tasks and activities share taxonomy, settings sync at the room level, the coordinator remains the post-mutation seam for cross-cutting behavior like auto-logging, and insights center on reviewing planned versus actual time without splitting that workflow into a separate app.
+- **~2w:** Add activity tracking to Fortudo so planning and actual time spent live in one app: synced Activities enablement, shared task/activity taxonomy, manual logging, automatic logging from completed tasks, a live start/stop timer, and insights built around plan-vs-actual review.
+- **~8w:** Activities can be logged three ways: manually after the fact, auto-logged when scheduled tasks complete, or captured in real time via a live timer (PouchDB config doc, syncs across devices). The foundation supports `task`, `activity`, and `config` documents in one room database with taxonomy, settings, and timer state all PouchDB-backed. Insights UI layers on top for plan-vs-actual review.
+- **~32w:** Fortudo evolves from a planning-only tool into a lightweight planning-and-tracking system. Tasks and activities share taxonomy, settings sync at the room level, the coordinator remains the post-mutation seam for cross-cutting behavior like auto-logging and timer auto-stop, and insights center on reviewing planned versus actual time without splitting that workflow into a separate app.
 
 ---
 
@@ -21,7 +21,7 @@ Fortudo handles the planning side of daily time management by scheduling tasks i
 - **ID conventions:** `sched-{timestamp}` for scheduled, `unsched-{timestamp}` for unscheduled.
 - **Module architecture:** `app.js` now focuses on boot, storage wiring, room lifecycle, and top-level event setup. Feature handlers live under `tasks/`. Successful task mutations are reported through `app-coordinator.js` as semantic post-mutation events. Render-time callback threading still exists through `dom-renderer.js`.
 - **Sync:** Bidirectional CouchDB replication via `sync-manager.js` with debounced sync and status callbacks. Room-switch sync handoff is now session-aware so in-flight sync from one room does not mutate the next room.
-- **UI:** Dark Tailwind theme. Teal = scheduled, indigo = unscheduled, amber = warnings, rose = destructive. Modals remain for real confirmations. Toasts now handle non-blocking feedback. Max width `3xl`.
+- **UI:** Dark Tailwind theme. Teal = scheduled, indigo = unscheduled, sky = activity, amber = warnings, rose = destructive. Modals remain for real confirmations. Toasts now handle non-blocking feedback. Max width `3xl`.
 
 ### Tracks Architecture
 
@@ -51,7 +51,7 @@ Fortudo handles the planning side of daily time management by scheduling tasks i
     startDateTime: String,        // ISO datetime
     endDateTime: String,          // ISO datetime
     duration: Number,             // minutes, matching Fortudo task duration units
-    source: 'auto' | 'manual',    // future: 'habit' is possible later
+    source: 'auto' | 'manual' | 'timer',  // future: 'habit' is possible later
     sourceTaskId: String | null   // source task link when source = 'auto'
 }
 ```
@@ -101,6 +101,22 @@ Stored in PouchDB so task taxonomy syncs across devices sharing a room.
 
 Taxonomy now treats standalone groups and child categories as first-class records. Keys remain hierarchical using `/`, so insights can still aggregate by top-level group while the task form dropdown stays grouped for easy scanning.
 
+**Config document - Running Activity Timer:**
+
+Ephemeral config doc representing a live timer. Created on timer start, deleted on timer stop. Syncs across devices sharing a room.
+
+```js
+{
+    docType: 'config',
+    id: 'config-running-activity',
+    description: String,
+    category: String | null,
+    startDateTime: String  // ISO datetime, real wall-clock time
+}
+```
+
+When the timer stops, this config doc is deleted and a normal activity document is created with `source: 'timer'`, computed `endDateTime` and `duration`.
+
 Shared field names between tasks and activities: `description`, `startDateTime`, `endDateTime`, `duration`, `category`.
 
 ### Storage Layer Changes
@@ -112,6 +128,7 @@ Shared field names between tasks and activities: `description`, `startDateTime`,
 - `deleteActivity(id)` - same pattern as `deleteTask`
 - `loadConfig(configId)` - loads a single config document by ID
 - `putConfig(config)` - upserts a config document
+- `deleteConfig(configId)` - deletes a config document (used by timer stop)
 
 **Modified functions:**
 
@@ -140,7 +157,6 @@ export function onScheduledTasksCleared() { ... }
 export function onCompletedTasksCleared() { ... }
 export function onAllTasksCleared() { ... }
 
-// Phase 4 additions:
 export function onActivityCreated({ activity }) { ... }
 export function onActivityEdited({ activity }) { ... }
 export function onActivityDeleted({ activity }) { ... }
@@ -160,9 +176,9 @@ handleCompleteTask -> completeTask -> coordinator.onTaskCompleted({ task })
 
 The current implementation uses object payloads such as `coordinator.onTaskCompleted({ task })` rather than primitive arguments.
 
-Pre-Activities, most coordinator events still resolve to `refreshUI()`, with scheduled-task completion confetti as the one distinct cross-cutting side effect. That is acceptable. The value of the coordinator at this stage is the semantic boundary, not a large present-day behavior surface.
+Most coordinator events resolve to `refreshUI()`, which re-renders task lists and the activity log. Scheduled-task completion adds confetti and, when Activities are enabled, fires auto-logging as a fire-and-forget async chain (`.then()/.catch()`) to keep `onTaskCompleted` synchronous. Auto-log failures surface an amber warning toast rather than blocking the completion flow.
 
-As Activities land, new cross-cutting behavior should attach to these semantic events rather than being re-threaded through each handler. That keeps handlers thin and preserves the coordinator as the single post-mutation boundary.
+Cross-cutting behavior attaches to these semantic events rather than being threaded through each handler. That keeps handlers thin and preserves the coordinator as the single post-mutation boundary.
 
 If the coordinator later grows unwieldy with habits, rollover, or richer activity logic, it can evolve into an event bus pattern. There is no need to force that now.
 
@@ -183,11 +199,13 @@ public/js/
 |   |-- clear-handler.js          # clear tasks handler
 |   `-- form-utils.js             # task form extraction, validation
 |-- activities/
-|   |-- manager.js                # activity state management, CRUD, auto-logging
-|   |-- renderer.js               # renders activity log list
-|   |-- insights-renderer.js      # insights dashboard, timeline, charts
-|   |-- handlers.js               # activity event handlers
-|   `-- form-utils.js             # activity form extraction
+|   |-- manager.js                # activity state management, CRUD, createActivityFromTask, live timer
+|   |-- renderer.js               # renders activity log list with inline editing
+|   |-- handlers.js               # activity add/edit/delete handlers
+|   |-- form-utils.js             # activity form extraction (add + edit)
+|   |-- ui-handlers.js            # activity UI orchestration (form routing, list clicks, edit state, timer display)
+|   |-- smoke-hooks.js            # testability hooks for forcing activity failures in preview/smoke
+|   `-- insights-renderer.js      # (Phase 5) insights dashboard, timeline, charts
 |-- app.js                        # boot sequence, DOM setup, storage + room wiring
 |-- app-coordinator.js            # runtime post-mutation orchestration
 |-- storage.js                    # PouchDB persistence layer
@@ -230,11 +248,46 @@ When Activities are disabled: no activity-related DOM, no category dropdown on t
 
 ### UI: Activity Logging
 
-**Auto-logging:** When a scheduled task is completed and Activities are enabled, `createActivityFromTask(task)` creates an activity document copying `description`, `startDateTime`, `endDateTime`, `duration`, and `category`, with `source: 'auto'` and `sourceTaskId`. Silent, no notification.
+**Auto-logging:** When a scheduled task is completed and Activities are enabled, `createActivityFromTask(task)` creates an activity document copying `description`, `startDateTime`, `endDateTime`, `duration`, and `category`, with `source: 'auto'` and `sourceTaskId`. Auto-logging fires as fire-and-forget async work inside the synchronous `onTaskCompleted` coordinator event. On success, `onActivityCreated` triggers a UI refresh showing the new activity. On failure, an amber warning toast surfaces the issue without blocking the completion flow.
 
-**Manual logging:** Third mode on the existing task form, alongside Scheduled and Unscheduled. Accent color is still TBD. Candidates: cyan, sky, or orange.
+**Manual logging:** Third mode on the existing task form, alongside Scheduled and Unscheduled. Accent color: sky.
 
 Fields: description, category dropdown grouped by group, start time, duration (hours/minutes). No priority and no rescheduling logic.
+
+### UI: Live Activity Timer
+
+Bridges the gap between Fortudo's retrospective logging and the real-time start/stop model from [tracks](https://github.com/iconix/tracks). The timer lets you capture what you're doing now with real timestamps, instead of reconstructing it after the fact.
+
+**Activity tab states:** The activity tab in the three-way form toggle has two visual states depending on whether a timer is running:
+
+- **No timer running:** The manual entry form as shipped in Phase 4 (description, category, start time, duration), with two side-by-side action buttons: "Log Activity" and "Start Timer."
+- **Timer running:** The form transforms into a timer display showing the activity description (editable), category dropdown (editable), start time (editable, for backdating), live elapsed counter (`HH:MM:SS` via `setInterval`), and a "Stop" button. Switching to scheduled or unscheduled tabs works normally regardless of timer state. Switching back to the activity tab shows the timer display. All other operations (adding/editing/deleting tasks and activities, completing tasks, auto-logging) continue to work while the timer runs.
+
+**Starting a timer:** Fill in description and optionally category on the activity form, click "Start Timer." Start time defaults to now. The form transforms to the timer display.
+
+**Stopping a timer:** Click "Stop." The running-activity config doc is deleted, a normal activity document is created with computed `endDateTime` and `duration`, and the form reverts to the manual entry state. The new activity appears in the activity log.
+
+**Backdating:** The start time on the timer display is editable via a time picker. Use case: you forgot to start the timer 20 minutes ago.
+
+**Boot restoration:** If a `config-running-activity` doc exists on load, the timer state is silently restored and the elapsed counter resumes from the persisted `startDateTime`. The user stays on whichever tab they land on, but the activity tab gets a brief UI highlight (pulse, badge, or similar) to signal that a timer is running. Navigating to the activity tab shows the timer display.
+
+**Stop triggers:**
+
+1. **Explicit stop** -- user clicks "Stop" button
+2. **Stop-on-start** -- starting a new timer auto-stops the running one (no confirmation). The stopped timer's `endDateTime` is set to now, its activity is created, then the new timer starts. Sequential execution to avoid two config docs existing simultaneously.
+3. **Task completion with overlap** -- when auto-logging fires in `onTaskCompleted`, if the auto-logged activity's time range overlaps with the running timer's active range (`startDateTime` through now), the timer is stopped with `endDateTime` set to the auto-log's `startDateTime`. If no overlap, the timer keeps running. **Guard:** if the early-completion time adjustment shifts the auto-log's `startDateTime` to before the timer's own `startDateTime`, clamp the timer's `endDateTime` to its `startDateTime` (producing a zero-duration activity) rather than creating a negative duration. The zero-duration activity is still saved per the "always create" edge case decision.
+
+**Early task completion adjustment:** When `createActivityFromTask` runs and the task's planned `startDateTime` is in the future, the auto-log times are adjusted: `endDateTime` = now, `startDateTime` = now minus the task's `duration`. This ensures auto-logged activities reflect when the work actually happened rather than when it was planned.
+
+**Unscheduled tasks and the timer:** Completing an unscheduled task does not affect a running timer (unscheduled completions are lightweight and often happen mid-flow). Users who want to track unscheduled work can: start a timer for it, schedule it first then complete for auto-logging, or manually log it after the fact.
+
+**Timer state management** in `activities/manager.js`:
+
+- `startTimer({ description, category })` -- writes config doc, returns running state
+- `stopTimer()` -- reads config doc, computes duration, creates activity, deletes config doc
+- `getRunningActivity()` -- synchronous read from in-memory cache (same pattern as `isActivitiesEnabled()`)
+- `updateRunningActivity({ description, category, startDateTime })` -- updates config doc (for backdating or mid-timer changes)
+- `loadRunningActivity()` -- called during boot, populates in-memory cache
 
 **Category dropdown visual:** Since `<option>` elements cannot be styled with colors consistently cross-browser, the dropdown should stay text-only and grouped by group. A small colored dot or badge can render next to the currently selected category outside the `<select>`.
 
@@ -254,8 +307,8 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 2. **Activity Log**
    - Chronological list of today's activities
    - Each entry shows description, category badge, time range, and duration
-   - Manual entries are editable and deletable
-   - Auto entries link to their source task
+   - All entries (manual and auto-logged) are editable and deletable via inline editing
+   - Auto entries show a source task link with provenance metadata; editing creates a modified copy retaining `sourceTaskId`
 
 3. **Data Issues**
    - Highlights overlapping activities, end-before-start, and duplicate auto-logged entries
@@ -288,22 +341,25 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **TDD approach:** Red/green for all new code. Write failing tests first, implement until they pass, then refactor.
 
-**Unit tests needed:**
+**Unit tests (covered through Phase 4):**
 
-- `activities/manager.js` - addActivity, createActivityFromTask, CRUD
-- `activities/handlers.js` - activity handler tests following existing patterns
+- `activities/manager.js` - addActivity, editActivity, removeActivity, createActivityFromTask, CRUD, state management
+- `activities/handlers.js` - add/edit/save/delete handlers, resolveActivityPayload routing
+- `activities/form-utils.js` - extractActivityFormData (add form), extractActivityEditFormData (inline edit), shared field extraction
+- `activities/renderer.js` - renderActivities, renderActivityItem, renderInlineEditActivityItem, source link rendering
+- `activities/smoke-hooks.js` - consumeActivitySmokeFailure, queueActivitySmokeFailure, host gating
+- `app-coordinator.js` (integration) - activity creation/editing/deletion coordination, auto-logging flow
 - `taxonomy/taxonomy-store.js` - seeding, normalization, config-doc persistence
 - `taxonomy/taxonomy-selectors.js` - option helpers, resolution, badge rendering
 - `taxonomy/taxonomy-mutations.js` - taxonomy CRUD and task-reference safety checks
 - `settings-manager.js` - boot loading, PouchDB-backed toggle persistence, legacy migration, failure handling
-- `storage.js` - new activity/config functions, `saveTasks` scoping, migration
-- `app-coordinator.js` - activity-related coordination logic
+- `storage.js` - activity/config functions, `saveTasks` scoping, migration
 
-**Existing tests:** The `tasks/` reorganization, toast system, coordinator hardening, and current orchestration boundary are already covered. New work should extend from that baseline rather than re-proving the foundation.
+**Existing tests:** The `tasks/` reorganization, toast system, coordinator hardening, and orchestration boundary are already covered. Phase 4 extended that baseline with activity-specific unit and integration tests.
 
 **E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
-**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` now covers both storage-level merge-readiness and a seeded phase-3 UI confidence pass, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, reload persistence, and referenced-delete safety.
+**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, reload persistence, and referenced-delete safety. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
 
 ### Sync Considerations
 
@@ -313,9 +369,11 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 ## Open Questions
 
-- **Activity accent color:** cyan, sky, or orange (leaning blue/sky). Try visually during implementation.
+- **Activity accent color:** Currently sky in the implementation. Still open to experimenting with cyan and orange.
 - **Charts:** Hand-rolled HTML/CSS/SVG for v1. If that looks too plain, evaluate either a lightweight library such as uPlot or Frappe Charts, or Chart.js for full interactivity.
 - **Legacy settings migration cleanup:** remove the one-time `fortudo-activities-enabled` migration path after a later release, once it is acceptable to stop supporting users skipping directly from pre-3.9 builds.
+- **Unscheduled task hint:** When Activities are enabled, surface a hint near unscheduled tasks that they won't auto-log on completion. Exact placement and wording TBD.
+- **Timer display compactness:** How compact should the timer display be? One-line minimal bar vs. showing all editable fields (description, category, start time) inline.
 
 ### Phase 4 Design Decisions (resolved)
 
@@ -323,11 +381,23 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 2. **Third form mode routing.** `extractActivityFormData()` lives in `activities/form-utils.js` (separate from tasks). Submit routes through `activities/handlers.js`, not the task `add-handler.js`. `dom-renderer.js` gains a three-way mode toggle but delegates to the appropriate module. Manual activity creation flows through `coordinator.onActivityCreated({ activity })`, keeping the coordinator as the consistent post-mutation boundary.
 
-3. **Auto-logging: scheduled tasks only.** Unscheduled tasks lack real start/end times; synthesizing timestamps from estimated duration produces misleading plan-vs-actual data. Users who want to track unscheduled work can either schedule it first (giving it real times, then completing auto-logs naturally) or manually log it.
+3. **Auto-logging: scheduled tasks only.** Unscheduled tasks lack real start/end times; synthesizing timestamps from estimated duration produces misleading plan-vs-actual data. Users who want to track unscheduled work can: start a timer for it (Phase 4.5), schedule it first (giving it real times, then completing auto-logs naturally), or manually log it.
 
-4. **Phase 4 file boundary.** Phase 4 ships: `activities/manager.js`, `activities/handlers.js`, `activities/form-utils.js`, `activities/renderer.js`. Phase 5 ships: `activities/insights-renderer.js`.
+4. **Phase 4 file boundary.** Phase 4 ships: `activities/manager.js`, `activities/handlers.js`, `activities/form-utils.js`, `activities/renderer.js`, `activities/ui-handlers.js`, `activities/smoke-hooks.js`. Phase 5 ships: `activities/insights-renderer.js`.
 
 5. **`isActivitiesEnabled()` stays synchronous.** Boot-time `loadSettings()` populates an in-memory cache from the PouchDB config doc. `isActivitiesEnabled()` remains a synchronous read. Same pattern as `loadTaxonomy()`. No call sites become async.
+
+### Phase 4.5 Design Decisions (resolved)
+
+1. **Timer state as PouchDB config doc, not activity doc.** A running timer is ephemeral coordinator state, not a first-class activity. It becomes an activity only when stopped. This keeps the activity schema clean (no `status: 'running'` partial documents) and avoids confusing insights queries. The config doc syncs across devices and survives page reloads.
+
+2. **No new files.** Timer logic extends `activities/manager.js` (state, start/stop/update) and `activities/ui-handlers.js` (timer display, elapsed counter, form transitions). The timer is a feature of activity management, not a separate module.
+
+3. **Overlap check uses real time ranges, not assumptions.** The auto-log's time range may be shifted (early completion adjustment), may be in the past (task was earlier), or may be in the future (planned for later). The overlap check compares the running timer's active range (`startDateTime` through now) against the auto-log's actual time range. Only true overlaps trigger a timer stop.
+
+4. **Unscheduled task completion does not affect the timer.** Unscheduled tasks are lightweight items often completed mid-flow. No auto-logging, no timer stop. Users track unscheduled work via the timer, schedule-then-complete, or manual logging.
+
+5. **Side-by-side action buttons.** The activity form shows "Log Activity" and "Start Timer" side by side. This keeps the start-new-activity flow to one action when a timer is already running (type, click "Start Timer," old timer auto-stops).
 
 ## Implementation Phases
 
@@ -380,17 +450,34 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Load settings during boot via `loadSettings()` before feature-gated UI checks
 - Add failure-path handling so migration does not drop legacy state on failed persistence and toggle writes revert UI state with a toast
 
-### Next Planned Work
+### Completed Activity Logging Work
 
 **Phase 4: Activity logging**
 
-- Add `activities/manager.js` with CRUD and `createActivityFromTask` (scheduled tasks only)
-- Add `activities/form-utils.js` for activity form extraction (separate from task form-utils)
-- Add `activities/handlers.js` with submit handler routing through `coordinator.onActivityCreated`
-- Add third form mode ("Activity") on the main task form via three-way toggle in `dom-renderer.js`
-- Wire auto-logging into scheduled task completion via `coordinator.onTaskCompleted`
-- Add `activities/renderer.js` with chronological today's-activities list (edit/delete for manual, source link for auto)
-- Add empty states for activity views
+- Added `activities/manager.js` with CRUD, `createActivityFromTask` (scheduled tasks only), and state management with clone/normalize pattern
+- Added `activities/form-utils.js` for activity form extraction (add + inline edit), separate from task form-utils
+- Added `activities/handlers.js` with submit handler routing through `coordinator.onActivityCreated`, using `resolveActivityPayload` to accept both data objects and HTMLFormElements
+- Added `activities/renderer.js` with chronological today's-activities list, inline editing for all entries, source task links for auto-logged entries
+- Added `activities/ui-handlers.js` for activity UI orchestration: form routing (`handleActivityAwareFormSubmit`), list click delegation, edit state management, feature-flag-aware show/hide
+- Added `activities/smoke-hooks.js` for testability hooks (force activity failures in preview/smoke environments)
+- Added third form mode ("Activity") via data-driven `TASK_FORM_MODE_CONFIG` three-way toggle in `dom-renderer.js`
+- Wired auto-logging into scheduled task completion as fire-and-forget async in `coordinator.onTaskCompleted`
+- Added empty states for activity views
+- Both manual and auto-logged activities are editable; auto entries retain provenance metadata (`sourceTaskId`) through edits
+
+### Next Planned Work
+
+**Phase 4.5: Live activity timer**
+
+- Add timer state management to `activities/manager.js`: `startTimer`, `stopTimer`, `getRunningActivity`, `updateRunningActivity`, `loadRunningActivity`
+- Add `config-running-activity` PouchDB config doc persistence with in-memory cache
+- Add timer display UI to `activities/ui-handlers.js`: elapsed counter, stop button, editable fields (description, category, start time), form-to-timer and timer-to-form transitions
+- Add side-by-side "Log Activity" / "Start Timer" buttons on the activity form
+- Add stop-on-start behavior (starting a new timer auto-stops the running one)
+- Add early task completion time adjustment in `createActivityFromTask` (shift auto-log window to end at now when task was scheduled in the future)
+- Extend `onTaskCompleted` auto-log chain in coordinator: overlap detection with running timer, auto-stop at auto-log's `startDateTime` when ranges intersect
+- Add boot restoration of running timer from persisted config doc
+- Verify `deleteConfig` exists in `storage.js` or add it
 
 **Phase 4.7: Category editing parity**
 

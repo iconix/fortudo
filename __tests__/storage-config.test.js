@@ -23,6 +23,7 @@ import {
     destroyStorage,
     putConfig,
     loadConfig,
+    deleteConfig,
     saveTasks,
     putTask,
     getDb
@@ -105,5 +106,42 @@ describe('Storage - config docs', () => {
         const loaded = await loadConfig('config-categories');
         expect(loaded).not.toBeNull();
         expect(loaded.categories).toEqual(['survive']);
+    });
+
+    describe('deleteConfig', () => {
+        test('deletes a config document by ID', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putConfig({ id: 'config-test-delete', someSetting: true });
+
+            const before = await loadConfig('config-test-delete');
+            expect(before).not.toBeNull();
+            expect(before.someSetting).toBe(true);
+
+            await deleteConfig('config-test-delete');
+
+            const after = await loadConfig('config-test-delete');
+            expect(after).toBeNull();
+        });
+
+        test('succeeds silently when config does not exist', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+            await expect(deleteConfig('config-nonexistent')).resolves.toBeUndefined();
+        });
+
+        test('does not affect other config documents', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putConfig({ id: 'config-keep', value: 'keep' });
+            await putConfig({ id: 'config-remove', value: 'remove' });
+
+            await deleteConfig('config-remove');
+
+            const kept = await loadConfig('config-keep');
+            expect(kept).not.toBeNull();
+            expect(kept.value).toBe('keep');
+
+            const removed = await loadConfig('config-remove');
+            expect(removed).toBeNull();
+        });
     });
 });

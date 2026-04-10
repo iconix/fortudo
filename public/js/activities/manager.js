@@ -1,12 +1,17 @@
 import {
     putActivity,
     loadActivities as loadActivitiesFromStorage,
-    deleteActivity as deleteActivityFromStorage
+    deleteActivity as deleteActivityFromStorage,
+    putConfig,
+    loadConfig,
+    deleteConfig
 } from '../storage.js';
 import { extractDateFromDateTime } from '../utils.js';
 
 /** @type {Array<Object>} */
 let activities = [];
+const RUNNING_ACTIVITY_CONFIG_ID = 'config-running-activity';
+let runningActivity = null;
 
 function cloneActivity(activity) {
     return activity ? { ...activity } : activity;
@@ -30,6 +35,33 @@ function generateActivityId() {
     return `activity-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function toSafeIsoDateTime(value, fallback = new Date().toISOString()) {
+    if (!value) {
+        return fallback;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? fallback : parsed.toISOString();
+}
+
+function clampTimerEndDateTime(startDateTime, requestedEndDateTime) {
+    const startMs = new Date(startDateTime).getTime();
+    const requestedMs = new Date(requestedEndDateTime).getTime();
+    const clampedMs = Number.isNaN(requestedMs) ? startMs : Math.max(startMs, requestedMs);
+    return new Date(clampedMs).toISOString();
+}
+
+function calculateDurationMinutes(startDateTime, endDateTime) {
+    const startMs = new Date(startDateTime).getTime();
+    const endMs = new Date(endDateTime).getTime();
+
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+        return 0;
+    }
+
+    return Math.max(0, Math.round((endMs - startMs) / 60000));
+}
+
 function replaceState(nextActivities = []) {
     activities = nextActivities.map((activity) => normalizeActivity(cloneActivity(activity)));
     sortByStartDateTime(activities);
@@ -38,6 +70,7 @@ function replaceState(nextActivities = []) {
 
 export function resetActivityState() {
     activities = [];
+    runningActivity = null;
 }
 
 export function updateActivityState(nextActivities = []) {
@@ -88,7 +121,12 @@ export async function addActivity(activityData) {
         return { success: false, reason: 'Activity start and end times are required.' };
     }
 
-    if (!activityData?.duration || activityData.duration <= 0) {
+    const allowsZeroDuration = activityData?.source === 'timer';
+    if (
+        typeof activityData?.duration !== 'number' ||
+        activityData.duration < 0 ||
+        (!allowsZeroDuration && activityData.duration <= 0)
+    ) {
         return { success: false, reason: 'Activity duration must be greater than 0.' };
     }
 
@@ -150,13 +188,130 @@ export async function removeActivity(activityId) {
 }
 
 export function createActivityFromTask(task) {
+    const now = new Date();
+    const plannedStart = new Date(task.startDateTime);
+    const endsInFuture = !Number.isNaN(plannedStart.getTime()) && plannedStart > now;
+    const endDateTime = endsInFuture ? now.toISOString() : task.endDateTime;
+    const startDateTime = endsInFuture
+        ? new Date(now.getTime() - task.duration * 60000).toISOString()
+        : task.startDateTime;
+
     return {
         description: task.description,
         category: task.category || null,
-        startDateTime: task.startDateTime,
-        endDateTime: task.endDateTime,
+        startDateTime,
+        endDateTime,
         duration: task.duration,
         source: 'auto',
         sourceTaskId: task.id || null
     };
+}
+
+export async function loadRunningActivity() {
+    const config = await loadConfig(RUNNING_ACTIVITY_CONFIG_ID);
+    runningActivity = config
+        ? {
+              description: config.description,
+              category: config.category || null,
+              startDateTime: config.startDateTime
+          }
+        : null;
+
+    return getRunningActivity();
+}
+
+export function getRunningActivity() {
+    return runningActivity ? { ...runningActivity } : null;
+}
+
+export async function startTimer({ description, category } = {}) {
+    const trimmedDescription = description?.trim();
+    if (!trimmedDescription) {
+        return { success: false, reason: 'Description is required to start a timer.' };
+    }
+
+    if (runningActivity) {
+        return { success: false, reason: 'A timer is already running. Stop it first.' };
+    }
+
+    const timerState = {
+        description: trimmedDescription,
+        category: category || null,
+        startDateTime: new Date().toISOString()
+    };
+
+    await putConfig({
+        id: RUNNING_ACTIVITY_CONFIG_ID,
+        ...timerState
+    });
+
+    runningActivity = timerState;
+    return { success: true, runningActivity: getRunningActivity() };
+}
+
+export async function stopTimer() {
+    return stopTimerAt(new Date().toISOString());
+}
+
+export async function stopTimerAt(endDateTime) {
+    if (!runningActivity) {
+        return { success: false, reason: 'No timer is currently running.' };
+    }
+
+    const safeEndDateTime = clampTimerEndDateTime(
+        runningActivity.startDateTime,
+        toSafeIsoDateTime(endDateTime)
+    );
+    const activity = normalizeActivity({
+        id: generateActivityId(),
+        description: runningActivity.description,
+        category: runningActivity.category || null,
+        startDateTime: runningActivity.startDateTime,
+        endDateTime: safeEndDateTime,
+        duration: calculateDurationMinutes(runningActivity.startDateTime, safeEndDateTime),
+        source: 'timer',
+        sourceTaskId: null
+    });
+
+    await putActivity(activity);
+    activities.push(activity);
+    sortByStartDateTime(activities);
+    await deleteConfig(RUNNING_ACTIVITY_CONFIG_ID);
+    runningActivity = null;
+
+    return { success: true, activity: cloneActivity(activity) };
+}
+
+export async function updateRunningActivity(updates = {}) {
+    if (!runningActivity) {
+        return { success: false, reason: 'No timer is currently running.' };
+    }
+
+    const nextDescription =
+        Object.prototype.hasOwnProperty.call(updates, 'description') &&
+        updates.description !== undefined
+            ? updates.description.trim()
+            : runningActivity.description;
+
+    if (!nextDescription) {
+        return { success: false, reason: 'Description is required while a timer is running.' };
+    }
+
+    const nextRunningActivity = {
+        description: nextDescription,
+        category: Object.prototype.hasOwnProperty.call(updates, 'category')
+            ? updates.category || null
+            : runningActivity.category || null,
+        startDateTime: Object.prototype.hasOwnProperty.call(updates, 'startDateTime')
+            ? toSafeIsoDateTime(updates.startDateTime, runningActivity.startDateTime)
+            : runningActivity.startDateTime
+    };
+
+    await putConfig({
+        id: RUNNING_ACTIVITY_CONFIG_ID,
+        ...nextRunningActivity
+    });
+
+    runningActivity = nextRunningActivity;
+    return { success: true, runningActivity: getRunningActivity() };
 }
