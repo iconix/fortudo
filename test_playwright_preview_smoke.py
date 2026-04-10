@@ -2,7 +2,10 @@ import unittest
 from unittest.mock import patch
 
 from scripts.playwright_preview_smoke import (
+    add_activity,
+    add_active_scheduled_task,
     add_category_via_settings,
+    arm_unscheduled_delete_confirm,
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
     build_phase3_taxonomy_config_doc,
@@ -10,11 +13,13 @@ from scripts.playwright_preview_smoke import (
     build_couchdb_request_parts,
     build_remote_db_name,
     clear_all_tasks_via_ui,
+    complete_scheduled_task_via_ui,
     compute_storage_room_code,
     create_run_scoped_prefix,
     create_scenario_rooms,
     delete_unscheduled_task_via_ui,
     derive_smoke_room_prefix,
+    ensure_activity_doc_present,
     extract_couchdb_url,
     fetch_remote_docs,
     fill_locator_value,
@@ -25,8 +30,16 @@ from scripts.playwright_preview_smoke import (
     is_preview_host,
     open_scheduled_edit_form,
     parse_cli_args,
+    queue_activity_smoke_failure,
+    request_manual_sync,
+    supports_activity_smoke_failure_host,
     summarize_docs,
     task_form_input_selector,
+    wait_for_task_doc,
+    wait_for_activity_doc,
+    wait_for_input_value,
+    wait_for_activity_row_text,
+    wait_for_activity_failure_alert,
     wait_for_demo_start,
     wait_for_room_code,
     wait_for_text_in_locator,
@@ -219,6 +232,21 @@ class SnapshotAssertionTests(unittest.TestCase):
         )
         self.assertEqual(filtered_response_errors, [])
 
+    def test_filter_runtime_errors_ignores_expected_smoke_forced_auto_log_failure(self):
+        filtered_console_errors, filtered_request_failures, filtered_response_errors = (
+            filter_runtime_errors(
+                [
+                    "[💪🏾 ERROR] [app-coordinator.js:78] Failed to auto-log completed task as activity: Error: Smoke forced activity auto-log failure."
+                ],
+                [],
+                [],
+            )
+        )
+
+        self.assertEqual(filtered_console_errors, [])
+        self.assertEqual(filtered_request_failures, [])
+        self.assertEqual(filtered_response_errors, [])
+
     def test_expected_sync_response_error_accepts_known_cloudant_noise(self):
         self.assertTrue(
             is_expected_sync_response_error(
@@ -254,6 +282,12 @@ class SnapshotAssertionTests(unittest.TestCase):
 
 
 class CliHelpersTests(unittest.TestCase):
+    def test_activity_smoke_failure_hosts_allow_preview_and_local_only(self):
+        self.assertTrue(supports_activity_smoke_failure_host("127.0.0.1"))
+        self.assertTrue(supports_activity_smoke_failure_host("localhost"))
+        self.assertTrue(supports_activity_smoke_failure_host("fortudo--pr53.web.app"))
+        self.assertFalse(supports_activity_smoke_failure_host("fortudo.web.app"))
+
     def test_parse_cli_args_defaults_to_visible_chrome(self):
         parsed = parse_cli_args(["https://example.test"])
 
@@ -353,6 +387,7 @@ class CliHelpersTests(unittest.TestCase):
                 "legacy": "preview-pr53-smoke-legacy",
                 "beta": "preview-pr53-smoke-beta",
                 "taxonomy": "preview-pr53-smoke-taxonomy",
+                "activities": "preview-pr53-smoke-activities",
             },
         )
 
@@ -472,9 +507,11 @@ class FakeLocator:
 
 
 class FakePage:
-    def __init__(self, locators):
+    def __init__(self, locators, *, url="https://fortudo--pr53.web.app"):
         self._locators = locators
+        self.url = url
         self.waits = []
+        self.evaluations = []
 
     def locator(self, selector):
         locator = self._locators.get(selector)
@@ -484,6 +521,9 @@ class FakePage:
 
     def wait_for_timeout(self, timeout_ms):
         self.waits.append(timeout_ms)
+
+    def evaluate(self, script, payload):
+        self.evaluations.append((script, payload))
 
 
 class DeleteStatePage(FakePage):
@@ -518,6 +558,233 @@ class DeleteStatePage(FakePage):
 
 
 class PreviewWaitHelperTests(unittest.TestCase):
+    def test_queue_activity_smoke_failure_rejects_unsupported_hosts(self):
+        page = FakePage({}, url="https://fortudo.web.app")
+
+        with self.assertRaisesRegex(ValueError, "preview or local host"):
+            queue_activity_smoke_failure(page, "manual-add", 1)
+
+    def test_queue_activity_smoke_failure_writes_local_storage_payload(self):
+        page = FakePage({})
+
+        queue_activity_smoke_failure(page, "manual-add", 2)
+
+        self.assertEqual(len(page.evaluations), 1)
+        _script, payload = page.evaluations[0]
+        self.assertEqual(payload["failureKind"], "manual-add")
+        self.assertEqual(payload["count"], 2)
+
+    def test_request_manual_sync_clicks_indicator_when_present(self):
+        indicator = FakeLocator()
+        page = FakePage({"#sync-status-indicator": indicator})
+
+        request_manual_sync(page)
+
+        self.assertEqual(indicator.clicks, 1)
+
+    def test_add_activity_uses_activity_mode_and_shared_duration_inputs(self):
+        activity_radio = FakeLocator()
+        description = FakeLocator()
+        start_time = FakeLocator()
+        duration_hours = FakeLocator()
+        duration_minutes = FakeLocator()
+        submit_button = FakeLocator()
+        page = FakePage(
+            {
+                "#activity": activity_radio,
+                task_form_input_selector("description"): description,
+                task_form_input_selector("start-time"): start_time,
+                task_form_input_selector("duration-hours"): duration_hours,
+                task_form_input_selector("duration-minutes"): duration_minutes,
+                "#task-form button[type='submit']": submit_button,
+            }
+        )
+        activity_radio.check = lambda: setattr(activity_radio, "value", "checked")
+
+        add_activity(page, "Playwright activity", "13:00", 90)
+
+        self.assertEqual(activity_radio.value, "checked")
+        self.assertEqual(description.value, "Playwright activity")
+        self.assertEqual(start_time.value, "13:00")
+        self.assertEqual(duration_hours.value, "1")
+        self.assertEqual(duration_minutes.value, "30")
+        self.assertEqual(submit_button.clicks, 1)
+
+    def test_add_active_scheduled_task_uses_current_suggested_start_time(self):
+        scheduled_radio = FakeLocator()
+        description = FakeLocator()
+        start_time = FakeLocator()
+        duration_hours = FakeLocator()
+        duration_minutes = FakeLocator()
+        submit_button = FakeLocator()
+        page = FakePage(
+            {
+                "#scheduled": scheduled_radio,
+                task_form_input_selector("description"): description,
+                task_form_input_selector("start-time"): start_time,
+                task_form_input_selector("duration-hours"): duration_hours,
+                task_form_input_selector("duration-minutes"): duration_minutes,
+                "#task-form button[type='submit']": submit_button,
+            }
+        )
+        scheduled_radio.check = lambda: setattr(scheduled_radio, "value", "checked")
+        start_time.value = "14:10"
+
+        add_active_scheduled_task(page, "Playwright active task", 20)
+
+        self.assertEqual(scheduled_radio.value, "checked")
+        self.assertEqual(description.value, "Playwright active task")
+        self.assertEqual(start_time.value, "14:10")
+        self.assertEqual(duration_hours.value, "0")
+        self.assertEqual(duration_minutes.value, "20")
+        self.assertEqual(submit_button.clicks, 1)
+
+    def test_ensure_activity_doc_present_requires_activity_doc_type(self):
+        docs = [
+            {"_id": "task-1", "docType": "task", "description": "Not activity"},
+            {"_id": "activity-1", "docType": "activity", "description": "Focus block"},
+        ]
+
+        result = ensure_activity_doc_present("room-a", "Focus block", docs)
+
+        self.assertEqual(result["id"], "activity-1")
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_activity_doc_waits_until_activity_persists(self, mock_read_docs):
+        mock_read_docs.side_effect = [
+            [],
+            [{"_id": "activity-1", "docType": "activity", "description": "Focus block"}],
+        ]
+        page = FakePage({})
+
+        result = wait_for_activity_doc(page, "room-a", "Focus block", timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(result["id"], "activity-1")
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_task_doc_waits_until_task_persists(self, mock_read_docs):
+        mock_read_docs.side_effect = [
+            [],
+            [{"_id": "task-1", "docType": "task", "description": "Focus task"}],
+        ]
+        page = FakePage({})
+
+        result = wait_for_task_doc(page, "room-a", "Focus task", timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(result["id"], "task-1")
+
+    def test_wait_for_input_value_waits_until_field_matches(self):
+        input_locator = FakeLocator()
+        input_locator.value = ""
+        input_locator.text_values = []
+        page = FakePage({"#activity-edit-description": input_locator})
+
+        original_input_value = input_locator.input_value
+        calls = {"count": 0}
+
+        def delayed_value():
+            calls["count"] += 1
+            if calls["count"] >= 2:
+                input_locator.value = "Playwright editable activity"
+            return original_input_value()
+
+        input_locator.input_value = delayed_value
+
+        result = wait_for_input_value(
+            page,
+            "#activity-edit-description",
+            "Playwright editable activity",
+            description="activity edit modal description preload",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(result, "Playwright editable activity")
+
+    def test_wait_for_activity_row_text_uses_activity_scoped_selector(self):
+        row = FakeLocator(text_values=["", "Focus block"])
+        page = FakePage({'div.activity-item[data-activity-id="activity-1"]': row})
+
+        result = wait_for_activity_row_text(
+            page,
+            "activity-1",
+            "Focus block",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(result, "Focus block")
+
+    def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
+        checkbox = FakeLocator()
+        page = FakePage(
+            {
+                '[data-task-id="sched-123"] .checkbox': checkbox,
+                "#custom-confirm-modal": FakeLocator(visible=False),
+                "#ok-custom-confirm-modal": FakeLocator(),
+            }
+        )
+
+        complete_scheduled_task_via_ui(page, "sched-123")
+
+        self.assertEqual(checkbox.clicks, 1)
+
+    def test_complete_scheduled_task_via_ui_confirms_late_completion_modal(self):
+        checkbox = FakeLocator()
+        confirm_modal = FakeLocator(visible=True)
+        confirm_button = FakeLocator()
+        page = FakePage(
+            {
+                '[data-task-id="sched-123"] .checkbox': checkbox,
+                "#custom-confirm-modal": confirm_modal,
+                "#ok-custom-confirm-modal": confirm_button,
+            }
+        )
+
+        complete_scheduled_task_via_ui(page, "sched-123")
+
+        self.assertEqual(checkbox.clicks, 1)
+        self.assertEqual(confirm_button.clicks, 1)
+
+    def test_arm_unscheduled_delete_confirm_waits_for_confirming_state(self):
+        page = DeleteStatePage("unsched-123")
+
+        original_click = page.button.click
+
+        def click_and_advance():
+            original_click()
+            page.state = "confirming"
+
+        page.button.click = click_and_advance
+
+        arm_unscheduled_delete_confirm(page, "unsched-123", timeout_s=0.05, interval_s=0)
+
+        self.assertEqual(page.button.clicks, 1)
+        self.assertEqual(page.state, "confirming")
+
+    @patch("scripts.playwright_preview_smoke.wait_until")
+    def test_wait_for_activity_failure_alert_accepts_visible_modal(self, mock_wait_until):
+        page = FakePage({"#custom-alert-modal": FakeLocator(visible=True)})
+        mock_wait_until.side_effect = lambda predicate, *_args, **_kwargs: predicate()
+
+        wait_for_activity_failure_alert(page, "room-a", "Failed activity")
+
+        self.assertEqual(mock_wait_until.call_count, 1)
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    @patch("scripts.playwright_preview_smoke.wait_until")
+    def test_wait_for_activity_failure_alert_raises_when_activity_persists(
+        self, mock_wait_until, mock_read_docs
+    ):
+        page = FakePage({"#custom-alert-modal": FakeLocator(visible=False)})
+        mock_read_docs.return_value = [
+            {"_id": "activity-1", "docType": "activity", "description": "Failed activity"}
+        ]
+        mock_wait_until.side_effect = lambda predicate, *_args, **_kwargs: predicate()
+
+        with self.assertRaisesRegex(ValueError, "did not fire"):
+            wait_for_activity_failure_alert(page, "room-a", "Failed activity")
+
     def test_wait_for_room_code_waits_for_exact_room_match(self):
         page = FakePage(
             {

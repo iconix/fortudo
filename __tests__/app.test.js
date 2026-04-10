@@ -28,6 +28,7 @@ jest.mock('../public/js/storage.js', () => ({
     putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => []),
+    loadActivities: jest.fn(() => []),
     loadConfig: jest.fn(() => Promise.resolve(null))
 }));
 
@@ -38,6 +39,20 @@ jest.mock('../public/js/sync-manager.js', () => ({
     debouncedSync: jest.fn(),
     triggerSync: jest.fn(() => Promise.resolve())
 }));
+jest.mock('../public/js/activities/manager.js', () => ({
+    loadActivitiesState: jest.fn(() => Promise.resolve([])),
+    getActivityState: jest.fn(() => []),
+    getTodaysActivities: jest.fn(() => [])
+}));
+jest.mock('../public/js/activities/renderer.js', () => ({
+    renderActivities: jest.fn()
+}));
+jest.mock('../public/js/activities/handlers.js', () => ({
+    handleAddActivity: jest.fn(() => Promise.resolve()),
+    handleEditActivity: jest.fn(),
+    handleDeleteActivity: jest.fn(() => Promise.resolve()),
+    handleSaveActivityEdit: jest.fn(() => Promise.resolve({ success: true }))
+}));
 import {
     prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
@@ -46,12 +61,25 @@ import {
     putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal,
+    loadActivities as mockLoadActivitiesFromStorageInternal,
     loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
 import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
+import {
+    loadActivitiesState as mockLoadActivitiesStateInternal,
+    getActivityState as mockGetActivityStateInternal,
+    getTodaysActivities as mockGetTodaysActivitiesInternal
+} from '../public/js/activities/manager.js';
+import { renderActivities as mockRenderActivitiesInternal } from '../public/js/activities/renderer.js';
+import {
+    handleAddActivity as mockHandleAddActivityInternal,
+    handleEditActivity as mockHandleEditActivityInternal,
+    handleDeleteActivity as mockHandleDeleteActivityInternal,
+    handleSaveActivityEdit as mockHandleSaveActivityEditInternal
+} from '../public/js/activities/handlers.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
@@ -61,9 +89,18 @@ const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
 const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
+const mockLoadActivitiesFromStorage = jest.mocked(mockLoadActivitiesFromStorageInternal);
 const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
+const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
+const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
+const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
+const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
+const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
+const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
+const mockHandleDeleteActivity = jest.mocked(mockHandleDeleteActivityInternal);
+const mockHandleSaveActivityEdit = jest.mocked(mockHandleSaveActivityEditInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -127,8 +164,16 @@ describe('App.js Callback Functions', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         mockLoadTasksFromStorage.mockReturnValue([]);
+        mockLoadActivitiesFromStorage.mockReturnValue([]);
         mockLoadConfig.mockResolvedValue(null);
         mockPutConfig.mockResolvedValue(undefined);
+        mockLoadActivitiesState.mockResolvedValue([]);
+        mockGetActivityState.mockReturnValue([]);
+        mockRenderActivities.mockClear();
+        mockHandleAddActivity.mockClear();
+        mockHandleEditActivity.mockClear();
+        mockHandleDeleteActivity.mockClear();
+        mockHandleSaveActivityEdit.mockClear();
         mockPrepareStorage.mockClear();
         mockInitStorage.mockClear();
         updateTaskState([]);
@@ -259,6 +304,201 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks([]);
 
             expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+        });
+
+        test('when activities are enabled, boot loads activity state and reveals activity UI', async () => {
+            const activity = { id: 'activity-1', description: 'Focus block' };
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadActivitiesState.mockResolvedValue([activity]);
+            mockGetTodaysActivities.mockReturnValue([activity]);
+
+            await setupAppWithTasks([]);
+
+            expect(mockLoadActivitiesState).toHaveBeenCalled();
+            expect(mockRenderActivities).toHaveBeenCalledWith(
+                [activity],
+                document.getElementById('activity-list'),
+                expect.objectContaining({ editingActivityId: null })
+            );
+            expect(
+                document.getElementById('activity-toggle-option')?.classList.contains('hidden')
+            ).toBe(false);
+            expect(
+                document.getElementById('activities-container')?.classList.contains('hidden')
+            ).toBe(false);
+        });
+
+        test('activity mode submits through the activity handler and uses activity UI state', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityRadio = document.getElementById('activity');
+            const descriptionInput = document.querySelector('#task-form input[name="description"]');
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            const durationHoursInput = document.querySelector(
+                '#task-form input[name="duration-hours"]'
+            );
+            const durationMinutesInput = document.querySelector(
+                '#task-form input[name="duration-minutes"]'
+            );
+            const addTaskButton = document.getElementById('add-task-btn');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            descriptionInput.value = 'Pairing session';
+            startTimeInput.value = '10:00';
+            durationHoursInput.value = '1';
+            durationMinutesInput.value = '30';
+
+            getTaskFormElement().dispatchEvent(
+                new Event('submit', { bubbles: true, cancelable: true })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleAddActivity).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    description: 'Pairing session',
+                    duration: 90,
+                    source: 'manual'
+                })
+            );
+            expect(addTaskButton.textContent).toContain('Log Activity');
+            expect(descriptionInput.getAttribute('placeholder')).toBe('What did you work on?');
+        });
+
+        test('activity list delegates inline activity save and delete controls to the activity handlers', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <article class="activity-item" data-activity-id="activity-42">
+                    <button type="button" class="btn-edit-activity" data-activity-id="activity-42">Edit</button>
+                    <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
+                </article>
+            `;
+
+            activityList
+                .querySelector('.btn-edit-activity')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-42" data-activity-date="2026-04-07">
+                    <input name="description" value="Updated activity" />
+                    <input name="start-time" value="09:00" />
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="0" />
+                    <select name="category"></select>
+                    <button type="button" class="btn-save-activity-edit">Save</button>
+                </form>
+                <article class="activity-item" data-activity-id="activity-42">
+                    <button type="button" class="btn-delete-activity" data-activity-id="activity-42">Delete</button>
+                </article>
+            `;
+            activityList
+                .querySelector('.btn-save-activity-edit')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-42',
+                expect.any(HTMLFormElement)
+            );
+            expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-42');
+        });
+
+        test('activity cancel exits inline edit mode without saving', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <article class="activity-item" data-activity-id="activity-43">
+                    <button type="button" class="btn-edit-activity">Edit</button>
+                </article>
+            `;
+
+            const editButton = activityList.querySelector('.btn-edit-activity');
+            editButton.dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-43" data-activity-date="2026-04-07">
+                    <button type="button" class="btn-cancel-activity-edit">Cancel</button>
+                </form>
+            `;
+            activityList
+                .querySelector('.btn-cancel-activity-edit')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleSaveActivityEdit).not.toHaveBeenCalled();
+        });
+
+        test('activity actions can resolve ids from the ancestor activity element', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <article class="activity-item" data-activity-id="activity-44">
+                    <button type="button" class="btn-edit-activity"><span>Edit</span></button>
+                    <button type="button" class="btn-delete-activity"><span>Delete</span></button>
+                </article>
+            `;
+
+            activityList
+                .querySelector('.btn-edit-activity span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-44" data-activity-date="2026-04-07">
+                    <button type="button" class="btn-save-activity-edit"><span>Save</span></button>
+                </form>
+                <article class="activity-item" data-activity-id="activity-44">
+                    <button type="button" class="btn-delete-activity"><span>Delete</span></button>
+                </article>
+            `;
+            activityList
+                .querySelector('.btn-save-activity-edit span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-44',
+                expect.any(HTMLFormElement)
+            );
+            expect(mockHandleDeleteActivity).toHaveBeenCalledWith('activity-44');
+        });
+
+        test('invalid activity form submission keeps focus flow and skips add handler', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityRadio = document.getElementById('activity');
+            const descriptionInput = document.querySelector('#task-form input[name="description"]');
+            const addTaskButton = document.getElementById('add-task-btn');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            descriptionInput.value = '';
+
+            getTaskFormElement().dispatchEvent(
+                new Event('submit', { bubbles: true, cancelable: true })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleAddActivity).not.toHaveBeenCalled();
+            expect(document.activeElement).toBe(descriptionInput);
+            expect(activityRadio.checked).toBe(true);
+            expect(addTaskButton.textContent).toContain('Log Activity');
         });
 
         test('shows and populates the category dropdown with flattened taxonomy options when Activities are enabled', async () => {

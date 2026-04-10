@@ -7,6 +7,7 @@
 describe('Modal Manager Tests', () => {
     let showAlert, askConfirmation, showCustomAlert, showCustomConfirm;
     let hideCustomAlert, hideCustomConfirm, hideScheduleModal, showScheduleModal;
+    let showActivityEditModal, hideActivityEditModal;
     let initializeModalEventListeners;
     let showGapTaskPicker, hideGapTaskPicker;
     let alertSpy, confirmSpy;
@@ -52,6 +53,17 @@ describe('Modal Manager Tests', () => {
                 <button id="close-gap-task-picker-modal">X</button>
                 <button id="cancel-gap-task-picker-modal">Cancel</button>
             </div>
+
+            <!-- Activity Edit Modal -->
+            <div id="activity-edit-modal" class="hidden">
+                <h2 id="activity-edit-title"></h2>
+                <button id="close-activity-edit-modal">X</button>
+                <form id="activity-edit-form">
+                    <input id="activity-edit-description" name="activity-description" type="text" />
+                    <button id="cancel-activity-edit-modal" type="button">Cancel</button>
+                    <button id="save-activity-edit-modal" type="submit">Save</button>
+                </form>
+            </div>
         `;
 
         // Clear module cache and re-import to pick up new DOM
@@ -82,6 +94,8 @@ describe('Modal Manager Tests', () => {
             hideCustomConfirm = module.hideCustomConfirm;
             hideScheduleModal = module.hideScheduleModal;
             showScheduleModal = module.showScheduleModal;
+            showActivityEditModal = module.showActivityEditModal;
+            hideActivityEditModal = module.hideActivityEditModal;
         });
 
         test('showAlert falls back to window.alert when modal not found', () => {
@@ -115,6 +129,17 @@ describe('Modal Manager Tests', () => {
         test('showScheduleModal returns early when form not found', () => {
             expect(() => showScheduleModal('Task', '1h', 'id-1', '10:00')).not.toThrow();
         });
+
+        test('showActivityEditModal falls back to window.prompt when modal not found', async () => {
+            alertSpy.mockRestore();
+            const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Updated');
+
+            const result = await showActivityEditModal('Current');
+
+            expect(promptSpy).toHaveBeenCalledWith('Edit activity description:', 'Current');
+            expect(result).toBe('Updated');
+            promptSpy.mockRestore();
+        });
     });
 
     describe('with DOM elements', () => {
@@ -131,6 +156,8 @@ describe('Modal Manager Tests', () => {
             hideGapTaskPicker = module.hideGapTaskPicker;
             hideScheduleModal = module.hideScheduleModal;
             showScheduleModal = module.showScheduleModal;
+            showActivityEditModal = module.showActivityEditModal;
+            hideActivityEditModal = module.hideActivityEditModal;
             initializeModalEventListeners = module.initializeModalEventListeners;
         });
 
@@ -309,6 +336,57 @@ describe('Modal Manager Tests', () => {
 
                 const modal = document.getElementById('schedule-modal');
                 expect(modal.classList.contains('hidden')).toBe(true);
+            });
+        });
+
+        describe('Activity Edit Modal', () => {
+            test('showActivityEditModal shows modal with the current description', async () => {
+                const resultPromise = showActivityEditModal('Current activity');
+
+                const modal = document.getElementById('activity-edit-modal');
+                const input = document.getElementById('activity-edit-description');
+
+                expect(modal.classList.contains('hidden')).toBe(false);
+                expect(input.value).toBe('Current activity');
+
+                document.getElementById('cancel-activity-edit-modal').click();
+                await expect(resultPromise).resolves.toBeNull();
+            });
+
+            test('saving activity edit resolves with trimmed input and hides modal', async () => {
+                const resultPromise = showActivityEditModal('Current activity');
+                const form = document.getElementById('activity-edit-form');
+                const input = document.getElementById('activity-edit-description');
+                input.value = '  Updated activity  ';
+
+                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+                await expect(resultPromise).resolves.toBe('Updated activity');
+                expect(
+                    document.getElementById('activity-edit-modal').classList.contains('hidden')
+                ).toBe(true);
+            });
+
+            test('cancel and close both resolve null', async () => {
+                const cancelPromise = showActivityEditModal('Current activity');
+                document.getElementById('cancel-activity-edit-modal').click();
+                await expect(cancelPromise).resolves.toBeNull();
+
+                const closePromise = showActivityEditModal('Current activity');
+                document.getElementById('close-activity-edit-modal').click();
+                await expect(closePromise).resolves.toBeNull();
+            });
+
+            test('hideActivityEditModal hides the modal', async () => {
+                const resultPromise = showActivityEditModal('Current activity');
+                hideActivityEditModal();
+
+                expect(
+                    document.getElementById('activity-edit-modal').classList.contains('hidden')
+                ).toBe(true);
+
+                document.getElementById('cancel-activity-edit-modal').click();
+                await expect(resultPromise).resolves.toBeNull();
             });
         });
 

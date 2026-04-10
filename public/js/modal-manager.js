@@ -34,17 +34,33 @@ const modalDurationHoursInput = scheduleModalForm
 const modalDurationMinutesInput = scheduleModalForm
     ? scheduleModalForm.querySelector('input[name="modal-duration-minutes"]')
     : null;
+const activityEditModal = document.getElementById('activity-edit-modal');
+const activityEditTitle = document.getElementById('activity-edit-title');
+const closeActivityEditButton = document.getElementById('close-activity-edit-modal');
+const cancelActivityEditButton = document.getElementById('cancel-activity-edit-modal');
+const saveActivityEditButton = document.getElementById('save-activity-edit-modal');
+const activityEditForm = document.getElementById('activity-edit-form');
+const activityEditDescriptionInput = document.getElementById('activity-edit-description');
 
 // --- Helper Functions ---
 function setModalTheme(modal, title, button, theme = 'indigo') {
-    const isIndigo = theme === 'indigo';
+    const titleClasses = {
+        indigo: 'text-indigo-400',
+        teal: 'text-teal-400',
+        sky: 'text-sky-400'
+    };
+    const buttonClasses = {
+        indigo: 'from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
+        teal: 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
+        sky: 'from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300'
+    };
     // Update title color
     if (title) {
-        title.className = `text-xl font-normal ${isIndigo ? 'text-indigo-400' : 'text-teal-400'}`;
+        title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.indigo}`;
     }
     // Update button gradient
     if (button) {
-        button.className = `bg-gradient-to-r ${isIndigo ? 'from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300' : 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300'} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
+        button.className = `bg-gradient-to-r ${buttonClasses[theme] || buttonClasses.indigo} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
     }
 }
 
@@ -353,6 +369,72 @@ export function showGapTaskPicker(
 if (closeGapTaskPickerButton) closeGapTaskPickerButton.addEventListener('click', hideGapTaskPicker);
 if (cancelGapTaskPickerButton)
     cancelGapTaskPickerButton.addEventListener('click', hideGapTaskPicker);
+
+// --- Activity Edit Modal ---
+export function hideActivityEditModal() {
+    if (activityEditModal) activityEditModal.classList.add('hidden');
+}
+
+export function showActivityEditModal(currentDescription = '') {
+    if (
+        !(activityEditForm instanceof HTMLFormElement) ||
+        !(activityEditDescriptionInput instanceof HTMLInputElement) ||
+        !activityEditModal ||
+        !(saveActivityEditButton instanceof HTMLElement)
+    ) {
+        return Promise.resolve(window.prompt('Edit activity description:', currentDescription));
+    }
+
+    if (activityEditTitle) {
+        activityEditTitle.textContent = 'Edit Activity';
+    }
+    activityEditDescriptionInput.value = currentDescription;
+    setModalTheme(activityEditModal, activityEditTitle, saveActivityEditButton, 'sky');
+    activityEditModal.classList.remove('hidden');
+    activityEditDescriptionInput.focus();
+    activityEditDescriptionInput.select();
+
+    return new Promise((resolve) => {
+        const cleanup = () => {
+            activityEditForm.removeEventListener('submit', handleSubmit);
+            if (closeActivityEditButton) {
+                closeActivityEditButton.removeEventListener('click', handleCancel);
+            }
+            if (cancelActivityEditButton) {
+                cancelActivityEditButton.removeEventListener('click', handleCancel);
+            }
+        };
+
+        const handleCancel = () => {
+            cleanup();
+            hideActivityEditModal();
+            resolve(null);
+        };
+
+        const handleSubmit = (event) => {
+            event.preventDefault();
+
+            const nextDescription = activityEditDescriptionInput.value.trim();
+            if (!nextDescription) {
+                showAlert('Activity description cannot be empty.', 'sky');
+                activityEditDescriptionInput.focus();
+                return;
+            }
+
+            cleanup();
+            hideActivityEditModal();
+            resolve(nextDescription);
+        };
+
+        activityEditForm.addEventListener('submit', handleSubmit);
+        if (closeActivityEditButton) {
+            closeActivityEditButton.addEventListener('click', handleCancel);
+        }
+        if (cancelActivityEditButton) {
+            cancelActivityEditButton.addEventListener('click', handleCancel);
+        }
+    });
+}
 
 // --- Convenience Wrappers ---
 export function showAlert(message, theme = 'indigo') {

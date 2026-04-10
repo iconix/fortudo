@@ -146,6 +146,21 @@
                                 >Unscheduled
                             </label>
                         </div>
+                        <div
+                            id="activity-toggle-option"
+                            class="hidden flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors"
+                        >
+                            <input
+                                id="activity"
+                                type="radio"
+                                name="task-type"
+                                value="activity"
+                                class="mr-2 h-4 w-4 text-sky-400 focus:ring-sky-400"
+                            />
+                            <label for="activity" class="text-slate-300 flex items-center text-sm">
+                                <i class="fa-regular fa-clock mr-1 text-sky-400/75"></i>Activity
+                            </label>
+                        </div>
                     </div>
 
                     <div class="mb-2 sm:mb-3">
@@ -373,6 +388,20 @@
                     </div>
                     <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
                         <!-- tasks will be generated here by JavaScript -->
+                    </div>
+                </div>
+
+                <div
+                    id="activities-container"
+                    class="hidden text-left mb-4 sm:mb-6 px-2 sm:px-0"
+                >
+                    <div class="flex justify-between items-center mb-2 sm:mb-3">
+                        <h3 class="text-lg sm:text-xl font-normal text-sky-400 pl-2 flex items-center">
+                            <i class="fa-regular fa-clock mr-2"></i>Today's Activities
+                        </h3>
+                    </div>
+                    <div id="activity-list" class="grid grid-cols-1 gap-2">
+                        <!-- activities will be generated here by JavaScript -->
                     </div>
                 </div>
 
@@ -674,6 +703,58 @@
                         Yes
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <div
+            id="activity-edit-modal"
+            class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
+        >
+            <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="activity-edit-title" class="text-xl font-normal text-sky-400">
+                        Edit Activity
+                    </h3>
+                    <button
+                        id="close-activity-edit-modal"
+                        class="text-slate-400 hover:text-slate-200 p-1"
+                    >
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <form id="activity-edit-form" class="space-y-4">
+                    <div>
+                        <label
+                            for="activity-edit-description"
+                            class="block text-sm text-slate-300 mb-2"
+                        >
+                            Description
+                        </label>
+                        <input
+                            id="activity-edit-description"
+                            name="activity-description"
+                            type="text"
+                            class="bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all"
+                            required
+                        />
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <button
+                            id="cancel-activity-edit-modal"
+                            type="button"
+                            class="bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg text-slate-200 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            id="save-activity-edit-modal"
+                            type="submit"
+                            class="bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 px-5 py-2 rounded-lg text-white font-normal transition-colors"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </body>

@@ -379,6 +379,10 @@ describe('Time Utility Functions', () => {
             expect(getThemeForTask({ type: 'unscheduled' })).toBe('indigo');
         });
 
+        test('getThemeForTask returns sky for activity task', () => {
+            expect(getThemeForTask({ type: 'activity' })).toBe('sky');
+        });
+
         test('getThemeForTask returns indigo for null task', () => {
             expect(getThemeForTask(null)).toBe('indigo');
         });
@@ -389,6 +393,10 @@ describe('Time Utility Functions', () => {
 
         test('getThemeForTaskType returns indigo for unscheduled type', () => {
             expect(getThemeForTaskType('unscheduled')).toBe('indigo');
+        });
+
+        test('getThemeForTaskType returns sky for activity type', () => {
+            expect(getThemeForTaskType('activity')).toBe('sky');
         });
     });
 });

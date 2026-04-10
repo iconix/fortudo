@@ -96,6 +96,20 @@ async function clickAndWait(element) {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+async function waitForCondition(predicate, { timeoutMs = 1000, intervalMs = 10 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        if (predicate()) {
+            return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('Timed out waiting for expected condition.');
+}
+
 async function openInlineGroupEditor(key) {
     const editButton = document.querySelector(`.btn-edit-group[data-key="${key}"]`);
     await clickAndWait(editButton);
@@ -251,7 +265,10 @@ describe('settings-renderer', () => {
             const toggle = document.getElementById('activities-toggle');
             toggle.checked = true;
             toggle.dispatchEvent(new Event('change'));
-            await new Promise((resolve) => setTimeout(resolve, 25));
+            await waitForCondition(() => {
+                const reloadPrompt = document.getElementById('reload-prompt');
+                return reloadPrompt && !reloadPrompt.classList.contains('hidden');
+            });
 
             const reloadPrompt = document.getElementById('reload-prompt');
             expect(reloadPrompt).not.toBeNull();
@@ -267,7 +284,11 @@ describe('settings-renderer', () => {
 
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
-            await new Promise((resolve) => setTimeout(resolve, 25));
+            await waitForCondition(
+                () =>
+                    taxonomySection.classList.contains('hidden') &&
+                    message.textContent.includes('Activities disabled')
+            );
 
             expect(taxonomySection.classList.contains('hidden')).toBe(true);
             expect(message.textContent).toContain('Activities disabled');
@@ -285,7 +306,7 @@ describe('settings-renderer', () => {
 
             toggle.checked = true;
             toggle.dispatchEvent(new Event('change'));
-            await new Promise((resolve) => setTimeout(resolve, 25));
+            await waitForCondition(() => showToast.mock.calls.length > 0);
 
             expect(toggle.checked).toBe(false);
             expect(taxonomySection.classList.contains('hidden')).toBe(true);

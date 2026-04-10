@@ -17,7 +17,7 @@ Fortudo handles the planning side of daily time management by scheduling tasks i
 ### Fortudo Architecture
 
 - **Storage:** PouchDB with per-room databases (`fortudo-{roomCode}`). Storage now supports typed documents (`task`, `activity`, `config`) in the same room database. Legacy task docs are migrated to `docType: 'task'` during boot-time storage preparation. Task bulk replace is scoped to task documents only. Revision tracking is type-scoped internally. Preview deploys use isolated room/database names so preview testing never touches live room data.
-- **Task schema:** `id`, `type` (`scheduled` / `unscheduled`), `description`, `startDateTime`, `endDateTime`, `duration`, `status`, `locked`, `editing`, `confirmingDelete`, `priority` (unscheduled only), `estDuration` (unscheduled only).
+- **Task schema:** `id`, `type` (`scheduled` / `unscheduled`), `description`, `startDateTime`, `endDateTime`, `duration`, `status`, `locked`, `editing`, `confirmingDelete`, `priority` (unscheduled only), `estDuration` (unscheduled only), `category` (optional, taxonomy key).
 - **ID conventions:** `sched-{timestamp}` for scheduled, `unsched-{timestamp}` for unscheduled.
 - **Module architecture:** `app.js` now focuses on boot, storage wiring, room lifecycle, and top-level event setup. Feature handlers live under `tasks/`. Successful task mutations are reported through `app-coordinator.js` as semantic post-mutation events. Render-time callback threading still exists through `dom-renderer.js`.
 - **Sync:** Bidirectional CouchDB replication via `sync-manager.js` with debounced sync and status callbacks. Room-switch sync handoff is now session-aware so in-flight sync from one room does not mutate the next room.
@@ -139,6 +139,11 @@ export function onTaskDeleted({ task }) { ... }
 export function onScheduledTasksCleared() { ... }
 export function onCompletedTasksCleared() { ... }
 export function onAllTasksCleared() { ... }
+
+// Phase 4 additions:
+export function onActivityCreated({ activity }) { ... }
+export function onActivityEdited({ activity }) { ... }
+export function onActivityDeleted({ activity }) { ... }
 ```
 
 Before:
@@ -197,7 +202,11 @@ public/js/
 |   |-- taxonomy-store.js        # taxonomy load/persist, seeding, normalization
 |   |-- taxonomy-selectors.js    # taxonomy snapshot queries, option helpers, badge rendering
 |   `-- taxonomy-mutations.js    # taxonomy CRUD and task-reference safety checks
-|-- settings-manager.js           # Activities toggle and related settings
+|-- settings/
+|   `-- taxonomy-settings.js     # taxonomy management UI inside settings modal
+|-- category-colors.js            # color family palettes and helpers
+|-- settings-manager.js           # Activities toggle (PouchDB config doc + in-memory cache)
+|-- settings-renderer.js          # settings modal shell, toggle wiring, delegates to taxonomy-settings
 |-- utils.js                      # shared utilities
 `-- config.js                     # CouchDB URL config
 ```
@@ -308,6 +317,18 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - **Charts:** Hand-rolled HTML/CSS/SVG for v1. If that looks too plain, evaluate either a lightweight library such as uPlot or Frappe Charts, or Chart.js for full interactivity.
 - **Legacy settings migration cleanup:** remove the one-time `fortudo-activities-enabled` migration path after a later release, once it is acceptable to stop supporting users skipping directly from pre-3.9 builds.
 
+### Phase 4 Design Decisions (resolved)
+
+1. **Activities visible from Phase 4.** A simple chronological list of today's activities renders below the task list. This becomes the "Activity Log" section of Phase 5 Insights, so the renderer work isn't throwaway. Edit/delete ships in Phase 4 for both manual and auto-logged activities; auto entries retain visible provenance and `sourceTaskId` metadata as an edited copy of the completed task.
+
+2. **Third form mode routing.** `extractActivityFormData()` lives in `activities/form-utils.js` (separate from tasks). Submit routes through `activities/handlers.js`, not the task `add-handler.js`. `dom-renderer.js` gains a three-way mode toggle but delegates to the appropriate module. Manual activity creation flows through `coordinator.onActivityCreated({ activity })`, keeping the coordinator as the consistent post-mutation boundary.
+
+3. **Auto-logging: scheduled tasks only.** Unscheduled tasks lack real start/end times; synthesizing timestamps from estimated duration produces misleading plan-vs-actual data. Users who want to track unscheduled work can either schedule it first (giving it real times, then completing auto-logs naturally) or manually log it.
+
+4. **Phase 4 file boundary.** Phase 4 ships: `activities/manager.js`, `activities/handlers.js`, `activities/form-utils.js`, `activities/renderer.js`. Phase 5 ships: `activities/insights-renderer.js`.
+
+5. **`isActivitiesEnabled()` stays synchronous.** Boot-time `loadSettings()` populates an in-memory cache from the PouchDB config doc. `isActivitiesEnabled()` remains a synchronous read. Same pattern as `loadTaxonomy()`. No call sites become async.
+
 ## Implementation Phases
 
 ### Completed Foundation Work
@@ -363,10 +384,21 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 **Phase 4: Activity logging**
 
-- Add `activities/manager.js` with CRUD and `createActivityFromTask`
-- Add third form mode ("Activity") on the main task form
-- Wire auto-logging into task completion via the coordinator
+- Add `activities/manager.js` with CRUD and `createActivityFromTask` (scheduled tasks only)
+- Add `activities/form-utils.js` for activity form extraction (separate from task form-utils)
+- Add `activities/handlers.js` with submit handler routing through `coordinator.onActivityCreated`
+- Add third form mode ("Activity") on the main task form via three-way toggle in `dom-renderer.js`
+- Wire auto-logging into scheduled task completion via `coordinator.onTaskCompleted`
+- Add `activities/renderer.js` with chronological today's-activities list (edit/delete for manual, source link for auto)
 - Add empty states for activity views
+
+**Phase 4.7: Category editing parity**
+
+- Keep full-field inline editing on activities, including category changes
+- Add category editing to scheduled task inline edit forms
+- Add category editing to unscheduled task inline edit forms
+- Align task and activity edit layouts so category editing no longer exists only on activities
+- Add renderer, form-utils, handler, app, and smoke coverage for task category edit flows
 
 **Phase 5: Insights view**
 

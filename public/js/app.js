@@ -9,6 +9,7 @@ import {
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
     extractTaskFormData,
+    resetTaskFormPreviewState,
     initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
@@ -27,6 +28,13 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
+import { loadActivitiesState } from './activities/manager.js';
+import {
+    syncActivitiesUI,
+    renderTodayActivities,
+    handleActivityAwareFormSubmit,
+    handleActivityListClick
+} from './activities/ui-handlers.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
@@ -82,13 +90,20 @@ async function loadTasksIntoState() {
     updateTaskState(loadedTasks, { persist: false });
 }
 
+async function loadAppState() {
+    await loadTasksIntoState();
+    if (isActivitiesEnabled()) {
+        await loadActivitiesState();
+    }
+}
+
 async function refreshFromStorage() {
     if (refreshFromStoragePromise) {
         return refreshFromStoragePromise;
     }
 
     refreshFromStoragePromise = (async () => {
-        await loadTasksIntoState();
+        await loadAppState();
         refreshUI();
         refreshActiveTaskColor(getTaskState());
         refreshCurrentGapHighlight();
@@ -127,9 +142,10 @@ async function initAndBootApp(roomCode) {
 
     // Load settings before any UI checks that depend on cached flags.
     await loadSettings();
+    syncActivitiesUI(isActivitiesEnabled());
 
     // Load and initialize state
-    await loadTasksIntoState();
+    await loadAppState();
     await loadTaxonomy();
 
     // Create callback objects
@@ -142,32 +158,37 @@ async function initAndBootApp(roomCode) {
             scheduledTaskEventCallbacks
         );
         renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+        renderTodayActivities(isActivitiesEnabled());
         refreshActiveTaskColor(allTasks);
         refreshCurrentGapHighlight();
     };
 
     const appCallbacks = {
         onTaskFormSubmit: async (formElement) => {
-            const taskData = extractTaskFormData(formElement);
-            if (!taskData) {
-                focusTaskDescriptionInput();
-                return;
-            }
-            const overlapEl = document.getElementById('overlap-warning');
-            const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
-            await handleAddTaskProcess(formElement, taskData, { reschedulePreApproved });
+            await handleActivityAwareFormSubmit(formElement, {
+                activitiesEnabled: isActivitiesEnabled(),
+                resetTaskFormPreviewState,
+                initializeTaskTypeToggle,
+                focusTaskDescriptionInput,
+                handleTaskSubmit: async (taskFormElement) => {
+                    const taskData = extractTaskFormData(taskFormElement);
+                    if (!taskData) {
+                        focusTaskDescriptionInput();
+                        return;
+                    }
+                    const overlapEl = document.getElementById('overlap-warning');
+                    const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+                    await handleAddTaskProcess(taskFormElement, taskData, {
+                        reschedulePreApproved
+                    });
+                }
+            });
         },
         onGlobalClick: (event) => {
-            const target = event.target;
-            const taskElement = target.closest('.task-item, .task-card');
-            const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
-
-            if (!taskElement && !deleteButton) {
-                const wasConfirming = resetAllConfirmingDeleteFlags();
-                if (wasConfirming) {
-                    refreshUI();
-                }
-            }
+            handleActivityListClick(event.target, {
+                refreshUI,
+                resetAllConfirmingDeleteFlags
+            });
         }
     };
 

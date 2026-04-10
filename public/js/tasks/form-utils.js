@@ -207,7 +207,7 @@ export function extractTaskFormData(formElement) {
         const estDuration = estDurationResult.duration;
         taskData = { ...taskData, priority, estDuration: estDuration > 0 ? estDuration : null };
     } else {
-        showAlert('Invalid task type selected.', 'indigo');
+        showAlert('Invalid task type selected.', getThemeForTaskType(taskType));
         return null;
     }
     return taskData;

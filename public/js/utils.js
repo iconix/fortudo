@@ -319,17 +319,29 @@ export function isTaskCurrentlyActive(task, now = new Date()) {
 /**
  * Get the theme color for a task type
  * @param {Object|null} task - The task object (or null)
- * @returns {'teal'|'indigo'} - Theme color name
+ * @returns {'teal'|'indigo'|'sky'} - Theme color name
  */
 export function getThemeForTask(task) {
-    return task?.type === 'scheduled' ? 'teal' : 'indigo';
+    if (task?.type === 'scheduled') {
+        return 'teal';
+    }
+    if (task?.type === 'activity') {
+        return 'sky';
+    }
+    return 'indigo';
 }
 
 /**
  * Get the theme color from a task type string
- * @param {'scheduled'|'unscheduled'|string} taskType - The task type
- * @returns {'teal'|'indigo'} - Theme color name
+ * @param {'scheduled'|'unscheduled'|'activity'|string} taskType - The task type
+ * @returns {'teal'|'indigo'|'sky'} - Theme color name
  */
 export function getThemeForTaskType(taskType) {
-    return taskType === 'scheduled' ? 'teal' : 'indigo';
+    if (taskType === 'scheduled') {
+        return 'teal';
+    }
+    if (taskType === 'activity') {
+        return 'sky';
+    }
+    return 'indigo';
 }

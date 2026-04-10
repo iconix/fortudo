@@ -1,6 +1,8 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
 import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './tasks/manager.js';
 import { isScheduledTask } from './tasks/validators.js';
+import { isActivitiesEnabled } from './settings-manager.js';
+import { renderTodayActivities } from './activities/ui-handlers.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -23,6 +25,48 @@ import {
 let globalScheduledTaskCallbacks = null;
 let globalUnscheduledTaskCallbacks = null;
 let pageEventListenersAbortController = null;
+
+const FORM_INPUT_BASE_CLASSES =
+    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+const FORM_SUBMIT_BUTTON_BASE_CLASSES =
+    'shrink-0 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+const INPUT_FOCUS_CLASS_BY_THEME = {
+    teal: 'focus:border-teal-400',
+    indigo: 'focus:border-indigo-400',
+    sky: 'focus:border-sky-400'
+};
+const TASK_FORM_MODE_CONFIG = {
+    scheduled: {
+        showTimeInputs: true,
+        showPriorityInput: false,
+        requireStartTime: true,
+        submitButtonClasses:
+            'bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
+        submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
+        descriptionPlaceholder: 'Describe your task...',
+        inputTheme: 'teal'
+    },
+    unscheduled: {
+        showTimeInputs: false,
+        showPriorityInput: true,
+        requireStartTime: false,
+        submitButtonClasses:
+            'bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
+        submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
+        descriptionPlaceholder: 'Describe your task...',
+        inputTheme: 'indigo'
+    },
+    activity: {
+        showTimeInputs: true,
+        showPriorityInput: false,
+        requireStartTime: true,
+        submitButtonClasses:
+            'bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300',
+        submitButtonHtml: '<i class="fa-regular fa-clock mr-2"></i>Log Activity',
+        descriptionPlaceholder: 'What did you work on?',
+        inputTheme: 'sky'
+    }
+};
 
 // Auto-update state for start time field
 const startTimeAutoUpdate = {
@@ -72,11 +116,55 @@ export function startRealTimeClock() {
 export function initializeTaskTypeToggle() {
     const scheduledRadio = document.getElementById('scheduled');
     const unscheduledRadio = document.getElementById('unscheduled');
+    const activityRadio = document.getElementById('activity');
     const timeInputs = document.getElementById('time-inputs');
     const priorityInput = document.getElementById('priority-input');
     const addTaskButton = document.querySelector('#task-form button[type="submit"]');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
+    const durationHoursInput = document.querySelector('input[name="duration-hours"]');
+    const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
+
+    const setInputTheme = (theme) => {
+        const themeClass = INPUT_FOCUS_CLASS_BY_THEME[theme];
+        [descriptionInput, startTimeInput, durationHoursInput, durationMinutesInput].forEach(
+            (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return;
+                }
+                Object.values(INPUT_FOCUS_CLASS_BY_THEME).forEach((className) => {
+                    element.classList.remove(className);
+                });
+                if (themeClass) {
+                    element.classList.add(themeClass);
+                }
+            }
+        );
+    };
+
+    const applyTaskFormMode = (mode) => {
+        const config = TASK_FORM_MODE_CONFIG[mode];
+        if (!config) {
+            return;
+        }
+
+        timeInputs.classList.toggle('hidden', !config.showTimeInputs);
+        priorityInput.classList.toggle('hidden', !config.showPriorityInput);
+
+        if (startTimeInput instanceof HTMLElement) {
+            if (config.requireStartTime) {
+                startTimeInput.setAttribute('required', '');
+            } else {
+                startTimeInput.removeAttribute('required');
+            }
+        }
+
+        addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonClasses}`;
+        addTaskButton.innerHTML = config.submitButtonHtml;
+        descriptionInput.className = FORM_INPUT_BASE_CLASSES;
+        descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
+        setInputTheme(config.inputTheme);
+    };
 
     if (
         scheduledRadio instanceof HTMLInputElement &&
@@ -88,28 +176,23 @@ export function initializeTaskTypeToggle() {
     ) {
         const toggleVisibility = () => {
             if (scheduledRadio.checked) {
-                timeInputs.classList.remove('hidden');
-                priorityInput.classList.add('hidden');
-                // Re-enable required on start-time when showing scheduled inputs
-                if (startTimeInput) startTimeInput.setAttribute('required', '');
-                addTaskButton.className =
-                    'shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
-                descriptionInput.className =
-                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all';
-            } else {
-                timeInputs.classList.add('hidden');
-                priorityInput.classList.remove('hidden');
-                // Remove required from start-time when hiding scheduled inputs
-                if (startTimeInput) startTimeInput.removeAttribute('required');
-                addTaskButton.className =
-                    'shrink-0 bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
-                descriptionInput.className =
-                    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all';
+                applyTaskFormMode('scheduled');
+                return;
             }
+
+            if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
+                applyTaskFormMode('activity');
+                return;
+            }
+
+            applyTaskFormMode('unscheduled');
         };
 
         scheduledRadio.addEventListener('change', toggleVisibility);
         unscheduledRadio.addEventListener('change', toggleVisibility);
+        if (activityRadio instanceof HTMLInputElement) {
+            activityRadio.addEventListener('change', toggleVisibility);
+        }
         toggleVisibility(); // Initial call
 
         // Add page visibility change listener to re-sync form state when user returns to tab
@@ -480,6 +563,9 @@ export function refreshUI() {
     const tasks = getTaskState();
     renderTasks(tasks.filter(isScheduledTask));
     renderUnscheduledTasks(getSortedUnscheduledTasks());
+    if (isActivitiesEnabled()) {
+        renderTodayActivities(true);
+    }
     updateStartTimeField(getSuggestedStartTime(), true);
 }
 
