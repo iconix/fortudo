@@ -122,6 +122,31 @@ describe('activity timer ui', () => {
             );
             expect(document.getElementById('timer-elapsed').textContent).toBe(textAfterHide);
         });
+
+        test('showTimerDisplay returns early when required elements are missing', () => {
+            document.getElementById('task-form-fields').remove();
+
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                true
+            );
+        });
+
+        test('showTimerDisplay leaves elapsed text unchanged for invalid timer start times', () => {
+            document.getElementById('timer-elapsed').textContent = 'unchanged';
+
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: 'not-a-date'
+            });
+
+            expect(document.getElementById('timer-description').value).toBe('Timer work');
+            expect(document.getElementById('timer-elapsed').textContent).toBe('unchanged');
+        });
     });
 
     describe('form state', () => {
@@ -230,6 +255,47 @@ describe('activity timer ui', () => {
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
         });
 
+        test('start timer button alerts when description is blank', async () => {
+            document.getElementById('activity').checked = true;
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStartTimer).not.toHaveBeenCalled();
+            expect(showAlert).toHaveBeenCalledWith(
+                'Please enter a description before starting the timer.',
+                'sky'
+            );
+        });
+
+        test('start timer button uses timer display values when replacing a running timer', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            document.querySelector('#task-form input[name="description"]').value = 'Form value';
+            document.getElementById('timer-description').value = 'Replacement timer';
+            document.getElementById('timer-category').innerHTML =
+                '<option value="break/admin">Admin</option>';
+            document.getElementById('timer-category').value = 'break/admin';
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStartTimer).toHaveBeenCalledWith({
+                description: 'Replacement timer',
+                category: 'break/admin'
+            });
+        });
+
         test('disposing timer UI removes existing listeners until re-initialized', async () => {
             document.getElementById('activity').checked = true;
             document.querySelector('#task-form input[name="description"]').value = 'Feature work';
@@ -261,6 +327,19 @@ describe('activity timer ui', () => {
 
             expect(handleStopTimer).toHaveBeenCalled();
             expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('failed timer stop does not refresh the UI', async () => {
+            handleStopTimer.mockResolvedValueOnce({ success: false, reason: 'No timer running.' });
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            document
+                .getElementById('timer-stop-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(refreshUI).not.toHaveBeenCalled();
         });
 
         test('timer field edits persist running activity changes', async () => {
@@ -355,6 +434,78 @@ describe('activity timer ui', () => {
                 'Description is required while a timer is running.',
                 'sky'
             );
+        });
+
+        test('failed timer category edits rollback the visible value and alert', async () => {
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: false,
+                reason: 'Category update failed.'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const categoryInput = document.getElementById('timer-category');
+            categoryInput.innerHTML =
+                '<option value="work/deep">Deep Work</option><option value="break/admin">Admin</option>';
+            categoryInput.value = 'break/admin';
+            categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(categoryInput.value).toBe('work/deep');
+            expect(showAlert).toHaveBeenCalledWith('Category update failed.', 'sky');
+        });
+
+        test('timer start time changes are ignored without a running activity or time value', async () => {
+            initializeTimerUI({ refreshUI: jest.fn() });
+
+            const startTimeInput = document.getElementById('timer-start-time');
+            startTimeInput.value = '';
+            startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(updateRunningActivity).not.toHaveBeenCalled();
+        });
+
+        test('failed timer start time edits rollback the visible value and alert', async () => {
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: false,
+                reason: 'Start time update failed.'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const startTimeInput = document.getElementById('timer-start-time');
+            startTimeInput.value = '09:15';
+            startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            const previousDate = new Date('2026-04-09T10:00:00.000Z');
+            const previousValue = `${String(previousDate.getHours()).padStart(2, '0')}:${String(
+                previousDate.getMinutes()
+            ).padStart(2, '0')}`;
+
+            expect(startTimeInput.value).toBe(previousValue);
+            expect(showAlert).toHaveBeenCalledWith('Start time update failed.', 'sky');
         });
     });
 });
