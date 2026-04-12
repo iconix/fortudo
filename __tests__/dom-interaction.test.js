@@ -53,30 +53,45 @@ describe('DOM Handler Interaction Tests', () => {
                     <div class="form-group">
                         <input type="text" name="description" placeholder="Task description" required />
                     </div>
+                    <div id="category-dropdown-row">
+                        <span id="category-color-indicator"></span>
+                        <select name="category" id="category-select">
+                            <option value="">No category</option>
+                        </select>
+                    </div>
                     <div class="task-type-toggle">
                         <input type="radio" id="scheduled" name="task-type" value="scheduled" checked />
                         <label for="scheduled">Scheduled</label>
                         <input type="radio" id="unscheduled" name="task-type" value="unscheduled" />
                         <label for="unscheduled">Unscheduled</label>
-                    </div>
-                    <div id="time-inputs">
-                        <div class="form-group">
-                            <input type="time" name="start-time" required />
-                        </div>
-                        <div class="form-group">
-                            <input type="number" name="duration-hours" min="0" value="1" />
-                            <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                        <div id="activity-toggle-option">
+                            <input type="radio" id="activity" name="task-type" value="activity" />
+                            <label for="activity">Activity</label>
                         </div>
                     </div>
-                    <div id="priority-input" style="display: none;">
-                        <select name="priority">
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="low">Low</option>
-                        </select>
-                        <input type="number" name="est-duration" placeholder="Est. minutes" />
+                    <div id="task-form-main-row">
+                        <div>
+                            <div id="time-inputs">
+                                <div class="form-group">
+                                    <input type="time" name="start-time" required />
+                                </div>
+                                <div class="form-group">
+                                    <input type="number" name="duration-hours" min="0" value="1" />
+                                    <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                                </div>
+                            </div>
+                            <div id="priority-input" style="display: none;">
+                                <select name="priority">
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="low">Low</option>
+                                </select>
+                                <input type="number" name="est-duration" placeholder="Est. minutes" />
+                            </div>
+                        </div>
+                        <button type="submit" id="add-task-btn">Add Task</button>
+                        <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
                     </div>
-                    <button type="submit">Add Task</button>
                 </form>
                 <div id="scheduled-task-list" class="task-list"></div>
                 <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
@@ -1200,6 +1215,42 @@ describe('DOM Handler Interaction Tests', () => {
                 taskForm.dispatchEvent(new Event('submit'));
                 taskForm.dispatchEvent(new Event('submit'));
             }).not.toThrow();
+        });
+
+        test('switching to activity keeps the category color indicator visible', () => {
+            const activityRadio = document.getElementById('activity');
+            const scheduledRadio = document.getElementById('scheduled');
+            const categoryIndicator = document.getElementById('category-color-indicator');
+
+            if (!(activityRadio instanceof HTMLInputElement)) {
+                throw new Error('Activity radio not found');
+            }
+
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(categoryIndicator.classList.contains('hidden')).toBe(false);
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(categoryIndicator.classList.contains('hidden')).toBe(false);
+        });
+
+        test('switching task type toggles activity mode on the shared production row', () => {
+            const taskForm = document.getElementById('task-form');
+            const activityRadio = document.getElementById('activity');
+            const scheduledRadio = document.getElementById('scheduled');
+            const startTimerButton = document.getElementById('start-timer-btn');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(taskForm.classList.contains('task-form--activity')).toBe(true);
+            expect(startTimerButton.classList.contains('hidden')).toBe(false);
+
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(taskForm.classList.contains('task-form--activity')).toBe(false);
+            expect(startTimerButton.classList.contains('hidden')).toBe(true);
         });
     });
 

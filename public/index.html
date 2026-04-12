@@ -163,37 +163,37 @@
                         </div>
                     </div>
 
-                    <div id="task-form-fields">
-                        <div class="mb-2 sm:mb-3">
-                            <input
-                                type="text"
-                                name="description"
-                                placeholder="Describe your task..."
-                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
-                                required
-                            />
-                        </div>
+                    <div class="mb-2 sm:mb-3">
+                        <input
+                            type="text"
+                            name="description"
+                            placeholder="Describe your task..."
+                            class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
+                            required
+                        />
+                    </div>
 
-                        <div id="category-dropdown-row" class="hidden mb-2 sm:mb-3">
-                            <div class="flex items-center gap-2">
-                                <span
-                                    id="category-color-indicator"
-                                    class="w-3 h-3 rounded-full bg-slate-500 shrink-0"
-                                ></span>
-                                <select
-                                    name="category"
-                                    id="category-select"
-                                    class="bg-slate-700 p-2 rounded-lg flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none transition-all text-sm"
-                                >
-                                    <option value="">No category</option>
-                                </select>
-                            </div>
+                    <div id="category-dropdown-row" class="hidden mb-2 sm:mb-3">
+                        <div class="flex items-center gap-2">
+                            <span
+                                id="category-color-indicator"
+                                class="w-3 h-3 rounded-full bg-slate-500 shrink-0"
+                            ></span>
+                            <select
+                                name="category"
+                                id="category-select"
+                                class="bg-slate-700 p-2 rounded-lg flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none transition-all text-sm"
+                            >
+                                <option value="">No category</option>
+                            </select>
                         </div>
+                    </div>
 
-                        <div
-                            class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5"
-                        >
-                            <div class="flex-grow flex flex-col gap-2 sm:gap-4">
+                    <div
+                        id="task-form-main-row"
+                        class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5"
+                    >
+                        <div class="flex-grow flex flex-col gap-2 sm:gap-4">
                             <div
                                 id="time-inputs"
                                 class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full pb-5 sm:pb-0"
@@ -350,25 +350,24 @@
                                     </div>
                                 </div>
                             </div>
-                            </div>
+                        </div>
 
+                        <div id="activity-action-group">
                             <!-- Submit Button -->
-                            <div class="flex flex-col sm:flex-row gap-2">
-                                <button
-                                    type="submit"
-                                    id="add-task-btn"
-                                    class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base"
-                                >
-                                    <i class="fa-regular fa-plus mr-2"></i>Add Task
-                                </button>
-                                <button
-                                    type="button"
-                                    id="start-timer-btn"
-                                    class="hidden shrink-0 bg-slate-700 hover:bg-slate-600 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white border border-sky-400/30 transition-all duration-300 flex items-center justify-center text-sm sm:text-base"
-                                >
-                                    <i class="fa-solid fa-play mr-2"></i>Start Timer
-                                </button>
-                            </div>
+                            <button
+                                type="submit"
+                                id="add-task-btn"
+                                class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base"
+                            >
+                                <i class="fa-regular fa-plus mr-2"></i>Add Task
+                            </button>
+                            <button
+                                type="button"
+                                id="start-timer-btn"
+                                class="hidden shrink-0 bg-slate-700 hover:bg-slate-600 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white border border-sky-400/30 transition-all duration-300 flex items-center justify-center text-sm sm:text-base"
+                            >
+                                <i class="fa-solid fa-play mr-2"></i>Start Timer
+                            </button>
                         </div>
                     </div>
 

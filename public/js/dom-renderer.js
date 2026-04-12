@@ -114,6 +114,7 @@ export function startRealTimeClock() {
 }
 
 export function initializeTaskTypeToggle() {
+    const taskForm = document.getElementById('task-form');
     const scheduledRadio = document.getElementById('scheduled');
     const unscheduledRadio = document.getElementById('unscheduled');
     const activityRadio = document.getElementById('activity');
@@ -165,6 +166,9 @@ export function initializeTaskTypeToggle() {
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
         setInputTheme(config.inputTheme);
+        if (taskForm instanceof HTMLElement) {
+            taskForm.classList.toggle('task-form--activity', mode === 'activity');
+        }
         if (startTimerButton instanceof HTMLElement) {
             startTimerButton.classList.toggle('hidden', mode !== 'activity');
         }
