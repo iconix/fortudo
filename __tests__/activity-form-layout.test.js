@@ -35,4 +35,11 @@ describe('activity form layout', () => {
         expect(customCss).toContain('flex-direction: row;');
         expect(customCss).not.toContain('grid-template-columns: minmax(0, 1fr) auto auto;');
     });
+
+    test('timer display actions stack on mobile before switching back to an inline row', () => {
+        const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+
+        expect(indexHtml).toContain('id="timer-action-group"');
+        expect(indexHtml).toContain('class="flex flex-col gap-3 sm:flex-row sm:justify-end"');
+    });
 });
