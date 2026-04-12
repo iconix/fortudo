@@ -28,6 +28,20 @@ import { getRunningActivity, updateRunningActivity } from '../public/js/activiti
 import { showAlert } from '../public/js/modal-manager.js';
 
 describe('activity timer ui', () => {
+    const flushAsyncWork = async (count = 4) => {
+        for (let index = 0; index < count; index += 1) {
+            await Promise.resolve();
+        }
+    };
+    const waitForCondition = async (condition, count = 20) => {
+        for (let index = 0; index < count; index += 1) {
+            if (condition()) {
+                return;
+            }
+            await Promise.resolve();
+        }
+    };
+
     beforeEach(() => {
         jest.clearAllMocks();
         getRunningActivity.mockReturnValue(null);
@@ -39,15 +53,20 @@ describe('activity timer ui', () => {
             <input id="activity" type="radio" name="task-type" />
             <div id="task-form-fields">
                 <div id="time-inputs"></div>
+                <div id="activity-action-group">
+                    <button id="add-task-btn" type="submit">Log Activity</button>
+                    <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
+                </div>
             </div>
             <div id="timer-display" class="hidden">
                 <input id="timer-description" />
                 <select id="timer-category"></select>
                 <input id="timer-start-time" type="time" />
                 <div id="timer-elapsed"></div>
-                <button id="timer-stop-btn" type="button">Stop</button>
+                <div id="timer-action-group">
+                    <button id="timer-stop-btn" type="button">Stop</button>
+                </div>
             </div>
-            <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
             <form id="task-form">
                 <input name="description" />
                 <select name="category">
@@ -91,6 +110,11 @@ describe('activity timer ui', () => {
                 ).padStart(2, '0')}`
             );
             expect(document.getElementById('timer-elapsed').textContent).toBe('01:00:00');
+            expect(
+                document
+                    .getElementById('timer-action-group')
+                    .contains(document.getElementById('start-timer-btn'))
+            ).toBe(true);
         });
 
         test('elapsed counter updates while timer is visible', () => {
@@ -121,6 +145,11 @@ describe('activity timer ui', () => {
                 true
             );
             expect(document.getElementById('timer-elapsed').textContent).toBe(textAfterHide);
+            expect(
+                document
+                    .getElementById('activity-action-group')
+                    .contains(document.getElementById('start-timer-btn'))
+            ).toBe(true);
         });
 
         test('showTimerDisplay returns early when required elements are missing', () => {
@@ -224,7 +253,7 @@ describe('activity timer ui', () => {
             document
                 .getElementById('start-timer-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(handleStartTimer).toHaveBeenCalledWith({
                 description: 'Feature work',
@@ -244,12 +273,12 @@ describe('activity timer ui', () => {
             document
                 .getElementById('start-timer-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             document
                 .getElementById('timer-stop-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(handleStartTimer).toHaveBeenCalledTimes(1);
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
@@ -262,7 +291,7 @@ describe('activity timer ui', () => {
             document
                 .getElementById('start-timer-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(handleStartTimer).not.toHaveBeenCalled();
             expect(showAlert).toHaveBeenCalledWith(
@@ -288,12 +317,120 @@ describe('activity timer ui', () => {
             document
                 .getElementById('start-timer-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(handleStartTimer).toHaveBeenCalledWith({
                 description: 'Replacement timer',
                 category: 'break/admin'
             });
+        });
+
+        test('start timer replacement ignores blur-change persistence on the current timer fields', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = 'Replacement timer';
+
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(updateRunningActivity).not.toHaveBeenCalled();
+            expect(handleStartTimer).toHaveBeenCalledWith({
+                description: 'Replacement timer',
+                category: 'work/deep'
+            });
+        });
+
+        test('start timer replacement ignores keyboard-triggered field persistence on the current timer fields', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = 'Replacement timer';
+            document.getElementById('start-timer-btn').focus();
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(updateRunningActivity).not.toHaveBeenCalled();
+            expect(handleStartTimer).toHaveBeenCalledWith({
+                description: 'Replacement timer',
+                category: 'work/deep'
+            });
+        });
+
+        test('failed replacement start re-syncs the running timer display', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            handleStartTimer.mockResolvedValueOnce({
+                success: false,
+                reason: 'Could not start timer.'
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            const categoryInput = document.getElementById('timer-category');
+            categoryInput.innerHTML =
+                '<option value="work/deep">Deep Work</option><option value="break/admin">Admin</option>';
+            descriptionInput.value = 'Replacement timer';
+            categoryInput.value = 'break/admin';
+
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(descriptionInput.value).toBe('Current timer');
+            expect(categoryInput.value).toBe('work/deep');
+            expect(document.getElementById('timer-display').classList.contains('hidden')).toBe(
+                false
+            );
         });
 
         test('disposing timer UI removes existing listeners until re-initialized', async () => {
@@ -310,7 +447,7 @@ describe('activity timer ui', () => {
             document
                 .getElementById('timer-stop-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(handleStartTimer).not.toHaveBeenCalled();
             expect(handleStopTimer).not.toHaveBeenCalled();
@@ -323,9 +460,58 @@ describe('activity timer ui', () => {
             document
                 .getElementById('timer-stop-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await waitForCondition(() => refreshUI.mock.calls.length > 0);
 
             expect(handleStopTimer).toHaveBeenCalled();
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('stop timer waits for pending timer edits before delegating', async () => {
+            let resolveUpdate;
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveUpdate = () =>
+                            resolve({
+                                success: true,
+                                runningActivity: {
+                                    description: 'Running',
+                                    category: 'work/deep',
+                                    startDateTime: '2026-04-09T09:30:00.000Z'
+                                }
+                            });
+                    })
+            );
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const startTimeInput = document.getElementById('timer-start-time');
+            startTimeInput.value = '09:30';
+            startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await Promise.resolve();
+
+            document
+                .getElementById('timer-stop-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await Promise.resolve();
+
+            expect(handleStopTimer).not.toHaveBeenCalled();
+
+            resolveUpdate();
+            await flushAsyncWork(8);
+
+            expect(handleStopTimer).toHaveBeenCalledTimes(1);
             expect(refreshUI).toHaveBeenCalled();
         });
 
@@ -337,7 +523,7 @@ describe('activity timer ui', () => {
             document
                 .getElementById('timer-stop-btn')
                 .dispatchEvent(new Event('click', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(refreshUI).not.toHaveBeenCalled();
         });
@@ -393,7 +579,9 @@ describe('activity timer ui', () => {
             const startTimeInput = document.getElementById('timer-start-time');
             startTimeInput.value = '09:30';
             startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await Promise.resolve();
+            await waitForCondition(
+                () => document.getElementById('timer-elapsed').textContent === '00:30:00'
+            );
 
             const expectedStartDate = new Date('2026-04-09T10:00:00.000Z');
             expectedStartDate.setHours(9, 30, 0, 0);
@@ -427,7 +615,7 @@ describe('activity timer ui', () => {
             const descriptionInput = document.getElementById('timer-description');
             descriptionInput.value = '';
             descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(descriptionInput.value).toBe('Running');
             expect(showAlert).toHaveBeenCalledWith(
@@ -459,7 +647,7 @@ describe('activity timer ui', () => {
                 '<option value="work/deep">Deep Work</option><option value="break/admin">Admin</option>';
             categoryInput.value = 'break/admin';
             categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(categoryInput.value).toBe('work/deep');
             expect(showAlert).toHaveBeenCalledWith('Category update failed.', 'sky');
@@ -471,7 +659,7 @@ describe('activity timer ui', () => {
             const startTimeInput = document.getElementById('timer-start-time');
             startTimeInput.value = '';
             startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork(6);
 
             expect(updateRunningActivity).not.toHaveBeenCalled();
         });
@@ -497,7 +685,7 @@ describe('activity timer ui', () => {
             const startTimeInput = document.getElementById('timer-start-time');
             startTimeInput.value = '09:15';
             startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await Promise.resolve();
+            await flushAsyncWork();
 
             const previousDate = new Date('2026-04-09T10:00:00.000Z');
             const previousValue = `${String(previousDate.getHours()).padStart(2, '0')}:${String(

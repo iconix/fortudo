@@ -13,6 +13,7 @@ describe('activity form layout', () => {
             'utf8'
         );
 
+        expect(indexHtml).toContain('id="task-form-fields"');
         expect(indexHtml).toContain('id="task-form-main-row"');
         expect(indexHtml).not.toContain('id="task-form-actions-row"');
         expect(indexHtml).toContain('id="activity-action-group"');

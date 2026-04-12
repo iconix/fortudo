@@ -4,12 +4,55 @@ import { handleStartTimer, handleStopTimer } from './handlers.js';
 
 let timerIntervalId = null;
 let timerUiAbortController = null;
+let pendingTimerMutation = null;
+let suppressTimerFieldPersistence = false;
+
+function shouldSuppressTimerFieldPersistence() {
+    const startTimerButton = document.getElementById('start-timer-btn');
+    return (
+        suppressTimerFieldPersistence ||
+        (!!getRunningActivity() && document.activeElement === startTimerButton)
+    );
+}
+
+function moveStartTimerButton(targetId) {
+    const startTimerButton = document.getElementById('start-timer-btn');
+    const target = document.getElementById(targetId);
+
+    if (!startTimerButton || !target || startTimerButton.parentElement === target) {
+        return;
+    }
+
+    target.appendChild(startTimerButton);
+}
 
 function stopElapsedCounter() {
     if (timerIntervalId) {
         clearInterval(timerIntervalId);
         timerIntervalId = null;
     }
+}
+
+function queueTimerMutation(mutation) {
+    const operation = pendingTimerMutation
+        ? pendingTimerMutation.catch(() => {}).then(() => mutation())
+        : Promise.resolve(mutation());
+    const trackedOperation = operation.catch(() => {});
+    pendingTimerMutation = trackedOperation;
+    trackedOperation.finally(() => {
+        if (pendingTimerMutation === trackedOperation) {
+            pendingTimerMutation = null;
+        }
+    });
+    return operation;
+}
+
+async function waitForPendingTimerMutation() {
+    if (!pendingTimerMutation) {
+        return;
+    }
+
+    await pendingTimerMutation;
 }
 
 function formatElapsed(elapsedMs) {
@@ -48,6 +91,7 @@ export function showTimerDisplay(runningActivity) {
 
     formFields.classList.add('hidden');
     timerDisplay.classList.remove('hidden');
+    moveStartTimerButton('timer-action-group');
 
     const descriptionInput = document.getElementById('timer-description');
     if (descriptionInput instanceof HTMLInputElement) {
@@ -79,6 +123,7 @@ export function hideTimerDisplay() {
     const timerDisplay = document.getElementById('timer-display');
 
     stopElapsedCounter();
+    moveStartTimerButton('activity-action-group');
 
     if (timerDisplay) {
         timerDisplay.classList.add('hidden');
@@ -95,6 +140,8 @@ export function disposeTimerUI() {
     }
 
     stopElapsedCounter();
+    pendingTimerMutation = null;
+    suppressTimerFieldPersistence = false;
 }
 
 export function syncTimerFormState() {
@@ -136,49 +183,72 @@ export function initializeTimerUI(deps) {
     const startTimerButton = document.getElementById('start-timer-btn');
     if (startTimerButton) {
         startTimerButton.addEventListener(
+            'mousedown',
+            () => {
+                suppressTimerFieldPersistence = !!getRunningActivity();
+            },
+            { signal }
+        );
+        startTimerButton.addEventListener(
             'click',
             () => {
-                const runningActivity = getRunningActivity();
-                const formDescriptionInput = document.querySelector(
-                    '#task-form input[name="description"]'
-                );
-                const formCategorySelect = document.querySelector(
-                    '#task-form select[name="category"]'
-                );
-                const timerDescriptionInput = document.getElementById('timer-description');
-                const timerCategorySelect = document.getElementById('timer-category');
+                void (async () => {
+                    try {
+                        await waitForPendingTimerMutation();
 
-                const activeDescriptionInput = runningActivity
-                    ? timerDescriptionInput
-                    : formDescriptionInput;
-                const activeCategorySelect = runningActivity
-                    ? timerCategorySelect
-                    : formCategorySelect;
-                const description =
-                    activeDescriptionInput instanceof HTMLInputElement
-                        ? activeDescriptionInput.value.trim()
-                        : '';
-                const category =
-                    activeCategorySelect instanceof HTMLSelectElement
-                        ? activeCategorySelect.value || null
-                        : null;
+                        const runningActivity = getRunningActivity();
+                        const formDescriptionInput = document.querySelector(
+                            '#task-form input[name="description"]'
+                        );
+                        const formCategorySelect = document.querySelector(
+                            '#task-form select[name="category"]'
+                        );
+                        const timerDescriptionInput = document.getElementById('timer-description');
+                        const timerCategorySelect = document.getElementById('timer-category');
 
-                if (!description) {
-                    showAlert('Please enter a description before starting the timer.', 'sky');
-                    return;
-                }
+                        const activeDescriptionInput = runningActivity
+                            ? timerDescriptionInput
+                            : formDescriptionInput;
+                        const activeCategorySelect = runningActivity
+                            ? timerCategorySelect
+                            : formCategorySelect;
+                        const description =
+                            activeDescriptionInput instanceof HTMLInputElement
+                                ? activeDescriptionInput.value.trim()
+                                : '';
+                        const category =
+                            activeCategorySelect instanceof HTMLSelectElement
+                                ? activeCategorySelect.value || null
+                                : null;
 
-                void handleStartTimer({ description, category }).then((result) => {
-                    if (!result?.success) {
-                        return;
+                        if (!description) {
+                            if (runningActivity) {
+                                syncTimerFormState();
+                            }
+                            showAlert(
+                                'Please enter a description before starting the timer.',
+                                'sky'
+                            );
+                            return;
+                        }
+
+                        const result = await handleStartTimer({ description, category });
+                        if (!result?.success) {
+                            if (runningActivity) {
+                                syncTimerFormState();
+                            }
+                            return;
+                        }
+
+                        if (formDescriptionInput instanceof HTMLInputElement) {
+                            formDescriptionInput.value = '';
+                        }
+                        syncTimerFormState();
+                        deps.refreshUI();
+                    } finally {
+                        suppressTimerFieldPersistence = false;
                     }
-
-                    if (formDescriptionInput instanceof HTMLInputElement) {
-                        formDescriptionInput.value = '';
-                    }
-                    syncTimerFormState();
-                    deps.refreshUI();
-                });
+                })();
             },
             { signal }
         );
@@ -189,14 +259,17 @@ export function initializeTimerUI(deps) {
         stopTimerButton.addEventListener(
             'click',
             () => {
-                void handleStopTimer().then((result) => {
+                void (async () => {
+                    await waitForPendingTimerMutation();
+
+                    const result = await handleStopTimer();
                     if (!result?.success) {
                         return;
                     }
 
                     syncTimerFormState();
                     deps.refreshUI();
-                });
+                })();
             },
             { signal }
         );
@@ -205,19 +278,34 @@ export function initializeTimerUI(deps) {
     const timerDescriptionInput = document.getElementById('timer-description');
     if (timerDescriptionInput instanceof HTMLInputElement) {
         timerDescriptionInput.addEventListener(
+            'focusout',
+            (event) => {
+                suppressTimerFieldPersistence =
+                    !!getRunningActivity() &&
+                    event.relatedTarget === document.getElementById('start-timer-btn');
+            },
+            { signal }
+        );
+        timerDescriptionInput.addEventListener(
             'change',
             () => {
+                if (shouldSuppressTimerFieldPersistence()) {
+                    return;
+                }
                 const previousValue = getRunningActivity()?.description || '';
-                void updateRunningActivity({ description: timerDescriptionInput.value }).then(
-                    (result) => {
-                        if (result?.success && result.runningActivity) {
-                            timerDescriptionInput.value = result.runningActivity.description || '';
-                            return;
-                        }
+                void queueTimerMutation(() =>
+                    updateRunningActivity({ description: timerDescriptionInput.value }).then(
+                        (result) => {
+                            if (result?.success && result.runningActivity) {
+                                timerDescriptionInput.value =
+                                    result.runningActivity.description || '';
+                                return;
+                            }
 
-                        timerDescriptionInput.value = previousValue;
-                        showAlert(result?.reason || 'Could not update timer.', 'sky');
-                    }
+                            timerDescriptionInput.value = previousValue;
+                            showAlert(result?.reason || 'Could not update timer.', 'sky');
+                        }
+                    )
                 );
             },
             { signal }
@@ -227,19 +315,33 @@ export function initializeTimerUI(deps) {
     const timerCategorySelect = document.getElementById('timer-category');
     if (timerCategorySelect instanceof HTMLSelectElement) {
         timerCategorySelect.addEventListener(
+            'focusout',
+            (event) => {
+                suppressTimerFieldPersistence =
+                    !!getRunningActivity() &&
+                    event.relatedTarget === document.getElementById('start-timer-btn');
+            },
+            { signal }
+        );
+        timerCategorySelect.addEventListener(
             'change',
             () => {
+                if (shouldSuppressTimerFieldPersistence()) {
+                    return;
+                }
                 const previousValue = getRunningActivity()?.category || '';
-                void updateRunningActivity({ category: timerCategorySelect.value || null }).then(
-                    (result) => {
-                        if (result?.success && result.runningActivity) {
-                            timerCategorySelect.value = result.runningActivity.category || '';
-                            return;
-                        }
+                void queueTimerMutation(() =>
+                    updateRunningActivity({ category: timerCategorySelect.value || null }).then(
+                        (result) => {
+                            if (result?.success && result.runningActivity) {
+                                timerCategorySelect.value = result.runningActivity.category || '';
+                                return;
+                            }
 
-                        timerCategorySelect.value = previousValue;
-                        showAlert(result?.reason || 'Could not update timer.', 'sky');
-                    }
+                            timerCategorySelect.value = previousValue;
+                            showAlert(result?.reason || 'Could not update timer.', 'sky');
+                        }
+                    )
                 );
             },
             { signal }
@@ -249,8 +351,20 @@ export function initializeTimerUI(deps) {
     const timerStartTimeInput = document.getElementById('timer-start-time');
     if (timerStartTimeInput instanceof HTMLInputElement) {
         timerStartTimeInput.addEventListener(
+            'focusout',
+            (event) => {
+                suppressTimerFieldPersistence =
+                    !!getRunningActivity() &&
+                    event.relatedTarget === document.getElementById('start-timer-btn');
+            },
+            { signal }
+        );
+        timerStartTimeInput.addEventListener(
             'change',
             () => {
+                if (shouldSuppressTimerFieldPersistence()) {
+                    return;
+                }
                 const runningActivity = getRunningActivity();
                 if (!runningActivity || !timerStartTimeInput.value) {
                     return;
@@ -264,16 +378,18 @@ export function initializeTimerUI(deps) {
                 const [hours, minutes] = timerStartTimeInput.value.split(':').map(Number);
                 nextStartDate.setHours(hours, minutes, 0, 0);
 
-                void updateRunningActivity({ startDateTime: nextStartDate.toISOString() }).then(
-                    (result) => {
-                        if (result?.success && result.runningActivity) {
-                            showTimerDisplay(result.runningActivity);
-                            return;
-                        }
+                void queueTimerMutation(() =>
+                    updateRunningActivity({ startDateTime: nextStartDate.toISOString() }).then(
+                        (result) => {
+                            if (result?.success && result.runningActivity) {
+                                showTimerDisplay(result.runningActivity);
+                                return;
+                            }
 
-                        timerStartTimeInput.value = previousValue;
-                        showAlert(result?.reason || 'Could not update timer.', 'sky');
-                    }
+                            timerStartTimeInput.value = previousValue;
+                            showAlert(result?.reason || 'Could not update timer.', 'sky');
+                        }
+                    )
                 );
             },
             { signal }
