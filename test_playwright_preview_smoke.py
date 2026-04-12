@@ -14,16 +14,21 @@ from scripts.playwright_preview_smoke import (
     build_remote_db_name,
     clear_all_tasks_via_ui,
     complete_scheduled_task_via_ui,
+    configure_demo_logging,
     compute_storage_room_code,
     create_run_scoped_prefix,
     create_scenario_rooms,
     delete_unscheduled_task_via_ui,
     derive_smoke_room_prefix,
+    demo_note,
+    demo_step,
     ensure_activity_doc_present,
     extract_couchdb_url,
     fetch_remote_docs,
     fill_locator_value,
     filter_runtime_errors,
+    get_running_activity_config,
+    get_relative_browser_time,
     get_hostname_from_url,
     get_unscheduled_delete_state,
     is_expected_sync_response_error,
@@ -32,11 +37,15 @@ from scripts.playwright_preview_smoke import (
     parse_cli_args,
     queue_activity_smoke_failure,
     request_manual_sync,
+    start_activity_timer,
+    stop_activity_timer,
     supports_activity_smoke_failure_host,
     summarize_docs,
     task_form_input_selector,
     wait_for_task_doc,
     wait_for_activity_doc,
+    wait_for_running_activity_config,
+    wait_for_running_timer_ui,
     wait_for_input_value,
     wait_for_activity_row_text,
     wait_for_activity_failure_alert,
@@ -282,6 +291,54 @@ class SnapshotAssertionTests(unittest.TestCase):
 
 
 class CliHelpersTests(unittest.TestCase):
+    def setUp(self):
+        configure_demo_logging(enabled=False)
+
+    @patch("scripts.playwright_preview_smoke.time.strftime")
+    def test_demo_step_prints_timestamped_message_and_waits(self, mock_strftime):
+        mock_strftime.return_value = "14:37:12"
+
+        page = FakePage({})
+        messages = []
+        configure_demo_logging(enabled=True)
+        with patch("builtins.print", messages.append):
+            demo_step(page, "checking activities room flows", 900)
+
+        self.assertEqual(messages, ["[demo 14:37:12] checking activities room flows"])
+        self.assertEqual(page.waits, [900])
+
+    @patch("scripts.playwright_preview_smoke.time.strftime")
+    def test_demo_step_skips_logging_when_pause_is_zero(self, mock_strftime):
+        page = FakePage({})
+        messages = []
+        with patch("builtins.print", messages.append):
+            demo_step(page, "should not print", 0)
+
+        self.assertEqual(messages, [])
+        self.assertEqual(page.waits, [])
+        mock_strftime.assert_not_called()
+
+    @patch("scripts.playwright_preview_smoke.time.strftime")
+    def test_demo_note_prints_timestamped_message(self, mock_strftime):
+        mock_strftime.return_value = "14:40:03"
+        messages = []
+        configure_demo_logging(enabled=True)
+
+        with patch("builtins.print", messages.append):
+            demo_note("activities: timer restored after reload")
+
+        self.assertEqual(messages, ["[demo 14:40:03] activities: timer restored after reload"])
+
+    @patch("scripts.playwright_preview_smoke.time.strftime")
+    def test_demo_note_skips_logging_when_demo_mode_is_disabled(self, mock_strftime):
+        messages = []
+
+        with patch("builtins.print", messages.append):
+            demo_note("activities: should stay quiet")
+
+        self.assertEqual(messages, [])
+        mock_strftime.assert_not_called()
+
     def test_activity_smoke_failure_hosts_allow_preview_and_local_only(self):
         self.assertTrue(supports_activity_smoke_failure_host("127.0.0.1"))
         self.assertTrue(supports_activity_smoke_failure_host("localhost"))
@@ -451,6 +508,9 @@ class FakeLocator:
     def is_visible(self):
         return self.visible
 
+    def is_hidden(self):
+        return not self.visible
+
     def wait_for(self, *, state, timeout):
         self.wait_calls += 1
         if state == "visible":
@@ -522,7 +582,7 @@ class FakePage:
     def wait_for_timeout(self, timeout_ms):
         self.waits.append(timeout_ms)
 
-    def evaluate(self, script, payload):
+    def evaluate(self, script, payload=None):
         self.evaluations.append((script, payload))
 
 
@@ -610,7 +670,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(duration_minutes.value, "30")
         self.assertEqual(submit_button.clicks, 1)
 
-    def test_add_active_scheduled_task_uses_current_suggested_start_time(self):
+    def test_add_active_scheduled_task_uses_current_browser_time(self):
         scheduled_radio = FakeLocator()
         description = FakeLocator()
         start_time = FakeLocator()
@@ -628,7 +688,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
             }
         )
         scheduled_radio.check = lambda: setattr(scheduled_radio, "value", "checked")
-        start_time.value = "14:10"
+        page.evaluate = lambda _script, _payload=None: "14:10"
 
         add_active_scheduled_task(page, "Playwright active task", 20)
 
@@ -638,6 +698,120 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(duration_hours.value, "0")
         self.assertEqual(duration_minutes.value, "20")
         self.assertEqual(submit_button.clicks, 1)
+
+    def test_get_relative_browser_time_uses_browser_clock_offset(self):
+        page = FakePage({})
+        evaluations = []
+
+        def evaluate(script, payload=None):
+            evaluations.append((script, payload))
+            return "13:25"
+
+        page.evaluate = evaluate
+
+        result = get_relative_browser_time(page, -55)
+
+        self.assertEqual(result, "13:25")
+        self.assertEqual(evaluations, [(unittest.mock.ANY, -55)])
+
+    def test_start_activity_timer_uses_add_form_when_no_timer_is_running(self):
+        activity_radio = FakeLocator()
+        description = FakeLocator()
+        add_task_button = FakeLocator(text_values=["Log Activity"])
+        start_timer_button = FakeLocator()
+        timer_display = FakeLocator(visible=True)
+        timer_description = FakeLocator()
+        page = FakePage(
+            {
+                "#activity": activity_radio,
+                "#add-task-btn": add_task_button,
+                task_form_input_selector("description"): description,
+                "#start-timer-btn": start_timer_button,
+                "#timer-display": timer_display,
+                "#timer-description": timer_description,
+            }
+        )
+        page.evaluate = (
+            lambda script, payload=None: setattr(activity_radio, "value", "checked")
+            if "activity.checked = true" in script
+            else page.evaluations.append((script, payload))
+        )
+        timer_display.visible = False
+
+        original_click = start_timer_button.click
+
+        def click_and_show_timer():
+            original_click()
+            timer_display.visible = True
+            timer_description.value = description.value
+
+        start_timer_button.click = click_and_show_timer
+
+        start_activity_timer(page, "Focus timer")
+
+        self.assertEqual(activity_radio.value, "checked")
+        self.assertEqual(description.value, "Focus timer")
+        self.assertEqual(start_timer_button.clicks, 1)
+
+    def test_start_activity_timer_uses_timer_display_when_timer_is_running(self):
+        activity_radio = FakeLocator()
+        add_task_button = FakeLocator(text_values=["Add Task"])
+        start_timer_button = FakeLocator()
+        timer_display = FakeLocator(visible=True)
+        timer_description = FakeLocator()
+        page = FakePage(
+            {
+                "#activity": activity_radio,
+                "#add-task-btn": add_task_button,
+                "#start-timer-btn": start_timer_button,
+                "#timer-display": timer_display,
+                "#timer-description": timer_description,
+            }
+        )
+        page.evaluate = (
+            lambda script, payload=None: setattr(activity_radio, "value", "checked")
+            if "activity.checked = true" in script
+            else page.evaluations.append((script, payload))
+        )
+
+        start_activity_timer(page, "Replacement timer")
+
+        self.assertEqual(timer_description.value, "Replacement timer")
+        self.assertEqual(start_timer_button.clicks, 1)
+
+    def test_stop_activity_timer_clicks_stop_button_and_waits_for_form(self):
+        timer_display = FakeLocator(visible=True)
+        stop_button = FakeLocator()
+        page = FakePage({"#timer-display": timer_display, "#timer-stop-btn": stop_button})
+
+        original_click = stop_button.click
+
+        def click_and_hide_timer():
+            original_click()
+            timer_display.visible = False
+
+        stop_button.click = click_and_hide_timer
+
+        stop_activity_timer(page)
+
+        self.assertEqual(stop_button.clicks, 1)
+        self.assertFalse(timer_display.visible)
+
+    def test_get_running_activity_config_returns_matching_config_doc(self):
+        docs = [
+            {"_id": "config-categories", "docType": "config"},
+            {
+                "_id": "config-running-activity",
+                "docType": "config",
+                "description": "Focus timer",
+                "startDateTime": "2026-04-09T10:00:00.000Z",
+            },
+        ]
+
+        result = get_running_activity_config("room-a", docs)
+
+        self.assertEqual(result["id"], "config-running-activity")
+        self.assertEqual(result["description"], "Focus timer")
 
     def test_ensure_activity_doc_present_requires_activity_doc_type(self):
         docs = [
@@ -660,6 +834,62 @@ class PreviewWaitHelperTests(unittest.TestCase):
         result = wait_for_activity_doc(page, "room-a", "Focus block", timeout_s=0.05, interval_s=0)
 
         self.assertEqual(result["id"], "activity-1")
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_running_activity_config_waits_until_config_persists(self, mock_read_docs):
+        mock_read_docs.side_effect = [
+            [],
+            [
+                {
+                    "_id": "config-running-activity",
+                    "docType": "config",
+                    "description": "Focus timer",
+                }
+            ],
+        ]
+        page = FakePage({})
+
+        result = wait_for_running_activity_config(
+            page, "room-a", timeout_s=0.05, interval_s=0
+        )
+
+        self.assertEqual(result["id"], "config-running-activity")
+
+    @patch("scripts.playwright_preview_smoke.read_docs")
+    def test_wait_for_running_activity_config_waits_until_matching_values_persist(
+        self, mock_read_docs
+    ):
+        mock_read_docs.side_effect = [
+            [
+                {
+                    "_id": "config-running-activity",
+                    "docType": "config",
+                    "description": "Current timer",
+                    "category": "work/project",
+                }
+            ],
+            [
+                {
+                    "_id": "config-running-activity",
+                    "docType": "config",
+                    "description": "Replacement timer",
+                    "category": "work/comms",
+                }
+            ],
+        ]
+        page = FakePage({})
+
+        result = wait_for_running_activity_config(
+            page,
+            "room-a",
+            expected_description="Replacement timer",
+            expected_category="work/comms",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(result["description"], "Replacement timer")
+        self.assertEqual(result["category"], "work/comms")
 
     @patch("scripts.playwright_preview_smoke.read_docs")
     def test_wait_for_task_doc_waits_until_task_persists(self, mock_read_docs):
@@ -714,6 +944,30 @@ class PreviewWaitHelperTests(unittest.TestCase):
         )
 
         self.assertEqual(result, "Focus block")
+
+    def test_wait_for_running_timer_ui_waits_for_visible_timer_and_description(self):
+        timer_display = FakeLocator(visible=False)
+        timer_description = FakeLocator()
+        page = FakePage({"#timer-display": timer_display, "#timer-description": timer_description})
+
+        original_is_visible = timer_display.is_visible
+        calls = {"count": 0}
+
+        def delayed_visible():
+            calls["count"] += 1
+            if calls["count"] >= 2:
+                timer_display.visible = True
+                timer_description.value = "Focus timer"
+            return original_is_visible()
+
+        timer_display.is_visible = delayed_visible
+
+        wait_for_running_timer_ui(
+            page,
+            "Focus timer",
+            timeout_s=0.05,
+            interval_s=0,
+        )
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
         checkbox = FakeLocator()
