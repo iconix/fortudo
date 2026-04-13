@@ -406,6 +406,33 @@
                                 class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
                             />
                         </div>
+                        <div
+                            id="next-activity-strip"
+                            class="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-3 space-y-3"
+                        >
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                                    Next Activity
+                                </div>
+                                <div class="text-xs text-slate-500">
+                                    Starts immediately when you click
+                                    <span class="text-slate-300">Start Timer</span>
+                                </div>
+                            </div>
+                            <div class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-center">
+                                <input
+                                    id="next-activity-description"
+                                    type="text"
+                                    placeholder="What are you doing next?"
+                                    class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
+                                />
+                                <select
+                                    id="next-activity-category"
+                                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
+                                ></select>
+                                <div id="next-activity-action-group" class="w-full sm:w-auto"></div>
+                            </div>
+                        </div>
                         <div id="timer-action-group" class="flex flex-col gap-3 sm:flex-row sm:justify-end">
                             <button
                                 type="button"

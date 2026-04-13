@@ -6,6 +6,10 @@ let timerIntervalId = null;
 let timerUiAbortController = null;
 let pendingTimerMutation = null;
 let suppressTimerFieldPersistence = false;
+let nextActivityDraft = {
+    description: '',
+    category: ''
+};
 
 function shouldSuppressTimerFieldPersistence() {
     const startTimerButton = document.getElementById('start-timer-btn');
@@ -24,6 +28,15 @@ function moveStartTimerButton(targetId) {
     }
 
     target.appendChild(startTimerButton);
+}
+
+function setStartTimerButtonLabel() {
+    const startTimerButton = document.getElementById('start-timer-btn');
+    if (!startTimerButton) {
+        return;
+    }
+
+    startTimerButton.innerHTML = '<i class="fa-solid fa-play mr-2"></i>Start Timer';
 }
 
 function stopElapsedCounter() {
@@ -82,6 +95,37 @@ function startElapsedCounter(startDateTime) {
     timerIntervalId = setInterval(updateElapsed, 1000);
 }
 
+function syncNextCategoryOptions() {
+    const nextCategorySelect = document.getElementById('next-activity-category');
+    if (!(nextCategorySelect instanceof HTMLSelectElement)) {
+        return;
+    }
+
+    const mainCategorySelect = document.querySelector('#task-form select[name="category"]');
+    if (mainCategorySelect instanceof HTMLSelectElement) {
+        nextCategorySelect.innerHTML = mainCategorySelect.innerHTML;
+    }
+
+    nextCategorySelect.value = nextActivityDraft.category || '';
+}
+
+function syncNextActivityDraftFields() {
+    const nextDescriptionInput = document.getElementById('next-activity-description');
+    if (nextDescriptionInput instanceof HTMLInputElement) {
+        nextDescriptionInput.value = nextActivityDraft.description;
+    }
+
+    syncNextCategoryOptions();
+}
+
+function clearNextActivityDraft() {
+    nextActivityDraft = {
+        description: '',
+        category: ''
+    };
+    syncNextActivityDraftFields();
+}
+
 export function showTimerDisplay(runningActivity) {
     const formFields = document.getElementById('task-form-fields');
     const timerDisplay = document.getElementById('timer-display');
@@ -91,7 +135,8 @@ export function showTimerDisplay(runningActivity) {
 
     formFields.classList.add('hidden');
     timerDisplay.classList.remove('hidden');
-    moveStartTimerButton('timer-action-group');
+    moveStartTimerButton('next-activity-action-group');
+    setStartTimerButtonLabel();
 
     const descriptionInput = document.getElementById('timer-description');
     if (descriptionInput instanceof HTMLInputElement) {
@@ -115,6 +160,7 @@ export function showTimerDisplay(runningActivity) {
         timerCategorySelect.value = runningActivity.category || '';
     }
 
+    syncNextActivityDraftFields();
     startElapsedCounter(runningActivity.startDateTime);
 }
 
@@ -124,6 +170,10 @@ export function hideTimerDisplay() {
 
     stopElapsedCounter();
     moveStartTimerButton('activity-action-group');
+    setStartTimerButtonLabel();
+    if (!getRunningActivity()) {
+        clearNextActivityDraft();
+    }
 
     if (timerDisplay) {
         timerDisplay.classList.add('hidden');
@@ -142,6 +192,10 @@ export function disposeTimerUI() {
     stopElapsedCounter();
     pendingTimerMutation = null;
     suppressTimerFieldPersistence = false;
+    nextActivityDraft = {
+        description: '',
+        category: ''
+    };
 }
 
 export function syncTimerFormState() {
@@ -203,14 +257,12 @@ export function initializeTimerUI(deps) {
                         const formCategorySelect = document.querySelector(
                             '#task-form select[name="category"]'
                         );
-                        const timerDescriptionInput = document.getElementById('timer-description');
-                        const timerCategorySelect = document.getElementById('timer-category');
 
                         const activeDescriptionInput = runningActivity
-                            ? timerDescriptionInput
+                            ? document.getElementById('next-activity-description')
                             : formDescriptionInput;
                         const activeCategorySelect = runningActivity
-                            ? timerCategorySelect
+                            ? document.getElementById('next-activity-category')
                             : formCategorySelect;
                         const description =
                             activeDescriptionInput instanceof HTMLInputElement
@@ -226,7 +278,9 @@ export function initializeTimerUI(deps) {
                                 syncTimerFormState();
                             }
                             showAlert(
-                                'Please enter a description before starting the timer.',
+                                runningActivity
+                                    ? 'Please enter a description before starting the next timer.'
+                                    : 'Please enter a description before starting the timer.',
                                 'sky'
                             );
                             return;
@@ -243,6 +297,7 @@ export function initializeTimerUI(deps) {
                         if (formDescriptionInput instanceof HTMLInputElement) {
                             formDescriptionInput.value = '';
                         }
+                        clearNextActivityDraft();
                         syncTimerFormState();
                         deps.refreshUI();
                     } finally {
@@ -270,6 +325,28 @@ export function initializeTimerUI(deps) {
                     syncTimerFormState();
                     deps.refreshUI();
                 })();
+            },
+            { signal }
+        );
+    }
+
+    const nextDescriptionInput = document.getElementById('next-activity-description');
+    if (nextDescriptionInput instanceof HTMLInputElement) {
+        nextDescriptionInput.addEventListener(
+            'input',
+            () => {
+                nextActivityDraft.description = nextDescriptionInput.value;
+            },
+            { signal }
+        );
+    }
+
+    const nextCategorySelect = document.getElementById('next-activity-category');
+    if (nextCategorySelect instanceof HTMLSelectElement) {
+        nextCategorySelect.addEventListener(
+            'change',
+            () => {
+                nextActivityDraft.category = nextCategorySelect.value || '';
             },
             { signal }
         );

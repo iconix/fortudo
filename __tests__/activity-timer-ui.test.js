@@ -63,6 +63,11 @@ describe('activity timer ui', () => {
                 <select id="timer-category"></select>
                 <input id="timer-start-time" type="time" />
                 <div id="timer-elapsed"></div>
+                <div id="next-activity-strip">
+                    <input id="next-activity-description" />
+                    <select id="next-activity-category"></select>
+                    <div id="next-activity-action-group"></div>
+                </div>
                 <div id="timer-action-group">
                     <button id="timer-stop-btn" type="button">Stop</button>
                 </div>
@@ -112,9 +117,10 @@ describe('activity timer ui', () => {
             expect(document.getElementById('timer-elapsed').textContent).toBe('01:00:00');
             expect(
                 document
-                    .getElementById('timer-action-group')
+                    .getElementById('next-activity-action-group')
                     .contains(document.getElementById('start-timer-btn'))
             ).toBe(true);
+            expect(document.getElementById('start-timer-btn').textContent).toContain('Start Timer');
         });
 
         test('elapsed counter updates while timer is visible', () => {
@@ -150,6 +156,7 @@ describe('activity timer ui', () => {
                     .getElementById('activity-action-group')
                     .contains(document.getElementById('start-timer-btn'))
             ).toBe(true);
+            expect(document.getElementById('start-timer-btn').textContent).toContain('Start Timer');
         });
 
         test('showTimerDisplay returns early when required elements are missing', () => {
@@ -300,7 +307,7 @@ describe('activity timer ui', () => {
             );
         });
 
-        test('start timer button uses timer display values when replacing a running timer', async () => {
+        test('start next timer uses dedicated next activity values when replacing a running timer', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
                 description: 'Current timer',
@@ -308,10 +315,14 @@ describe('activity timer ui', () => {
                 startDateTime: '2026-04-09T10:00:00.000Z'
             });
             document.querySelector('#task-form input[name="description"]').value = 'Form value';
-            document.getElementById('timer-description').value = 'Replacement timer';
+            document.getElementById('timer-description').value = 'Edited current timer';
             document.getElementById('timer-category').innerHTML =
+                '<option value="work/deep">Deep Work</option>';
+            document.getElementById('timer-category').value = 'work/deep';
+            document.getElementById('next-activity-description').value = 'Replacement timer';
+            document.getElementById('next-activity-category').innerHTML =
                 '<option value="break/admin">Admin</option>';
-            document.getElementById('timer-category').value = 'break/admin';
+            document.getElementById('next-activity-category').value = 'break/admin';
 
             initializeTimerUI({ refreshUI: jest.fn() });
             document
@@ -325,7 +336,73 @@ describe('activity timer ui', () => {
             });
         });
 
-        test('start timer replacement ignores blur-change persistence on the current timer fields', async () => {
+        test('editing current timer fields does not mutate the staged next activity draft', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValue({
+                success: true,
+                runningActivity: {
+                    description: 'Edited current timer',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-09T10:00:00.000Z'
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const nextDescriptionInput = document.getElementById('next-activity-description');
+            nextDescriptionInput.value = 'Planned next activity';
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = 'Edited current timer';
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(nextDescriptionInput.value).toBe('Planned next activity');
+        });
+
+        test('successful replacement clears the staged next activity draft', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            const refreshUI = jest.fn();
+
+            initializeTimerUI({ refreshUI });
+            showTimerDisplay({
+                description: 'Current timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const nextDescriptionInput = document.getElementById('next-activity-description');
+            const nextCategoryInput = document.getElementById('next-activity-category');
+            nextCategoryInput.innerHTML =
+                '<option value="">No category</option><option value="break/admin">Admin</option>';
+            nextDescriptionInput.value = 'Replacement timer';
+            nextCategoryInput.value = 'break/admin';
+
+            document
+                .getElementById('start-timer-btn')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(nextDescriptionInput.value).toBe('');
+            expect(nextCategoryInput.value).toBe('');
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('start next timer ignores blur-change persistence on the current timer fields', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
                 description: 'Current timer',
@@ -341,7 +418,9 @@ describe('activity timer ui', () => {
             });
 
             const descriptionInput = document.getElementById('timer-description');
+            const nextDescriptionInput = document.getElementById('next-activity-description');
             descriptionInput.value = 'Replacement timer';
+            nextDescriptionInput.value = 'Planned next timer';
 
             document
                 .getElementById('start-timer-btn')
@@ -354,12 +433,12 @@ describe('activity timer ui', () => {
 
             expect(updateRunningActivity).not.toHaveBeenCalled();
             expect(handleStartTimer).toHaveBeenCalledWith({
-                description: 'Replacement timer',
-                category: 'work/deep'
+                description: 'Planned next timer',
+                category: null
             });
         });
 
-        test('start timer replacement ignores keyboard-triggered field persistence on the current timer fields', async () => {
+        test('start next timer ignores keyboard-triggered field persistence on the current timer fields', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
                 description: 'Current timer',
@@ -375,7 +454,9 @@ describe('activity timer ui', () => {
             });
 
             const descriptionInput = document.getElementById('timer-description');
+            const nextDescriptionInput = document.getElementById('next-activity-description');
             descriptionInput.value = 'Replacement timer';
+            nextDescriptionInput.value = 'Planned next timer';
             document.getElementById('start-timer-btn').focus();
             descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
             document
@@ -385,8 +466,8 @@ describe('activity timer ui', () => {
 
             expect(updateRunningActivity).not.toHaveBeenCalled();
             expect(handleStartTimer).toHaveBeenCalledWith({
-                description: 'Replacement timer',
-                category: 'work/deep'
+                description: 'Planned next timer',
+                category: null
             });
         });
 
