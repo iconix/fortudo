@@ -292,6 +292,12 @@ async function initAndBootApp(roomCode) {
     // Initial render
     refreshTaskDisplays();
     if (isActivitiesEnabled() && getRunningActivity()) {
+        const activityRadio = document.getElementById('activity');
+        if (activityRadio instanceof HTMLInputElement) {
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
         syncTimerFormState();
 
         const activityToggle = document.getElementById('activity-toggle-option');

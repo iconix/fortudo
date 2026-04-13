@@ -375,6 +375,22 @@ describe('App.js Callback Functions', () => {
             expect(mockSyncTimerFormState).toHaveBeenCalled();
         });
 
+        test('when a timer is restored on boot, app selects activity mode before syncing timer UI', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadRunningActivity.mockResolvedValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+            mockGetRunningActivity.mockReturnValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+
+            await setupAppWithTasks([]);
+
+            expect(document.getElementById('activity').checked).toBe(true);
+        });
+
         test('activity mode submits through the activity handler and uses activity UI state', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
