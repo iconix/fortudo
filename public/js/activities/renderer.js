@@ -142,7 +142,7 @@ export function renderActivities(activities, container, options = {}) {
 
     if (!activities || activities.length === 0) {
         targetContainer.innerHTML = `
-            <div class="text-center py-6 text-slate-500 text-sm">
+            <div class="py-6 text-slate-500 text-sm italic px-2">
                 <i class="fa-regular fa-clock mr-1"></i>
                 No activities tracked today. Log one or complete a scheduled task.
             </div>`;

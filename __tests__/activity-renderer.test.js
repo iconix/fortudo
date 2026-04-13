@@ -27,6 +27,7 @@ describe('activity renderer', () => {
         renderActivities([], container);
 
         expect(container.textContent).toContain('No activities tracked today');
+        expect(container.querySelector('.text-center')).toBeNull();
     });
 
     test('renders manual activity with edit and delete actions', () => {
