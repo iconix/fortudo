@@ -4,6 +4,27 @@
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     renderCategoryBadge: jest.fn(() => '<span class="category-badge">Deep Work</span>'),
+    getCategoryBadgeData: jest.fn((categoryKey) => {
+        if (categoryKey === 'work/deep') {
+            return {
+                kind: 'category',
+                key: 'work/deep',
+                label: 'Deep Work',
+                color: '#0ea5e9'
+            };
+        }
+
+        if (categoryKey === 'break/admin') {
+            return {
+                kind: 'category',
+                key: 'break/admin',
+                label: 'Admin',
+                color: '#14b8a6'
+            };
+        }
+
+        return null;
+    }),
     getSelectableCategoryOptions: jest.fn(() => [
         { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
     ])
@@ -62,6 +83,87 @@ describe('activity renderer', () => {
         expect(container.textContent).toContain('1h');
         expect(container.querySelector('.btn-edit-activity')).not.toBeNull();
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
+    });
+
+    test('renders a category summary bar above the activity list', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-1',
+                    description: 'Deep work',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Admin',
+                    category: 'break/admin',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                },
+                {
+                    id: 'activity-3',
+                    description: 'Catch-up',
+                    category: null,
+                    startDateTime: '2026-04-07T10:30:00.000Z',
+                    endDateTime: '2026-04-07T11:00:00.000Z',
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container
+        );
+
+        const summary = container.querySelector('[data-activity-summary]');
+        expect(summary).not.toBeNull();
+        expect(summary.textContent).toContain('Category Breakdown');
+        expect(summary.textContent).toContain('Total 2h');
+        expect(summary.textContent).toContain('Deep Work 1h');
+        expect(summary.textContent).toContain('Admin 30m');
+        expect(summary.textContent).toContain('Uncategorized 30m');
+        expect(summary.querySelectorAll('[data-summary-segment]')).toHaveLength(3);
+    });
+
+    test('renders uncategorized summary items with the dedicated uncategorized style', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-uncategorized',
+                    description: 'Loose notes',
+                    category: null,
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:45:00.000Z',
+                    duration: 45,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container
+        );
+
+        const uncategorizedSegment = container.querySelector(
+            '[data-summary-segment="uncategorized"]'
+        );
+        const uncategorizedLegend = container.querySelector(
+            '[data-summary-legend-swatch="uncategorized"]'
+        );
+
+        expect(uncategorizedSegment).not.toBeNull();
+        expect(uncategorizedLegend).not.toBeNull();
+        expect(uncategorizedSegment.getAttribute('style')).toContain('repeating-linear-gradient');
+        expect(uncategorizedLegend.getAttribute('style')).toContain('repeating-linear-gradient');
     });
 
     test('renders auto activity with source indicator and edit/delete actions', () => {

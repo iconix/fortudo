@@ -1,6 +1,7 @@
 import {
     renderCategoryBadge,
-    getSelectableCategoryOptions
+    getSelectableCategoryOptions,
+    getCategoryBadgeData
 } from '../taxonomy/taxonomy-selectors.js';
 import {
     calculateHoursAndMinutes,
@@ -36,6 +37,88 @@ function renderCategoryOptions(selectedCategory) {
         .join('');
 
     return `${baseOption}${renderedOptions}`;
+}
+
+function summarizeActivitiesByCategory(activities) {
+    const summaryMap = new Map();
+
+    for (const activity of activities) {
+        const summaryKey = activity.category || 'uncategorized';
+        const existing = summaryMap.get(summaryKey);
+
+        if (existing) {
+            existing.duration += activity.duration;
+            continue;
+        }
+
+        const badgeData = activity.category ? getCategoryBadgeData(activity.category) : null;
+        summaryMap.set(summaryKey, {
+            key: summaryKey,
+            label: badgeData?.label || 'Uncategorized',
+            duration: activity.duration,
+            color: badgeData?.color || '#64748b',
+            isUncategorized: !activity.category
+        });
+    }
+
+    return Array.from(summaryMap.values()).sort((left, right) => right.duration - left.duration);
+}
+
+function getSummarySwatchStyle(summaryItem) {
+    if (summaryItem.isUncategorized) {
+        return 'background: repeating-linear-gradient(135deg, #64748b 0, #64748b 6px, #334155 6px, #334155 12px); border: 1px solid rgba(148, 163, 184, 0.35);';
+    }
+
+    return `background-color: ${summaryItem.color};`;
+}
+
+function getSummarySegmentStyle(summaryItem, totalDuration) {
+    const widthPercentage = totalDuration > 0 ? (summaryItem.duration / totalDuration) * 100 : 0;
+
+    if (summaryItem.isUncategorized) {
+        return `width: ${widthPercentage}%; background: repeating-linear-gradient(135deg, #64748b 0, #64748b 6px, #334155 6px, #334155 12px);`;
+    }
+
+    return `width: ${widthPercentage}%; background-color: ${summaryItem.color};`;
+}
+
+function renderActivitySummary(activities) {
+    const summaryItems = summarizeActivitiesByCategory(activities);
+    const totalDuration = summaryItems.reduce((sum, item) => sum + item.duration, 0);
+
+    if (summaryItems.length === 0 || totalDuration <= 0) {
+        return '';
+    }
+
+    const segmentsHtml = summaryItems
+        .map(
+            (item) =>
+                `<div data-summary-segment="${escapeHtml(item.key)}" class="h-full" style="${getSummarySegmentStyle(item, totalDuration)}"></div>`
+        )
+        .join('');
+
+    const legendHtml = summaryItems
+        .map(
+            (item) =>
+                `<span class="inline-flex items-center gap-2">
+                    <span data-summary-legend-swatch="${escapeHtml(item.key)}" class="h-2 w-2 rounded-full shrink-0" style="${getSummarySwatchStyle(item)}"></span>
+                    ${escapeHtml(item.label)} ${escapeHtml(calculateHoursAndMinutes(item.duration))}
+                </span>`
+        )
+        .join('');
+
+    return `<div data-activity-summary class="px-3 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+        <div class="flex items-end justify-between gap-3 mb-3">
+            <div class="text-[11px] uppercase tracking-[0.22em] text-sky-300">Category Breakdown</div>
+            <div class="text-xs text-slate-300">Total <span class="font-medium text-slate-100">${escapeHtml(calculateHoursAndMinutes(totalDuration))}</span></div>
+        </div>
+        <div class="flex h-3 overflow-hidden rounded-full border border-slate-700 bg-slate-950/90">
+            ${segmentsHtml}
+        </div>
+        <div class="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 text-xs text-slate-300 sm:grid-cols-2">
+            ${legendHtml}
+        </div>
+    </div>`;
 }
 
 function renderInlineEditActivityItem(activity) {
@@ -150,11 +233,13 @@ export function renderActivities(activities, container, options = {}) {
     }
 
     const editingActivityId = options.editingActivityId || null;
-    targetContainer.innerHTML = activities
+    const summaryHtml = renderActivitySummary(activities);
+    const activitiesHtml = activities
         .map((activity) =>
             activity.id === editingActivityId
                 ? renderInlineEditActivityItem(activity)
                 : renderActivityItem(activity)
         )
         .join('');
+    targetContainer.innerHTML = `${summaryHtml}${activitiesHtml}`;
 }
