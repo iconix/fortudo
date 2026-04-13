@@ -44,7 +44,8 @@ jest.mock('../public/js/activities/manager.js', () => ({
     loadRunningActivity: jest.fn(() => Promise.resolve(null)),
     getRunningActivity: jest.fn(() => null),
     getActivityState: jest.fn(() => []),
-    getTodaysActivities: jest.fn(() => [])
+    getTodaysActivities: jest.fn(() => []),
+    getSuggestedActivityStartTime: jest.fn(() => null)
 }));
 jest.mock('../public/js/activities/timer-ui.js', () => ({
     hideTimerDisplay: jest.fn(),

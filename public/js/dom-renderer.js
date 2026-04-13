@@ -3,6 +3,7 @@ import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from '
 import { isScheduledTask } from './tasks/validators.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
+import { getSuggestedActivityStartTime } from './activities/manager.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -144,6 +145,29 @@ export function initializeTaskTypeToggle() {
         );
     };
 
+    const applyActivityStartTimeDefault = () => {
+        if (!(startTimeInput instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const latestActivityEndTime = getSuggestedActivityStartTime();
+        if (!latestActivityEndTime) {
+            return;
+        }
+
+        const genericSuggestedTime = getSuggestedStartTime();
+        const shouldUseActivityDefault =
+            !startTimeInput.value ||
+            startTimeInput.value === genericSuggestedTime ||
+            startTimeAutoUpdate.isEnabled();
+
+        if (!shouldUseActivityDefault) {
+            return;
+        }
+
+        updateStartTimeField(latestActivityEndTime, true);
+    };
+
     const applyTaskFormMode = (mode) => {
         const config = TASK_FORM_MODE_CONFIG[mode];
         if (!config) {
@@ -171,6 +195,9 @@ export function initializeTaskTypeToggle() {
         }
         if (startTimerButton instanceof HTMLElement) {
             startTimerButton.classList.toggle('hidden', mode !== 'activity');
+        }
+        if (mode === 'activity') {
+            applyActivityStartTimeDefault();
         }
     };
 
@@ -574,7 +601,17 @@ export function refreshUI() {
     if (isActivitiesEnabled()) {
         renderTodayActivities(true);
     }
-    updateStartTimeField(getSuggestedStartTime(), true);
+    updateStartTimeField(getSuggestedFormStartTime(), true);
+}
+
+export function getSuggestedFormStartTime() {
+    const activityRadio = document.getElementById('activity');
+
+    if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
+        return getSuggestedActivityStartTime() || getSuggestedStartTime();
+    }
+
+    return getSuggestedStartTime();
 }
 
 // --- Start Time Field Management ---

@@ -3,7 +3,6 @@ import {
     updateTaskState,
     getTaskState,
     resetAllConfirmingDeleteFlags,
-    getSuggestedStartTime,
     getSortedUnscheduledTasks
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
@@ -21,6 +20,7 @@ import {
     renderTasks,
     renderUnscheduledTasks,
     refreshUI,
+    getSuggestedFormStartTime,
     updateStartTimeField,
     initializePageEventListeners,
     refreshStartTimeField,
@@ -303,8 +303,8 @@ async function initAndBootApp(roomCode) {
         }
     }
 
-    const suggested = getSuggestedStartTime();
-    logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
+    const suggested = getSuggestedFormStartTime();
+    logger.debug('initAndBootApp - getSuggestedFormStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();

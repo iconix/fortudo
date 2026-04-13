@@ -14,6 +14,7 @@ import {
     getActivityState,
     getActivityById,
     getTodaysActivities,
+    getSuggestedActivityStartTime,
     loadActivitiesState,
     removeActivity,
     editActivity,
@@ -22,6 +23,7 @@ import {
     createActivityFromTask
 } from '../public/js/activities/manager.js';
 import { putActivity, loadActivities, deleteActivity } from '../public/js/storage.js';
+import { extractTimeFromDateTime } from '../public/js/utils.js';
 
 describe('activity manager', () => {
     beforeEach(() => {
@@ -213,6 +215,45 @@ describe('activity manager', () => {
             expect(todays).toHaveLength(2);
             expect(todays[0].description).toBe('Today earlier');
             expect(todays[1].description).toBe('Today later');
+        });
+
+        test('returns the latest activity end time as the suggested activity start time', async () => {
+            await addActivity({
+                description: 'Earlier',
+                startDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T09:45:00.000Z',
+                duration: 45,
+                source: 'manual',
+                sourceTaskId: null
+            });
+            await addActivity({
+                description: 'Later',
+                startDateTime: '2026-04-07T10:00:00.000Z',
+                endDateTime: '2026-04-07T10:30:00.000Z',
+                duration: 30,
+                source: 'auto',
+                sourceTaskId: 'sched-1'
+            });
+
+            expect(getSuggestedActivityStartTime()).toBe(
+                extractTimeFromDateTime(new Date('2026-04-07T10:30:00.000Z'))
+            );
+        });
+
+        test('falls back to null when there are no activities for today', () => {
+            updateActivityState([
+                {
+                    id: 'activity-yesterday',
+                    description: 'Yesterday',
+                    startDateTime: '2026-04-06T09:00:00.000Z',
+                    endDateTime: '2026-04-06T10:00:00.000Z',
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ]);
+
+            expect(getSuggestedActivityStartTime()).toBeNull();
         });
     });
 

@@ -3,7 +3,7 @@ import {
     loadActivities as loadActivitiesFromStorage,
     deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
-import { extractDateFromDateTime } from '../utils.js';
+import { extractDateFromDateTime, extractTimeFromDateTime } from '../utils.js';
 import {
     loadRunningActivityConfig,
     saveRunningActivityConfig,
@@ -98,6 +98,20 @@ export function getTodaysActivities(now = new Date()) {
         .slice()
         .sort((left, right) => new Date(left.startDateTime) - new Date(right.startDateTime))
         .map(cloneActivity);
+}
+
+export function getSuggestedActivityStartTime(now = new Date()) {
+    const todaysActivities = getTodaysActivities(now);
+    if (todaysActivities.length === 0) {
+        return null;
+    }
+
+    const latestActivity = todaysActivities[todaysActivities.length - 1];
+    if (!latestActivity?.endDateTime) {
+        return null;
+    }
+
+    return extractTimeFromDateTime(new Date(latestActivity.endDateTime));
 }
 
 export async function loadActivitiesState(loadActivities = loadActivitiesFromStorage) {
