@@ -227,6 +227,59 @@ describe('activity renderer', () => {
         expect(editForm.querySelector('.btn-save-activity-edit')).not.toBeNull();
     });
 
+    test('renders an end-time hint for inline activity edit duration', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-hint',
+                    description: 'Deep work',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 90,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            { editingActivityId: 'activity-hint' }
+        );
+
+        const hintEl = container.querySelector('.edit-end-time-hint');
+
+        expect(hintEl).not.toBeNull();
+        expect(hintEl.textContent).toContain('AM');
+        expect(hintEl.classList.contains('opacity-0')).toBe(false);
+    });
+
+    test('reserves row space for the inline activity edit end-time hint on larger widths', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-layout',
+                    description: 'Deep work',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 90,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            { editingActivityId: 'activity-layout' }
+        );
+
+        const row = container.querySelector('form.activity-inline-edit-form > div:last-of-type');
+
+        expect(row).not.toBeNull();
+        expect(row.className).toContain('sm:pb-5');
+    });
+
     test('escapes activity descriptions', () => {
         const container = document.getElementById('activity-list');
 

@@ -187,6 +187,8 @@ export function initializeTaskTypeToggle() {
 
         addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonClasses}`;
         addTaskButton.innerHTML = config.submitButtonHtml;
+        addTaskButton.dataset.defaultButtonHtml = config.submitButtonHtml;
+        addTaskButton.dataset.defaultButtonClasses = addTaskButton.className;
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
         setInputTheme(config.inputTheme);

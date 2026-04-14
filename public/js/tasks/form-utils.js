@@ -421,6 +421,7 @@ export function setupOverlapWarning(
 ) {
     const {
         excludeTaskId = null,
+        shouldWarn = () => true,
         defaultButtonHTML = buttonElement.innerHTML,
         defaultButtonClasses = buttonElement.className,
         overlapButtonHTML = defaultButtonHTML,
@@ -431,6 +432,18 @@ export function setupOverlapWarning(
     buttonElement.dataset.defaultButtonClasses = defaultButtonClasses;
 
     function updateWarning() {
+        const currentDefaultButtonHTML =
+            buttonElement.dataset.defaultButtonHtml || defaultButtonHTML;
+        const currentDefaultButtonClasses =
+            buttonElement.dataset.defaultButtonClasses || defaultButtonClasses;
+
+        if (!shouldWarn()) {
+            warningElement.textContent = '';
+            buttonElement.innerHTML = currentDefaultButtonHTML;
+            buttonElement.className = currentDefaultButtonClasses;
+            return;
+        }
+
         const result = computeOverlapPreview(
             startTimeInput.value,
             hoursInput.value,
@@ -445,8 +458,8 @@ export function setupOverlapWarning(
             buttonElement.className = overlapButtonClasses;
         } else {
             warningElement.textContent = '';
-            buttonElement.innerHTML = defaultButtonHTML;
-            buttonElement.className = defaultButtonClasses;
+            buttonElement.innerHTML = currentDefaultButtonHTML;
+            buttonElement.className = currentDefaultButtonClasses;
         }
     }
 

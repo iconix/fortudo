@@ -9,6 +9,7 @@ import {
     convertTo12HourTime,
     extractDateFromDateTime
 } from '../utils.js';
+import { computeEndTimePreview } from '../tasks/form-utils.js';
 
 function escapeHtml(value) {
     return String(value)
@@ -126,6 +127,11 @@ function renderInlineEditActivityItem(activity) {
     const durationMinutes = activity.duration % 60;
     const displayStartTime = extractTimeFromDateTime(new Date(activity.startDateTime));
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
+    const endTimeHint = computeEndTimePreview(
+        displayStartTime,
+        durationHours.toString(),
+        durationMinutes.toString()
+    );
     const isAuto = activity.source === 'auto';
     const provenanceHtml = isAuto
         ? `<div class="flex items-center gap-2 text-xs text-sky-400/70">
@@ -150,13 +156,14 @@ function renderInlineEditActivityItem(activity) {
                 </select>
             </div>
         </div>
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:pb-5">
             <div class="relative sm:w-40">
                 <i class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
                 <input type="time" name="start-time" value="${escapeHtml(displayStartTime)}"
                     class="bg-slate-700 pl-10 pr-3 py-2 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100" required>
             </div>
-            <div class="flex items-center gap-2 sm:w-44">
+            <div class="relative pb-5 sm:pb-0 sm:w-44">
+                <div class="flex items-center gap-2">
                 <div class="relative flex-1">
                     <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
                     <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
@@ -167,12 +174,14 @@ function renderInlineEditActivityItem(activity) {
                     <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
                         class="bg-slate-700 px-3 py-2 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
                 </div>
+                <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-sky-400/70 transition-opacity duration-300 whitespace-nowrap pointer-events-none ${endTimeHint ? '' : 'opacity-0'}">${endTimeHint ? `&#9656; ${escapeHtml(endTimeHint)}` : ''}</span>
+                </div>
             </div>
             <div class="flex items-center gap-2 sm:ml-auto">
                 <button type="button" class="btn-cancel-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100">
                     <i class="fa-solid fa-xmark mr-2"></i>Cancel
                 </button>
-                <button type="button" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 text-white">
+                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 text-white">
                     <i class="fa-solid fa-check mr-2"></i>Save
                 </button>
             </div>

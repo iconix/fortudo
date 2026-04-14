@@ -37,7 +37,10 @@ import {
     syncActivitiesUI,
     renderTodayActivities,
     handleActivityAwareFormSubmit,
-    handleActivityListClick
+    handleActivityListClick,
+    handleActivityListSubmit,
+    handleActivityListKeydown,
+    handleActivityListInput
 } from './activities/ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './activities/timer-ui.js';
 import { prepareStorage, loadTasks } from './storage.js';
@@ -223,6 +226,15 @@ async function initAndBootApp(roomCode) {
                 addTaskBtn,
                 () => getTaskState().filter((t) => t.type === 'scheduled'),
                 {
+                    shouldWarn: () => {
+                        const selectedTaskType = taskFormElement?.querySelector(
+                            'input[name="task-type"]:checked'
+                        );
+                        return (
+                            selectedTaskType instanceof HTMLInputElement &&
+                            selectedTaskType.value !== 'activity'
+                        );
+                    },
                     defaultButtonHTML: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
                     defaultButtonClasses: addTaskBtn.className,
                     overlapButtonHTML:
@@ -254,6 +266,29 @@ async function initAndBootApp(roomCode) {
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
+
+    const activityListElement = document.getElementById('activity-list');
+    if (activityListElement) {
+        activityListElement.addEventListener(
+            'submit',
+            (event) => {
+                handleActivityListSubmit(event, {
+                    refreshUI
+                });
+            },
+            { signal }
+        );
+        activityListElement.addEventListener(
+            'keydown',
+            (event) => {
+                handleActivityListKeydown(event, {
+                    refreshUI
+                });
+            },
+            { signal }
+        );
+        activityListElement.addEventListener('input', handleActivityListInput, { signal });
+    }
 
     // Wire up sync status indicator + refresh after sync
     unsubscribeSyncStatus = onSyncStatusChange((status) => {

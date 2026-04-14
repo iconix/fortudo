@@ -3,6 +3,7 @@ import { getTodaysActivities, getRunningActivity } from './manager.js';
 import { renderActivities } from './renderer.js';
 import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from './handlers.js';
 import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
+import { computeEndTimePreview } from '../tasks/form-utils.js';
 
 let editingActivityId = null;
 
@@ -124,19 +125,13 @@ export function handleActivityListClick(target, deps) {
         return true;
     }
 
-    const saveActivityEditButton = target.closest('.btn-save-activity-edit');
+    const saveActivityEditButton = target.closest('.btn-save-activity-edit[type="button"]');
     if (saveActivityEditButton instanceof HTMLElement) {
         const editForm = saveActivityEditButton.closest(
             'form.activity-inline-edit-form[data-activity-id]'
         );
-        const activityId = editForm?.getAttribute('data-activity-id');
-        if (activityId && editForm instanceof HTMLFormElement) {
-            void handleSaveActivityEdit(activityId, editForm).then((result) => {
-                if (result?.success) {
-                    editingActivityId = null;
-                }
-                deps.refreshUI();
-            });
+        if (editForm instanceof HTMLFormElement) {
+            void saveInlineActivityEdit(editForm, deps);
         }
         return true;
     }
@@ -165,4 +160,89 @@ export function handleActivityListClick(target, deps) {
     }
 
     return false;
+}
+
+async function saveInlineActivityEdit(editForm, deps) {
+    const activityId = editForm.getAttribute('data-activity-id');
+    if (!activityId) {
+        return false;
+    }
+
+    const result = await handleSaveActivityEdit(activityId, editForm);
+    if (result?.success) {
+        editingActivityId = null;
+    }
+    deps.refreshUI();
+    return true;
+}
+
+export function handleActivityListSubmit(event, deps) {
+    const editForm = event.target;
+    if (!(editForm instanceof HTMLFormElement)) {
+        return false;
+    }
+
+    if (!editForm.matches('form.activity-inline-edit-form[data-activity-id]')) {
+        return false;
+    }
+
+    event.preventDefault();
+    void saveInlineActivityEdit(editForm, deps);
+    return true;
+}
+
+export function handleActivityListKeydown(event, deps) {
+    if (event.key !== 'Enter') {
+        return false;
+    }
+
+    if (!(event.target instanceof HTMLInputElement)) {
+        return false;
+    }
+
+    const editForm = event.target.closest('form.activity-inline-edit-form[data-activity-id]');
+    if (!(editForm instanceof HTMLFormElement)) {
+        return false;
+    }
+
+    event.preventDefault();
+    void saveInlineActivityEdit(editForm, deps);
+    return true;
+}
+
+export function handleActivityListInput(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+        return false;
+    }
+
+    const editForm = target.closest('form.activity-inline-edit-form[data-activity-id]');
+    if (!(editForm instanceof HTMLFormElement)) {
+        return false;
+    }
+
+    const startInput = editForm.querySelector('input[name="start-time"]');
+    const hoursInput = editForm.querySelector('input[name="duration-hours"]');
+    const minutesInput = editForm.querySelector('input[name="duration-minutes"]');
+    const hintElement = editForm.querySelector('.edit-end-time-hint');
+
+    if (
+        !(startInput instanceof HTMLInputElement) ||
+        !(hoursInput instanceof HTMLInputElement) ||
+        !(minutesInput instanceof HTMLInputElement) ||
+        !(hintElement instanceof HTMLElement)
+    ) {
+        return false;
+    }
+
+    const preview = computeEndTimePreview(startInput.value, hoursInput.value, minutesInput.value);
+    if (preview) {
+        hintElement.textContent = `\u25b8 ${preview}`;
+        hintElement.classList.remove('opacity-0');
+    } else {
+        hintElement.textContent = '';
+        hintElement.classList.add('opacity-0');
+    }
+
+    return true;
 }

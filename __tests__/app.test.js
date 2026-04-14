@@ -430,6 +430,31 @@ describe('App.js Callback Functions', () => {
             expect(descriptionInput.getAttribute('placeholder')).toBe('What did you work on?');
         });
 
+        test('activity mode keeps the activity button label when time inputs change', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityRadio = document.getElementById('activity');
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            const durationHoursInput = document.querySelector(
+                '#task-form input[name="duration-hours"]'
+            );
+            const addTaskButton = document.getElementById('add-task-btn');
+            const overlapWarning = document.getElementById('overlap-warning');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            startTimeInput.value = '10:00';
+            startTimeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            durationHoursInput.value = '1';
+            durationHoursInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            expect(addTaskButton.textContent).toContain('Log Activity');
+            expect(overlapWarning.textContent).toBe('');
+        });
+
         test('activity list delegates inline activity save and delete controls to the activity handlers', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
@@ -499,6 +524,39 @@ describe('App.js Callback Functions', () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(mockHandleSaveActivityEdit).not.toHaveBeenCalled();
+        });
+
+        test('pressing Enter in an activity inline edit form saves the edit', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-43" data-activity-date="2026-04-07">
+                    <input name="description" value="Updated activity" />
+                    <input name="start-time" value="09:00" />
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="0" />
+                    <select name="category"></select>
+                    <button type="submit" class="btn-save-activity-edit">Save</button>
+                </form>
+            `;
+
+            activityList.querySelector('input[name="description"]').dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    bubbles: true,
+                    cancelable: true
+                })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-43',
+                expect.any(HTMLFormElement)
+            );
         });
 
         test('activity actions can resolve ids from the ancestor activity element', async () => {

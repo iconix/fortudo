@@ -31,6 +31,9 @@ import {
     renderTodayActivities,
     handleActivityAwareFormSubmit,
     handleActivityListClick,
+    handleActivityListSubmit,
+    handleActivityListKeydown,
+    handleActivityListInput,
     resetActivityInlineEditState
 } from '../public/js/activities/ui-handlers.js';
 import { extractActivityFormData } from '../public/js/activities/form-utils.js';
@@ -289,6 +292,204 @@ describe('activity app integration', () => {
             activityList.querySelector('form')
         );
         expect(refreshUIMock).toHaveBeenCalled();
+    });
+
+    test('submitting inline activity edits delegates the form to the activity edit handler', async () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="15" />
+                <select name="category"><option value="work/deep" selected>Deep Work</option></select>
+                <button class="btn-save-activity-edit" type="submit"><span>Save</span></button>
+            </form>
+        `;
+        const refreshUIMock = jest.fn();
+        const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+
+        Object.defineProperty(submitEvent, 'target', {
+            value: activityList.querySelector('form'),
+            configurable: true
+        });
+
+        const handled = handleActivityListSubmit(submitEvent, {
+            refreshUI: refreshUIMock,
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(handled).toBe(true);
+        expect(handleSaveActivityEdit).toHaveBeenCalledWith(
+            'activity-11',
+            activityList.querySelector('form')
+        );
+        expect(refreshUIMock).toHaveBeenCalled();
+    });
+
+    test('pressing Enter in inline activity edit delegates save to the activity edit handler', async () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="15" />
+                <select name="category"><option value="work/deep" selected>Deep Work</option></select>
+                <button class="btn-save-activity-edit" type="submit"><span>Save</span></button>
+            </form>
+        `;
+        const refreshUIMock = jest.fn();
+        const enterEvent = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true
+        });
+
+        Object.defineProperty(enterEvent, 'target', {
+            value: activityList.querySelector('input[name="description"]'),
+            configurable: true
+        });
+
+        const handled = handleActivityListKeydown(enterEvent, {
+            refreshUI: refreshUIMock,
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(handled).toBe(true);
+        expect(handleSaveActivityEdit).toHaveBeenCalledWith(
+            'activity-11',
+            activityList.querySelector('form')
+        );
+        expect(refreshUIMock).toHaveBeenCalled();
+    });
+
+    test('non-Enter key in inline activity edit does not trigger save', () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+            </form>
+        `;
+        const keydownEvent = new KeyboardEvent('keydown', {
+            key: 'Tab',
+            bubbles: true,
+            cancelable: true
+        });
+
+        Object.defineProperty(keydownEvent, 'target', {
+            value: activityList.querySelector('input[name="description"]'),
+            configurable: true
+        });
+
+        const handled = handleActivityListKeydown(keydownEvent, {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+
+        expect(handled).toBe(false);
+        expect(handleSaveActivityEdit).not.toHaveBeenCalled();
+    });
+
+    test('non-form submit target in activity list is ignored', () => {
+        const activityList = document.getElementById('activity-list');
+        const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+
+        Object.defineProperty(submitEvent, 'target', {
+            value: activityList,
+            configurable: true
+        });
+
+        const handled = handleActivityListSubmit(submitEvent, {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+
+        expect(handled).toBe(false);
+        expect(handleSaveActivityEdit).not.toHaveBeenCalled();
+    });
+
+    test('input on inline activity edit updates the end-time hint', () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <div>
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="15" />
+                    <span class="edit-end-time-hint opacity-0"></span>
+                </div>
+            </form>
+        `;
+        const startInput = activityList.querySelector('input[name="start-time"]');
+        const hintElement = activityList.querySelector('.edit-end-time-hint');
+        startInput.value = '10:00';
+        const inputEvent = new Event('input', { bubbles: true });
+
+        Object.defineProperty(inputEvent, 'target', {
+            value: startInput,
+            configurable: true
+        });
+
+        const handled = handleActivityListInput(inputEvent);
+
+        expect(handled).toBe(true);
+        expect(hintElement.textContent).toContain('AM');
+        expect(hintElement.classList.contains('opacity-0')).toBe(false);
+    });
+
+    test('input on inline activity edit clears the end-time hint when preview is invalid', () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <div>
+                    <input name="duration-hours" value="0" />
+                    <input name="duration-minutes" value="0" />
+                    <span class="edit-end-time-hint">▸ 10:00 AM</span>
+                </div>
+            </form>
+        `;
+        const hoursInput = activityList.querySelector('input[name="duration-hours"]');
+        const hintElement = activityList.querySelector('.edit-end-time-hint');
+        const inputEvent = new Event('input', { bubbles: true });
+
+        Object.defineProperty(inputEvent, 'target', {
+            value: hoursInput,
+            configurable: true
+        });
+
+        const handled = handleActivityListInput(inputEvent);
+
+        expect(handled).toBe(true);
+        expect(hintElement.textContent).toBe('');
+        expect(hintElement.classList.contains('opacity-0')).toBe(true);
+    });
+
+    test('input on inline activity edit without a hint element is ignored', () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="15" />
+            </form>
+        `;
+        const inputEvent = new Event('input', { bubbles: true });
+
+        Object.defineProperty(inputEvent, 'target', {
+            value: activityList.querySelector('input[name="duration-hours"]'),
+            configurable: true
+        });
+
+        const handled = handleActivityListInput(inputEvent);
+
+        expect(handled).toBe(false);
     });
 
     test('canceling inline activity edit clears the inline edit state', async () => {
