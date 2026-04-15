@@ -921,6 +921,7 @@ describe('DOM Handler Interaction Tests', () => {
                 onEditUnscheduledTask: jest.fn(),
                 onDeleteUnscheduledTask: jest.fn(),
                 onScheduleUnscheduledTask: jest.fn(),
+                onStartTimerFromUnscheduledTask: jest.fn(),
                 onSaveUnscheduledTaskEdit: jest.fn(),
                 onCancelUnscheduledTaskEdit: jest.fn()
             };
@@ -935,6 +936,7 @@ describe('DOM Handler Interaction Tests', () => {
                             <i class="fa-regular ${isCompleted ? 'fa-check-square' : 'fa-square'}"></i>
                         </label>
                         <span>Test Task</span>
+                        <button class="btn-start-unscheduled-timer" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Start Timer</button>
                         <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
                         <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
                         <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
@@ -979,6 +981,17 @@ describe('DOM Handler Interaction Tests', () => {
                 'Test Task',
                 '1h'
             );
+        });
+
+        test('start timer button calls onStartTimerFromUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const startTimerBtn = document.querySelector('.btn-start-unscheduled-timer');
+            startTimerBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(
+                mockUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask
+            ).toHaveBeenCalledWith('unsched-1');
         });
 
         test('schedule button does not call callback for completed task', () => {

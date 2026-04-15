@@ -32,7 +32,28 @@ describe('running activity repository', () => {
         await expect(loadRunningActivityConfig()).resolves.toEqual({
             description: 'Focus',
             category: 'work/deep',
-            startDateTime: '2026-04-09T10:00:00.000Z'
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
+        });
+    });
+
+    test('loads optional provenance fields for task-linked timers', async () => {
+        loadConfig.mockResolvedValueOnce({
+            id: 'config-running-activity',
+            description: 'Inbox zero',
+            category: 'break/admin',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'unsched-7'
+        });
+
+        await expect(loadRunningActivityConfig()).resolves.toEqual({
+            description: 'Inbox zero',
+            category: 'break/admin',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'unsched-7'
         });
     });
 
@@ -44,14 +65,37 @@ describe('running activity repository', () => {
         await saveRunningActivityConfig({
             description: 'Focus',
             category: null,
-            startDateTime: '2026-04-09T10:00:00.000Z'
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
         });
 
         expect(putConfig).toHaveBeenCalledWith({
             id: 'config-running-activity',
             description: 'Focus',
             category: null,
-            startDateTime: '2026-04-09T10:00:00.000Z'
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
+        });
+    });
+
+    test('saves linked source task provenance for promoted unscheduled timers', async () => {
+        await saveRunningActivityConfig({
+            description: 'Email triage',
+            category: 'break/admin',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'unsched-7'
+        });
+
+        expect(putConfig).toHaveBeenCalledWith({
+            id: 'config-running-activity',
+            description: 'Email triage',
+            category: 'break/admin',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'unsched-7'
         });
     });
 

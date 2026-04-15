@@ -66,7 +66,7 @@ describe('activity manager', () => {
             expect(putActivity).not.toHaveBeenCalled();
         });
 
-        test('rejects activity with zero duration', async () => {
+        test('rounds manual zero-duration activity payloads up to one minute', async () => {
             const result = await addActivity({
                 description: 'Test',
                 startDateTime: '2026-04-07T09:00:00.000Z',
@@ -76,11 +76,12 @@ describe('activity manager', () => {
                 sourceTaskId: null
             });
 
-            expect(result.success).toBe(false);
-            expect(result.reason).toMatch(/duration/i);
+            expect(result.success).toBe(true);
+            expect(result.activity.duration).toBe(1);
+            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
         });
 
-        test('allows activity with zero duration when source is timer', async () => {
+        test('rounds sub-minute completed activities up to one minute at the shared addActivity seam', async () => {
             const result = await addActivity({
                 description: 'Instant stop',
                 startDateTime: '2026-04-07T09:00:00.000Z',
@@ -91,8 +92,15 @@ describe('activity manager', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(result.activity.duration).toBe(0);
-            expect(putActivity).toHaveBeenCalledWith(expect.objectContaining({ source: 'timer' }));
+            expect(result.activity.duration).toBe(1);
+            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
+            expect(putActivity).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    source: 'timer',
+                    duration: 1,
+                    endDateTime: '2026-04-07T09:01:00.000Z'
+                })
+            );
         });
 
         test('rejects activity with missing times', async () => {

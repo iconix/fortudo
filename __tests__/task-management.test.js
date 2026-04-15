@@ -27,7 +27,8 @@ import {
     getTaskById,
     getTaskIndex,
     setTaskInlineEditing,
-    resetAllInlineEditingFlags
+    resetAllInlineEditingFlags,
+    consumeUnscheduledTask
 } from '../public/js/tasks/manager.js';
 import { isValidTaskData } from '../public/js/tasks/validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
@@ -2423,6 +2424,37 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([]);
             const result = deleteUnscheduledTask('nonexistent');
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('consumeUnscheduledTask', () => {
+        test('removes an incomplete unscheduled task without confirmation', () => {
+            const task = {
+                id: 'unsched-linked',
+                type: 'unscheduled',
+                description: 'Linked task',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                confirmingDelete: false
+            };
+            updateTaskState([task]);
+
+            const result = consumeUnscheduledTask('unsched-linked');
+
+            expect(result.success).toBe(true);
+            expect(result.task).toEqual(expect.objectContaining({ id: 'unsched-linked' }));
+            expect(getTaskState()).toEqual([]);
+            expect(mockDeleteTaskFromStorage).toHaveBeenCalledWith('unsched-linked');
+        });
+
+        test('returns failure for missing unscheduled tasks', () => {
+            updateTaskState([]);
+
+            const result = consumeUnscheduledTask('missing-unsched');
+
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe('Unscheduled task not found.');
         });
     });
 

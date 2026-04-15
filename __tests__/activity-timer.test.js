@@ -16,6 +16,10 @@ jest.mock('../public/js/activities/running-activity-repository.js', () => ({
     deleteRunningActivityConfig: jest.fn(() => Promise.resolve())
 }));
 
+jest.mock('../public/js/tasks/manager.js', () => ({
+    consumeUnscheduledTask: jest.fn(() => ({ success: true }))
+}));
+
 import {
     loadRunningActivity,
     getRunningActivity,
@@ -33,6 +37,7 @@ import {
     saveRunningActivityConfig,
     deleteRunningActivityConfig
 } from '../public/js/activities/running-activity-repository.js';
+import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
 
 describe('Timer state primitives', () => {
     beforeEach(() => {
@@ -124,7 +129,26 @@ describe('startTimer', () => {
         expect(saveRunningActivityConfig).toHaveBeenCalledWith({
             description: 'Test',
             category: null,
-            startDateTime: '2026-04-09T14:00:00.000Z'
+            startDateTime: '2026-04-09T14:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
+        });
+    });
+
+    test('persists linked source task provenance on the running timer config', async () => {
+        await startTimer({
+            description: 'Inbox zero',
+            category: 'break/admin',
+            source: 'auto',
+            sourceTaskId: 'unsched-42'
+        });
+
+        expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            description: 'Inbox zero',
+            category: 'break/admin',
+            startDateTime: '2026-04-09T14:00:00.000Z',
+            source: 'auto',
+            sourceTaskId: 'unsched-42'
         });
     });
 
@@ -165,6 +189,13 @@ describe('startTimer', () => {
 
         expect(result.runningActivity.category).toBeNull();
     });
+
+    test('defaults provenance to a plain timer when not started from a task', async () => {
+        const result = await startTimer({ description: 'No source task' });
+
+        expect(result.runningActivity.source).toBe('timer');
+        expect(result.runningActivity.sourceTaskId).toBeNull();
+    });
 });
 
 describe('stopTimer', () => {
@@ -193,6 +224,25 @@ describe('stopTimer', () => {
         expect(result.activity.startDateTime).toBe('2026-04-09T10:00:00.000Z');
         expect(result.activity.endDateTime).toBe('2026-04-09T11:30:00.000Z');
         expect(result.activity.duration).toBe(90);
+    });
+
+    test('consumes a linked unscheduled task and preserves auto provenance when timer stops', async () => {
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        await startTimer({
+            description: 'Inbox cleanup',
+            category: 'break/admin',
+            source: 'auto',
+            sourceTaskId: 'unsched-99'
+        });
+        jest.clearAllMocks();
+
+        jest.setSystemTime(new Date('2026-04-09T10:12:00.000Z'));
+        const result = await stopTimer();
+
+        expect(result.success).toBe(true);
+        expect(result.activity.source).toBe('auto');
+        expect(result.activity.sourceTaskId).toBe('unsched-99');
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-99');
     });
 
     test('persists the created activity', async () => {
@@ -256,14 +306,15 @@ describe('stopTimer', () => {
         expect(result.reason).toMatch(/no timer/i);
     });
 
-    test('handles zero-duration timer', async () => {
+    test('rounds sub-minute completed timers up to one minute', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
         await startTimer({ description: 'Quick' });
 
         const result = await stopTimer();
 
         expect(result.success).toBe(true);
-        expect(result.activity.duration).toBe(0);
+        expect(result.activity.duration).toBe(1);
+        expect(result.activity.endDateTime).toBe('2026-04-09T10:01:00.000Z');
     });
 });
 
@@ -290,7 +341,7 @@ describe('stopTimerAt', () => {
         expect(result.activity.duration).toBe(45);
     });
 
-    test('clamps to zero duration when endDateTime is before startDateTime', async () => {
+    test('clamps invalid timer end times to a one-minute completed activity', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:30:00.000Z'));
         await startTimer({ description: 'Late start' });
 
@@ -298,9 +349,9 @@ describe('stopTimerAt', () => {
         const result = await stopTimerAt('2026-04-09T10:00:00.000Z');
 
         expect(result.success).toBe(true);
-        expect(result.activity.duration).toBe(0);
+        expect(result.activity.duration).toBe(1);
         expect(result.activity.startDateTime).toBe('2026-04-09T10:30:00.000Z');
-        expect(result.activity.endDateTime).toBe('2026-04-09T10:30:00.000Z');
+        expect(result.activity.endDateTime).toBe('2026-04-09T10:31:00.000Z');
     });
 
     test('returns failure when no timer is running', async () => {
@@ -335,7 +386,9 @@ describe('updateRunningActivity', () => {
         expect(saveRunningActivityConfig).toHaveBeenCalledWith({
             description: 'Updated',
             category: null,
-            startDateTime: '2026-04-09T10:00:00.000Z'
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
         });
     });
 
@@ -404,7 +457,9 @@ describe('startTimerReplacingCurrent', () => {
             runningActivity: {
                 description: 'First timer',
                 category: null,
-                startDateTime: '2026-04-09T10:00:00.000Z'
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
             },
             stoppedActivity: null
         });
@@ -428,7 +483,9 @@ describe('startTimerReplacingCurrent', () => {
         expect(result.runningActivity).toEqual({
             description: 'Next timer',
             category: null,
-            startDateTime: '2026-04-09T10:00:00.000Z'
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
         });
     });
 

@@ -1,6 +1,7 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
 import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
+import { getRunningActivity } from '../activities/manager.js';
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {
@@ -66,12 +67,19 @@ function getDurationText(estDuration) {
  * @returns {string} HTML string for the display view
  */
 function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted) {
-    const completedClass = isCompleted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+    const runningActivity = getRunningActivity();
+    const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
+    const isDisabled = isCompleted || isLinkedToRunningTimer;
+    const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
     const checkIcon = isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500';
     const textStrike = isCompleted ? 'line-through opacity-70' : '';
     const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
-    const disabledAttr = isCompleted ? 'disabled class="opacity-50 cursor-not-allowed"' : '';
+    const disabledAttr = isDisabled ? 'disabled' : '';
+    const disabledButtonClasses = isDisabled ? ' opacity-50 cursor-not-allowed' : '';
+    const inProgressBadge = isLinkedToRunningTimer
+        ? '<span class="unscheduled-in-progress-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] tracking-normal bg-slate-700/70 text-sky-200 border border-slate-500/40">In progress</span>'
+        : '';
 
     return `
         <div class="flex items-start space-x-3 min-w-0 flex-1">
@@ -79,7 +87,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
             <div class="min-w-0 flex-1">
-                <div class="font-medium text-white ${textStrike} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)}</div>
+                <div class="font-medium text-white ${textStrike} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)} ${inProgressBadge}</div>
                 <div class="text-xs text-gray-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
                     <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
                         <i class="${priorityClasses.icon} mr-1 text-xs"></i>${priorityLabel} Priority
@@ -91,13 +99,16 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
             </div>
         </div>
         <div class="flex space-x-1 ml-auto">
-            <button class="text-gray-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task" title="Schedule task" data-task-id="${task.id}" ${disabledAttr}>
+            <button class="text-gray-400 hover:text-sky-300 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-start-unscheduled-timer${disabledButtonClasses}" title="Start timer from task" data-task-id="${task.id}" ${disabledAttr}>
+                <i class="fa-solid fa-stopwatch text-sm sm:text-base"></i>
+            </button>
+            <button class="text-gray-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-schedule-task${disabledButtonClasses}" title="Schedule task" data-task-id="${task.id}" ${disabledAttr}>
                 <i class="fa-regular fa-calendar-plus text-sm sm:text-base"></i>
             </button>
-            <button class="text-gray-400 hover:text-amber-300 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled" title="Edit task" data-task-id="${task.id}">
+            <button class="text-gray-400 hover:text-amber-300 p-1.5 sm:p-2 hover:bg-gray-700 rounded-lg transition-colors btn-edit-unscheduled${disabledButtonClasses}" title="Edit task" data-task-id="${task.id}" ${disabledAttr}>
                 <i class="fa-solid fa-pen text-sm sm:text-base"></i>
             </button>
-            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-gray-400 hover:text-rose-500 hover:bg-gray-700 rounded-lg transition-colors'} btn-delete-unscheduled p-1.5 sm:p-2" title="Delete task" data-task-id="${task.id}">
+            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-gray-400 hover:text-rose-500 hover:bg-gray-700 rounded-lg transition-colors'} btn-delete-unscheduled p-1.5 sm:p-2${disabledButtonClasses}" title="Delete task" data-task-id="${task.id}" ${disabledAttr}>
                 <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-sm sm:text-base"></i>
             </button>
         </div>
@@ -193,10 +204,11 @@ function createInlineEditFormHTML(task) {
 function createUnscheduledTaskCard(task) {
     const priorityClasses = getPriorityClasses(task.priority);
     const isCompleted = task.status === 'completed';
+    const isLinkedToRunningTimer = getRunningActivity()?.sourceTaskId === task.id;
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
-    taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2`;
+    taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
     taskCard.dataset.taskId = task.id;
     taskCard.dataset.taskName = task.description;
     taskCard.dataset.taskEstDuration = durationText;

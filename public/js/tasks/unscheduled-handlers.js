@@ -18,6 +18,19 @@ import { refreshUI } from '../dom-renderer.js';
 import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { getThemeForTaskId } from './confirmation-helpers.js';
+import { handleStartTimer } from '../activities/handlers.js';
+import { syncTimerFormState } from '../activities/timer-ui.js';
+
+function activateActivityMode() {
+    const activityRadio = document.getElementById('activity');
+    if (!(activityRadio instanceof HTMLInputElement) || activityRadio.checked) {
+        return;
+    }
+
+    activityRadio.checked = true;
+    activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    syncTimerFormState();
+}
 
 export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);
@@ -33,6 +46,31 @@ export function handleScheduleUnscheduledTask(taskId) {
             getSuggestedStartTime()
         );
     } else logger.error(`Task to schedule not found: ${taskId}`);
+}
+
+export async function handleStartTimerFromUnscheduledTask(taskId) {
+    const task = getTaskById(taskId);
+    if (!task || task.type !== 'unscheduled') {
+        logger.error(`Unscheduled task not found for timer start: ${taskId}`);
+        return;
+    }
+
+    if (task.status === 'completed') {
+        showAlert('This task is already completed and cannot be started as a timer.', 'indigo');
+        return;
+    }
+
+    const result = await handleStartTimer({
+        description: task.description,
+        category: task.category || null,
+        source: 'auto',
+        sourceTaskId: task.id
+    });
+
+    if (result?.success) {
+        activateActivityMode();
+        refreshUI();
+    }
 }
 
 export function handleEditUnscheduledTask(taskId) {
@@ -146,6 +184,7 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
 export function createUnscheduledTaskCallbacks() {
     return {
         onScheduleUnscheduledTask: handleScheduleUnscheduledTask,
+        onStartTimerFromUnscheduledTask: handleStartTimerFromUnscheduledTask,
         onEditUnscheduledTask: handleEditUnscheduledTask,
         onDeleteUnscheduledTask: handleDeleteUnscheduledTask,
         onConfirmScheduleTask: handleConfirmScheduleTask,

@@ -10,7 +10,9 @@ function normalizeRunningActivityConfig(config) {
     return {
         description: config.description,
         category: config.category || null,
-        startDateTime: config.startDateTime
+        startDateTime: config.startDateTime,
+        source: config.source || 'timer',
+        sourceTaskId: config.sourceTaskId || null
     };
 }
 
@@ -24,7 +26,9 @@ export async function saveRunningActivityConfig(runningActivity) {
         id: RUNNING_ACTIVITY_CONFIG_ID,
         description: runningActivity.description,
         category: runningActivity.category || null,
-        startDateTime: runningActivity.startDateTime
+        startDateTime: runningActivity.startDateTime,
+        source: runningActivity.source || 'timer',
+        sourceTaskId: runningActivity.sourceTaskId || null
     });
 }
 

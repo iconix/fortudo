@@ -4,6 +4,7 @@
 
 import {
     handleScheduleUnscheduledTask,
+    handleStartTimerFromUnscheduledTask,
     handleEditUnscheduledTask,
     handleDeleteUnscheduledTask,
     handleConfirmScheduleTask,
@@ -60,6 +61,14 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/activities/handlers.js', () => ({
+    handleStartTimer: jest.fn(() => Promise.resolve({ success: true }))
+}));
+
+jest.mock('../public/js/activities/timer-ui.js', () => ({
+    syncTimerFormState: jest.fn()
+}));
+
 jest.mock('../public/js/app-coordinator.js', () => ({
     onTaskEdited: jest.fn(),
     onTaskDeleted: jest.fn(),
@@ -84,10 +93,12 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
 }));
 
 import { refreshUI } from '../public/js/dom-renderer.js';
-import { showAlert, showScheduleModal } from '../public/js/modal-manager.js';
+import { showAlert, showScheduleModal, askConfirmation } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { getUnscheduledTaskInlineFormData } from '../public/js/tasks/form-utils.js';
 import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../public/js/app-coordinator.js';
+import { handleStartTimer } from '../public/js/activities/handlers.js';
+import { syncTimerFormState } from '../public/js/activities/timer-ui.js';
 
 function createUnscheduledTask(overrides = {}) {
     return {
@@ -121,6 +132,7 @@ describe('Unscheduled Task Handlers', () => {
         test('returns object with all expected callback properties', () => {
             const callbacks = createUnscheduledTaskCallbacks();
             expect(callbacks).toHaveProperty('onScheduleUnscheduledTask');
+            expect(callbacks).toHaveProperty('onStartTimerFromUnscheduledTask');
             expect(callbacks).toHaveProperty('onEditUnscheduledTask');
             expect(callbacks).toHaveProperty('onDeleteUnscheduledTask');
             expect(callbacks).toHaveProperty('onConfirmScheduleTask');
@@ -159,6 +171,76 @@ describe('Unscheduled Task Handlers', () => {
         });
     });
 
+    describe('handleStartTimerFromUnscheduledTask', () => {
+        test('starts a linked timer from an incomplete unscheduled task, switches to activity mode, and refreshes UI', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-linked',
+                description: 'Email triage',
+                category: 'break/admin'
+            });
+            updateTaskState([task]);
+            document.body.innerHTML += `
+                <input id="activity" type="radio" name="task-type" />
+            `;
+            const activityRadio = document.getElementById('activity');
+            const onActivityModeChange = jest.fn();
+            activityRadio.addEventListener('change', onActivityModeChange);
+
+            await handleStartTimerFromUnscheduledTask(task.id);
+
+            expect(handleStartTimer).toHaveBeenCalledWith({
+                description: 'Email triage',
+                category: 'break/admin',
+                source: 'auto',
+                sourceTaskId: 'unsched-linked'
+            });
+            expect(activityRadio.checked).toBe(true);
+            expect(onActivityModeChange).toHaveBeenCalledTimes(1);
+            expect(syncTimerFormState).toHaveBeenCalledTimes(1);
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('shows alert instead of starting a timer for a completed unscheduled task', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-complete',
+                status: 'completed'
+            });
+            updateTaskState([task]);
+
+            await handleStartTimerFromUnscheduledTask(task.id);
+
+            expect(handleStartTimer).not.toHaveBeenCalled();
+            expect(showAlert).toHaveBeenCalledWith(
+                'This task is already completed and cannot be started as a timer.',
+                'indigo'
+            );
+        });
+
+        test('does not refresh UI when linked timer start fails', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-fail',
+                description: 'Email triage'
+            });
+            updateTaskState([task]);
+            handleStartTimer.mockResolvedValueOnce({
+                success: false,
+                reason: 'Could not start timer.'
+            });
+
+            await handleStartTimerFromUnscheduledTask(task.id);
+
+            expect(handleStartTimer).toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('ignores missing unscheduled tasks when starting a linked timer', async () => {
+            await handleStartTimerFromUnscheduledTask('missing-unsched');
+
+            expect(handleStartTimer).not.toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
+        });
+    });
+
     describe('handleEditUnscheduledTask', () => {
         test('toggles editing mode on', () => {
             const task = createUnscheduledTask();
@@ -189,6 +271,12 @@ describe('Unscheduled Task Handlers', () => {
 
             expect(getTaskById(task1.id).isEditingInline).toBe(false);
             expect(getTaskById(task2.id).isEditingInline).toBe(true);
+        });
+
+        test('shows alert when asked to edit a missing unscheduled task', () => {
+            handleEditUnscheduledTask('missing-unsched');
+
+            expect(showAlert).toHaveBeenCalledWith('Could not find the task to edit.', 'teal');
         });
     });
 
@@ -248,6 +336,39 @@ describe('Unscheduled Task Handlers', () => {
             });
             expect(refreshUI).not.toHaveBeenCalled();
         });
+
+        test('shows alert and refreshes when overlap confirmation is declined', async () => {
+            jest.spyOn(taskManager, 'scheduleUnscheduledTask').mockReturnValueOnce({
+                success: false,
+                requiresConfirmation: true,
+                reason: 'Scheduling will overlap other tasks. Reschedule them?',
+                context: {
+                    unscheduledTaskId: 'unsched-overlap',
+                    scheduledTaskData: { description: 'Overlap task', startTime: '09:00' }
+                }
+            });
+            askConfirmation.mockResolvedValueOnce(false);
+
+            await handleConfirmScheduleTask('unsched-overlap', '09:00', 30);
+
+            expect(showAlert).toHaveBeenCalledWith(
+                'Task not scheduled to avoid overlap.',
+                'indigo'
+            );
+            expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('shows alert and refreshes when scheduling fails without confirmation flow', async () => {
+            jest.spyOn(taskManager, 'scheduleUnscheduledTask').mockReturnValueOnce({
+                success: false,
+                reason: 'Unscheduled task not found.'
+            });
+
+            await handleConfirmScheduleTask('missing-unsched', '09:00', 30);
+
+            expect(showAlert).toHaveBeenCalledWith('Unscheduled task not found.', 'indigo');
+            expect(refreshUI).toHaveBeenCalled();
+        });
     });
 
     describe('handleSaveUnscheduledTaskEdit', () => {
@@ -274,6 +395,41 @@ describe('Unscheduled Task Handlers', () => {
                 })
             });
             expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('returns early when inline form extraction fails', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-inline-missing',
+                isEditingInline: true
+            });
+            updateTaskState([task]);
+            getUnscheduledTaskInlineFormData.mockReturnValue(null);
+
+            await handleSaveUnscheduledTaskEdit(task.id);
+
+            expect(onTaskEdited).not.toHaveBeenCalled();
+        });
+
+        test('shows alert when unscheduled inline save fails validation', async () => {
+            const task = createUnscheduledTask({
+                id: 'unsched-inline-invalid',
+                isEditingInline: true
+            });
+            updateTaskState([task]);
+            getUnscheduledTaskInlineFormData.mockReturnValue({
+                description: '',
+                priority: 'high',
+                estDuration: 45
+            });
+            jest.spyOn(taskManager, 'updateUnscheduledTask').mockReturnValueOnce({
+                success: false,
+                reason: 'Task description is required.'
+            });
+
+            await handleSaveUnscheduledTaskEdit(task.id);
+
+            expect(showAlert).toHaveBeenCalledWith('Task description is required.', 'indigo');
+            expect(onTaskEdited).not.toHaveBeenCalled();
         });
     });
 

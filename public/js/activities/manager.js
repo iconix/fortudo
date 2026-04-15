@@ -9,6 +9,7 @@ import {
     saveRunningActivityConfig,
     deleteRunningActivityConfig
 } from './running-activity-repository.js';
+import { consumeUnscheduledTask } from '../tasks/manager.js';
 
 /** @type {Array<Object>} */
 let activities = [];
@@ -61,6 +62,28 @@ function calculateDurationMinutes(startDateTime, endDateTime) {
     }
 
     return Math.max(0, Math.round((endMs - startMs) / 60000));
+}
+
+function ensureMinimumCompletedActivityDuration(activityData) {
+    if (
+        !activityData?.startDateTime ||
+        !activityData?.endDateTime ||
+        typeof activityData?.duration !== 'number' ||
+        activityData.duration >= 1
+    ) {
+        return activityData;
+    }
+
+    const startMs = new Date(activityData.startDateTime).getTime();
+    if (Number.isNaN(startMs)) {
+        return activityData;
+    }
+
+    return {
+        ...activityData,
+        duration: 1,
+        endDateTime: new Date(startMs + 60000).toISOString()
+    };
 }
 
 function replaceState(nextActivities = []) {
@@ -132,28 +155,27 @@ export async function loadActivitiesState(loadActivities = loadActivitiesFromSto
 }
 
 export async function addActivity(activityData) {
-    const description = activityData?.description?.trim();
+    const normalizedActivityData = ensureMinimumCompletedActivityDuration(activityData);
+    const description = normalizedActivityData?.description?.trim();
 
     if (!description) {
         return { success: false, reason: 'Activity description is required.' };
     }
 
-    if (!activityData?.startDateTime || !activityData?.endDateTime) {
+    if (!normalizedActivityData?.startDateTime || !normalizedActivityData?.endDateTime) {
         return { success: false, reason: 'Activity start and end times are required.' };
     }
 
-    const allowsZeroDuration = activityData?.source === 'timer';
     if (
-        typeof activityData?.duration !== 'number' ||
-        activityData.duration < 0 ||
-        (!allowsZeroDuration && activityData.duration <= 0)
+        typeof normalizedActivityData?.duration !== 'number' ||
+        normalizedActivityData.duration <= 0
     ) {
         return { success: false, reason: 'Activity duration must be greater than 0.' };
     }
 
     const activity = normalizeActivity({
-        ...activityData,
-        id: activityData.id || generateActivityId(),
+        ...normalizedActivityData,
+        id: normalizedActivityData.id || generateActivityId(),
         description
     });
 
@@ -237,7 +259,12 @@ export function getRunningActivity() {
     return runningActivity ? { ...runningActivity } : null;
 }
 
-export async function startTimer({ description, category } = {}) {
+export async function startTimer({
+    description,
+    category,
+    source = 'timer',
+    sourceTaskId = null
+} = {}) {
     const trimmedDescription = description?.trim();
     if (!trimmedDescription) {
         return { success: false, reason: 'Description is required to start a timer.' };
@@ -250,7 +277,9 @@ export async function startTimer({ description, category } = {}) {
     const timerState = {
         description: trimmedDescription,
         category: category || null,
-        startDateTime: new Date().toISOString()
+        startDateTime: new Date().toISOString(),
+        source,
+        sourceTaskId
     };
 
     await saveRunningActivityConfig(timerState);
@@ -297,24 +326,27 @@ export async function stopTimerAt(endDateTime) {
         runningActivity.startDateTime,
         toSafeIsoDateTime(endDateTime)
     );
-    const activity = normalizeActivity({
-        id: generateActivityId(),
+    const activityResult = await addActivity({
         description: runningActivity.description,
         category: runningActivity.category || null,
         startDateTime: runningActivity.startDateTime,
         endDateTime: safeEndDateTime,
         duration: calculateDurationMinutes(runningActivity.startDateTime, safeEndDateTime),
-        source: 'timer',
-        sourceTaskId: null
+        source: runningActivity.source || 'timer',
+        sourceTaskId: runningActivity.sourceTaskId || null
     });
 
-    await putActivity(activity);
-    activities.push(activity);
-    sortByStartDateTime(activities);
+    if (!activityResult?.success) {
+        return activityResult;
+    }
+
+    if (runningActivity.sourceTaskId) {
+        consumeUnscheduledTask(runningActivity.sourceTaskId);
+    }
     await deleteRunningActivityConfig();
     runningActivity = null;
 
-    return { success: true, activity: cloneActivity(activity) };
+    return { success: true, activity: cloneActivity(activityResult.activity) };
 }
 
 export async function updateRunningActivity(updates = {}) {
@@ -339,7 +371,9 @@ export async function updateRunningActivity(updates = {}) {
             : runningActivity.category || null,
         startDateTime: Object.prototype.hasOwnProperty.call(updates, 'startDateTime')
             ? toSafeIsoDateTime(updates.startDateTime, runningActivity.startDateTime)
-            : runningActivity.startDateTime
+            : runningActivity.startDateTime,
+        source: runningActivity.source || 'timer',
+        sourceTaskId: runningActivity.sourceTaskId || null
     };
 
     await saveRunningActivityConfig(nextRunningActivity);

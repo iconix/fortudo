@@ -462,10 +462,15 @@ function handleUnscheduledTaskListClick(event) {
     const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
 
     if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+    if (target.closest('button[disabled]')) return;
 
     const taskId = taskCard.dataset.taskId;
 
-    if (target.closest('.btn-schedule-task')) {
+    if (target.closest('.btn-start-unscheduled-timer')) {
+        if (globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.btn-schedule-task')) {
         if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
             const taskName = taskCard.dataset.taskName || 'Task';
             const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
