@@ -184,7 +184,7 @@ describe('activity manager', () => {
             jest.useRealTimers();
         });
 
-        test('returns only activities from today sorted by start time', async () => {
+        test('returns only activities from today in reverse chronological end-time order', async () => {
             await addActivity({
                 description: 'Yesterday',
                 startDateTime: '2026-04-06T09:00:00.000Z',
@@ -213,8 +213,35 @@ describe('activity manager', () => {
             const todays = getTodaysActivities();
 
             expect(todays).toHaveLength(2);
-            expect(todays[0].description).toBe('Today earlier');
-            expect(todays[1].description).toBe('Today later');
+            expect(todays[0].description).toBe('Today later');
+            expect(todays[1].description).toBe('Today earlier');
+        });
+
+        test('suggested activity start time uses the latest end time even when list order is reversed', () => {
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Earlier',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:45:00.000Z',
+                    duration: 45,
+                    source: 'manual',
+                    sourceTaskId: null
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Latest end',
+                    startDateTime: '2026-04-07T09:30:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 60,
+                    source: 'auto',
+                    sourceTaskId: 'sched-1'
+                }
+            ]);
+
+            expect(getSuggestedActivityStartTime()).toBe(
+                extractTimeFromDateTime(new Date('2026-04-07T10:30:00.000Z'))
+            );
         });
 
         test('returns the latest activity end time as the suggested activity start time', async () => {

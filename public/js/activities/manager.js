@@ -96,7 +96,7 @@ export function getTodaysActivities(now = new Date()) {
                 extractDateFromDateTime(new Date(activity.startDateTime)) === today
         )
         .slice()
-        .sort((left, right) => new Date(left.startDateTime) - new Date(right.startDateTime))
+        .sort((left, right) => new Date(right.endDateTime) - new Date(left.endDateTime))
         .map(cloneActivity);
 }
 
@@ -106,7 +106,13 @@ export function getSuggestedActivityStartTime(now = new Date()) {
         return null;
     }
 
-    const latestActivity = todaysActivities[todaysActivities.length - 1];
+    const latestActivity = todaysActivities.reduce((latest, activity) => {
+        if (!latest) {
+            return activity;
+        }
+
+        return new Date(activity.endDateTime) > new Date(latest.endDateTime) ? activity : latest;
+    }, null);
     if (!latestActivity?.endDateTime) {
         return null;
     }
