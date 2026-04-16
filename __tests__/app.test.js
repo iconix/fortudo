@@ -183,6 +183,7 @@ describe('App.js Callback Functions', () => {
     beforeEach(async () => {
         // Reset DOM and app state
         document.body.innerHTML = '';
+        window.alert = jest.fn();
         clearLocalStorage();
         jest.clearAllMocks();
         resetEventDelegation();
@@ -617,6 +618,9 @@ describe('App.js Callback Functions', () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(mockHandleAddActivity).not.toHaveBeenCalled();
+            expect(window.alert).toHaveBeenCalledWith(
+                'Alert: Activity description cannot be empty.'
+            );
             expect(document.activeElement).toBe(descriptionInput);
             expect(activityRadio.checked).toBe(true);
             expect(addTaskButton.textContent).toContain('Log Activity');
