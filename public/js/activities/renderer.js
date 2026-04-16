@@ -157,6 +157,35 @@ function getParentSummaryInteractionClasses(summaryItem) {
     };
 }
 
+function renderParentSummarySegment(summaryItem, totalDuration) {
+    const interactionClasses = getParentSummaryInteractionClasses(summaryItem);
+    const commonAttributes = `data-summary-segment="${escapeHtml(summaryItem.key)}" data-summary-parent-segment="${escapeHtml(summaryItem.key)}" data-summary-parent-key="${escapeHtml(summaryItem.key)}"`;
+    const commonStyle = getSummarySegmentStyle(summaryItem, totalDuration);
+
+    if (summaryItem.isUncategorized) {
+        return `<div ${commonAttributes} class="h-full ${interactionClasses.segment}" style="${commonStyle}"></div>`;
+    }
+
+    return `<button type="button" ${commonAttributes} class="block h-full appearance-none border-0 bg-transparent p-0 ${interactionClasses.segment}" style="${commonStyle}"></button>`;
+}
+
+function renderParentSummaryLegendItem(summaryItem) {
+    const interactionClasses = getParentSummaryInteractionClasses(summaryItem);
+    const commonAttributes = `data-summary-parent-legend="${escapeHtml(summaryItem.key)}" data-summary-parent-key="${escapeHtml(summaryItem.key)}"`;
+    const content = `<span data-summary-legend-swatch="${escapeHtml(summaryItem.key)}" class="h-2 w-2 rounded-full shrink-0" style="${getSummarySwatchStyle(summaryItem)}"></span>
+                    ${escapeHtml(summaryItem.label)} ${escapeHtml(calculateHoursAndMinutes(summaryItem.duration))}`;
+
+    if (summaryItem.isUncategorized) {
+        return `<span ${commonAttributes} class="inline-flex items-center gap-2 ${interactionClasses.legend}">
+                    ${content}
+                </span>`;
+    }
+
+    return `<button type="button" ${commonAttributes} class="inline-flex items-center gap-2 appearance-none border-0 bg-transparent p-0 text-left ${interactionClasses.legend}">
+                    ${content}
+                </button>`;
+}
+
 function summarizeExpandedChildCategories(activities, expandedParentGroupKey) {
     if (!expandedParentGroupKey || expandedParentGroupKey === 'uncategorized') {
         return [];
@@ -281,21 +310,10 @@ function renderActivitySummary(activities, options = {}) {
     }
 
     const segmentsHtml = summaryItems
-        .map((item) => {
-            const interactionClasses = getParentSummaryInteractionClasses(item);
-            return `<div data-summary-segment="${escapeHtml(item.key)}" data-summary-parent-segment="${escapeHtml(item.key)}" data-summary-parent-key="${escapeHtml(item.key)}" class="h-full ${interactionClasses.segment}" style="${getSummarySegmentStyle(item, totalDuration)}"></div>`;
-        })
+        .map((item) => renderParentSummarySegment(item, totalDuration))
         .join('');
 
-    const legendHtml = summaryItems
-        .map((item) => {
-            const interactionClasses = getParentSummaryInteractionClasses(item);
-            return `<span data-summary-parent-legend="${escapeHtml(item.key)}" data-summary-parent-key="${escapeHtml(item.key)}" class="inline-flex items-center gap-2 ${interactionClasses.legend}">
-                    <span data-summary-legend-swatch="${escapeHtml(item.key)}" class="h-2 w-2 rounded-full shrink-0" style="${getSummarySwatchStyle(item)}"></span>
-                    ${escapeHtml(item.label)} ${escapeHtml(calculateHoursAndMinutes(item.duration))}
-                </span>`;
-        })
-        .join('');
+    const legendHtml = summaryItems.map((item) => renderParentSummaryLegendItem(item)).join('');
     const expandedRailHtml = renderExpandedChildRail(activities, options.expandedParentGroupKey);
 
     return `<div data-activity-summary class="px-3 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50">

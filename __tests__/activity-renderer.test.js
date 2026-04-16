@@ -445,6 +445,12 @@ describe('activity renderer', () => {
         expect(workLegend.className).toContain('cursor-pointer');
         expect(uncategorizedSegment.className).toContain('cursor-default');
         expect(uncategorizedLegend.className).toContain('cursor-default');
+        expect(workSegment.tagName).toBe('BUTTON');
+        expect(workLegend.tagName).toBe('BUTTON');
+        expect(workSegment.getAttribute('type')).toBe('button');
+        expect(workLegend.getAttribute('type')).toBe('button');
+        expect(uncategorizedSegment.tagName).toBe('DIV');
+        expect(uncategorizedLegend.tagName).toBe('SPAN');
     });
 
     test('renders uncategorized summary items with the dedicated uncategorized style', () => {
