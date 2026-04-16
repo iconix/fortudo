@@ -1,7 +1,9 @@
 import {
     renderCategoryBadge,
     getSelectableCategoryOptions,
-    getCategoryBadgeData
+    resolveCategoryKey,
+    getGroupByKey,
+    getCategoryByKey
 } from '../taxonomy/taxonomy-selectors.js';
 import {
     calculateHoursAndMinutes,
@@ -40,11 +42,66 @@ function renderCategoryOptions(selectedCategory) {
     return `${baseOption}${renderedOptions}`;
 }
 
-function summarizeActivitiesByCategory(activities) {
+function titleCaseKey(value) {
+    return String(value)
+        .split(/[-_/]+/)
+        .filter(Boolean)
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ');
+}
+
+function buildFallbackParentMetadata(parentKey) {
+    return {
+        key: parentKey,
+        label: titleCaseKey(parentKey),
+        color: '#64748b',
+        isUncategorized: false
+    };
+}
+
+function buildResolvedParentMetadata(parentKey) {
+    const parentGroup = getGroupByKey(parentKey);
+    if (parentGroup) {
+        return {
+            key: parentGroup.key,
+            label: parentGroup.label,
+            color: parentGroup.color,
+            isUncategorized: false
+        };
+    }
+
+    return buildFallbackParentMetadata(parentKey);
+}
+
+function getParentSummaryMetadata(activity) {
+    if (!activity.category) {
+        return {
+            key: 'uncategorized',
+            label: 'Uncategorized',
+            color: '#64748b',
+            isUncategorized: true
+        };
+    }
+
+    const resolvedCategory = resolveCategoryKey(activity.category);
+    if (!resolvedCategory) {
+        const inferredParentKey = activity.category.split('/')[0] || activity.category;
+        return buildResolvedParentMetadata(inferredParentKey);
+    }
+
+    if (resolvedCategory.kind === 'group') {
+        return buildResolvedParentMetadata(resolvedCategory.record.key);
+    }
+
+    return buildResolvedParentMetadata(resolvedCategory.record.groupKey);
+}
+
+function summarizeActivitiesByParentGroup(activities) {
     const summaryMap = new Map();
 
     for (const activity of activities) {
-        const summaryKey = activity.category || 'uncategorized';
+        const summaryItem = getParentSummaryMetadata(activity);
+        const summaryKey = summaryItem.key;
         const existing = summaryMap.get(summaryKey);
 
         if (existing) {
@@ -52,17 +109,20 @@ function summarizeActivitiesByCategory(activities) {
             continue;
         }
 
-        const badgeData = activity.category ? getCategoryBadgeData(activity.category) : null;
         summaryMap.set(summaryKey, {
-            key: summaryKey,
-            label: badgeData?.label || 'Uncategorized',
+            ...summaryItem,
             duration: activity.duration,
-            color: badgeData?.color || '#64748b',
-            isUncategorized: !activity.category
+            isUncategorized: Boolean(summaryItem.isUncategorized)
         });
     }
 
-    return Array.from(summaryMap.values()).sort((left, right) => right.duration - left.duration);
+    return Array.from(summaryMap.values()).sort((left, right) => {
+        if (right.duration !== left.duration) {
+            return right.duration - left.duration;
+        }
+
+        return left.label.localeCompare(right.label) || left.key.localeCompare(right.key);
+    });
 }
 
 function getSummarySwatchStyle(summaryItem) {
@@ -83,8 +143,137 @@ function getSummarySegmentStyle(summaryItem, totalDuration) {
     return `width: ${widthPercentage}%; background-color: ${summaryItem.color};`;
 }
 
-function renderActivitySummary(activities) {
-    const summaryItems = summarizeActivitiesByCategory(activities);
+function getParentSummaryInteractionClasses(summaryItem) {
+    if (summaryItem.isUncategorized) {
+        return {
+            segment: 'cursor-default',
+            legend: 'cursor-default'
+        };
+    }
+
+    return {
+        segment: 'cursor-pointer',
+        legend: 'cursor-pointer'
+    };
+}
+
+function summarizeExpandedChildCategories(activities, expandedParentGroupKey) {
+    if (!expandedParentGroupKey || expandedParentGroupKey === 'uncategorized') {
+        return [];
+    }
+
+    const parentGroup = getGroupByKey(expandedParentGroupKey);
+    if (!parentGroup) {
+        return [];
+    }
+
+    const summaryMap = new Map();
+
+    for (const activity of activities) {
+        if (!activity.category) {
+            continue;
+        }
+
+        const resolvedCategory = resolveCategoryKey(activity.category);
+        if (!resolvedCategory) {
+            continue;
+        }
+
+        if (resolvedCategory.kind === 'group') {
+            if (resolvedCategory.record.key !== expandedParentGroupKey) {
+                continue;
+            }
+
+            const syntheticKey = `${expandedParentGroupKey}::__unspecified`;
+            const existing = summaryMap.get(syntheticKey);
+            if (existing) {
+                existing.duration += activity.duration;
+                continue;
+            }
+
+            summaryMap.set(syntheticKey, {
+                key: syntheticKey,
+                label: `Unspecified ${parentGroup.label}`,
+                color: parentGroup.color,
+                duration: activity.duration
+            });
+            continue;
+        }
+
+        const childCategory = getCategoryByKey(resolvedCategory.record.key);
+        if (!childCategory || childCategory.groupKey !== expandedParentGroupKey) {
+            continue;
+        }
+
+        const existing = summaryMap.get(childCategory.key);
+        if (existing) {
+            existing.duration += activity.duration;
+            continue;
+        }
+
+        summaryMap.set(childCategory.key, {
+            key: childCategory.key,
+            label: childCategory.label,
+            color: childCategory.color,
+            duration: activity.duration
+        });
+    }
+
+    return Array.from(summaryMap.values())
+        .filter((item) => item.duration > 0)
+        .sort((left, right) => {
+            if (right.duration !== left.duration) {
+                return right.duration - left.duration;
+            }
+
+            return left.label.localeCompare(right.label) || left.key.localeCompare(right.key);
+        });
+}
+
+function renderExpandedChildRail(activities, expandedParentGroupKey) {
+    const childItems = summarizeExpandedChildCategories(activities, expandedParentGroupKey);
+    if (childItems.length === 0) {
+        return '';
+    }
+
+    const parentGroup = getGroupByKey(expandedParentGroupKey);
+    if (!parentGroup) {
+        return '';
+    }
+
+    const totalDuration = childItems.reduce((sum, item) => sum + item.duration, 0);
+    const segmentsHtml = childItems
+        .map(
+            (item) =>
+                `<div data-summary-child-segment="${escapeHtml(item.key)}" class="h-full rounded-full" style="${getSummarySegmentStyle(item, totalDuration)}"></div>`
+        )
+        .join('');
+    const legendHtml = childItems
+        .map(
+            (item) =>
+                `<span data-summary-child-legend="${escapeHtml(item.key)}" class="inline-flex items-center gap-1.5">
+                    <span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: ${item.color};"></span>
+                    ${escapeHtml(item.label)} ${escapeHtml(calculateHoursAndMinutes(item.duration))}
+                </span>`
+        )
+        .join('');
+
+    return `<div data-summary-expanded-group="${escapeHtml(expandedParentGroupKey)}" class="mt-2 space-y-1.5">
+        <div class="flex items-center justify-between gap-3 text-[11px] text-slate-400">
+            <span class="uppercase tracking-[0.18em] text-slate-300">${escapeHtml(parentGroup.label)}</span>
+            <span>${escapeHtml(calculateHoursAndMinutes(totalDuration))}</span>
+        </div>
+        <div class="flex h-1.5 overflow-hidden rounded-full bg-slate-950/90">
+            ${segmentsHtml}
+        </div>
+        <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+            ${legendHtml}
+        </div>
+    </div>`;
+}
+
+function renderActivitySummary(activities, options = {}) {
+    const summaryItems = summarizeActivitiesByParentGroup(activities);
     const totalDuration = summaryItems.reduce((sum, item) => sum + item.duration, 0);
 
     if (summaryItems.length === 0 || totalDuration <= 0) {
@@ -92,21 +281,22 @@ function renderActivitySummary(activities) {
     }
 
     const segmentsHtml = summaryItems
-        .map(
-            (item) =>
-                `<div data-summary-segment="${escapeHtml(item.key)}" class="h-full" style="${getSummarySegmentStyle(item, totalDuration)}"></div>`
-        )
+        .map((item) => {
+            const interactionClasses = getParentSummaryInteractionClasses(item);
+            return `<div data-summary-segment="${escapeHtml(item.key)}" data-summary-parent-segment="${escapeHtml(item.key)}" data-summary-parent-key="${escapeHtml(item.key)}" class="h-full ${interactionClasses.segment}" style="${getSummarySegmentStyle(item, totalDuration)}"></div>`;
+        })
         .join('');
 
     const legendHtml = summaryItems
-        .map(
-            (item) =>
-                `<span class="inline-flex items-center gap-2">
+        .map((item) => {
+            const interactionClasses = getParentSummaryInteractionClasses(item);
+            return `<span data-summary-parent-legend="${escapeHtml(item.key)}" data-summary-parent-key="${escapeHtml(item.key)}" class="inline-flex items-center gap-2 ${interactionClasses.legend}">
                     <span data-summary-legend-swatch="${escapeHtml(item.key)}" class="h-2 w-2 rounded-full shrink-0" style="${getSummarySwatchStyle(item)}"></span>
                     ${escapeHtml(item.label)} ${escapeHtml(calculateHoursAndMinutes(item.duration))}
-                </span>`
-        )
+                </span>`;
+        })
         .join('');
+    const expandedRailHtml = renderExpandedChildRail(activities, options.expandedParentGroupKey);
 
     return `<div data-activity-summary class="px-3 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
         <div class="flex items-end justify-between gap-3 mb-3">
@@ -119,6 +309,7 @@ function renderActivitySummary(activities) {
         <div class="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 text-xs text-slate-300 sm:grid-cols-2">
             ${legendHtml}
         </div>
+        ${expandedRailHtml}
     </div>`;
 }
 
@@ -242,7 +433,7 @@ export function renderActivities(activities, container, options = {}) {
     }
 
     const editingActivityId = options.editingActivityId || null;
-    const summaryHtml = renderActivitySummary(activities);
+    const summaryHtml = renderActivitySummary(activities, options);
     const activitiesHtml = activities
         .map((activity) =>
             activity.id === editingActivityId

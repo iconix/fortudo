@@ -124,6 +124,136 @@ describe('activity app integration', () => {
         );
     });
 
+    test('clicking a parent summary legend expands that parent group', async () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        getTodaysActivities.mockReturnValue(activities);
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <button data-summary-parent-legend="work" data-summary-parent-key="work" type="button">
+                <span>Work</span>
+            </button>
+        `;
+
+        const handled = await handleActivityListClick(activityList.querySelector('span'), {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        renderTodayActivities(true);
+
+        expect(handled).toBe(true);
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ expandedParentGroupKey: 'work' })
+        );
+    });
+
+    test('clicking the same parent summary legend again collapses the expanded group', async () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        getTodaysActivities.mockReturnValue(activities);
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <button data-summary-parent-legend="work" data-summary-parent-key="work" type="button">
+                <span>Work</span>
+            </button>
+        `;
+
+        await handleActivityListClick(activityList.querySelector('span'), {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        renderTodayActivities(true);
+
+        await handleActivityListClick(activityList.querySelector('span'), {
+            refreshUI: jest.fn(),
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        renderTodayActivities(true);
+
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ expandedParentGroupKey: null })
+        );
+    });
+
+    test('clicking a different parent summary target swaps the expanded group', async () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        getTodaysActivities.mockReturnValue(activities);
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <button data-summary-parent-legend="work" data-summary-parent-key="work" type="button">
+                <span>Work</span>
+            </button>
+            <button data-summary-parent-segment="personal" data-summary-parent-key="personal" type="button">
+                <span>Personal</span>
+            </button>
+        `;
+
+        await handleActivityListClick(
+            activityList.querySelector('[data-summary-parent-legend] span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        await handleActivityListClick(
+            activityList.querySelector('[data-summary-parent-segment] span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ expandedParentGroupKey: 'personal' })
+        );
+    });
+
+    test('clicking uncategorized summary does nothing and preserves the current expansion', async () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        getTodaysActivities.mockReturnValue(activities);
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <button data-summary-parent-legend="work" data-summary-parent-key="work" type="button">
+                <span>Work</span>
+            </button>
+            <button data-summary-parent-legend="uncategorized" data-summary-parent-key="uncategorized" type="button">
+                <span>Uncategorized</span>
+            </button>
+        `;
+
+        await handleActivityListClick(
+            activityList.querySelector('[data-summary-parent-key="work"] span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        const handled = await handleActivityListClick(
+            activityList.querySelector('[data-summary-parent-key="uncategorized"] span'),
+            {
+                refreshUI: jest.fn(),
+                resetAllConfirmingDeleteFlags: jest.fn()
+            }
+        );
+        renderTodayActivities(true);
+
+        expect(handled).toBe(true);
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ expandedParentGroupKey: 'work' })
+        );
+    });
+
     test('does not render today activities when disabled', () => {
         renderTodayActivities(false);
 

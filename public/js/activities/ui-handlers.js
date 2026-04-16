@@ -6,9 +6,11 @@ import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 
 let editingActivityId = null;
+let expandedParentGroupKey = null;
 
 export function resetActivityInlineEditState() {
     editingActivityId = null;
+    expandedParentGroupKey = null;
 }
 
 function clearDeleteConfirmState(deps) {
@@ -32,6 +34,7 @@ export function syncActivitiesUI(enabled) {
 
     if (!enabled) {
         editingActivityId = null;
+        expandedParentGroupKey = null;
         disposeTimerUI();
         hideTimerDisplay();
         const activityRadio = document.getElementById('activity');
@@ -53,7 +56,7 @@ export function renderTodayActivities(enabled) {
     renderActivities(
         getTodaysActivities(),
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        { editingActivityId }
+        { editingActivityId, expandedParentGroupKey }
     );
 }
 
@@ -103,6 +106,24 @@ export async function handleActivityAwareFormSubmit(formElement, deps) {
 export function handleActivityListClick(target, deps) {
     if (!(target instanceof HTMLElement)) {
         return false;
+    }
+
+    const summaryParentTarget = target.closest(
+        '[data-summary-parent-key][data-summary-parent-legend], [data-summary-parent-key][data-summary-parent-segment]'
+    );
+    if (summaryParentTarget instanceof HTMLElement) {
+        const parentKey = summaryParentTarget.dataset.summaryParentKey;
+        if (!parentKey) {
+            return false;
+        }
+
+        if (parentKey === 'uncategorized') {
+            return true;
+        }
+
+        expandedParentGroupKey = expandedParentGroupKey === parentKey ? null : parentKey;
+        deps.refreshUI();
+        return true;
     }
 
     const editActivityButton = target.closest('.btn-edit-activity');
