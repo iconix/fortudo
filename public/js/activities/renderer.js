@@ -107,12 +107,14 @@ function summarizeActivitiesByParentGroup(activities) {
 
         if (existing) {
             existing.duration += activity.duration;
+            existing.count += 1;
             continue;
         }
 
         summaryMap.set(summaryKey, {
             ...summaryItem,
             duration: activity.duration,
+            count: 1,
             isUncategorized: Boolean(summaryItem.isUncategorized)
         });
     }
@@ -174,7 +176,8 @@ function renderParentSummaryLegendItem(summaryItem) {
     const interactionClasses = getParentSummaryInteractionClasses(summaryItem);
     const commonAttributes = `data-summary-parent-legend="${escapeHtml(summaryItem.key)}" data-summary-parent-key="${escapeHtml(summaryItem.key)}"`;
     const content = `<span data-summary-legend-swatch="${escapeHtml(summaryItem.key)}" class="h-2 w-2 rounded-full shrink-0" style="${getSummarySwatchStyle(summaryItem)}"></span>
-                    ${escapeHtml(summaryItem.label)} ${escapeHtml(calculateHoursAndMinutes(summaryItem.duration))}`;
+                    ${escapeHtml(summaryItem.label)} ${escapeHtml(calculateHoursAndMinutes(summaryItem.duration))}
+                    <span data-summary-parent-count="${escapeHtml(summaryItem.key)}" class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full border border-slate-600/80 bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-300">${escapeHtml(summaryItem.count)}</span>`;
 
     if (summaryItem.isUncategorized) {
         return `<span ${commonAttributes} class="inline-flex items-center gap-2 ${interactionClasses.legend}">
@@ -308,6 +311,7 @@ function renderExpandedChildRail(activities, expandedParentGroupKey) {
 function renderActivitySummary(activities, options = {}) {
     const summaryItems = summarizeActivitiesByParentGroup(activities);
     const totalDuration = summaryItems.reduce((sum, item) => sum + item.duration, 0);
+    const totalCount = summaryItems.reduce((sum, item) => sum + item.count, 0);
 
     if (summaryItems.length === 0 || totalDuration <= 0) {
         return '';
@@ -322,7 +326,10 @@ function renderActivitySummary(activities, options = {}) {
 
     return `<div data-activity-summary class="px-3 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
         <div class="flex items-end justify-between gap-3 mb-3">
-            <div class="text-[11px] uppercase tracking-[0.22em] text-sky-300">Category Breakdown</div>
+            <div class="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-sky-300">
+                <span>Activity Breakdown</span>
+                <span data-summary-total-count class="inline-flex min-w-[1.35rem] items-center justify-center rounded-full border border-sky-700/60 bg-sky-950/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-sky-200 normal-case tracking-normal">${escapeHtml(totalCount)}</span>
+            </div>
             <div class="text-xs text-slate-300">Total <span class="font-medium text-slate-100">${escapeHtml(calculateHoursAndMinutes(totalDuration))}</span></div>
         </div>
         <div class="flex h-3 overflow-hidden rounded-full border border-slate-700 bg-slate-950/90">

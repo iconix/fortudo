@@ -252,13 +252,21 @@ describe('activity renderer', () => {
 
         const summary = container.querySelector('[data-activity-summary]');
         expect(summary).not.toBeNull();
-        expect(summary.textContent).toContain('Category Breakdown');
+        expect(summary.textContent).toContain('Activity Breakdown');
         expect(summary.textContent).toContain('Total 2h');
         expect(summary.textContent).toContain('Work 1h');
         expect(summary.textContent).toContain('Personal 30m');
         expect(summary.textContent).toContain('Uncategorized 30m');
         expect(summary.textContent).not.toContain('Deep Work');
         expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(3);
+        expect(summary.querySelector('[data-summary-total-count]').textContent).toBe('3');
+        expect(summary.querySelector('[data-summary-parent-count="work"]').textContent).toBe('1');
+        expect(summary.querySelector('[data-summary-parent-count="personal"]').textContent).toBe(
+            '1'
+        );
+        expect(
+            summary.querySelector('[data-summary-parent-count="uncategorized"]').textContent
+        ).toBe('1');
     });
 
     test('parent-group default summary aggregates child and parent activities', () => {
@@ -318,6 +326,14 @@ describe('activity renderer', () => {
         expect(summary.textContent).toContain('Uncategorized 15m');
         expect(summary.textContent).not.toContain('Deep Work');
         expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(3);
+        expect(summary.querySelector('[data-summary-total-count]').textContent).toBe('4');
+        expect(summary.querySelector('[data-summary-parent-count="work"]').textContent).toBe('2');
+        expect(summary.querySelector('[data-summary-parent-count="personal"]').textContent).toBe(
+            '1'
+        );
+        expect(
+            summary.querySelector('[data-summary-parent-count="uncategorized"]').textContent
+        ).toBe('1');
     });
 
     test('parent-group summary rolls deleted child categories up to their inferred parent', () => {
@@ -424,7 +440,11 @@ describe('activity renderer', () => {
         );
 
         const labels = Array.from(container.querySelectorAll('[data-summary-parent-legend]')).map(
-            (item) => item.textContent.trim()
+            (item) =>
+                item.textContent
+                    .replace(/\s+/g, ' ')
+                    .replace(/\s+\d+\s*$/, '')
+                    .trim()
         );
 
         expect(labels).toEqual(['Personal 30m', 'Work 30m']);
