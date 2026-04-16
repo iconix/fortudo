@@ -4,6 +4,14 @@
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     renderCategoryBadge: jest.fn(() => '<span class="category-badge">Deep Work</span>'),
+    getTaxonomySnapshot: jest.fn(() => ({
+        categories: [
+            { key: 'work/deep', groupKey: 'work' },
+            { key: 'work/admin', groupKey: 'work' },
+            { key: 'personal/planning', groupKey: 'personal' },
+            { key: 'ghost/focus', groupKey: 'ghost' }
+        ]
+    })),
     getGroupByKey: jest.fn((key) => {
         if (key === 'work') {
             return {
@@ -18,6 +26,14 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
                 key: 'personal',
                 label: 'Personal',
                 color: '#f97316'
+            };
+        }
+
+        if (key === 'solo') {
+            return {
+                key: 'solo',
+                label: 'Solo',
+                color: '#a855f7'
             };
         }
 
@@ -118,6 +134,17 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
                     label: 'Focus',
                     groupKey: 'ghost',
                     color: '#22c55e'
+                }
+            };
+        }
+
+        if (key === 'solo') {
+            return {
+                kind: 'group',
+                record: {
+                    key: 'solo',
+                    label: 'Solo',
+                    color: '#a855f7'
                 }
             };
         }
@@ -541,9 +568,36 @@ describe('activity renderer', () => {
         expect(expandedRail.textContent).toContain('Work');
         expect(expandedRail.textContent).toContain('Deep Work 45m');
         expect(expandedRail.textContent).toContain('Admin 20m');
-        expect(expandedRail.textContent).toContain('Unspecified Work 15m');
+        expect(expandedRail.textContent).toContain('Unspecified 15m');
         expect(expandedRail.textContent).not.toContain('Zero Child');
         expect(container.querySelectorAll('[data-summary-child-segment]')).toHaveLength(3);
+    });
+
+    test('uses the parent label for direct parent activity when that group has no children', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-1',
+                    description: 'Solo work',
+                    category: 'solo',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:20:00.000Z',
+                    duration: 20,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            { expandedParentGroupKey: 'solo' }
+        );
+
+        const expandedRail = container.querySelector('[data-summary-expanded-group="solo"]');
+
+        expect(expandedRail).not.toBeNull();
+        expect(expandedRail.textContent).toContain('Solo 20m');
+        expect(expandedRail.textContent).not.toContain('Unspecified');
     });
 
     test('does not render an expanded child rail for uncategorized', () => {

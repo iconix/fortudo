@@ -3,7 +3,8 @@ import {
     getSelectableCategoryOptions,
     resolveCategoryKey,
     getGroupByKey,
-    getCategoryByKey
+    getCategoryByKey,
+    getTaxonomySnapshot
 } from '../taxonomy/taxonomy-selectors.js';
 import {
     calculateHoursAndMinutes,
@@ -195,6 +196,9 @@ function summarizeExpandedChildCategories(activities, expandedParentGroupKey) {
     if (!parentGroup) {
         return [];
     }
+    const parentHasChildren = getTaxonomySnapshot().categories.some(
+        (category) => category.groupKey === expandedParentGroupKey
+    );
 
     const summaryMap = new Map();
 
@@ -222,7 +226,7 @@ function summarizeExpandedChildCategories(activities, expandedParentGroupKey) {
 
             summaryMap.set(syntheticKey, {
                 key: syntheticKey,
-                label: `Unspecified ${parentGroup.label}`,
+                label: parentHasChildren ? 'Unspecified' : parentGroup.label,
                 color: parentGroup.color,
                 duration: activity.duration
             });
