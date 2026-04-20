@@ -528,6 +528,9 @@ describe('App.js Callback Functions', () => {
             activityList
                 .querySelector('.btn-delete-activity')
                 .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity')
+                .dispatchEvent(new Event('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
@@ -623,6 +626,9 @@ describe('App.js Callback Functions', () => {
             `;
             activityList
                 .querySelector('.btn-save-activity-edit span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity span')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             activityList
                 .querySelector('.btn-delete-activity span')

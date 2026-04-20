@@ -434,10 +434,11 @@ function renderInlineEditActivityItem(activity) {
     </form>`;
 }
 
-function renderActivityItem(activity) {
+function renderActivityItem(activity, options = {}) {
     const timeRange = formatTimeRange(activity.startDateTime, activity.endDateTime);
     const durationText = calculateHoursAndMinutes(activity.duration);
     const badge = renderCategoryBadge(activity.category);
+    const isConfirmingDelete = options.confirmingDeleteActivityId === activity.id;
     const isAuto = activity.source === 'auto';
     const provenanceHtml = isAuto
         ? `<span class="activity-source-link text-xs text-sky-400/60 italic cursor-default" data-source-task-id="${escapeHtml(activity.sourceTaskId || '')}" title="Auto-logged from task">
@@ -449,8 +450,8 @@ function renderActivityItem(activity) {
                <button class="btn-edit-activity text-slate-400 hover:text-slate-200 transition-colors text-xs" data-activity-id="${escapeHtml(activity.id)}" title="Edit activity">
                    <i class="fa-solid fa-pen"></i>
                </button>
-               <button class="btn-delete-activity text-rose-400/60 hover:text-rose-400 transition-colors text-xs" data-activity-id="${escapeHtml(activity.id)}" title="Delete activity">
-                   <i class="fa-solid fa-trash-can"></i>
+               <button class="btn-delete-activity ${isConfirmingDelete ? 'text-rose-400' : 'text-rose-400/60 hover:text-rose-400'} transition-colors text-xs" data-activity-id="${escapeHtml(activity.id)}" title="Delete activity">
+                   <i class="fa-${isConfirmingDelete ? 'regular fa-check-circle' : 'solid fa-trash-can'}"></i>
                </button>
            </div>`;
 
@@ -500,7 +501,7 @@ export function renderActivities(activities, container, options = {}) {
         .map((activity) =>
             activity.id === editingActivityId
                 ? renderInlineEditActivityItem(activity)
-                : renderActivityItem(activity)
+                : renderActivityItem(activity, options)
         )
         .join('');
     targetContainer.innerHTML = `${summaryHtml}${activitiesHtml}`;

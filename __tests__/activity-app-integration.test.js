@@ -749,6 +749,33 @@ describe('activity app integration', () => {
         expect(handled).toBe(true);
         expect(resetAllConfirmingDeleteFlagsMock).toHaveBeenCalled();
         expect(refreshUIMock).toHaveBeenCalled();
+        expect(handleDeleteActivity).not.toHaveBeenCalled();
+    });
+
+    test('second click on a confirming activity delete executes the delete', async () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <article class="activity-item" data-activity-id="activity-2">
+                <button class="btn-delete-activity"><span>Delete</span></button>
+            </article>
+        `;
+        const refreshUIMock = jest.fn();
+
+        await handleActivityListClick(activityList.querySelector('.btn-delete-activity span'), {
+            refreshUI: refreshUIMock,
+            resetAllConfirmingDeleteFlags: jest.fn(() => false)
+        });
+        renderTodayActivities(true);
+
+        const handled = await handleActivityListClick(
+            activityList.querySelector('.btn-delete-activity span'),
+            {
+                refreshUI: refreshUIMock,
+                resetAllConfirmingDeleteFlags: jest.fn(() => false)
+            }
+        );
+
+        expect(handled).toBe(true);
         expect(handleDeleteActivity).toHaveBeenCalledWith('activity-2');
     });
 
@@ -778,12 +805,20 @@ describe('activity app integration', () => {
             </article>
         `;
         const deleteRefreshMock = jest.fn(() => {
-            activityList.innerHTML = '<div>rerendered again</div>';
+            activityList.innerHTML = `
+                <article class="activity-item" data-activity-id="activity-10">
+                    <button class="btn-delete-activity"><span>Delete</span></button>
+                </article>
+            `;
         });
 
         await handleActivityListClick(activityList.querySelector('.btn-delete-activity span'), {
             refreshUI: deleteRefreshMock,
             resetAllConfirmingDeleteFlags: jest.fn(() => true)
+        });
+        await handleActivityListClick(activityList.querySelector('.btn-delete-activity span'), {
+            refreshUI: deleteRefreshMock,
+            resetAllConfirmingDeleteFlags: jest.fn(() => false)
         });
 
         expect(handleDeleteActivity).toHaveBeenCalledWith('activity-10');

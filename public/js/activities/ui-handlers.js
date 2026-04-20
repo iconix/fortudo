@@ -7,6 +7,7 @@ import { computeEndTimePreview } from '../tasks/form-utils.js';
 
 let editingActivityId = null;
 let expandedParentGroupKey = null;
+let confirmingDeleteActivityId = null;
 
 function getActivitiesForSummary() {
     const todaysActivities = getTodaysActivities();
@@ -18,10 +19,15 @@ function getActivitiesForSummary() {
 export function resetActivityInlineEditState() {
     editingActivityId = null;
     expandedParentGroupKey = null;
+    confirmingDeleteActivityId = null;
 }
 
 function clearDeleteConfirmState(deps) {
-    const wasConfirming = deps.resetAllConfirmingDeleteFlags();
+    const wasConfirmingTaskDelete = deps.resetAllConfirmingDeleteFlags();
+    const wasConfirmingActivityDelete = confirmingDeleteActivityId !== null;
+    confirmingDeleteActivityId = null;
+
+    const wasConfirming = wasConfirmingTaskDelete || wasConfirmingActivityDelete;
     if (wasConfirming) {
         deps.refreshUI();
     }
@@ -67,6 +73,7 @@ export function renderTodayActivities(enabled) {
         {
             editingActivityId,
             expandedParentGroupKey,
+            confirmingDeleteActivityId,
             summaryActivities: getActivitiesForSummary()
         }
     );
@@ -187,12 +194,22 @@ export function handleActivityListClick(target, deps) {
         const activityId =
             deleteActivityButton.dataset.activityId ||
             activityItem?.getAttribute('data-activity-id');
-        clearDeleteConfirmState(deps);
         if (activityId) {
-            if (editingActivityId === activityId) {
-                editingActivityId = null;
+            deps.resetAllConfirmingDeleteFlags();
+
+            if (confirmingDeleteActivityId === activityId) {
+                confirmingDeleteActivityId = null;
+                if (editingActivityId === activityId) {
+                    editingActivityId = null;
+                }
+                void handleDeleteActivity(activityId);
+            } else {
+                confirmingDeleteActivityId = activityId;
+                if (editingActivityId === activityId) {
+                    editingActivityId = null;
+                }
+                deps.refreshUI();
             }
-            void handleDeleteActivity(activityId);
         }
         return true;
     }

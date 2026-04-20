@@ -264,6 +264,33 @@ describe('activity renderer', () => {
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
     });
 
+    test('renders a confirming delete affordance for the selected activity row', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-delete',
+                    description: 'Standup',
+                    category: null,
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            { confirmingDeleteActivityId: 'activity-delete' }
+        );
+
+        const deleteButton = container.querySelector('.btn-delete-activity');
+        const deleteIcon = deleteButton.querySelector('i');
+
+        expect(deleteButton.className).toContain('text-rose-400');
+        expect(deleteIcon.className).toContain('fa-check-circle');
+    });
+
     test('renders a parent-group summary bar above the activity list', () => {
         const container = document.getElementById('activity-list');
 
