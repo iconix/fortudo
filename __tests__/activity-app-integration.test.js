@@ -527,6 +527,63 @@ describe('activity app integration', () => {
         expect(refreshUIMock).toHaveBeenCalled();
     });
 
+    test('keydown and submit from the same inline activity edit save only once', async () => {
+        let resolveSave;
+        handleSaveActivityEdit.mockReturnValueOnce(
+            new Promise((resolve) => {
+                resolveSave = resolve;
+            })
+        );
+
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <input name="description" value="Row description" />
+                <input name="start-time" value="09:00" />
+                <input name="duration-hours" value="1" />
+                <input name="duration-minutes" value="15" />
+                <select name="category"><option value="work/deep" selected>Deep Work</option></select>
+                <button class="btn-save-activity-edit" type="submit"><span>Save</span></button>
+            </form>
+        `;
+        const refreshUIMock = jest.fn();
+        const form = activityList.querySelector('form');
+
+        const enterEvent = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true
+        });
+        Object.defineProperty(enterEvent, 'target', {
+            value: activityList.querySelector('input[name="duration-minutes"]'),
+            configurable: true
+        });
+
+        const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+        Object.defineProperty(submitEvent, 'target', {
+            value: form,
+            configurable: true
+        });
+
+        const keyHandled = handleActivityListKeydown(enterEvent, {
+            refreshUI: refreshUIMock,
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+        const submitHandled = handleActivityListSubmit(submitEvent, {
+            refreshUI: refreshUIMock,
+            resetAllConfirmingDeleteFlags: jest.fn()
+        });
+
+        expect(keyHandled).toBe(true);
+        expect(submitHandled).toBe(true);
+        expect(handleSaveActivityEdit).toHaveBeenCalledTimes(1);
+
+        resolveSave({ success: true });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(refreshUIMock).toHaveBeenCalledTimes(1);
+    });
+
     test('non-Enter key in inline activity edit does not trigger save', () => {
         const activityList = document.getElementById('activity-list');
         activityList.innerHTML = `

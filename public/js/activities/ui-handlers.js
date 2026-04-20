@@ -9,6 +9,7 @@ import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 let editingActivityId = null;
 let expandedParentGroupKey = null;
 let confirmingDeleteActivityId = null;
+const inFlightActivitySaveIds = new Set();
 
 function getActivitiesForSummary() {
     const todaysActivities = getTodaysActivities();
@@ -21,6 +22,7 @@ export function resetActivityInlineEditState() {
     editingActivityId = null;
     expandedParentGroupKey = null;
     confirmingDeleteActivityId = null;
+    inFlightActivitySaveIds.clear();
 }
 
 function clearDeleteConfirmState(deps) {
@@ -231,12 +233,21 @@ async function saveInlineActivityEdit(editForm, deps) {
         return false;
     }
 
-    const result = await handleSaveActivityEdit(activityId, editForm);
-    if (result?.success) {
-        editingActivityId = null;
+    if (inFlightActivitySaveIds.has(activityId)) {
+        return true;
     }
-    deps.refreshUI();
-    return true;
+
+    inFlightActivitySaveIds.add(activityId);
+    try {
+        const result = await handleSaveActivityEdit(activityId, editForm);
+        if (result?.success) {
+            editingActivityId = null;
+        }
+        deps.refreshUI();
+        return true;
+    } finally {
+        inFlightActivitySaveIds.delete(activityId);
+    }
 }
 
 export function handleActivityListSubmit(event, deps) {
