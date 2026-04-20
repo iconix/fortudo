@@ -156,7 +156,7 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     ])
 }));
 
-import { renderActivities } from '../public/js/activities/renderer.js';
+import { renderActivities, renderActivitySummaryOnly } from '../public/js/activities/renderer.js';
 import { convertTo12HourTime, extractTimeFromDateTime } from '../public/js/utils.js';
 
 describe('activity renderer', () => {
@@ -175,6 +175,59 @@ describe('activity renderer', () => {
 
         expect(container.textContent).toContain('No activities tracked today');
         expect(container.querySelector('.text-center')).toBeNull();
+    });
+
+    test('renders the summary even when only a live running activity exists', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities([], container, {
+            summaryActivities: [
+                {
+                    id: 'running-activity-summary',
+                    description: 'Running',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:03:00.000Z',
+                    duration: 3,
+                    source: 'timer',
+                    sourceTaskId: null
+                }
+            ]
+        });
+
+        expect(container.querySelector('[data-activity-summary]')).not.toBeNull();
+        expect(container.textContent).toContain('Activity Breakdown');
+        expect(container.textContent).toContain('Work 3m');
+        expect(container.textContent).toContain('No completed activities logged today yet');
+        expect(container.textContent).not.toContain('No activities tracked today');
+    });
+
+    test('renderActivitySummaryOnly updates an existing summary without replacing the list', () => {
+        const container = document.getElementById('activity-list');
+        container.innerHTML = `
+            <div data-activity-summary>Old summary</div>
+            <div data-activity-id="activity-1">Persisted item</div>
+        `;
+
+        renderActivitySummaryOnly([], container, {
+            summaryActivities: [
+                {
+                    id: 'running-activity-summary',
+                    description: 'Running',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:04:00.000Z',
+                    duration: 4,
+                    source: 'timer',
+                    sourceTaskId: null
+                }
+            ]
+        });
+
+        expect(container.querySelector('[data-activity-summary]').textContent).toContain('Work 4m');
+        expect(container.querySelector('[data-activity-id="activity-1"]').textContent).toBe(
+            'Persisted item'
+        );
     });
 
     test('renders manual activity with edit and delete actions', () => {

@@ -5,7 +5,9 @@
 jest.mock('../public/js/storage.js', () => ({
     putActivity: jest.fn(() => Promise.resolve()),
     loadActivities: jest.fn(() => Promise.resolve([])),
-    deleteActivity: jest.fn(() => Promise.resolve())
+    deleteActivity: jest.fn(() => Promise.resolve()),
+    putConfig: jest.fn(() => Promise.resolve()),
+    deleteConfig: jest.fn(() => Promise.resolve())
 }));
 
 import * as activityManager from '../public/js/activities/manager.js';
@@ -14,13 +16,15 @@ import {
     getActivityState,
     getActivityById,
     getTodaysActivities,
+    getLiveTodayActivitySummary,
     getSuggestedActivityStartTime,
     loadActivitiesState,
     removeActivity,
     editActivity,
     resetActivityState,
     updateActivityState,
-    createActivityFromTask
+    createActivityFromTask,
+    startTimer
 } from '../public/js/activities/manager.js';
 import { putActivity, loadActivities, deleteActivity } from '../public/js/storage.js';
 import { extractTimeFromDateTime } from '../public/js/utils.js';
@@ -289,6 +293,42 @@ describe('activity manager', () => {
             ]);
 
             expect(getSuggestedActivityStartTime()).toBeNull();
+        });
+    });
+
+    describe('getLiveTodayActivitySummary', () => {
+        test('returns a live summary activity for a running timer on the current day', async () => {
+            await startTimer({
+                description: 'Running',
+                category: 'work/deep'
+            });
+            await activityManager.updateRunningActivity({
+                startDateTime: '2026-04-15T09:00:00.000Z'
+            });
+
+            const summary = getLiveTodayActivitySummary(new Date('2026-04-15T09:17:00.000Z'));
+
+            expect(summary).toEqual(
+                expect.objectContaining({
+                    id: 'running-activity-summary',
+                    description: 'Running',
+                    category: 'work/deep',
+                    duration: 17,
+                    endDateTime: '2026-04-15T09:17:00.000Z'
+                })
+            );
+        });
+
+        test('returns null when the running timer is not from today', async () => {
+            await startTimer({
+                description: 'Running',
+                category: 'work/deep'
+            });
+            await activityManager.updateRunningActivity({
+                startDateTime: '2026-04-14T12:00:00.000Z'
+            });
+
+            expect(getLiveTodayActivitySummary(new Date('2026-04-15T12:15:00.000Z'))).toBeNull();
         });
     });
 

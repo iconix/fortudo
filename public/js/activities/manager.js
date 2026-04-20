@@ -143,6 +143,35 @@ export function getSuggestedActivityStartTime(now = new Date()) {
     return extractTimeFromDateTime(new Date(latestActivity.endDateTime));
 }
 
+export function getLiveTodayActivitySummary(now = new Date()) {
+    if (!runningActivity?.startDateTime) {
+        return null;
+    }
+
+    const nowDate = now instanceof Date ? now : new Date(now);
+    const startDate = new Date(runningActivity.startDateTime);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(nowDate.getTime())) {
+        return null;
+    }
+
+    const today = extractDateFromDateTime(nowDate);
+    if (extractDateFromDateTime(startDate) !== today) {
+        return null;
+    }
+
+    const endDateTime = clampTimerEndDateTime(runningActivity.startDateTime, nowDate.toISOString());
+    const duration = calculateDurationMinutes(runningActivity.startDateTime, endDateTime);
+
+    return cloneActivity(
+        normalizeActivity({
+            ...runningActivity,
+            id: runningActivity.id || 'running-activity-summary',
+            endDateTime,
+            duration
+        })
+    );
+}
+
 export async function loadActivitiesState(loadActivities = loadActivitiesFromStorage) {
     if (typeof loadActivities !== 'function') {
         replaceState([]);

@@ -342,6 +342,31 @@ function renderActivitySummary(activities, options = {}) {
     </div>`;
 }
 
+export function renderActivitySummaryOnly(activities, container, options = {}) {
+    const targetContainer = container || document.getElementById('activity-list');
+    if (!targetContainer) {
+        return;
+    }
+
+    const summaryActivities = Array.isArray(options.summaryActivities)
+        ? options.summaryActivities
+        : activities;
+    const summaryHtml = renderActivitySummary(summaryActivities, options);
+    const existingSummary = targetContainer.querySelector('[data-activity-summary]');
+
+    if (!summaryHtml) {
+        existingSummary?.remove();
+        return;
+    }
+
+    if (existingSummary) {
+        existingSummary.outerHTML = summaryHtml;
+        return;
+    }
+
+    targetContainer.insertAdjacentHTML('afterbegin', summaryHtml);
+}
+
 function renderInlineEditActivityItem(activity) {
     const durationHours = Math.floor(activity.duration / 60);
     const durationMinutes = activity.duration % 60;
@@ -452,17 +477,25 @@ export function renderActivities(activities, container, options = {}) {
         return;
     }
 
+    const summaryActivities = Array.isArray(options.summaryActivities)
+        ? options.summaryActivities
+        : activities;
+    const summaryHtml = renderActivitySummary(summaryActivities, options);
+
     if (!activities || activities.length === 0) {
+        const emptyStateMessage = summaryHtml
+            ? 'No completed activities logged today yet.'
+            : 'No activities tracked today. Log one or complete a scheduled task.';
         targetContainer.innerHTML = `
+            ${summaryHtml}
             <div class="py-6 text-slate-500 text-sm italic px-2">
                 <i class="fa-regular fa-clock mr-1"></i>
-                No activities tracked today. Log one or complete a scheduled task.
+                ${emptyStateMessage}
             </div>`;
         return;
     }
 
     const editingActivityId = options.editingActivityId || null;
-    const summaryHtml = renderActivitySummary(activities, options);
     const activitiesHtml = activities
         .map((activity) =>
             activity.id === editingActivityId

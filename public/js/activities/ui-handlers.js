@@ -1,12 +1,19 @@
 import { extractActivityFormData } from './form-utils.js';
-import { getTodaysActivities, getRunningActivity } from './manager.js';
-import { renderActivities } from './renderer.js';
+import { getTodaysActivities, getRunningActivity, getLiveTodayActivitySummary } from './manager.js';
+import { renderActivities, renderActivitySummaryOnly } from './renderer.js';
 import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from './handlers.js';
 import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 
 let editingActivityId = null;
 let expandedParentGroupKey = null;
+
+function getActivitiesForSummary() {
+    const todaysActivities = getTodaysActivities();
+    const liveRunningSummary = getLiveTodayActivitySummary();
+
+    return liveRunningSummary ? [...todaysActivities, liveRunningSummary] : todaysActivities;
+}
 
 export function resetActivityInlineEditState() {
     editingActivityId = null;
@@ -53,11 +60,28 @@ export function renderTodayActivities(enabled) {
         return;
     }
 
+    const todaysActivities = getTodaysActivities();
     renderActivities(
-        getTodaysActivities(),
+        todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        { editingActivityId, expandedParentGroupKey }
+        {
+            editingActivityId,
+            expandedParentGroupKey,
+            summaryActivities: getActivitiesForSummary()
+        }
     );
+}
+
+export function refreshTodayActivitySummary(enabled) {
+    if (!enabled) {
+        return;
+    }
+
+    const activityList = /** @type {HTMLElement|null} */ (document.getElementById('activity-list'));
+    renderActivitySummaryOnly(getTodaysActivities(), activityList, {
+        expandedParentGroupKey,
+        summaryActivities: getActivitiesForSummary()
+    });
 }
 
 export async function handleActivityAwareFormSubmit(formElement, deps) {

@@ -6,6 +6,8 @@ let timerIntervalId = null;
 let timerUiAbortController = null;
 let pendingTimerMutation = null;
 let suppressTimerFieldPersistence = false;
+let refreshActivitySummaryCallback = null;
+let lastSummaryElapsedMinutes = null;
 let nextActivityDraft = {
     description: '',
     category: ''
@@ -39,11 +41,18 @@ function setStartTimerButtonLabel() {
     startTimerButton.innerHTML = '<i class="fa-solid fa-play mr-2"></i>Start Timer';
 }
 
+function refreshActivitySummary() {
+    if (typeof refreshActivitySummaryCallback === 'function') {
+        refreshActivitySummaryCallback();
+    }
+}
+
 function stopElapsedCounter() {
     if (timerIntervalId) {
         clearInterval(timerIntervalId);
         timerIntervalId = null;
     }
+    lastSummaryElapsedMinutes = null;
 }
 
 function queueTimerMutation(mutation) {
@@ -88,7 +97,25 @@ function startElapsedCounter(startDateTime) {
     }
 
     const updateElapsed = () => {
-        elapsedElement.textContent = formatElapsed(Date.now() - startMs);
+        const elapsedMs = Date.now() - startMs;
+        elapsedElement.textContent = formatElapsed(elapsedMs);
+
+        const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
+        if (lastSummaryElapsedMinutes === null) {
+            lastSummaryElapsedMinutes = elapsedMinutes;
+            return;
+        }
+
+        if (
+            elapsedMinutes !== lastSummaryElapsedMinutes &&
+            typeof refreshActivitySummaryCallback === 'function'
+        ) {
+            lastSummaryElapsedMinutes = elapsedMinutes;
+            refreshActivitySummary();
+            return;
+        }
+
+        lastSummaryElapsedMinutes = elapsedMinutes;
     };
 
     updateElapsed();
@@ -192,6 +219,7 @@ export function disposeTimerUI() {
     stopElapsedCounter();
     pendingTimerMutation = null;
     suppressTimerFieldPersistence = false;
+    refreshActivitySummaryCallback = null;
     nextActivityDraft = {
         description: '',
         category: ''
@@ -222,6 +250,8 @@ export function initializeTimerUI(deps) {
     disposeTimerUI();
     timerUiAbortController = new AbortController();
     const { signal } = timerUiAbortController;
+    refreshActivitySummaryCallback =
+        typeof deps.refreshActivitySummary === 'function' ? deps.refreshActivitySummary : null;
 
     const radios = document.querySelectorAll('input[name="task-type"]');
     radios.forEach((radio) => {
@@ -376,6 +406,7 @@ export function initializeTimerUI(deps) {
                             if (result?.success && result.runningActivity) {
                                 timerDescriptionInput.value =
                                     result.runningActivity.description || '';
+                                refreshActivitySummary();
                                 return;
                             }
 
@@ -412,6 +443,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 timerCategorySelect.value = result.runningActivity.category || '';
+                                refreshActivitySummary();
                                 return;
                             }
 
@@ -460,6 +492,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 showTimerDisplay(result.runningActivity);
+                                refreshActivitySummary();
                                 return;
                             }
 

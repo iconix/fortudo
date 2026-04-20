@@ -45,6 +45,7 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getRunningActivity: jest.fn(() => null),
     getActivityState: jest.fn(() => []),
     getTodaysActivities: jest.fn(() => []),
+    getLiveTodayActivitySummary: jest.fn(() => null),
     getSuggestedActivityStartTime: jest.fn(() => null)
 }));
 jest.mock('../public/js/activities/timer-ui.js', () => ({
@@ -58,7 +59,8 @@ jest.mock('../public/js/activities/ui-handlers.js', () => {
     return actual;
 });
 jest.mock('../public/js/activities/renderer.js', () => ({
-    renderActivities: jest.fn()
+    renderActivities: jest.fn(),
+    renderActivitySummaryOnly: jest.fn()
 }));
 jest.mock('../public/js/activities/handlers.js', () => ({
     handleAddActivity: jest.fn(() => Promise.resolve()),
@@ -371,7 +373,8 @@ describe('App.js Callback Functions', () => {
 
             expect(mockLoadRunningActivity).toHaveBeenCalled();
             expect(mockInitializeTimerUI).toHaveBeenCalledWith({
-                refreshUI: expect.any(Function)
+                refreshUI: expect.any(Function),
+                refreshActivitySummary: expect.any(Function)
             });
             expect(mockSyncTimerFormState).toHaveBeenCalled();
         });

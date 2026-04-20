@@ -547,6 +547,22 @@ describe('activity timer ui', () => {
             expect(refreshUI).toHaveBeenCalled();
         });
 
+        test('refreshes the activity summary when the running timer crosses a new rounded-minute boundary', () => {
+            const refreshActivitySummary = jest.fn();
+
+            initializeTimerUI({ refreshUI: jest.fn(), refreshActivitySummary });
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            jest.advanceTimersByTime(29000);
+            expect(refreshActivitySummary).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(1000);
+            expect(refreshActivitySummary).toHaveBeenCalledTimes(1);
+        });
+
         test('stop timer waits for pending timer edits before delegating', async () => {
             let resolveUpdate;
             getRunningActivity.mockReturnValue({
@@ -675,6 +691,70 @@ describe('activity timer ui', () => {
             expect(document.getElementById('timer-elapsed').textContent).toBe('00:30:00');
         });
 
+        test('successful timer description edits refresh the activity summary immediately', async () => {
+            const refreshActivitySummary = jest.fn();
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: true,
+                runningActivity: {
+                    description: 'Updated',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-09T10:00:00.000Z'
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn(), refreshActivitySummary });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const descriptionInput = document.getElementById('timer-description');
+            descriptionInput.value = 'Updated';
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(refreshActivitySummary).toHaveBeenCalled();
+        });
+
+        test('successful timer category edits refresh the activity summary immediately', async () => {
+            const refreshActivitySummary = jest.fn();
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: true,
+                runningActivity: {
+                    description: 'Running',
+                    category: 'break/admin',
+                    startDateTime: '2026-04-09T10:00:00.000Z'
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn(), refreshActivitySummary });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const categoryInput = document.getElementById('timer-category');
+            categoryInput.innerHTML =
+                '<option value="work/deep">Deep Work</option><option value="break/admin">Admin</option>';
+            categoryInput.value = 'break/admin';
+            categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(refreshActivitySummary).toHaveBeenCalled();
+        });
+
         test('failed timer description edits rollback the visible value and alert', async () => {
             getRunningActivity.mockReturnValue({
                 description: 'Running',
@@ -775,6 +855,37 @@ describe('activity timer ui', () => {
 
             expect(startTimeInput.value).toBe(previousValue);
             expect(showAlert).toHaveBeenCalledWith('Start time update failed.', 'sky');
+        });
+
+        test('successful timer start time edits refresh the activity summary immediately', async () => {
+            const refreshActivitySummary = jest.fn();
+            getRunningActivity.mockReturnValue({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+            updateRunningActivity.mockResolvedValueOnce({
+                success: true,
+                runningActivity: {
+                    description: 'Running',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-09T09:15:00.000Z'
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn(), refreshActivitySummary });
+            showTimerDisplay({
+                description: 'Running',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            const startTimeInput = document.getElementById('timer-start-time');
+            startTimeInput.value = '09:15';
+            startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await flushAsyncWork(6);
+
+            expect(refreshActivitySummary).toHaveBeenCalled();
         });
     });
 });

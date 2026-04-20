@@ -19,11 +19,13 @@ jest.mock('../public/js/activities/handlers.js', () => ({
 
 jest.mock('../public/js/activities/manager.js', () => ({
     getTodaysActivities: jest.fn(() => []),
-    getRunningActivity: jest.fn(() => null)
+    getRunningActivity: jest.fn(() => null),
+    getLiveTodayActivitySummary: jest.fn(() => null)
 }));
 
 jest.mock('../public/js/activities/renderer.js', () => ({
-    renderActivities: jest.fn()
+    renderActivities: jest.fn(),
+    renderActivitySummaryOnly: jest.fn()
 }));
 
 import {
@@ -42,13 +44,18 @@ import {
     handleDeleteActivity,
     handleSaveActivityEdit
 } from '../public/js/activities/handlers.js';
-import { getTodaysActivities, getRunningActivity } from '../public/js/activities/manager.js';
+import {
+    getTodaysActivities,
+    getRunningActivity,
+    getLiveTodayActivitySummary
+} from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
 
 describe('activity app integration', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         getRunningActivity.mockReturnValue(null);
+        getLiveTodayActivitySummary.mockReturnValue(null);
         resetActivityInlineEditState();
         document.body.innerHTML = `
             <div id="activity-toggle-option" class="hidden"></div>
@@ -120,7 +127,25 @@ describe('activity app integration', () => {
         expect(renderActivities).toHaveBeenCalledWith(
             activities,
             document.getElementById('activity-list'),
-            expect.objectContaining({ editingActivityId: null })
+            expect.objectContaining({
+                editingActivityId: null,
+                summaryActivities: activities
+            })
+        );
+    });
+
+    test('renders the summary with the live running activity included', () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        const runningSummary = { id: 'running-activity-summary', description: 'Running' };
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+
+        renderTodayActivities(true);
+
+        expect(renderActivities).toHaveBeenCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ summaryActivities: [...activities, runningSummary] })
         );
     });
 

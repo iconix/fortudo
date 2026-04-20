@@ -36,6 +36,7 @@ import {
 import {
     syncActivitiesUI,
     renderTodayActivities,
+    refreshTodayActivitySummary,
     handleActivityAwareFormSubmit,
     handleActivityListClick,
     handleActivityListSubmit,
@@ -261,7 +262,10 @@ async function initAndBootApp(roomCode) {
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
-    initializeTimerUI({ refreshUI: refreshTaskDisplays });
+    initializeTimerUI({
+        refreshUI: refreshTaskDisplays,
+        refreshActivitySummary: () => refreshTodayActivitySummary(isActivitiesEnabled())
+    });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
