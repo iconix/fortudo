@@ -42,6 +42,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
 jest.mock('../public/js/activities/manager.js', () => ({
     loadActivitiesState: jest.fn(() => Promise.resolve([])),
     loadRunningActivity: jest.fn(() => Promise.resolve(null)),
+    stopTimerAt: jest.fn(() => Promise.resolve({ success: true })),
     getRunningActivity: jest.fn(() => null),
     getActivityState: jest.fn(() => []),
     getTodaysActivities: jest.fn(() => []),
@@ -86,6 +87,7 @@ import {
 import {
     loadActivitiesState as mockLoadActivitiesStateInternal,
     loadRunningActivity as mockLoadRunningActivityInternal,
+    stopTimerAt as mockStopTimerAtInternal,
     getRunningActivity as mockGetRunningActivityInternal,
     getActivityState as mockGetActivityStateInternal,
     getTodaysActivities as mockGetTodaysActivitiesInternal
@@ -116,6 +118,7 @@ const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
 const mockLoadRunningActivity = jest.mocked(mockLoadRunningActivityInternal);
+const mockStopTimerAt = jest.mocked(mockStopTimerAtInternal);
 const mockGetRunningActivity = jest.mocked(mockGetRunningActivityInternal);
 const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
 const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
@@ -393,6 +396,37 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks([]);
 
             expect(document.getElementById('activity').checked).toBe(true);
+        });
+
+        test('stops a running timer at midnight boundary', async () => {
+            jest.useFakeTimers();
+            try {
+                jest.setSystemTime(new Date('2026-04-09T23:59:59'));
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                mockLoadRunningActivity.mockResolvedValue({
+                    description: 'Late timer',
+                    startDateTime: '2026-04-09T23:00:00.000Z'
+                });
+                mockGetRunningActivity.mockReturnValue({
+                    description: 'Late timer',
+                    startDateTime: '2026-04-09T23:00:00.000Z'
+                });
+                mockStopTimerAt.mockResolvedValue({ success: true });
+
+                const setupPromise = setupAppWithTasks([]);
+                await Promise.resolve();
+                await jest.runOnlyPendingTimersAsync();
+                await setupPromise;
+
+                await jest.advanceTimersByTimeAsync(1000);
+
+                const expectedMidnight = new Date('2026-04-10T00:00:00');
+
+                expect(mockStopTimerAt).toHaveBeenCalledWith(expectedMidnight.toISOString());
+                expect(mockSyncTimerFormState).toHaveBeenCalled();
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         test('activity mode submits through the activity handler and uses activity UI state', async () => {

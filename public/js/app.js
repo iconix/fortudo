@@ -31,7 +31,8 @@ import {
 import {
     loadActivitiesState,
     loadRunningActivity,
-    getRunningActivity
+    getRunningActivity,
+    stopTimerAt
 } from './activities/manager.js';
 import {
     syncActivitiesUI,
@@ -49,7 +50,7 @@ import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
-import { logger } from './utils.js';
+import { logger, extractDateFromDateTime } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
 import { handleAddTaskProcess } from './tasks/add-handler.js';
@@ -355,9 +356,38 @@ async function initAndBootApp(roomCode) {
     focusTaskDescriptionInput();
 
     // Active task color refresh interval
+    let lastObservedDate = extractDateFromDateTime(new Date());
+    let midnightTimerStopInFlight = false;
     const activeTaskColorInterval = setInterval(() => {
-        refreshActiveTaskColor(getTaskState());
-        refreshCurrentGapHighlight();
+        const now = new Date();
+        const currentDate = extractDateFromDateTime(now);
+
+        if (currentDate !== lastObservedDate) {
+            lastObservedDate = currentDate;
+
+            if (isActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
+                midnightTimerStopInFlight = true;
+                const midnightBoundary = new Date(now);
+                midnightBoundary.setHours(0, 0, 0, 0);
+
+                stopTimerAt(midnightBoundary.toISOString())
+                    .then((result) => {
+                        if (result?.success) {
+                            syncTimerFormState();
+                            refreshTaskDisplays();
+                        }
+                    })
+                    .catch((error) => {
+                        logger.error('Failed to stop running timer at midnight:', error);
+                    })
+                    .finally(() => {
+                        midnightTimerStopInFlight = false;
+                    });
+            }
+        }
+
+        refreshActiveTaskColor(getTaskState(), now);
+        refreshCurrentGapHighlight(now);
         refreshStartTimeField();
     }, 1000);
 
