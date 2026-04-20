@@ -28,6 +28,12 @@ jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivitySummaryOnly: jest.fn()
 }));
 
+jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
+    resolveCategoryKey: jest.fn((key) =>
+        key === 'work/deep' ? { kind: 'category', record: { key, color: '#0ea5e9' } } : null
+    )
+}));
+
 import {
     syncActivitiesUI,
     renderTodayActivities,
@@ -594,6 +600,41 @@ describe('activity app integration', () => {
         expect(handled).toBe(true);
         expect(hintElement.textContent).toContain('AM');
         expect(hintElement.classList.contains('opacity-0')).toBe(false);
+    });
+
+    test('changing inline activity category updates the category color dot', () => {
+        const activityList = document.getElementById('activity-list');
+        activityList.innerHTML = `
+            <form class="activity-inline-edit-form" data-activity-id="activity-11" data-activity-date="2026-04-07">
+                <div class="flex items-center gap-2">
+                    <span class="activity-edit-category-dot" style="background-color: rgb(100, 116, 139);"></span>
+                    <select name="category">
+                        <option value="">No category</option>
+                        <option value="work/deep">Deep Work</option>
+                    </select>
+                </div>
+                <input name="start-time" value="09:00" />
+                <div>
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="15" />
+                    <span class="edit-end-time-hint opacity-0"></span>
+                </div>
+            </form>
+        `;
+        const categorySelect = activityList.querySelector('select[name="category"]');
+        const categoryDot = activityList.querySelector('.activity-edit-category-dot');
+        categorySelect.value = 'work/deep';
+        const inputEvent = new Event('input', { bubbles: true });
+
+        Object.defineProperty(inputEvent, 'target', {
+            value: categorySelect,
+            configurable: true
+        });
+
+        const handled = handleActivityListInput(inputEvent);
+
+        expect(handled).toBe(true);
+        expect(categoryDot.style.backgroundColor).toBe('rgb(14, 165, 233)');
     });
 
     test('input on inline activity edit clears the end-time hint when preview is invalid', () => {

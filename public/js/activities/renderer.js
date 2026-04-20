@@ -372,6 +372,8 @@ function renderInlineEditActivityItem(activity) {
     const durationMinutes = activity.duration % 60;
     const displayStartTime = extractTimeFromDateTime(new Date(activity.startDateTime));
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
+    const resolvedCategory = activity.category ? resolveCategoryKey(activity.category) : null;
+    const categoryColor = resolvedCategory?.record?.color || '#64748b';
     const endTimeHint = computeEndTimePreview(
         displayStartTime,
         durationHours.toString(),
@@ -396,9 +398,12 @@ function renderInlineEditActivityItem(activity) {
                     class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100" required>
             </div>
             <div class="sm:flex-1 sm:min-w-[13rem]">
+                <div class="flex items-center gap-2">
+                <span class="activity-edit-category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${escapeHtml(categoryColor)};"></span>
                 <select name="category" class="bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
                     ${renderCategoryOptions(activity.category)}
                 </select>
+                </div>
             </div>
         </div>
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:pb-5">

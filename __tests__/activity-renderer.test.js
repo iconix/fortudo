@@ -779,6 +779,10 @@ describe('activity renderer', () => {
         expect(editForm.querySelector('input[name="duration-hours"]').value).toBe('1');
         expect(editForm.querySelector('input[name="duration-minutes"]').value).toBe('30');
         expect(editForm.querySelector('select[name="category"]').value).toBe('work/deep');
+        expect(editForm.querySelector('.activity-edit-category-dot')).not.toBeNull();
+        expect(editForm.querySelector('.activity-edit-category-dot').style.backgroundColor).toBe(
+            'rgb(14, 165, 233)'
+        );
         expect(editForm.textContent).toContain('auto');
         expect(editForm.querySelector('.btn-delete-activity')).toBeNull();
         expect(editForm.querySelector('.btn-cancel-activity-edit')).not.toBeNull();

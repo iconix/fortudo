@@ -4,6 +4,7 @@ import { renderActivities, renderActivitySummaryOnly } from './renderer.js';
 import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from './handlers.js';
 import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
+import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 
 let editingActivityId = null;
 let expandedParentGroupKey = null;
@@ -274,13 +275,22 @@ export function handleActivityListKeydown(event, deps) {
 
 export function handleActivityListInput(event) {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
+    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) {
         return false;
     }
 
     const editForm = target.closest('form.activity-inline-edit-form[data-activity-id]');
     if (!(editForm instanceof HTMLFormElement)) {
         return false;
+    }
+
+    if (target instanceof HTMLSelectElement && target.name === 'category') {
+        const categoryDot = editForm.querySelector('.activity-edit-category-dot');
+        if (categoryDot instanceof HTMLElement) {
+            const resolvedCategory = resolveCategoryKey(target.value);
+            categoryDot.style.backgroundColor = resolvedCategory?.record?.color || '#64748b';
+        }
+        return true;
     }
 
     const startInput = editForm.querySelector('input[name="start-time"]');
