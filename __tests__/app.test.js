@@ -1705,6 +1705,41 @@ describe('App.js Callback Functions', () => {
                 expect(mockSaveTasks).not.toHaveBeenCalled();
             });
 
+            test('should re-sync the timer ui when a running timer changes after sync completes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Local Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                await setupAppWithTasks(initialTasks);
+
+                const syncStatusCallback = mockOnSyncStatusChange.mock.calls.at(-1)?.[0];
+                expect(syncStatusCallback).toEqual(expect.any(Function));
+
+                mockSyncTimerFormState.mockClear();
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                mockLoadRunningActivity.mockImplementation(async () => {
+                    mockGetRunningActivity.mockReturnValue({
+                        description: 'Synced timer',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    });
+                    return {
+                        description: 'Synced timer',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    };
+                });
+
+                syncStatusCallback('synced');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(document.getElementById('activity').checked).toBe(true);
+                expect(mockSyncTimerFormState).toHaveBeenCalledTimes(1);
+            });
+
             test('should refresh tasks from storage when the tab becomes visible again', async () => {
                 const initialTasks = [
                     createTaskWithDateTime({

@@ -72,6 +72,23 @@ let refreshFromStoragePromise = null;
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
 
+function syncTimerUiFromLoadedState() {
+    if (!isActivitiesEnabled()) {
+        return;
+    }
+
+    const runningActivity = getRunningActivity();
+    if (runningActivity) {
+        const activityRadio = document.getElementById('activity');
+        if (activityRadio instanceof HTMLInputElement && !activityRadio.checked) {
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    syncTimerFormState();
+}
+
 function refreshTaxonomyUI() {
     refreshTaskCategoryDropdownUI();
     refreshTaskDisplays();
@@ -116,6 +133,7 @@ async function refreshFromStorage() {
     refreshFromStoragePromise = (async () => {
         await loadAppState();
         refreshUI();
+        syncTimerUiFromLoadedState();
         refreshActiveTaskColor(getTaskState());
         refreshCurrentGapHighlight();
     })();
@@ -331,14 +349,15 @@ async function initAndBootApp(roomCode) {
 
     // Initial render
     refreshTaskDisplays();
-    if (isActivitiesEnabled() && getRunningActivity()) {
+    const restoredRunningActivity = isActivitiesEnabled() ? getRunningActivity() : null;
+    if (restoredRunningActivity) {
         const activityRadio = document.getElementById('activity');
         if (activityRadio instanceof HTMLInputElement) {
             activityRadio.checked = true;
             activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        syncTimerFormState();
+        syncTimerUiFromLoadedState();
 
         const activityToggle = document.getElementById('activity-toggle-option');
         if (activityToggle) {
