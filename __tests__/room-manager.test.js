@@ -51,9 +51,27 @@ describe('Room Manager', () => {
             expect(code.length).toBeGreaterThan(0);
         });
 
-        test('generates unique codes', () => {
-            const codes = new Set(Array.from({ length: 20 }, () => generateRoomCode()));
-            expect(codes.size).toBe(20);
+        test('generates room codes in the expected format', () => {
+            const code = generateRoomCode();
+            expect(code).toMatch(/^[a-z]{3}-\d{3}$/);
+        });
+
+        test('produces different codes when randomness changes', () => {
+            const randomSpy = jest.spyOn(Math, 'random');
+            randomSpy
+                .mockReturnValueOnce(0)
+                .mockReturnValueOnce(0)
+                .mockReturnValueOnce(0.999)
+                .mockReturnValueOnce(0.999);
+
+            const firstCode = generateRoomCode();
+            const secondCode = generateRoomCode();
+
+            expect(firstCode).toBe('fox-100');
+            expect(secondCode).toBe('yak-999');
+            expect(firstCode).not.toBe(secondCode);
+
+            randomSpy.mockRestore();
         });
     });
 
