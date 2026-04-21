@@ -34,17 +34,13 @@ import {
     getRunningActivity,
     stopTimerAt
 } from './activities/manager.js';
+import { syncActivitiesUI, renderTodayActivities } from './activities/ui-handlers.js';
+import { syncTimerFormState } from './activities/timer-ui.js';
 import {
-    syncActivitiesUI,
-    renderTodayActivities,
-    refreshTodayActivitySummary,
-    handleActivityAwareFormSubmit,
-    handleActivityListClick,
-    handleActivityListSubmit,
-    handleActivityListKeydown,
-    handleActivityListInput
-} from './activities/ui-handlers.js';
-import { initializeTimerUI, syncTimerFormState } from './activities/timer-ui.js';
+    createActivityAppCallbacks,
+    initializeActivityUi,
+    syncRestoredRunningTimer
+} from './activities/app-wiring.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
@@ -71,23 +67,6 @@ let refreshFromStoragePromise = null;
 
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
-
-function syncTimerUiFromLoadedState() {
-    if (!isActivitiesEnabled()) {
-        return;
-    }
-
-    const runningActivity = getRunningActivity();
-    if (runningActivity) {
-        const activityRadio = document.getElementById('activity');
-        if (activityRadio instanceof HTMLInputElement && !activityRadio.checked) {
-            activityRadio.checked = true;
-            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }
-
-    syncTimerFormState();
-}
 
 function refreshTaxonomyUI() {
     refreshTaskCategoryDropdownUI();
@@ -133,7 +112,7 @@ async function refreshFromStorage() {
     refreshFromStoragePromise = (async () => {
         await loadAppState();
         refreshUI();
-        syncTimerUiFromLoadedState();
+        syncRestoredRunningTimer(isActivitiesEnabled());
         refreshActiveTaskColor(getTaskState());
         refreshCurrentGapHighlight();
     })();
@@ -192,34 +171,26 @@ async function initAndBootApp(roomCode) {
         refreshCurrentGapHighlight();
     };
 
-    const appCallbacks = {
-        onTaskFormSubmit: async (formElement) => {
-            await handleActivityAwareFormSubmit(formElement, {
-                activitiesEnabled: isActivitiesEnabled(),
-                resetTaskFormPreviewState,
-                initializeTaskTypeToggle,
-                focusTaskDescriptionInput,
-                handleTaskSubmit: async (taskFormElement) => {
-                    const taskData = extractTaskFormData(taskFormElement);
-                    if (!taskData) {
-                        focusTaskDescriptionInput();
-                        return;
-                    }
-                    const overlapEl = document.getElementById('overlap-warning');
-                    const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
-                    await handleAddTaskProcess(taskFormElement, taskData, {
-                        reschedulePreApproved
-                    });
-                }
-            });
-        },
-        onGlobalClick: (event) => {
-            handleActivityListClick(event.target, {
-                refreshUI,
-                resetAllConfirmingDeleteFlags
+    const appCallbacks = createActivityAppCallbacks({
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        refreshUI,
+        resetAllConfirmingDeleteFlags,
+        focusTaskDescriptionInput,
+        resetTaskFormPreviewState,
+        initializeTaskTypeToggle,
+        handleTaskSubmit: async (taskFormElement) => {
+            const taskData = extractTaskFormData(taskFormElement);
+            if (!taskData) {
+                focusTaskDescriptionInput();
+                return;
+            }
+            const overlapEl = document.getElementById('overlap-warning');
+            const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+            await handleAddTaskProcess(taskFormElement, taskData, {
+                reschedulePreApproved
             });
         }
-    };
+    });
 
     // Initialize event listeners
     const taskFormElement = getTaskFormElement();
@@ -281,37 +252,16 @@ async function initAndBootApp(roomCode) {
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
-    initializeTimerUI({
-        refreshUI: refreshTaskDisplays,
-        refreshActivitySummary: () => refreshTodayActivitySummary(isActivitiesEnabled())
+    initializeActivityUi({
+        signal,
+        refreshUI,
+        refreshTaskDisplays,
+        getActivitiesEnabled: () => isActivitiesEnabled()
     });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
-
-    const activityListElement = document.getElementById('activity-list');
-    if (activityListElement) {
-        activityListElement.addEventListener(
-            'submit',
-            (event) => {
-                handleActivityListSubmit(event, {
-                    refreshUI
-                });
-            },
-            { signal }
-        );
-        activityListElement.addEventListener(
-            'keydown',
-            (event) => {
-                handleActivityListKeydown(event, {
-                    refreshUI
-                });
-            },
-            { signal }
-        );
-        activityListElement.addEventListener('input', handleActivityListInput, { signal });
-    }
 
     // Wire up sync status indicator + refresh after sync
     unsubscribeSyncStatus = onSyncStatusChange((status) => {
@@ -351,13 +301,7 @@ async function initAndBootApp(roomCode) {
     refreshTaskDisplays();
     const restoredRunningActivity = isActivitiesEnabled() ? getRunningActivity() : null;
     if (restoredRunningActivity) {
-        const activityRadio = document.getElementById('activity');
-        if (activityRadio instanceof HTMLInputElement) {
-            activityRadio.checked = true;
-            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        syncTimerUiFromLoadedState();
+        syncRestoredRunningTimer(isActivitiesEnabled());
 
         const activityToggle = document.getElementById('activity-toggle-option');
         if (activityToggle) {
