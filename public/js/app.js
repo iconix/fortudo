@@ -41,12 +41,13 @@ import {
     initializeActivityUi,
     syncRestoredRunningTimer
 } from './activities/app-wiring.js';
+import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
 import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
-import { logger, extractDateFromDateTime } from './utils.js';
+import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
 import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
 import { handleAddTaskProcess } from './tasks/add-handler.js';
@@ -59,11 +60,8 @@ import { COUCHDB_URL } from './config.js';
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
 
-/** @type {(() => void) | null} */
-let unsubscribeSyncStatus = null;
-
-/** @type {Promise<void> | null} */
-let refreshFromStoragePromise = null;
+/** @type {{ refreshFromStorage: () => Promise<void>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
+let roomSessionLifecycle = null;
 
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
@@ -104,41 +102,20 @@ async function loadAppState() {
     }
 }
 
-async function refreshFromStorage() {
-    if (refreshFromStoragePromise) {
-        return refreshFromStoragePromise;
-    }
-
-    refreshFromStoragePromise = (async () => {
-        await loadAppState();
-        refreshUI();
-        syncRestoredRunningTimer(isActivitiesEnabled());
-        refreshActiveTaskColor(getTaskState());
-        refreshCurrentGapHighlight();
-    })();
-
-    try {
-        await refreshFromStoragePromise;
-    } finally {
-        refreshFromStoragePromise = null;
-    }
-}
-
 /**
  * Initialize storage and boot the main app UI.
  * @param {string} roomCode
  */
 async function initAndBootApp(roomCode) {
+    if (roomSessionLifecycle) {
+        roomSessionLifecycle.stop();
+        roomSessionLifecycle = null;
+    }
     if (appLifecycleAbortController) {
         appLifecycleAbortController.abort();
     }
     appLifecycleAbortController = new AbortController();
     const { signal } = appLifecycleAbortController;
-
-    if (unsubscribeSyncStatus) {
-        unsubscribeSyncStatus();
-        unsubscribeSyncStatus = null;
-    }
 
     showMainApp(roomCode);
 
@@ -190,6 +167,25 @@ async function initAndBootApp(roomCode) {
                 reschedulePreApproved
             });
         }
+    });
+
+    roomSessionLifecycle = createRoomSessionLifecycle({
+        loadAppState,
+        refreshUI,
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        syncRestoredRunningTimer,
+        getTaskState,
+        refreshActiveTaskColor,
+        refreshCurrentGapHighlight,
+        refreshStartTimeField,
+        getRunningActivity,
+        stopTimerAt,
+        syncTimerFormState,
+        refreshTaskDisplays,
+        onSyncStatusChange,
+        updateSyncStatusUI,
+        triggerSync,
+        logger
     });
 
     // Initialize event listeners
@@ -262,40 +258,7 @@ async function initAndBootApp(roomCode) {
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
-
-    // Wire up sync status indicator + refresh after sync
-    unsubscribeSyncStatus = onSyncStatusChange((status) => {
-        updateSyncStatusUI(status);
-        if (status === 'synced') {
-            refreshFromStorage().catch((err) => {
-                logger.error('Failed to refresh tasks after sync:', err);
-            });
-        }
-    });
-
-    const refreshFromExternalChange = () => {
-        refreshFromStorage().catch((err) => {
-            logger.error('Failed to refresh tasks after external change:', err);
-        });
-    };
-
-    const syncOnFocus = () => {
-        triggerSync({ respectCooldown: true }).catch((err) => {
-            logger.error('Failed to sync tasks after window focus:', err);
-        });
-    };
-
-    document.addEventListener(
-        'visibilitychange',
-        () => {
-            if (!document.hidden) {
-                refreshFromExternalChange();
-            }
-        },
-        { signal }
-    );
-
-    window.addEventListener('focus', syncOnFocus, { signal });
+    roomSessionLifecycle.start({ signal });
 
     // Initial render
     refreshTaskDisplays();
@@ -317,50 +280,6 @@ async function initAndBootApp(roomCode) {
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
-
-    // Active task color refresh interval
-    let lastObservedDate = extractDateFromDateTime(new Date());
-    let midnightTimerStopInFlight = false;
-    const activeTaskColorInterval = setInterval(() => {
-        const now = new Date();
-        const currentDate = extractDateFromDateTime(now);
-
-        if (currentDate !== lastObservedDate) {
-            lastObservedDate = currentDate;
-
-            if (isActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
-                midnightTimerStopInFlight = true;
-                const midnightBoundary = new Date(now);
-                midnightBoundary.setHours(0, 0, 0, 0);
-
-                stopTimerAt(midnightBoundary.toISOString())
-                    .then((result) => {
-                        if (result?.success) {
-                            syncTimerFormState();
-                            refreshTaskDisplays();
-                        }
-                    })
-                    .catch((error) => {
-                        logger.error('Failed to stop running timer at midnight:', error);
-                    })
-                    .finally(() => {
-                        midnightTimerStopInFlight = false;
-                    });
-            }
-        }
-
-        refreshActiveTaskColor(getTaskState(), now);
-        refreshCurrentGapHighlight(now);
-        refreshStartTimeField();
-    }, 1000);
-
-    window.addEventListener(
-        'beforeunload',
-        () => {
-            clearInterval(activeTaskColorInterval);
-        },
-        { signal }
-    );
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
