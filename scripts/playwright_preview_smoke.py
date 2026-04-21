@@ -8,7 +8,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -1298,6 +1298,591 @@ def wait_for_demo_start(
     input_fn("")
 
 
+def run_activities_room_scenario(
+    *,
+    page: Any,
+    rooms: dict[str, str],
+    step_pause_ms: int,
+    assert_no_page_errors_yet: Callable[[str], None],
+) -> None:
+    demo_step(page, "checking activities room flows", step_pause_ms)
+    switch_room(page, rooms["activities"])
+    clear_room_storage(page, rooms["activities"])
+    seed_docs(page, rooms["activities"], [build_phase3_taxonomy_config_doc()])
+    set_activities_enabled(page, True)
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+
+    add_activity(page, "Playwright manual activity", "13:00", 30)
+    manual_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright manual activity",
+    )
+    if manual_activity_doc.get("source") != "manual":
+        raise ValueError(
+            f"manual activity was not stored as manual.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    if manual_activity_doc.get("sourceTaskId") is not None:
+        raise ValueError(
+            f"manual activity unexpectedly linked to a source task.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    if manual_activity_doc.get("duration") != 30:
+        raise ValueError(
+            f"manual activity persisted wrong duration.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#activity-list",
+        "Playwright manual activity",
+        description="manual activity render",
+    )
+    demo_note("activities: manual activity add persisted and rendered")
+    assert_no_page_errors_yet("manual activity add")
+
+    queue_activity_smoke_failure(page, "manual-add", 1)
+    add_activity(page, "Playwright failed activity", "13:45", 15)
+    wait_for_activity_failure_alert(
+        page,
+        rooms["activities"],
+        "Playwright failed activity",
+    )
+    wait_for_text_in_locator(
+        page,
+        "#custom-alert-message",
+        "Could not log activity.",
+        description="manual activity failure alert",
+    )
+    failed_activity_description = page.locator(
+        task_form_input_selector("description")
+    ).input_value()
+    if failed_activity_description != "Playwright failed activity":
+        raise ValueError(
+            "manual activity failure cleared the form unexpectedly: "
+            f"{failed_activity_description!r}"
+        )
+    page.locator("#ok-custom-alert-modal").click()
+    page.locator("#custom-alert-modal").wait_for(state="hidden", timeout=10000)
+    if any(
+        doc.get("description") == "Playwright failed activity"
+        for doc in read_docs(page, rooms["activities"])
+    ):
+        raise ValueError("failed manual activity unexpectedly persisted")
+    demo_note("activities: manual add failure path preserved form state")
+    assert_no_page_errors_yet("manual add failure path")
+
+    add_active_scheduled_task(page, "Playwright auto-log success", 20)
+    success_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log success",
+    )
+    complete_scheduled_task_via_ui(page, success_task_doc["id"])
+    success_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log success",
+    )
+    if success_activity_doc.get("source") != "auto":
+        raise ValueError(
+            f"successful auto-log activity had wrong source.\n{json.dumps(success_activity_doc, indent=2)}"
+        )
+    if success_activity_doc.get("sourceTaskId") != success_task_doc["id"]:
+        raise ValueError(
+            "successful auto-log activity did not keep the source task id.\n"
+            f"{json.dumps(success_activity_doc, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#activity-list",
+        "Playwright auto-log success",
+        description="successful auto-log activity render",
+    )
+    demo_note("activities: scheduled-task auto-log success verified")
+    assert_no_page_errors_yet("auto-log success")
+
+    add_active_scheduled_task(page, "Playwright auto-log failure", 20)
+    failing_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log failure",
+    )
+    queue_activity_smoke_failure(page, "auto-log", 1)
+    complete_scheduled_task_via_ui(page, failing_task_doc["id"])
+    wait_for_toast_text(page, "Task completed, but activity auto-log failed.")
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright auto-log failure"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("failed auto-log unexpectedly created an activity")
+    demo_note("activities: auto-log failure path surfaced toast without persisting activity")
+    assert_no_page_errors_yet("auto-log failure path")
+
+    add_unscheduled_task(page, "Playwright delete confirm task", 15)
+    delete_confirm_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright delete confirm task",
+    )
+
+    add_activity(page, "Playwright editable activity", "15:30", 15)
+    editable_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright editable activity",
+    )
+    wait_for_activity_row_text(
+        page,
+        editable_activity_doc["id"],
+        "Playwright editable activity",
+    )
+    arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+    page.locator(
+        f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
+    ).click()
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+    ).wait_for(state="visible", timeout=10000)
+    current_modal_value = wait_for_input_value(
+        page,
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]',
+        "Playwright editable activity",
+        description="activity inline edit description preload",
+    )
+    if current_modal_value != "Playwright editable activity":
+        raise ValueError(
+            "activity inline edit lost the current description after rerender: "
+            f"{current_modal_value!r}"
+        )
+    fill_locator_value(
+        page,
+        page.locator(
+            f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]'
+        ),
+        "Playwright editable activity updated",
+        description="activity inline edit description",
+    )
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
+    ).click()
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+    ).wait_for(state="hidden", timeout=10000)
+    wait_until(
+        lambda: any(
+            doc.get("id") == editable_activity_doc["id"]
+            and doc.get("description") == "Playwright editable activity updated"
+            for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+        ),
+        "activity edit after delete-confirm rerender",
+    )
+    if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+        raise ValueError("delete confirm state was not cleared by activity edit")
+    demo_note("activities: inline edit survived delete-confirm rerender state")
+    assert_no_page_errors_yet("activity inline edit")
+
+    add_activity(page, "Playwright delete activity", "16:00", 10)
+    deletable_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright delete activity",
+    )
+    wait_for_activity_row_text(
+        page,
+        deletable_activity_doc["id"],
+        "Playwright delete activity",
+    )
+    arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+    page.locator(
+        f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
+    ).click()
+    wait_until(
+        lambda: not any(
+            doc.get("id") == deletable_activity_doc["id"]
+            for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+        ),
+        "activity delete after delete-confirm rerender",
+    )
+    if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+        raise ValueError("delete confirm state was not cleared by activity delete")
+    demo_note("activities: manual activity delete verified")
+    assert_no_page_errors_yet("manual activity delete")
+
+    try:
+        start_activity_timer(
+            page,
+            "Playwright timer start",
+            category="work/project",
+            room_code=rooms["activities"],
+        )
+    except Exception as error:
+        timer_start_state = page.evaluate(
+            """
+            () => ({
+                scheduledChecked: document.getElementById('scheduled')?.checked ?? null,
+                unscheduledChecked: document.getElementById('unscheduled')?.checked ?? null,
+                activityChecked: document.getElementById('activity')?.checked ?? null,
+                addTaskText: document.getElementById('add-task-btn')?.textContent ?? null,
+                startTimerHidden:
+                    document.getElementById('start-timer-btn')?.classList.contains('hidden') ??
+                    null,
+                formDescription:
+                    document.querySelector('#task-form input[name="description"]')?.value ??
+                    null,
+                formCategory:
+                    document.querySelector('#task-form select[name="category"]')?.value ??
+                    null,
+                formPlaceholder:
+                    document
+                        .querySelector('#task-form input[name="description"]')
+                        ?.getAttribute('placeholder') ?? null,
+                timerVisible:
+                    !(document.getElementById('timer-display')?.classList.contains('hidden') ??
+                    true),
+                timerDescription: document.getElementById('timer-description')?.value ?? null,
+                timerCategory: document.getElementById('timer-category')?.value ?? null,
+                alertVisible:
+                    !(document.getElementById('custom-alert-modal')?.classList.contains('hidden') ??
+                    true),
+                alertMessage:
+                    document.getElementById('custom-alert-message')?.textContent ?? null,
+                taskFormActivityClass:
+                    document.getElementById('task-form')?.classList.contains('task-form--activity') ??
+                    null
+            })
+            """
+        )
+        timer_start_docs = list(map(normalize_doc, read_docs(page, rooms["activities"])))
+        raise ValueError(
+            "Initial timer start failed.\n"
+            f"error={error!r}\n"
+            f"state={json.dumps(timer_start_state, indent=2)}\n"
+            f"docs={json.dumps(timer_start_docs, indent=2)}"
+        ) from error
+    running_timer_config = wait_for_running_activity_config(page, rooms["activities"])
+    if running_timer_config.get("description") != "Playwright timer start":
+        raise ValueError(
+            "running activity config stored wrong description after timer start.\n"
+            f"{json.dumps(running_timer_config, indent=2)}"
+        )
+    if running_timer_config.get("category") != "work/project":
+        raise ValueError(
+            "running activity config stored wrong category after timer start.\n"
+            f"{json.dumps(running_timer_config, indent=2)}"
+        )
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright timer start"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("starting a timer unexpectedly created an activity doc immediately")
+    demo_note("activities: timer started and running config persisted")
+    assert_no_page_errors_yet("timer start")
+
+    fill_locator_value(
+        page,
+        page.locator("#timer-description"),
+        "Playwright timer edited",
+        description="timer description edit",
+    )
+    page.locator("#timer-description").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("description") == "Playwright timer edited"
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer description config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    page.locator("#timer-category").select_option("work/meeting")
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("category") == "work/meeting"
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer category config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    original_start_date_time = wait_for_running_activity_config(
+        page, rooms["activities"]
+    ).get("startDateTime")
+    timer_start_backdate = get_relative_browser_time(page, -60)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        timer_start_backdate,
+        description="timer start time edit",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("startDateTime") != original_start_date_time
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer start time config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        timer_start_backdate,
+        description="timer start time field after backdate",
+    )
+
+    stop_activity_timer(page)
+    wait_until(
+        lambda: not any(
+            normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            for doc in read_docs(page, rooms["activities"])
+        ),
+        "running activity config cleared after stop",
+    )
+    stopped_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer edited",
+    )
+    if stopped_timer_doc.get("source") != "timer":
+        raise ValueError(
+            f"stopped timer activity had wrong source.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("category") != "work/meeting":
+        raise ValueError(
+            f"stopped timer activity had wrong category.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("duration", 0) <= 0:
+        raise ValueError(
+            f"stopped timer activity did not record positive duration.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("sourceTaskId") is not None:
+        raise ValueError(
+            f"timer activity unexpectedly linked to a source task.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    demo_note("activities: timer edits and stop-to-activity persistence verified")
+    assert_no_page_errors_yet("timer stop persistence")
+
+    start_activity_timer(
+        page,
+        "Playwright timer replace first",
+        category="work/project",
+        room_code=rooms["activities"],
+    )
+    replacement_timer_start = get_relative_browser_time(page, -30)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        replacement_timer_start,
+        description="replacement timer first start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        replacement_timer_start,
+        description="replacement timer first start time applied",
+    )
+    start_activity_timer(
+        page,
+        "Playwright timer replace second",
+        category="work/comms",
+        room_code=rooms["activities"],
+    )
+    replacement_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    if replacement_running_config.get("description") != "Playwright timer replace second":
+        raise ValueError(
+            "replacement timer did not become the new running timer.\n"
+            f"{json.dumps(replacement_running_config, indent=2)}"
+        )
+    replaced_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer replace first",
+    )
+    if replaced_timer_doc.get("source") != "timer" or replaced_timer_doc.get("duration", 0) <= 0:
+        raise ValueError(
+            "replaced running timer did not persist as a positive-duration timer activity.\n"
+            f"{json.dumps(replaced_timer_doc, indent=2)}"
+        )
+    demo_note("activities: stop-on-start replacement flow verified")
+    assert_no_page_errors_yet("timer replacement flow")
+
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+    page.locator("#activity").check()
+    wait_for_running_timer_ui(page, "Playwright timer replace second")
+    restored_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    if restored_running_config.get("description") != "Playwright timer replace second":
+        raise ValueError(
+            "running timer was not restored after reload.\n"
+            f"{json.dumps(restored_running_config, indent=2)}"
+        )
+    demo_note("activities: running timer restored after reload")
+    assert_no_page_errors_yet("timer reload restore")
+
+    overlap_timer_start = get_relative_browser_time(page, -15)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        overlap_timer_start,
+        description="overlap timer start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        overlap_timer_start,
+        description="overlap timer start time applied",
+    )
+
+    add_active_scheduled_task(page, "Playwright overlap auto-stop", 20)
+    overlap_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright overlap auto-stop",
+    )
+    complete_scheduled_task_via_ui(page, overlap_task_doc["id"])
+    overlap_auto_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright overlap auto-stop",
+    )
+    overlap_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer replace second",
+    )
+    if overlap_auto_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "overlap auto-log activity had wrong source.\n"
+            f"{json.dumps(overlap_auto_activity_doc, indent=2)}"
+        )
+    if overlap_timer_doc.get("source") != "timer":
+        raise ValueError(
+            "overlap auto-stop did not persist the running timer as a timer activity.\n"
+            f"{json.dumps(overlap_timer_doc, indent=2)}"
+        )
+    if any(
+        normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+        for doc in read_docs(page, rooms["activities"])
+    ):
+        raise ValueError("overlap auto-stop left a running activity config behind")
+    wait_until(
+        lambda: not page.locator("#timer-display").is_visible(),
+        "timer display hidden after overlap auto-stop",
+    )
+    demo_note("activities: overlapping scheduled completion auto-stopped running timer")
+    assert_no_page_errors_yet("overlap auto-stop")
+
+    start_activity_timer(
+        page,
+        "Playwright boundary timer",
+        room_code=rooms["activities"],
+    )
+    boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    boundary_safe_start = get_relative_browser_time(page, 5)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        boundary_safe_start,
+        description="boundary timer future start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        boundary_safe_start,
+        description="boundary timer future start time applied",
+    )
+    boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    add_active_scheduled_task(page, "Playwright boundary auto-log", 20)
+    boundary_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright boundary auto-log",
+    )
+    complete_scheduled_task_via_ui(page, boundary_task_doc["id"])
+    boundary_auto_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright boundary auto-log",
+    )
+    if boundary_auto_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "boundary auto-log activity had wrong source.\n"
+            f"{json.dumps(boundary_auto_activity_doc, indent=2)}"
+        )
+    boundary_running_config_after = wait_for_running_activity_config(
+        page,
+        rooms["activities"],
+    )
+    if boundary_running_config_after.get("description") != "Playwright boundary timer":
+        raise ValueError(
+            "boundary timer was unexpectedly replaced or stopped.\n"
+            f"{json.dumps(boundary_running_config_after, indent=2)}"
+        )
+    if boundary_running_config_after.get("startDateTime") != boundary_running_config.get(
+        "startDateTime"
+    ):
+        raise ValueError(
+            "boundary timer start time changed unexpectedly after non-overlap case.\n"
+            f"before={json.dumps(boundary_running_config, indent=2)}\n"
+            f"after={json.dumps(boundary_running_config_after, indent=2)}"
+        )
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright boundary timer"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("boundary timer unexpectedly auto-stopped in a non-overlap case")
+    page.locator("#activity").check()
+    wait_for_running_timer_ui(page, "Playwright boundary timer")
+    boundary_stop_start = get_relative_browser_time(page, -1)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        boundary_stop_start,
+        description="boundary timer stop start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        boundary_stop_start,
+        description="boundary timer stop start time applied",
+    )
+    stop_activity_timer(page)
+    wait_for_activity_doc(page, rooms["activities"], "Playwright boundary timer")
+    demo_note("activities: boundary non-overlap preserved the running timer until manual stop")
+    assert_no_page_errors_yet("boundary non-overlap")
+
 def run_smoke(
     preview_url: str,
     *,
@@ -1583,7 +2168,7 @@ def run_smoke(
                         page.locator('#category-select option[value="work/project"]').text_content()
                         or ""
                     )
-                    == "â€º Project",
+                    == "Ã¢â‚¬Âº Project",
                     "visible nested project category option",
                 )
 
@@ -1862,583 +2447,12 @@ def run_smoke(
             run_legacy_room_scenario()
 
             run_taxonomy_room_scenario()
-            demo_step(page, "checking activities room flows", step_pause_ms)
-            switch_room(page, rooms["activities"])
-            clear_room_storage(page, rooms["activities"])
-            seed_docs(page, rooms["activities"], [build_phase3_taxonomy_config_doc()])
-            set_activities_enabled(page, True)
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
-
-            add_activity(page, "Playwright manual activity", "13:00", 30)
-            manual_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright manual activity",
+            run_activities_room_scenario(
+                page=page,
+                rooms=rooms,
+                step_pause_ms=step_pause_ms,
+                assert_no_page_errors_yet=assert_no_page_errors_yet,
             )
-            if manual_activity_doc.get("source") != "manual":
-                raise ValueError(
-                    f"manual activity was not stored as manual.\n{json.dumps(manual_activity_doc, indent=2)}"
-                )
-            if manual_activity_doc.get("sourceTaskId") is not None:
-                raise ValueError(
-                    f"manual activity unexpectedly linked to a source task.\n{json.dumps(manual_activity_doc, indent=2)}"
-                )
-            if manual_activity_doc.get("duration") != 30:
-                raise ValueError(
-                    f"manual activity persisted wrong duration.\n{json.dumps(manual_activity_doc, indent=2)}"
-                )
-            wait_for_text_in_locator(
-                page,
-                "#activity-list",
-                "Playwright manual activity",
-                description="manual activity render",
-            )
-            demo_note("activities: manual activity add persisted and rendered")
-            assert_no_page_errors_yet("manual activity add")
-
-            queue_activity_smoke_failure(page, "manual-add", 1)
-            add_activity(page, "Playwright failed activity", "13:45", 15)
-            wait_for_activity_failure_alert(
-                page,
-                rooms["activities"],
-                "Playwright failed activity",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#custom-alert-message",
-                "Could not log activity.",
-                description="manual activity failure alert",
-            )
-            failed_activity_description = page.locator(
-                task_form_input_selector("description")
-            ).input_value()
-            if failed_activity_description != "Playwright failed activity":
-                raise ValueError(
-                    "manual activity failure cleared the form unexpectedly: "
-                    f"{failed_activity_description!r}"
-                )
-            page.locator("#ok-custom-alert-modal").click()
-            page.locator("#custom-alert-modal").wait_for(state="hidden", timeout=10000)
-            if any(
-                doc.get("description") == "Playwright failed activity"
-                for doc in read_docs(page, rooms["activities"])
-            ):
-                raise ValueError("failed manual activity unexpectedly persisted")
-            demo_note("activities: manual add failure path preserved form state")
-            assert_no_page_errors_yet("manual add failure path")
-
-            add_active_scheduled_task(page, "Playwright auto-log success", 20)
-            success_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright auto-log success",
-            )
-            complete_scheduled_task_via_ui(page, success_task_doc["id"])
-            success_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright auto-log success",
-            )
-            if success_activity_doc.get("source") != "auto":
-                raise ValueError(
-                    f"successful auto-log activity had wrong source.\n{json.dumps(success_activity_doc, indent=2)}"
-                )
-            if success_activity_doc.get("sourceTaskId") != success_task_doc["id"]:
-                raise ValueError(
-                    "successful auto-log activity did not keep the source task id.\n"
-                    f"{json.dumps(success_activity_doc, indent=2)}"
-                )
-            wait_for_text_in_locator(
-                page,
-                "#activity-list",
-                "Playwright auto-log success",
-                description="successful auto-log activity render",
-            )
-            demo_note("activities: scheduled-task auto-log success verified")
-            assert_no_page_errors_yet("auto-log success")
-
-            add_active_scheduled_task(page, "Playwright auto-log failure", 20)
-            failing_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright auto-log failure",
-            )
-            queue_activity_smoke_failure(page, "auto-log", 1)
-            complete_scheduled_task_via_ui(page, failing_task_doc["id"])
-            wait_for_toast_text(page, "Task completed, but activity auto-log failed.")
-            if any(
-                doc.get("docType") == "activity"
-                and doc.get("description") == "Playwright auto-log failure"
-                for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-            ):
-                raise ValueError("failed auto-log unexpectedly created an activity")
-            demo_note("activities: auto-log failure path surfaced toast without persisting activity")
-            assert_no_page_errors_yet("auto-log failure path")
-
-            add_unscheduled_task(page, "Playwright delete confirm task", 15)
-            delete_confirm_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright delete confirm task",
-            )
-
-            add_activity(page, "Playwright editable activity", "15:30", 15)
-            editable_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright editable activity",
-            )
-            wait_for_activity_row_text(
-                page,
-                editable_activity_doc["id"],
-                "Playwright editable activity",
-            )
-            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-            page.locator(
-                f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
-            ).click()
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
-            ).wait_for(state="visible", timeout=10000)
-            current_modal_value = wait_for_input_value(
-                page,
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]',
-                "Playwright editable activity",
-                description="activity inline edit description preload",
-            )
-            if current_modal_value != "Playwright editable activity":
-                raise ValueError(
-                    "activity inline edit lost the current description after rerender: "
-                    f"{current_modal_value!r}"
-                )
-            fill_locator_value(
-                page,
-                page.locator(
-                    f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]'
-                ),
-                "Playwright editable activity updated",
-                description="activity inline edit description",
-            )
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
-            ).click()
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
-            ).wait_for(state="hidden", timeout=10000)
-            wait_until(
-                lambda: any(
-                    doc.get("id") == editable_activity_doc["id"]
-                    and doc.get("description") == "Playwright editable activity updated"
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "activity edit after delete-confirm rerender",
-            )
-            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
-                raise ValueError("delete confirm state was not cleared by activity edit")
-            demo_note("activities: inline edit survived delete-confirm rerender state")
-            assert_no_page_errors_yet("activity inline edit")
-
-            add_activity(page, "Playwright delete activity", "16:00", 10)
-            deletable_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright delete activity",
-            )
-            wait_for_activity_row_text(
-                page,
-                deletable_activity_doc["id"],
-                "Playwright delete activity",
-            )
-            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-            page.locator(
-                f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
-            ).click()
-            wait_until(
-                lambda: not any(
-                    doc.get("id") == deletable_activity_doc["id"]
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "activity delete after delete-confirm rerender",
-            )
-            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
-                raise ValueError("delete confirm state was not cleared by activity delete")
-            demo_note("activities: manual activity delete verified")
-            assert_no_page_errors_yet("manual activity delete")
-
-            try:
-                start_activity_timer(
-                    page,
-                    "Playwright timer start",
-                    category="work/project",
-                    room_code=rooms["activities"],
-                )
-            except Exception as error:
-                timer_start_state = page.evaluate(
-                    """
-                    () => ({
-                        scheduledChecked: document.getElementById('scheduled')?.checked ?? null,
-                        unscheduledChecked: document.getElementById('unscheduled')?.checked ?? null,
-                        activityChecked: document.getElementById('activity')?.checked ?? null,
-                        addTaskText: document.getElementById('add-task-btn')?.textContent ?? null,
-                        startTimerHidden:
-                            document.getElementById('start-timer-btn')?.classList.contains('hidden') ??
-                            null,
-                        formDescription:
-                            document.querySelector('#task-form input[name="description"]')?.value ??
-                            null,
-                        formCategory:
-                            document.querySelector('#task-form select[name="category"]')?.value ??
-                            null,
-                        formPlaceholder:
-                            document
-                                .querySelector('#task-form input[name="description"]')
-                                ?.getAttribute('placeholder') ?? null,
-                        timerVisible:
-                            !(document.getElementById('timer-display')?.classList.contains('hidden') ??
-                            true),
-                        timerDescription: document.getElementById('timer-description')?.value ?? null,
-                        timerCategory: document.getElementById('timer-category')?.value ?? null,
-                        alertVisible:
-                            !(document.getElementById('custom-alert-modal')?.classList.contains('hidden') ??
-                            true),
-                        alertMessage:
-                            document.getElementById('custom-alert-message')?.textContent ?? null,
-                        taskFormActivityClass:
-                            document.getElementById('task-form')?.classList.contains('task-form--activity') ??
-                            null
-                    })
-                    """
-                )
-                timer_start_docs = list(map(normalize_doc, read_docs(page, rooms["activities"])))
-                raise ValueError(
-                    "Initial timer start failed.\n"
-                    f"error={error!r}\n"
-                    f"state={json.dumps(timer_start_state, indent=2)}\n"
-                    f"docs={json.dumps(timer_start_docs, indent=2)}"
-                ) from error
-            running_timer_config = wait_for_running_activity_config(page, rooms["activities"])
-            if running_timer_config.get("description") != "Playwright timer start":
-                raise ValueError(
-                    "running activity config stored wrong description after timer start.\n"
-                    f"{json.dumps(running_timer_config, indent=2)}"
-                )
-            if running_timer_config.get("category") != "work/project":
-                raise ValueError(
-                    "running activity config stored wrong category after timer start.\n"
-                    f"{json.dumps(running_timer_config, indent=2)}"
-                )
-            if any(
-                doc.get("docType") == "activity"
-                and doc.get("description") == "Playwright timer start"
-                for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-            ):
-                raise ValueError("starting a timer unexpectedly created an activity doc immediately")
-            demo_note("activities: timer started and running config persisted")
-            assert_no_page_errors_yet("timer start")
-
-            fill_locator_value(
-                page,
-                page.locator("#timer-description"),
-                "Playwright timer edited",
-                description="timer description edit",
-            )
-            page.locator("#timer-description").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_until(
-                lambda: next(
-                    (
-                        normalized.get("description") == "Playwright timer edited"
-                        for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
-                        if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
-                    ),
-                    False,
-                ),
-                "timer description config update",
-                timeout_s=10.0,
-                interval_s=0.1,
-            )
-            page.locator("#timer-category").select_option("work/meeting")
-            wait_until(
-                lambda: next(
-                    (
-                        normalized.get("category") == "work/meeting"
-                        for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
-                        if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
-                    ),
-                    False,
-                ),
-                "timer category config update",
-                timeout_s=10.0,
-                interval_s=0.1,
-            )
-            original_start_date_time = wait_for_running_activity_config(
-                page, rooms["activities"]
-            ).get("startDateTime")
-            timer_start_backdate = get_relative_browser_time(page, -60)
-            fill_locator_value(
-                page,
-                page.locator("#timer-start-time"),
-                timer_start_backdate,
-                description="timer start time edit",
-            )
-            page.locator("#timer-start-time").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_until(
-                lambda: next(
-                    (
-                        normalized.get("startDateTime") != original_start_date_time
-                        for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
-                        if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
-                    ),
-                    False,
-                ),
-                "timer start time config update",
-                timeout_s=10.0,
-                interval_s=0.1,
-            )
-            wait_for_input_value(
-                page,
-                "#timer-start-time",
-                timer_start_backdate,
-                description="timer start time field after backdate",
-            )
-
-            stop_activity_timer(page)
-            wait_until(
-                lambda: not any(
-                    normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
-                    for doc in read_docs(page, rooms["activities"])
-                ),
-                "running activity config cleared after stop",
-            )
-            stopped_timer_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright timer edited",
-            )
-            if stopped_timer_doc.get("source") != "timer":
-                raise ValueError(
-                    f"stopped timer activity had wrong source.\n{json.dumps(stopped_timer_doc, indent=2)}"
-                )
-            if stopped_timer_doc.get("category") != "work/meeting":
-                raise ValueError(
-                    f"stopped timer activity had wrong category.\n{json.dumps(stopped_timer_doc, indent=2)}"
-                )
-            if stopped_timer_doc.get("duration", 0) <= 0:
-                raise ValueError(
-                    f"stopped timer activity did not record positive duration.\n{json.dumps(stopped_timer_doc, indent=2)}"
-                )
-            if stopped_timer_doc.get("sourceTaskId") is not None:
-                raise ValueError(
-                    f"timer activity unexpectedly linked to a source task.\n{json.dumps(stopped_timer_doc, indent=2)}"
-                )
-            demo_note("activities: timer edits and stop-to-activity persistence verified")
-            assert_no_page_errors_yet("timer stop persistence")
-
-            start_activity_timer(
-                page,
-                "Playwright timer replace first",
-                category="work/project",
-                room_code=rooms["activities"],
-            )
-            replacement_timer_start = get_relative_browser_time(page, -30)
-            fill_locator_value(
-                page,
-                page.locator("#timer-start-time"),
-                replacement_timer_start,
-                description="replacement timer first start time",
-            )
-            page.locator("#timer-start-time").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_for_input_value(
-                page,
-                "#timer-start-time",
-                replacement_timer_start,
-                description="replacement timer first start time applied",
-            )
-            start_activity_timer(
-                page,
-                "Playwright timer replace second",
-                category="work/comms",
-                room_code=rooms["activities"],
-            )
-            replacement_running_config = wait_for_running_activity_config(page, rooms["activities"])
-            if replacement_running_config.get("description") != "Playwright timer replace second":
-                raise ValueError(
-                    "replacement timer did not become the new running timer.\n"
-                    f"{json.dumps(replacement_running_config, indent=2)}"
-                )
-            replaced_timer_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright timer replace first",
-            )
-            if replaced_timer_doc.get("source") != "timer" or replaced_timer_doc.get("duration", 0) <= 0:
-                raise ValueError(
-                    "replaced running timer did not persist as a positive-duration timer activity.\n"
-                    f"{json.dumps(replaced_timer_doc, indent=2)}"
-                )
-            demo_note("activities: stop-on-start replacement flow verified")
-            assert_no_page_errors_yet("timer replacement flow")
-
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
-            page.locator("#activity").check()
-            wait_for_running_timer_ui(page, "Playwright timer replace second")
-            restored_running_config = wait_for_running_activity_config(page, rooms["activities"])
-            if restored_running_config.get("description") != "Playwright timer replace second":
-                raise ValueError(
-                    "running timer was not restored after reload.\n"
-                    f"{json.dumps(restored_running_config, indent=2)}"
-                )
-            demo_note("activities: running timer restored after reload")
-            assert_no_page_errors_yet("timer reload restore")
-
-            overlap_timer_start = get_relative_browser_time(page, -15)
-            fill_locator_value(
-                page,
-                page.locator("#timer-start-time"),
-                overlap_timer_start,
-                description="overlap timer start time",
-            )
-            page.locator("#timer-start-time").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_for_input_value(
-                page,
-                "#timer-start-time",
-                overlap_timer_start,
-                description="overlap timer start time applied",
-            )
-
-            add_active_scheduled_task(page, "Playwright overlap auto-stop", 20)
-            overlap_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright overlap auto-stop",
-            )
-            complete_scheduled_task_via_ui(page, overlap_task_doc["id"])
-            overlap_auto_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright overlap auto-stop",
-            )
-            overlap_timer_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright timer replace second",
-            )
-            if overlap_auto_activity_doc.get("source") != "auto":
-                raise ValueError(
-                    "overlap auto-log activity had wrong source.\n"
-                    f"{json.dumps(overlap_auto_activity_doc, indent=2)}"
-                )
-            if overlap_timer_doc.get("source") != "timer":
-                raise ValueError(
-                    "overlap auto-stop did not persist the running timer as a timer activity.\n"
-                    f"{json.dumps(overlap_timer_doc, indent=2)}"
-                )
-            if any(
-                normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
-                for doc in read_docs(page, rooms["activities"])
-            ):
-                raise ValueError("overlap auto-stop left a running activity config behind")
-            wait_until(
-                lambda: not page.locator("#timer-display").is_visible(),
-                "timer display hidden after overlap auto-stop",
-            )
-            demo_note("activities: overlapping scheduled completion auto-stopped running timer")
-            assert_no_page_errors_yet("overlap auto-stop")
-
-            start_activity_timer(
-                page,
-                "Playwright boundary timer",
-                room_code=rooms["activities"],
-            )
-            boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
-            boundary_safe_start = get_relative_browser_time(page, 5)
-            fill_locator_value(
-                page,
-                page.locator("#timer-start-time"),
-                boundary_safe_start,
-                description="boundary timer future start time",
-            )
-            page.locator("#timer-start-time").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_for_input_value(
-                page,
-                "#timer-start-time",
-                boundary_safe_start,
-                description="boundary timer future start time applied",
-            )
-            boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
-            add_active_scheduled_task(page, "Playwright boundary auto-log", 20)
-            boundary_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright boundary auto-log",
-            )
-            complete_scheduled_task_via_ui(page, boundary_task_doc["id"])
-            boundary_auto_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright boundary auto-log",
-            )
-            if boundary_auto_activity_doc.get("source") != "auto":
-                raise ValueError(
-                    "boundary auto-log activity had wrong source.\n"
-                    f"{json.dumps(boundary_auto_activity_doc, indent=2)}"
-                )
-            boundary_running_config_after = wait_for_running_activity_config(
-                page,
-                rooms["activities"],
-            )
-            if boundary_running_config_after.get("description") != "Playwright boundary timer":
-                raise ValueError(
-                    "boundary timer was unexpectedly replaced or stopped.\n"
-                    f"{json.dumps(boundary_running_config_after, indent=2)}"
-                )
-            if boundary_running_config_after.get("startDateTime") != boundary_running_config.get(
-                "startDateTime"
-            ):
-                raise ValueError(
-                    "boundary timer start time changed unexpectedly after non-overlap case.\n"
-                    f"before={json.dumps(boundary_running_config, indent=2)}\n"
-                    f"after={json.dumps(boundary_running_config_after, indent=2)}"
-                )
-            if any(
-                doc.get("docType") == "activity"
-                and doc.get("description") == "Playwright boundary timer"
-                for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-            ):
-                raise ValueError("boundary timer unexpectedly auto-stopped in a non-overlap case")
-            page.locator("#activity").check()
-            wait_for_running_timer_ui(page, "Playwright boundary timer")
-            boundary_stop_start = get_relative_browser_time(page, -1)
-            fill_locator_value(
-                page,
-                page.locator("#timer-start-time"),
-                boundary_stop_start,
-                description="boundary timer stop start time",
-            )
-            page.locator("#timer-start-time").evaluate(
-                "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
-            )
-            wait_for_input_value(
-                page,
-                "#timer-start-time",
-                boundary_stop_start,
-                description="boundary timer stop start time applied",
-            )
-            stop_activity_timer(page)
-            wait_for_activity_doc(page, rooms["activities"], "Playwright boundary timer")
-            demo_note("activities: boundary non-overlap preserved the running timer until manual stop")
-            assert_no_page_errors_yet("boundary non-overlap")
 
             browser_captured_errors = page.evaluate(
                 "() => window.__fortudoSmokeBrowserErrors || []"
