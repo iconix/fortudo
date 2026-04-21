@@ -499,6 +499,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 **Phase 6: Polish and E2E**
 
 - Add E2E coverage for activity flows
+- Add a one-time "What's new?" prompt on initial app load after Activities ships, highlighting activity logging, timer capture, and insights
 - Finalize activity accent color
 - Add transitions and micro-interactions
 - Adapt timeline UX for mobile

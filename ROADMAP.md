@@ -41,6 +41,7 @@ Historical and planned repo tasks for Fortudo.
 - [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
 
 - [ ] (vNext) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
+- [ ] (vNext) make Fortudo a PWA: installable and offline-friendly as a first-class web app
 - [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
   - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
   - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then
