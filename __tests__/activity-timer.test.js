@@ -16,10 +16,6 @@ jest.mock('../public/js/activities/running-activity-repository.js', () => ({
     deleteRunningActivityConfig: jest.fn(() => Promise.resolve())
 }));
 
-jest.mock('../public/js/tasks/manager.js', () => ({
-    consumeUnscheduledTask: jest.fn(() => ({ success: true }))
-}));
-
 import {
     loadRunningActivity,
     getRunningActivity,
@@ -37,7 +33,6 @@ import {
     saveRunningActivityConfig,
     deleteRunningActivityConfig
 } from '../public/js/activities/running-activity-repository.js';
-import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
 
 describe('Timer state primitives', () => {
     beforeEach(() => {
@@ -226,7 +221,7 @@ describe('stopTimer', () => {
         expect(result.activity.duration).toBe(90);
     });
 
-    test('consumes a linked unscheduled task and preserves auto provenance when timer stops', async () => {
+    test('preserves linked source task provenance when timer stops', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
         await startTimer({
             description: 'Inbox cleanup',
@@ -242,7 +237,6 @@ describe('stopTimer', () => {
         expect(result.success).toBe(true);
         expect(result.activity.source).toBe('auto');
         expect(result.activity.sourceTaskId).toBe('unsched-99');
-        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-99');
     });
 
     test('persists the created activity', async () => {

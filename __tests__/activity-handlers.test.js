@@ -24,6 +24,10 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/tasks/manager.js', () => ({
+    consumeUnscheduledTask: jest.fn(() => ({ success: true }))
+}));
+
 import {
     handleAddActivity,
     handleEditActivity,
@@ -47,6 +51,7 @@ import {
 } from '../public/js/app-coordinator.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
 
 describe('activity handlers', () => {
     beforeEach(() => {
@@ -270,7 +275,12 @@ describe('activity handlers', () => {
     test('handleStartTimer auto-stops an existing timer before starting a new one', async () => {
         startTimerReplacingCurrent.mockResolvedValueOnce({
             success: true,
-            stoppedActivity: { id: 'activity-1', description: 'Current timer', duration: 30 },
+            stoppedActivity: {
+                id: 'activity-1',
+                description: 'Current timer',
+                duration: 30,
+                sourceTaskId: 'unsched-7'
+            },
             runningActivity: {
                 description: 'Next timer',
                 startDateTime: '2026-04-09T10:00:00.000Z'
@@ -280,12 +290,18 @@ describe('activity handlers', () => {
         const result = await handleStartTimer({ description: 'Next timer', category: null });
 
         expect(onActivityCreated).toHaveBeenCalledWith({
-            activity: { id: 'activity-1', description: 'Current timer', duration: 30 }
+            activity: {
+                id: 'activity-1',
+                description: 'Current timer',
+                duration: 30,
+                sourceTaskId: 'unsched-7'
+            }
         });
         expect(startTimerReplacingCurrent).toHaveBeenCalledWith({
             description: 'Next timer',
             category: null
         });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-7');
         expect(result.success).toBe(true);
     });
 
@@ -308,7 +324,12 @@ describe('activity handlers', () => {
         startTimerReplacingCurrent.mockResolvedValueOnce({
             success: false,
             reason: 'Description is required to start a timer.',
-            stoppedActivity: { id: 'activity-9', description: 'Stopped timer', duration: 15 }
+            stoppedActivity: {
+                id: 'activity-9',
+                description: 'Stopped timer',
+                duration: 15,
+                sourceTaskId: 'unsched-9'
+            }
         });
 
         const result = await handleStartTimer({ description: '' });
@@ -318,15 +339,25 @@ describe('activity handlers', () => {
             reason: 'Description is required to start a timer.'
         });
         expect(onActivityCreated).toHaveBeenCalledWith({
-            activity: { id: 'activity-9', description: 'Stopped timer', duration: 15 }
+            activity: {
+                id: 'activity-9',
+                description: 'Stopped timer',
+                duration: 15,
+                sourceTaskId: 'unsched-9'
+            }
         });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-9');
         expect(showAlert).toHaveBeenCalledWith('Description is required to start a timer.', 'sky');
     });
 
     test('handleStopTimer emits coordinator + toast on success', async () => {
         stopTimer.mockResolvedValueOnce({
             success: true,
-            activity: { id: 'activity-stop-1', description: 'Stopped timer' }
+            activity: {
+                id: 'activity-stop-1',
+                description: 'Stopped timer',
+                sourceTaskId: 'unsched-88'
+            }
         });
 
         const result = await handleStopTimer();
@@ -334,8 +365,13 @@ describe('activity handlers', () => {
         expect(stopTimer).toHaveBeenCalled();
         expect(result.success).toBe(true);
         expect(onActivityCreated).toHaveBeenCalledWith({
-            activity: { id: 'activity-stop-1', description: 'Stopped timer' }
+            activity: {
+                id: 'activity-stop-1',
+                description: 'Stopped timer',
+                sourceTaskId: 'unsched-88'
+            }
         });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-88');
         expect(showToast).toHaveBeenCalledWith('Timer stopped.', { theme: 'sky' });
     });
 

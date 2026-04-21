@@ -8,8 +8,15 @@ import {
     startTimerReplacingCurrent,
     stopTimer
 } from './manager.js';
+import { consumeUnscheduledTask } from '../tasks/manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
+
+function consumeSourceTaskIfPresent(activity) {
+    if (activity?.sourceTaskId) {
+        consumeUnscheduledTask(activity.sourceTaskId);
+    }
+}
 
 function resolveActivityPayload(activityDataOrForm) {
     if (!(activityDataOrForm instanceof HTMLFormElement)) {
@@ -108,6 +115,7 @@ export async function handleStartTimer(timerData) {
     try {
         const result = await startTimerReplacingCurrent(timerData);
         if (result?.stoppedActivity) {
+            consumeSourceTaskIfPresent(result.stoppedActivity);
             onActivityCreated({ activity: result.stoppedActivity });
         }
 
@@ -145,6 +153,7 @@ export async function handleStopTimer() {
     }
 
     if (result.activity) {
+        consumeSourceTaskIfPresent(result.activity);
         onActivityCreated({ activity: result.activity });
     }
     showToast('Timer stopped.', { theme: 'sky' });

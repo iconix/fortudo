@@ -9,7 +9,6 @@ import {
     saveRunningActivityConfig,
     deleteRunningActivityConfig
 } from './running-activity-repository.js';
-import { consumeUnscheduledTask } from '../tasks/manager.js';
 
 /** @type {Array<Object>} */
 let activities = [];
@@ -369,9 +368,6 @@ export async function stopTimerAt(endDateTime) {
         return activityResult;
     }
 
-    if (runningActivity.sourceTaskId) {
-        consumeUnscheduledTask(runningActivity.sourceTaskId);
-    }
     await deleteRunningActivityConfig();
     runningActivity = null;
 
