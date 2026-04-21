@@ -6,10 +6,12 @@ import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 
-let editingActivityId = null;
-let expandedParentGroupKey = null;
-let confirmingDeleteActivityId = null;
-const inFlightActivitySaveIds = new Set();
+const activityUiState = {
+    editingActivityId: null,
+    expandedParentGroupKey: null,
+    confirmingDeleteActivityId: null,
+    inFlightActivitySaveIds: new Set()
+};
 
 function getActivitiesForSummary() {
     const todaysActivities = getTodaysActivities();
@@ -19,16 +21,16 @@ function getActivitiesForSummary() {
 }
 
 export function resetActivityInlineEditState() {
-    editingActivityId = null;
-    expandedParentGroupKey = null;
-    confirmingDeleteActivityId = null;
-    inFlightActivitySaveIds.clear();
+    activityUiState.editingActivityId = null;
+    activityUiState.expandedParentGroupKey = null;
+    activityUiState.confirmingDeleteActivityId = null;
+    activityUiState.inFlightActivitySaveIds.clear();
 }
 
 function clearDeleteConfirmState(deps) {
     const wasConfirmingTaskDelete = deps.resetAllConfirmingDeleteFlags();
-    const wasConfirmingActivityDelete = confirmingDeleteActivityId !== null;
-    confirmingDeleteActivityId = null;
+    const wasConfirmingActivityDelete = activityUiState.confirmingDeleteActivityId !== null;
+    activityUiState.confirmingDeleteActivityId = null;
 
     const wasConfirming = wasConfirmingTaskDelete || wasConfirmingActivityDelete;
     if (wasConfirming) {
@@ -49,8 +51,8 @@ export function syncActivitiesUI(enabled) {
     }
 
     if (!enabled) {
-        editingActivityId = null;
-        expandedParentGroupKey = null;
+        activityUiState.editingActivityId = null;
+        activityUiState.expandedParentGroupKey = null;
         disposeTimerUI();
         hideTimerDisplay();
         const activityRadio = document.getElementById('activity');
@@ -74,9 +76,9 @@ export function renderTodayActivities(enabled) {
         todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
         {
-            editingActivityId,
-            expandedParentGroupKey,
-            confirmingDeleteActivityId,
+            editingActivityId: activityUiState.editingActivityId,
+            expandedParentGroupKey: activityUiState.expandedParentGroupKey,
+            confirmingDeleteActivityId: activityUiState.confirmingDeleteActivityId,
             summaryActivities: getActivitiesForSummary()
         }
     );
@@ -89,7 +91,7 @@ export function refreshTodayActivitySummary(enabled) {
 
     const activityList = /** @type {HTMLElement|null} */ (document.getElementById('activity-list'));
     renderActivitySummaryOnly(getTodaysActivities(), activityList, {
-        expandedParentGroupKey,
+        expandedParentGroupKey: activityUiState.expandedParentGroupKey,
         summaryActivities: getActivitiesForSummary()
     });
 }
@@ -155,7 +157,8 @@ export function handleActivityListClick(target, deps) {
             return true;
         }
 
-        expandedParentGroupKey = expandedParentGroupKey === parentKey ? null : parentKey;
+        activityUiState.expandedParentGroupKey =
+            activityUiState.expandedParentGroupKey === parentKey ? null : parentKey;
         deps.refreshUI();
         return true;
     }
@@ -167,7 +170,7 @@ export function handleActivityListClick(target, deps) {
             editActivityButton.dataset.activityId || activityItem?.getAttribute('data-activity-id');
         clearDeleteConfirmState(deps);
         if (activityId) {
-            editingActivityId = activityId;
+            activityUiState.editingActivityId = activityId;
             deps.refreshUI();
         }
         return true;
@@ -175,7 +178,7 @@ export function handleActivityListClick(target, deps) {
 
     const cancelActivityEditButton = target.closest('.btn-cancel-activity-edit');
     if (cancelActivityEditButton instanceof HTMLElement) {
-        editingActivityId = null;
+        activityUiState.editingActivityId = null;
         deps.refreshUI();
         return true;
     }
@@ -200,16 +203,16 @@ export function handleActivityListClick(target, deps) {
         if (activityId) {
             deps.resetAllConfirmingDeleteFlags();
 
-            if (confirmingDeleteActivityId === activityId) {
-                confirmingDeleteActivityId = null;
-                if (editingActivityId === activityId) {
-                    editingActivityId = null;
+            if (activityUiState.confirmingDeleteActivityId === activityId) {
+                activityUiState.confirmingDeleteActivityId = null;
+                if (activityUiState.editingActivityId === activityId) {
+                    activityUiState.editingActivityId = null;
                 }
                 void handleDeleteActivity(activityId);
             } else {
-                confirmingDeleteActivityId = activityId;
-                if (editingActivityId === activityId) {
-                    editingActivityId = null;
+                activityUiState.confirmingDeleteActivityId = activityId;
+                if (activityUiState.editingActivityId === activityId) {
+                    activityUiState.editingActivityId = null;
                 }
                 deps.refreshUI();
             }
@@ -233,20 +236,20 @@ async function saveInlineActivityEdit(editForm, deps) {
         return false;
     }
 
-    if (inFlightActivitySaveIds.has(activityId)) {
+    if (activityUiState.inFlightActivitySaveIds.has(activityId)) {
         return true;
     }
 
-    inFlightActivitySaveIds.add(activityId);
+    activityUiState.inFlightActivitySaveIds.add(activityId);
     try {
         const result = await handleSaveActivityEdit(activityId, editForm);
         if (result?.success) {
-            editingActivityId = null;
+            activityUiState.editingActivityId = null;
         }
         deps.refreshUI();
         return true;
     } finally {
-        inFlightActivitySaveIds.delete(activityId);
+        activityUiState.inFlightActivitySaveIds.delete(activityId);
     }
 }
 

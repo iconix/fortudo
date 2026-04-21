@@ -2,21 +2,23 @@ import { showAlert } from '../modal-manager.js';
 import { getRunningActivity, updateRunningActivity } from './manager.js';
 import { handleStartTimer, handleStopTimer } from './handlers.js';
 
-let timerIntervalId = null;
-let timerUiAbortController = null;
-let pendingTimerMutation = null;
-let suppressTimerFieldPersistence = false;
-let refreshActivitySummaryCallback = null;
-let lastSummaryElapsedMinutes = null;
-let nextActivityDraft = {
-    description: '',
-    category: ''
+const timerUiState = {
+    intervalId: null,
+    abortController: null,
+    pendingMutation: null,
+    suppressFieldPersistence: false,
+    refreshActivitySummary: null,
+    lastSummaryElapsedMinutes: null,
+    nextActivityDraft: {
+        description: '',
+        category: ''
+    }
 };
 
 function shouldSuppressTimerFieldPersistence() {
     const startTimerButton = document.getElementById('start-timer-btn');
     return (
-        suppressTimerFieldPersistence ||
+        timerUiState.suppressFieldPersistence ||
         (!!getRunningActivity() && document.activeElement === startTimerButton)
     );
 }
@@ -42,39 +44,39 @@ function setStartTimerButtonLabel() {
 }
 
 function refreshActivitySummary() {
-    if (typeof refreshActivitySummaryCallback === 'function') {
-        refreshActivitySummaryCallback();
+    if (typeof timerUiState.refreshActivitySummary === 'function') {
+        timerUiState.refreshActivitySummary();
     }
 }
 
 function stopElapsedCounter() {
-    if (timerIntervalId) {
-        clearInterval(timerIntervalId);
-        timerIntervalId = null;
+    if (timerUiState.intervalId) {
+        clearInterval(timerUiState.intervalId);
+        timerUiState.intervalId = null;
     }
-    lastSummaryElapsedMinutes = null;
+    timerUiState.lastSummaryElapsedMinutes = null;
 }
 
 function queueTimerMutation(mutation) {
-    const operation = pendingTimerMutation
-        ? pendingTimerMutation.catch(() => {}).then(() => mutation())
+    const operation = timerUiState.pendingMutation
+        ? timerUiState.pendingMutation.catch(() => {}).then(() => mutation())
         : Promise.resolve(mutation());
     const trackedOperation = operation.catch(() => {});
-    pendingTimerMutation = trackedOperation;
+    timerUiState.pendingMutation = trackedOperation;
     trackedOperation.finally(() => {
-        if (pendingTimerMutation === trackedOperation) {
-            pendingTimerMutation = null;
+        if (timerUiState.pendingMutation === trackedOperation) {
+            timerUiState.pendingMutation = null;
         }
     });
     return operation;
 }
 
 async function waitForPendingTimerMutation() {
-    if (!pendingTimerMutation) {
+    if (!timerUiState.pendingMutation) {
         return;
     }
 
-    await pendingTimerMutation;
+    await timerUiState.pendingMutation;
 }
 
 function formatElapsed(elapsedMs) {
@@ -101,25 +103,25 @@ function startElapsedCounter(startDateTime) {
         elapsedElement.textContent = formatElapsed(elapsedMs);
 
         const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
-        if (lastSummaryElapsedMinutes === null) {
-            lastSummaryElapsedMinutes = elapsedMinutes;
+        if (timerUiState.lastSummaryElapsedMinutes === null) {
+            timerUiState.lastSummaryElapsedMinutes = elapsedMinutes;
             return;
         }
 
         if (
-            elapsedMinutes !== lastSummaryElapsedMinutes &&
-            typeof refreshActivitySummaryCallback === 'function'
+            elapsedMinutes !== timerUiState.lastSummaryElapsedMinutes &&
+            typeof timerUiState.refreshActivitySummary === 'function'
         ) {
-            lastSummaryElapsedMinutes = elapsedMinutes;
+            timerUiState.lastSummaryElapsedMinutes = elapsedMinutes;
             refreshActivitySummary();
             return;
         }
 
-        lastSummaryElapsedMinutes = elapsedMinutes;
+        timerUiState.lastSummaryElapsedMinutes = elapsedMinutes;
     };
 
     updateElapsed();
-    timerIntervalId = setInterval(updateElapsed, 1000);
+    timerUiState.intervalId = setInterval(updateElapsed, 1000);
 }
 
 function syncNextCategoryOptions() {
@@ -133,20 +135,20 @@ function syncNextCategoryOptions() {
         nextCategorySelect.innerHTML = mainCategorySelect.innerHTML;
     }
 
-    nextCategorySelect.value = nextActivityDraft.category || '';
+    nextCategorySelect.value = timerUiState.nextActivityDraft.category || '';
 }
 
 function syncNextActivityDraftFields() {
     const nextDescriptionInput = document.getElementById('next-activity-description');
     if (nextDescriptionInput instanceof HTMLInputElement) {
-        nextDescriptionInput.value = nextActivityDraft.description;
+        nextDescriptionInput.value = timerUiState.nextActivityDraft.description;
     }
 
     syncNextCategoryOptions();
 }
 
 function clearNextActivityDraft() {
-    nextActivityDraft = {
+    timerUiState.nextActivityDraft = {
         description: '',
         category: ''
     };
@@ -211,16 +213,16 @@ export function hideTimerDisplay() {
 }
 
 export function disposeTimerUI() {
-    if (timerUiAbortController) {
-        timerUiAbortController.abort();
-        timerUiAbortController = null;
+    if (timerUiState.abortController) {
+        timerUiState.abortController.abort();
+        timerUiState.abortController = null;
     }
 
     stopElapsedCounter();
-    pendingTimerMutation = null;
-    suppressTimerFieldPersistence = false;
-    refreshActivitySummaryCallback = null;
-    nextActivityDraft = {
+    timerUiState.pendingMutation = null;
+    timerUiState.suppressFieldPersistence = false;
+    timerUiState.refreshActivitySummary = null;
+    timerUiState.nextActivityDraft = {
         description: '',
         category: ''
     };
@@ -248,9 +250,9 @@ export function syncTimerFormState() {
 
 export function initializeTimerUI(deps) {
     disposeTimerUI();
-    timerUiAbortController = new AbortController();
-    const { signal } = timerUiAbortController;
-    refreshActivitySummaryCallback =
+    timerUiState.abortController = new AbortController();
+    const { signal } = timerUiState.abortController;
+    timerUiState.refreshActivitySummary =
         typeof deps.refreshActivitySummary === 'function' ? deps.refreshActivitySummary : null;
 
     const radios = document.querySelectorAll('input[name="task-type"]');
@@ -269,7 +271,7 @@ export function initializeTimerUI(deps) {
         startTimerButton.addEventListener(
             'mousedown',
             () => {
-                suppressTimerFieldPersistence = !!getRunningActivity();
+                timerUiState.suppressFieldPersistence = !!getRunningActivity();
             },
             { signal }
         );
@@ -331,7 +333,7 @@ export function initializeTimerUI(deps) {
                         syncTimerFormState();
                         deps.refreshUI();
                     } finally {
-                        suppressTimerFieldPersistence = false;
+                        timerUiState.suppressFieldPersistence = false;
                     }
                 })();
             },
@@ -365,7 +367,7 @@ export function initializeTimerUI(deps) {
         nextDescriptionInput.addEventListener(
             'input',
             () => {
-                nextActivityDraft.description = nextDescriptionInput.value;
+                timerUiState.nextActivityDraft.description = nextDescriptionInput.value;
             },
             { signal }
         );
@@ -376,7 +378,7 @@ export function initializeTimerUI(deps) {
         nextCategorySelect.addEventListener(
             'change',
             () => {
-                nextActivityDraft.category = nextCategorySelect.value || '';
+                timerUiState.nextActivityDraft.category = nextCategorySelect.value || '';
             },
             { signal }
         );
@@ -387,7 +389,7 @@ export function initializeTimerUI(deps) {
         timerDescriptionInput.addEventListener(
             'focusout',
             (event) => {
-                suppressTimerFieldPersistence =
+                timerUiState.suppressFieldPersistence =
                     !!getRunningActivity() &&
                     event.relatedTarget === document.getElementById('start-timer-btn');
             },
@@ -425,7 +427,7 @@ export function initializeTimerUI(deps) {
         timerCategorySelect.addEventListener(
             'focusout',
             (event) => {
-                suppressTimerFieldPersistence =
+                timerUiState.suppressFieldPersistence =
                     !!getRunningActivity() &&
                     event.relatedTarget === document.getElementById('start-timer-btn');
             },
@@ -462,7 +464,7 @@ export function initializeTimerUI(deps) {
         timerStartTimeInput.addEventListener(
             'focusout',
             (event) => {
-                suppressTimerFieldPersistence =
+                timerUiState.suppressFieldPersistence =
                     !!getRunningActivity() &&
                     event.relatedTarget === document.getElementById('start-timer-btn');
             },
