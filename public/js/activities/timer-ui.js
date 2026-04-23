@@ -6,6 +6,10 @@ import { handleStartTimer, handleStopTimer } from './handlers.js';
 const timerUiState = {
     tickTimeoutId: null,
     abortController: null,
+    sessionId: 0,
+    serverClockOffsetMs: null,
+    serverDateHeader: null,
+    serverRoundTripMs: null,
     pendingMutation: null,
     suppressFieldPersistence: false,
     refreshActivitySummary: null,
@@ -48,6 +52,10 @@ function refreshActivitySummary() {
     if (typeof timerUiState.refreshActivitySummary === 'function') {
         timerUiState.refreshActivitySummary();
     }
+}
+
+function getEffectiveNowMs() {
+    return Date.now() + (timerUiState.serverClockOffsetMs ?? 0);
 }
 
 function stopElapsedCounter() {
@@ -116,27 +124,36 @@ function getTimerDebugSnapshot() {
 
 async function getTimerDebugSnapshotWithServerEstimate() {
     const snapshot = getTimerDebugSnapshot();
-    const canEstimateServerTime =
-        typeof fetch === 'function' &&
-        snapshot.runningActivity?.startDateTime &&
-        typeof snapshot.elapsedMs === 'number';
+    const correctedElapsedMs =
+        typeof snapshot.elapsedMs === 'number'
+            ? Math.max(0, snapshot.elapsedMs + (timerUiState.serverClockOffsetMs ?? 0))
+            : null;
 
-    if (!canEstimateServerTime) {
+    return {
+        ...snapshot,
+        serverDateHeader: timerUiState.serverDateHeader,
+        serverRoundTripMs: timerUiState.serverRoundTripMs,
+        estimatedServerOffsetMs: timerUiState.serverClockOffsetMs,
+        correctedElapsedMs,
+        correctedDisplayedElapsed:
+            typeof correctedElapsedMs === 'number' ? formatElapsed(correctedElapsedMs) : null
+    };
+}
+
+async function measureServerClockOffset() {
+    if (typeof fetch !== 'function') {
         return {
-            ...snapshot,
             serverDateHeader: null,
             serverRoundTripMs: null,
-            estimatedServerOffsetMs: null,
-            correctedElapsedMs: snapshot.elapsedMs,
-            correctedDisplayedElapsed:
-                typeof snapshot.elapsedMs === 'number' ? formatElapsed(snapshot.elapsedMs) : null
+            estimatedServerOffsetMs: null
         };
     }
 
     const requestStartedAtMs = Date.now();
     const response = await fetch(window.location.href, {
         method: 'HEAD',
-        cache: 'no-store'
+        cache: 'no-store',
+        signal: timerUiState.abortController?.signal
     });
     const requestCompletedAtMs = Date.now();
     const serverDateHeader = response?.headers?.get('Date') || null;
@@ -144,33 +161,68 @@ async function getTimerDebugSnapshotWithServerEstimate() {
 
     if (typeof serverDateMs !== 'number' || Number.isNaN(serverDateMs)) {
         return {
-            ...snapshot,
             serverDateHeader,
             serverRoundTripMs: requestCompletedAtMs - requestStartedAtMs,
-            estimatedServerOffsetMs: null,
-            correctedElapsedMs: snapshot.elapsedMs,
-            correctedDisplayedElapsed:
-                typeof snapshot.elapsedMs === 'number' ? formatElapsed(snapshot.elapsedMs) : null
+            estimatedServerOffsetMs: null
         };
     }
 
     const localMidpointMs = requestStartedAtMs + (requestCompletedAtMs - requestStartedAtMs) / 2;
-    const estimatedServerOffsetMs = serverDateMs - localMidpointMs;
-    const correctedElapsedMs = Math.max(
-        0,
-        new Date(snapshot.deviceNowIso).getTime() +
-            estimatedServerOffsetMs -
-            new Date(snapshot.runningActivity.startDateTime).getTime()
-    );
 
     return {
-        ...snapshot,
         serverDateHeader,
         serverRoundTripMs: requestCompletedAtMs - requestStartedAtMs,
-        estimatedServerOffsetMs,
-        correctedElapsedMs,
-        correctedDisplayedElapsed: formatElapsed(correctedElapsedMs)
+        estimatedServerOffsetMs: serverDateMs - localMidpointMs
     };
+}
+
+async function refreshServerClockOffset(sessionId) {
+    const previousOffsetMs = timerUiState.serverClockOffsetMs;
+    let nextOffsetMs = null;
+    let estimate = {
+        serverDateHeader: null,
+        serverRoundTripMs: null,
+        estimatedServerOffsetMs: null
+    };
+
+    try {
+        estimate = await measureServerClockOffset();
+        nextOffsetMs =
+            typeof estimate.estimatedServerOffsetMs === 'number' &&
+            !Number.isNaN(estimate.estimatedServerOffsetMs)
+                ? estimate.estimatedServerOffsetMs
+                : null;
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            return;
+        }
+    }
+
+    if (timerUiState.sessionId !== sessionId || timerUiState.abortController?.signal?.aborted) {
+        return;
+    }
+
+    timerUiState.serverClockOffsetMs = nextOffsetMs;
+    timerUiState.serverDateHeader = estimate.serverDateHeader;
+    timerUiState.serverRoundTripMs = estimate.serverRoundTripMs;
+
+    if (previousOffsetMs === nextOffsetMs) {
+        return;
+    }
+
+    const runningActivity = getRunningActivity();
+    const timerDisplay = document.getElementById('timer-display');
+    const isTimerVisible =
+        runningActivity &&
+        timerDisplay instanceof HTMLElement &&
+        !timerDisplay.classList.contains('hidden');
+
+    if (!isTimerVisible) {
+        return;
+    }
+
+    startElapsedCounter(runningActivity.startDateTime);
+    refreshActivitySummary();
 }
 
 function registerTimerDebugHelper() {
@@ -195,7 +247,7 @@ function startElapsedCounter(startDateTime) {
     }
 
     const updateElapsed = () => {
-        const elapsedMs = Date.now() - startMs;
+        const elapsedMs = getEffectiveNowMs() - startMs;
         elapsedElement.textContent = formatElapsed(elapsedMs);
 
         const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
@@ -217,7 +269,7 @@ function startElapsedCounter(startDateTime) {
     };
 
     const scheduleNextUpdate = () => {
-        const elapsedMs = Math.max(0, Date.now() - startMs);
+        const elapsedMs = Math.max(0, getEffectiveNowMs() - startMs);
         const nextDelay = Math.max(1, 1000 - (elapsedMs % 1000));
         timerUiState.tickTimeoutId = setTimeout(() => {
             updateElapsed();
@@ -319,12 +371,16 @@ export function hideTimerDisplay() {
 
 export function disposeTimerUI() {
     unregisterTimerDebugHelper();
+    timerUiState.sessionId += 1;
     if (timerUiState.abortController) {
         timerUiState.abortController.abort();
         timerUiState.abortController = null;
     }
 
     stopElapsedCounter();
+    timerUiState.serverClockOffsetMs = null;
+    timerUiState.serverDateHeader = null;
+    timerUiState.serverRoundTripMs = null;
     timerUiState.pendingMutation = null;
     timerUiState.suppressFieldPersistence = false;
     timerUiState.refreshActivitySummary = null;
@@ -357,10 +413,12 @@ export function syncTimerFormState() {
 export function initializeTimerUI(deps) {
     disposeTimerUI();
     registerTimerDebugHelper();
+    timerUiState.sessionId += 1;
     timerUiState.abortController = new AbortController();
     const { signal } = timerUiState.abortController;
     timerUiState.refreshActivitySummary =
         typeof deps.refreshActivitySummary === 'function' ? deps.refreshActivitySummary : null;
+    void refreshServerClockOffset(timerUiState.sessionId);
 
     const radios = document.querySelectorAll('input[name="task-type"]');
     radios.forEach((radio) => {

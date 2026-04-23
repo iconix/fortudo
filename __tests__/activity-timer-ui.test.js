@@ -318,6 +318,95 @@ describe('activity timer ui', () => {
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
         });
 
+        test('applies measured server clock offset to the visible elapsed timer', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running timer',
+                category: null,
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            });
+            global.fetch.mockResolvedValue({
+                headers: {
+                    get: jest.fn((name) =>
+                        name === 'Date' ? 'Wed, 09 Apr 2026 10:00:05 GMT' : null
+                    )
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+            await flushAsyncWork(6);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+        });
+
+        test('keeps using the local clock when server offset measurement fails', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running timer',
+                category: null,
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            });
+            global.fetch.mockRejectedValue(new Error('network down'));
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+            await flushAsyncWork(6);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:00');
+        });
+
+        test('ignores stale server offset responses from a previous timer UI session', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running timer',
+                category: null,
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            });
+
+            let resolveFirstFetch;
+            global.fetch
+                .mockImplementationOnce(
+                    () =>
+                        new Promise((resolve) => {
+                            resolveFirstFetch = resolve;
+                        })
+                )
+                .mockResolvedValueOnce({
+                    headers: {
+                        get: jest.fn((name) =>
+                            name === 'Date' ? 'Wed, 09 Apr 2026 10:00:05 GMT' : null
+                        )
+                    }
+                });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+            await flushAsyncWork(6);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+
+            resolveFirstFetch({
+                headers: {
+                    get: jest.fn((name) =>
+                        name === 'Date' ? 'Wed, 09 Apr 2026 10:00:20 GMT' : null
+                    )
+                }
+            });
+            await flushAsyncWork(6);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+        });
+
         test('registers an async global timer debug helper with corrected timing estimate', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
@@ -337,6 +426,8 @@ describe('activity timer ui', () => {
 
             initializeTimerUI({ refreshUI: jest.fn() });
             syncTimerFormState();
+            await flushAsyncWork(6);
+            global.fetch.mockClear();
 
             expect(typeof window.dumpTimerDebug).toBe('function');
 
@@ -351,19 +442,16 @@ describe('activity timer ui', () => {
                     }),
                     correctedElapsedMs: 5000,
                     correctedDisplayedElapsed: '00:00:05',
-                    displayedElapsed: '00:00:00',
+                    displayedElapsed: '00:00:05',
                     isTimerVisible: true
                 })
             );
-            expect(global.fetch).toHaveBeenCalledWith('http://localhost/', {
-                method: 'HEAD',
-                cache: 'no-store'
-            });
+            expect(global.fetch).not.toHaveBeenCalled();
             expect(infoSpy).toHaveBeenCalledWith(
                 'timer-debug:snapshot',
                 expect.objectContaining({
                     correctedDisplayedElapsed: '00:00:05',
-                    displayedElapsed: '00:00:00',
+                    displayedElapsed: '00:00:05',
                     isTimerVisible: true
                 })
             );
@@ -371,6 +459,7 @@ describe('activity timer ui', () => {
 
         test('timer debug helper falls back to local-only values when no timer is running', async () => {
             initializeTimerUI({ refreshUI: jest.fn() });
+            global.fetch.mockClear();
 
             const snapshot = await window.dumpTimerDebug();
 
@@ -404,6 +493,7 @@ describe('activity timer ui', () => {
 
             initializeTimerUI({ refreshUI: jest.fn() });
             syncTimerFormState();
+            await flushAsyncWork(6);
 
             const snapshot = await window.dumpTimerDebug();
 
