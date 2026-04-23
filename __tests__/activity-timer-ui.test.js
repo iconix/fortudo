@@ -52,7 +52,6 @@ describe('activity timer ui', () => {
         updateRunningActivity.mockResolvedValue({ success: true });
         handleStartTimer.mockResolvedValue({ success: true });
         handleStopTimer.mockResolvedValue({ success: true });
-        window.history.replaceState({}, '', 'http://localhost/');
         document.body.innerHTML = `
             <input id="scheduled" type="radio" name="task-type" checked />
             <input id="activity" type="radio" name="task-type" />
@@ -156,34 +155,6 @@ describe('activity timer ui', () => {
             jest.advanceTimersByTime(250);
 
             expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:01');
-        });
-
-        test('timer diagnostics log display sync and periodic elapsed samples', () => {
-            showTimerDisplay({
-                description: 'Timer work',
-                category: 'work/deep',
-                source: 'timer',
-                startDateTime: '2026-04-09T10:00:00.000Z'
-            });
-
-            jest.advanceTimersByTime(15000);
-
-            expect(infoSpy).toHaveBeenCalledWith(
-                'timer-debug:show-display',
-                expect.objectContaining({
-                    description: 'Timer work',
-                    category: 'work/deep',
-                    startDateTime: '2026-04-09T10:00:00.000Z'
-                })
-            );
-            expect(infoSpy).toHaveBeenCalledWith(
-                'timer-debug:tick',
-                expect.objectContaining({
-                    displayedElapsed: '01:00:15',
-                    elapsedMs: 3615000,
-                    startDateTime: '2026-04-09T10:00:00.000Z'
-                })
-            );
         });
 
         test('hideTimerDisplay restores the form and stops elapsed updates', () => {
@@ -341,6 +312,43 @@ describe('activity timer ui', () => {
 
             expect(handleStartTimer).toHaveBeenCalledTimes(1);
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
+        });
+
+        test('registers a one-shot global timer debug helper', () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running timer',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+
+            expect(typeof window.dumpTimerDebug).toBe('function');
+
+            const snapshot = window.dumpTimerDebug();
+
+            expect(snapshot).toEqual(
+                expect.objectContaining({
+                    runningActivity: expect.objectContaining({
+                        description: 'Running timer',
+                        category: 'work/deep',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    }),
+                    displayedElapsed: '00:00:00',
+                    isTimerVisible: true
+                })
+            );
+            expect(infoSpy).toHaveBeenCalledWith(
+                'timer-debug:snapshot',
+                expect.objectContaining({
+                    displayedElapsed: '00:00:00',
+                    isTimerVisible: true
+                })
+            );
         });
 
         test('start timer button alerts when description is blank', async () => {

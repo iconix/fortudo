@@ -8,7 +8,6 @@ import {
 } from './ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './timer-ui.js';
 import { getRunningActivity } from './manager.js';
-import { logger } from '../utils.js';
 
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
@@ -81,20 +80,6 @@ export function syncRestoredRunningTimer(activitiesEnabled) {
     }
 
     const runningActivity = getRunningActivity();
-    logger.info('timer-debug:sync-restored-running-timer', {
-        deviceNowIso: new Date().toISOString(),
-        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-        hasRunningActivity: !!runningActivity,
-        runningActivity: runningActivity
-            ? {
-                  description: runningActivity.description,
-                  category: runningActivity.category || null,
-                  startDateTime: runningActivity.startDateTime,
-                  source: runningActivity.source || 'timer',
-                  sourceTaskId: runningActivity.sourceTaskId || null
-              }
-            : null
-    });
     if (runningActivity) {
         const activityRadio = document.getElementById('activity');
         if (activityRadio instanceof HTMLInputElement && !activityRadio.checked) {

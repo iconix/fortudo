@@ -16,14 +16,6 @@ const timerUiState = {
     }
 };
 
-function logTimerDebug(event, details = {}) {
-    logger.info(`timer-debug:${event}`, {
-        deviceNowIso: new Date().toISOString(),
-        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-        ...details
-    });
-}
-
 function shouldSuppressTimerFieldPersistence() {
     const startTimerButton = document.getElementById('start-timer-btn');
     return (
@@ -98,6 +90,42 @@ function formatElapsed(elapsedMs) {
     ).padStart(2, '0')}`;
 }
 
+function getTimerDebugSnapshot() {
+    const runningActivity = getRunningActivity();
+    const elapsedElement = document.getElementById('timer-elapsed');
+    const timerDisplay = document.getElementById('timer-display');
+    const now = new Date();
+    const startMs = runningActivity?.startDateTime
+        ? new Date(runningActivity.startDateTime).getTime()
+        : null;
+    const elapsedMs =
+        runningActivity && typeof startMs === 'number' && !Number.isNaN(startMs)
+            ? Math.max(0, now.getTime() - startMs)
+            : null;
+
+    return {
+        deviceNowIso: now.toISOString(),
+        timezoneOffsetMinutes: now.getTimezoneOffset(),
+        runningActivity,
+        elapsedMs,
+        displayedElapsed: elapsedElement?.textContent || null,
+        isTimerVisible:
+            !!timerDisplay && !timerDisplay.classList.contains('hidden') && runningActivity !== null
+    };
+}
+
+function registerTimerDebugHelper() {
+    window.dumpTimerDebug = () => {
+        const snapshot = getTimerDebugSnapshot();
+        logger.info('timer-debug:snapshot', snapshot);
+        return snapshot;
+    };
+}
+
+function unregisterTimerDebugHelper() {
+    delete window.dumpTimerDebug;
+}
+
 function startElapsedCounter(startDateTime) {
     stopElapsedCounter();
 
@@ -109,14 +137,7 @@ function startElapsedCounter(startDateTime) {
 
     const updateElapsed = () => {
         const elapsedMs = Date.now() - startMs;
-        const displayedElapsed = formatElapsed(elapsedMs);
-        elapsedElement.textContent = displayedElapsed;
-        logTimerDebug('tick', {
-            startDateTime,
-            startMs,
-            elapsedMs,
-            displayedElapsed
-        });
+        elapsedElement.textContent = formatElapsed(elapsedMs);
 
         const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
         if (timerUiState.lastSummaryElapsedMinutes === null) {
@@ -214,13 +235,6 @@ export function showTimerDisplay(runningActivity) {
         timerCategorySelect.value = runningActivity.category || '';
     }
 
-    logTimerDebug('show-display', {
-        startDateTime: runningActivity.startDateTime,
-        source: runningActivity.source || 'timer',
-        sourceTaskId: runningActivity.sourceTaskId || null,
-        description: runningActivity.description,
-        category: runningActivity.category || null
-    });
     syncNextActivityDraftFields();
     startElapsedCounter(runningActivity.startDateTime);
 }
@@ -242,13 +256,10 @@ export function hideTimerDisplay() {
     if (formFields) {
         formFields.classList.remove('hidden');
     }
-
-    logTimerDebug('hide-display', {
-        hasRunningActivity: !!getRunningActivity()
-    });
 }
 
 export function disposeTimerUI() {
+    unregisterTimerDebugHelper();
     if (timerUiState.abortController) {
         timerUiState.abortController.abort();
         timerUiState.abortController = null;
@@ -286,6 +297,7 @@ export function syncTimerFormState() {
 
 export function initializeTimerUI(deps) {
     disposeTimerUI();
+    registerTimerDebugHelper();
     timerUiState.abortController = new AbortController();
     const { signal } = timerUiState.abortController;
     timerUiState.refreshActivitySummary =

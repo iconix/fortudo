@@ -3,7 +3,7 @@ import {
     loadActivities as loadActivitiesFromStorage,
     deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
-import { extractDateFromDateTime, extractTimeFromDateTime, logger } from '../utils.js';
+import { extractDateFromDateTime, extractTimeFromDateTime } from '../utils.js';
 import {
     loadRunningActivityConfig,
     saveRunningActivityConfig,
@@ -13,14 +13,6 @@ import {
 /** @type {Array<Object>} */
 let activities = [];
 let runningActivity = null;
-
-function logTimerDebug(event, details = {}) {
-    logger.info(`timer-debug:${event}`, {
-        deviceNowIso: new Date().toISOString(),
-        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-        ...details
-    });
-}
 
 function cloneActivity(activity) {
     return activity ? { ...activity } : activity;
@@ -288,17 +280,6 @@ export function createActivityFromTask(task) {
 
 export async function loadRunningActivity() {
     runningActivity = await loadRunningActivityConfig();
-    logTimerDebug('load-running-activity', {
-        runningActivity: runningActivity
-            ? {
-                  description: runningActivity.description,
-                  category: runningActivity.category || null,
-                  startDateTime: runningActivity.startDateTime,
-                  source: runningActivity.source || 'timer',
-                  sourceTaskId: runningActivity.sourceTaskId || null
-              }
-            : null
-    });
     return getRunningActivity();
 }
 
@@ -332,9 +313,6 @@ export async function startTimer({
     await saveRunningActivityConfig(timerState);
 
     runningActivity = timerState;
-    logTimerDebug('start-timer', {
-        runningActivity: getRunningActivity()
-    });
     return { success: true, runningActivity: getRunningActivity() };
 }
 
@@ -392,10 +370,6 @@ export async function stopTimerAt(endDateTime) {
 
     await deleteRunningActivityConfig();
     runningActivity = null;
-    logTimerDebug('stop-timer', {
-        stoppedAt: safeEndDateTime,
-        activity: cloneActivity(activityResult.activity)
-    });
 
     return { success: true, activity: cloneActivity(activityResult.activity) };
 }
@@ -430,8 +404,5 @@ export async function updateRunningActivity(updates = {}) {
     await saveRunningActivityConfig(nextRunningActivity);
 
     runningActivity = nextRunningActivity;
-    logTimerDebug('update-running-activity', {
-        runningActivity: getRunningActivity()
-    });
     return { success: true, runningActivity: getRunningActivity() };
 }
