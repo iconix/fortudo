@@ -1,4 +1,5 @@
 import { showAlert } from '../modal-manager.js';
+import { logger } from '../utils.js';
 import { getRunningActivity, updateRunningActivity } from './manager.js';
 import { handleStartTimer, handleStopTimer } from './handlers.js';
 
@@ -14,6 +15,14 @@ const timerUiState = {
         category: ''
     }
 };
+
+function logTimerDebug(event, details = {}) {
+    logger.info(`timer-debug:${event}`, {
+        deviceNowIso: new Date().toISOString(),
+        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+        ...details
+    });
+}
 
 function shouldSuppressTimerFieldPersistence() {
     const startTimerButton = document.getElementById('start-timer-btn');
@@ -100,7 +109,14 @@ function startElapsedCounter(startDateTime) {
 
     const updateElapsed = () => {
         const elapsedMs = Date.now() - startMs;
-        elapsedElement.textContent = formatElapsed(elapsedMs);
+        const displayedElapsed = formatElapsed(elapsedMs);
+        elapsedElement.textContent = displayedElapsed;
+        logTimerDebug('tick', {
+            startDateTime,
+            startMs,
+            elapsedMs,
+            displayedElapsed
+        });
 
         const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
         if (timerUiState.lastSummaryElapsedMinutes === null) {
@@ -198,6 +214,13 @@ export function showTimerDisplay(runningActivity) {
         timerCategorySelect.value = runningActivity.category || '';
     }
 
+    logTimerDebug('show-display', {
+        startDateTime: runningActivity.startDateTime,
+        source: runningActivity.source || 'timer',
+        sourceTaskId: runningActivity.sourceTaskId || null,
+        description: runningActivity.description,
+        category: runningActivity.category || null
+    });
     syncNextActivityDraftFields();
     startElapsedCounter(runningActivity.startDateTime);
 }
@@ -219,6 +242,10 @@ export function hideTimerDisplay() {
     if (formFields) {
         formFields.classList.remove('hidden');
     }
+
+    logTimerDebug('hide-display', {
+        hasRunningActivity: !!getRunningActivity()
+    });
 }
 
 export function disposeTimerUI() {

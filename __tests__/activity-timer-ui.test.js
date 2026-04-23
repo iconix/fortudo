@@ -26,8 +26,11 @@ import {
 import { handleStartTimer, handleStopTimer } from '../public/js/activities/handlers.js';
 import { getRunningActivity, updateRunningActivity } from '../public/js/activities/manager.js';
 import { showAlert } from '../public/js/modal-manager.js';
+import { logger } from '../public/js/utils.js';
 
 describe('activity timer ui', () => {
+    let infoSpy;
+
     const flushAsyncWork = async (count = 4) => {
         for (let index = 0; index < count; index += 1) {
             await Promise.resolve();
@@ -44,10 +47,12 @@ describe('activity timer ui', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
         getRunningActivity.mockReturnValue(null);
         updateRunningActivity.mockResolvedValue({ success: true });
         handleStartTimer.mockResolvedValue({ success: true });
         handleStopTimer.mockResolvedValue({ success: true });
+        window.history.replaceState({}, '', 'http://localhost/');
         document.body.innerHTML = `
             <input id="scheduled" type="radio" name="task-type" checked />
             <input id="activity" type="radio" name="task-type" />
@@ -82,6 +87,10 @@ describe('activity timer ui', () => {
                 <input type="radio" name="task-type" value="activity" />
             </form>
         `;
+    });
+
+    afterEach(() => {
+        infoSpy.mockRestore();
     });
 
     describe('display state', () => {
@@ -147,6 +156,34 @@ describe('activity timer ui', () => {
             jest.advanceTimersByTime(250);
 
             expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:01');
+        });
+
+        test('timer diagnostics log display sync and periodic elapsed samples', () => {
+            showTimerDisplay({
+                description: 'Timer work',
+                category: 'work/deep',
+                source: 'timer',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            jest.advanceTimersByTime(15000);
+
+            expect(infoSpy).toHaveBeenCalledWith(
+                'timer-debug:show-display',
+                expect.objectContaining({
+                    description: 'Timer work',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-09T10:00:00.000Z'
+                })
+            );
+            expect(infoSpy).toHaveBeenCalledWith(
+                'timer-debug:tick',
+                expect.objectContaining({
+                    displayedElapsed: '01:00:15',
+                    elapsedMs: 3615000,
+                    startDateTime: '2026-04-09T10:00:00.000Z'
+                })
+            );
         });
 
         test('hideTimerDisplay restores the form and stops elapsed updates', () => {
