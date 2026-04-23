@@ -134,6 +134,21 @@ describe('activity timer ui', () => {
             expect(document.getElementById('timer-elapsed').textContent).toBe('01:00:30');
         });
 
+        test('elapsed counter aligns updates to real second boundaries', () => {
+            jest.setSystemTime(new Date('2026-04-09T10:00:00.800Z'));
+
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:00');
+
+            jest.advanceTimersByTime(250);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:01');
+        });
+
         test('hideTimerDisplay restores the form and stops elapsed updates', () => {
             showTimerDisplay({
                 description: 'Timer work',

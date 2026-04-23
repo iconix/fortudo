@@ -3,7 +3,7 @@ import { getRunningActivity, updateRunningActivity } from './manager.js';
 import { handleStartTimer, handleStopTimer } from './handlers.js';
 
 const timerUiState = {
-    intervalId: null,
+    tickTimeoutId: null,
     abortController: null,
     pendingMutation: null,
     suppressFieldPersistence: false,
@@ -50,9 +50,9 @@ function refreshActivitySummary() {
 }
 
 function stopElapsedCounter() {
-    if (timerUiState.intervalId) {
-        clearInterval(timerUiState.intervalId);
-        timerUiState.intervalId = null;
+    if (timerUiState.tickTimeoutId) {
+        clearTimeout(timerUiState.tickTimeoutId);
+        timerUiState.tickTimeoutId = null;
     }
     timerUiState.lastSummaryElapsedMinutes = null;
 }
@@ -120,8 +120,17 @@ function startElapsedCounter(startDateTime) {
         timerUiState.lastSummaryElapsedMinutes = elapsedMinutes;
     };
 
+    const scheduleNextUpdate = () => {
+        const elapsedMs = Math.max(0, Date.now() - startMs);
+        const nextDelay = Math.max(1, 1000 - (elapsedMs % 1000));
+        timerUiState.tickTimeoutId = setTimeout(() => {
+            updateElapsed();
+            scheduleNextUpdate();
+        }, nextDelay);
+    };
+
     updateElapsed();
-    timerUiState.intervalId = setInterval(updateElapsed, 1000);
+    scheduleNextUpdate();
 }
 
 function syncNextCategoryOptions() {
