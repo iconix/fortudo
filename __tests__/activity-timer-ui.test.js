@@ -369,6 +369,55 @@ describe('activity timer ui', () => {
             );
         });
 
+        test('timer debug helper falls back to local-only values when no timer is running', async () => {
+            initializeTimerUI({ refreshUI: jest.fn() });
+
+            const snapshot = await window.dumpTimerDebug();
+
+            expect(global.fetch).not.toHaveBeenCalled();
+            expect(snapshot).toEqual(
+                expect.objectContaining({
+                    runningActivity: null,
+                    elapsedMs: null,
+                    correctedElapsedMs: null,
+                    correctedDisplayedElapsed: null,
+                    serverDateHeader: null,
+                    estimatedServerOffsetMs: null
+                })
+            );
+        });
+
+        test('timer debug helper falls back to local elapsed values when server date header is invalid', async () => {
+            document.getElementById('activity').checked = true;
+            getRunningActivity.mockReturnValue({
+                description: 'Running timer',
+                category: null,
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            });
+            global.fetch.mockResolvedValue({
+                headers: {
+                    get: jest.fn(() => 'not-a-date')
+                }
+            });
+
+            initializeTimerUI({ refreshUI: jest.fn() });
+            syncTimerFormState();
+
+            const snapshot = await window.dumpTimerDebug();
+
+            expect(snapshot).toEqual(
+                expect.objectContaining({
+                    serverDateHeader: 'not-a-date',
+                    estimatedServerOffsetMs: null,
+                    elapsedMs: 0,
+                    correctedElapsedMs: 0,
+                    correctedDisplayedElapsed: '00:00:00'
+                })
+            );
+        });
+
         test('start timer button alerts when description is blank', async () => {
             document.getElementById('activity').checked = true;
 
