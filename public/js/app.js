@@ -35,7 +35,6 @@ import {
     stopTimerAt
 } from './activities/manager.js';
 import { syncActivitiesUI, renderTodayActivities } from './activities/ui-handlers.js';
-import { syncTimerFormState } from './activities/timer-ui.js';
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
@@ -180,8 +179,6 @@ async function initAndBootApp(roomCode) {
         refreshStartTimeField,
         getRunningActivity,
         stopTimerAt,
-        syncTimerFormState,
-        refreshTaskDisplays,
         onSyncStatusChange,
         updateSyncStatusUI,
         triggerSync,

@@ -128,14 +128,22 @@ describe('app room/session lifecycle', () => {
         const abortController = new AbortController();
 
         lifecycle.start({ signal: abortController.signal });
+        deps.loadAppState.mockClear();
+        deps.refreshUI.mockClear();
+        deps.syncRestoredRunningTimer.mockClear();
+        deps.syncTimerFormState.mockClear();
+        deps.refreshTaskDisplays.mockClear();
 
         jest.advanceTimersByTime(1000);
         await Promise.resolve();
         await Promise.resolve();
 
         expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
-        expect(deps.syncTimerFormState).toHaveBeenCalledTimes(1);
-        expect(deps.refreshTaskDisplays).toHaveBeenCalledTimes(1);
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.refreshUI).toHaveBeenCalledTimes(1);
+        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
+        expect(deps.syncTimerFormState).not.toHaveBeenCalled();
+        expect(deps.refreshTaskDisplays).not.toHaveBeenCalled();
         expect(deps.refreshStartTimeField).toHaveBeenCalledTimes(1);
     });
 });

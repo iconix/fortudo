@@ -11,8 +11,6 @@ export function createRoomSessionLifecycle({
     refreshStartTimeField,
     getRunningActivity,
     stopTimerAt,
-    syncTimerFormState,
-    refreshTaskDisplays,
     onSyncStatusChange,
     updateSyncStatusUI,
     triggerSync,
@@ -72,8 +70,12 @@ export function createRoomSessionLifecycle({
                     stopTimerAt(midnightBoundary.toISOString())
                         .then((result) => {
                             if (result?.success) {
-                                syncTimerFormState();
-                                refreshTaskDisplays();
+                                refreshFromStorage().catch((err) => {
+                                    logger.error(
+                                        'Failed to refresh tasks after midnight timer stop:',
+                                        err
+                                    );
+                                });
                             }
                         })
                         .catch((error) => {
