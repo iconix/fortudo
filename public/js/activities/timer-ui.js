@@ -114,9 +114,68 @@ function getTimerDebugSnapshot() {
     };
 }
 
+async function getTimerDebugSnapshotWithServerEstimate() {
+    const snapshot = getTimerDebugSnapshot();
+    const canEstimateServerTime =
+        typeof fetch === 'function' &&
+        snapshot.runningActivity?.startDateTime &&
+        typeof snapshot.elapsedMs === 'number';
+
+    if (!canEstimateServerTime) {
+        return {
+            ...snapshot,
+            serverDateHeader: null,
+            serverRoundTripMs: null,
+            estimatedServerOffsetMs: null,
+            correctedElapsedMs: snapshot.elapsedMs,
+            correctedDisplayedElapsed:
+                typeof snapshot.elapsedMs === 'number' ? formatElapsed(snapshot.elapsedMs) : null
+        };
+    }
+
+    const requestStartedAtMs = Date.now();
+    const response = await fetch(window.location.href, {
+        method: 'HEAD',
+        cache: 'no-store'
+    });
+    const requestCompletedAtMs = Date.now();
+    const serverDateHeader = response?.headers?.get('Date') || null;
+    const serverDateMs = serverDateHeader ? new Date(serverDateHeader).getTime() : null;
+
+    if (typeof serverDateMs !== 'number' || Number.isNaN(serverDateMs)) {
+        return {
+            ...snapshot,
+            serverDateHeader,
+            serverRoundTripMs: requestCompletedAtMs - requestStartedAtMs,
+            estimatedServerOffsetMs: null,
+            correctedElapsedMs: snapshot.elapsedMs,
+            correctedDisplayedElapsed:
+                typeof snapshot.elapsedMs === 'number' ? formatElapsed(snapshot.elapsedMs) : null
+        };
+    }
+
+    const localMidpointMs = requestStartedAtMs + (requestCompletedAtMs - requestStartedAtMs) / 2;
+    const estimatedServerOffsetMs = serverDateMs - localMidpointMs;
+    const correctedElapsedMs = Math.max(
+        0,
+        new Date(snapshot.deviceNowIso).getTime() +
+            estimatedServerOffsetMs -
+            new Date(snapshot.runningActivity.startDateTime).getTime()
+    );
+
+    return {
+        ...snapshot,
+        serverDateHeader,
+        serverRoundTripMs: requestCompletedAtMs - requestStartedAtMs,
+        estimatedServerOffsetMs,
+        correctedElapsedMs,
+        correctedDisplayedElapsed: formatElapsed(correctedElapsedMs)
+    };
+}
+
 function registerTimerDebugHelper() {
-    window.dumpTimerDebug = () => {
-        const snapshot = getTimerDebugSnapshot();
+    window.dumpTimerDebug = async () => {
+        const snapshot = await getTimerDebugSnapshotWithServerEstimate();
         logger.info('timer-debug:snapshot', snapshot);
         return snapshot;
     };

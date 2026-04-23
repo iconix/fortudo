@@ -30,6 +30,7 @@ import { logger } from '../public/js/utils.js';
 
 describe('activity timer ui', () => {
     let infoSpy;
+    let originalFetch;
 
     const flushAsyncWork = async (count = 4) => {
         for (let index = 0; index < count; index += 1) {
@@ -48,6 +49,8 @@ describe('activity timer ui', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+        originalFetch = global.fetch;
+        global.fetch = jest.fn();
         getRunningActivity.mockReturnValue(null);
         updateRunningActivity.mockResolvedValue({ success: true });
         handleStartTimer.mockResolvedValue({ success: true });
@@ -90,6 +93,7 @@ describe('activity timer ui', () => {
 
     afterEach(() => {
         infoSpy.mockRestore();
+        global.fetch = originalFetch;
     });
 
     describe('display state', () => {
@@ -314,7 +318,7 @@ describe('activity timer ui', () => {
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
         });
 
-        test('registers a one-shot global timer debug helper', () => {
+        test('registers an async global timer debug helper with corrected timing estimate', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
                 description: 'Running timer',
@@ -323,13 +327,20 @@ describe('activity timer ui', () => {
                 source: 'timer',
                 sourceTaskId: null
             });
+            global.fetch.mockResolvedValue({
+                headers: {
+                    get: jest.fn((name) =>
+                        name === 'Date' ? 'Wed, 09 Apr 2026 10:00:05 GMT' : null
+                    )
+                }
+            });
 
             initializeTimerUI({ refreshUI: jest.fn() });
             syncTimerFormState();
 
             expect(typeof window.dumpTimerDebug).toBe('function');
 
-            const snapshot = window.dumpTimerDebug();
+            const snapshot = await window.dumpTimerDebug();
 
             expect(snapshot).toEqual(
                 expect.objectContaining({
@@ -338,13 +349,20 @@ describe('activity timer ui', () => {
                         category: 'work/deep',
                         startDateTime: '2026-04-09T10:00:00.000Z'
                     }),
+                    correctedElapsedMs: 5000,
+                    correctedDisplayedElapsed: '00:00:05',
                     displayedElapsed: '00:00:00',
                     isTimerVisible: true
                 })
             );
+            expect(global.fetch).toHaveBeenCalledWith('http://localhost/', {
+                method: 'HEAD',
+                cache: 'no-store'
+            });
             expect(infoSpy).toHaveBeenCalledWith(
                 'timer-debug:snapshot',
                 expect.objectContaining({
+                    correctedDisplayedElapsed: '00:00:05',
                     displayedElapsed: '00:00:00',
                     isTimerVisible: true
                 })
