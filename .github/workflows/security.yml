@@ -13,6 +13,9 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -33,9 +36,47 @@ jobs:
       # Dev dependencies are audited separately so known test-harness advisories
       # stay visible without blocking production deploys. PouchDB 9.0.0 is used
       # by Jest tests and currently pins uuid 8.3.2 upstream.
-      - name: Run npm audit for dev dependencies (non-blocking)
-        run: npm audit --include=dev --audit-level=moderate
-        continue-on-error: true
+      - name: Run npm audit for dev dependencies
+        id: dev-audit
+        run: |
+          set +e
+          npm audit --include=dev --audit-level=moderate > dev-audit.txt 2>&1
+          exit_code=$?
+          cat dev-audit.txt
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Publish dev dependency audit check
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            const exitCode = Number('${{ steps.dev-audit.outputs.exit_code }}');
+            const auditOutput = fs.readFileSync('dev-audit.txt', 'utf8').trim();
+            const hasFindings = exitCode !== 0;
+            const textLimit = 65000;
+            const text =
+              auditOutput.length > textLimit
+                ? `${auditOutput.slice(0, textLimit)}\n\n[output truncated]`
+                : auditOutput;
+
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Dev Dependency Audit',
+              head_sha: context.payload.pull_request?.head?.sha || context.sha,
+              status: 'completed',
+              conclusion: hasFindings ? 'neutral' : 'success',
+              output: {
+                title: hasFindings
+                  ? 'Dev dependency advisories found'
+                  : 'No dev dependency advisories found',
+                summary: hasFindings
+                  ? 'Dev dependency audit found advisories. These are visible but non-blocking for production deploys.'
+                  : 'Dev dependency audit completed without advisories.',
+                text,
+              },
+            });
 
       - name: Run npm audit fix (dry run)
         run: npm audit fix --omit=dev --dry-run
