@@ -500,6 +500,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 - Add E2E coverage for activity flows
 - Add a one-time "What's new?" prompt on initial app load after Activities ships, highlighting activity logging, timer capture, and insights
+- Rename orchestration modules to clarify responsibilities, e.g. distinguish the room/session lifecycle coordinator from the post-mutation coordinator (`app-lifecycle.js` / `app-coordinator.js`)
 - Finalize activity accent color
 - Add transitions and micro-interactions
 - Adapt timeline UX for mobile
