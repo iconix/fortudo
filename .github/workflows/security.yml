@@ -28,10 +28,17 @@ jobs:
         run: npm ci
 
       - name: Run npm audit
-        run: npm audit --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Dev dependencies are audited separately so known test-harness advisories
+      # stay visible without blocking production deploys. PouchDB 9.0.0 is used
+      # by Jest tests and currently pins uuid 8.3.2 upstream.
+      - name: Run npm audit for dev dependencies (non-blocking)
+        run: npm audit --include=dev --audit-level=moderate
+        continue-on-error: true
 
       - name: Run npm audit fix (dry run)
-        run: npm audit fix --dry-run
+        run: npm audit fix --omit=dev --dry-run
         continue-on-error: true
 
   dependency-review:
