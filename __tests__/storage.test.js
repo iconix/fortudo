@@ -23,8 +23,12 @@ jest.mock('../public/js/sync-manager.js', () => ({
 import {
     initStorage,
     putTask,
+    putActivity,
+    putConfig,
     deleteTask,
     loadTasks,
+    loadActivities,
+    loadConfig,
     saveTasks,
     getDb,
     destroyStorage
@@ -215,6 +219,60 @@ describe('Storage - PouchDB', () => {
             await saveTasks([]);
             const tasks = await loadTasks();
             expect(tasks).toEqual([]);
+        });
+
+        test('clearing all tasks preserves activity and config docs', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'sched-1',
+                type: 'scheduled',
+                description: 'Scheduled task',
+                status: 'incomplete'
+            });
+            await putTask({
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Unscheduled task',
+                status: 'incomplete',
+                priority: 'medium'
+            });
+            await putActivity({
+                id: 'activity-1',
+                docType: 'activity',
+                description: 'Preserved activity',
+                category: null,
+                startDateTime: '2026-04-11T09:00:00.000Z',
+                endDateTime: '2026-04-11T09:30:00.000Z',
+                duration: 30,
+                source: 'manual',
+                sourceTaskId: null
+            });
+            await putConfig({
+                id: 'config-categories',
+                groups: [],
+                categories: []
+            });
+
+            await saveTasks([]);
+
+            const tasks = await loadTasks();
+            const activities = await loadActivities();
+            const categoriesConfig = await loadConfig('config-categories');
+
+            expect(tasks).toEqual([]);
+            expect(activities).toEqual([
+                expect.objectContaining({
+                    id: 'activity-1',
+                    docType: 'activity',
+                    description: 'Preserved activity'
+                })
+            ]);
+            expect(categoriesConfig).toEqual(
+                expect.objectContaining({
+                    id: 'config-categories',
+                    docType: 'config'
+                })
+            );
         });
     });
 });

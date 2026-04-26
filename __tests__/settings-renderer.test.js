@@ -543,6 +543,7 @@ describe('settings-renderer', () => {
             form.querySelector('[name="group-label"]').value = 'Fitness';
             form.querySelector('[name="group-family"]').value = 'rose';
             await submitForm(form);
+            await waitForCondition(() => onTaxonomyChanged.mock.calls.length > 0);
 
             expect(onTaxonomyChanged).toHaveBeenCalled();
         });

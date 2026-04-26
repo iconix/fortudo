@@ -8,13 +8,20 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 COUCHDB_URL_RE = re.compile(r"COUCHDB_URL\s*=\s*(?:'([^']*)'|null)")
 ACTIVITY_SMOKE_FAILURES_KEY = "fortudo-smoke-activity-failures"
+RUNNING_ACTIVITY_CONFIG_ID = "config-running-activity"
+DEMO_LOGGING_ENABLED = False
+
+
+def configure_demo_logging(*, enabled: bool) -> None:
+    global DEMO_LOGGING_ENABLED
+    DEMO_LOGGING_ENABLED = enabled
 
 
 def normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
@@ -478,11 +485,131 @@ def add_activity(page: Any, description: str, start_time: str, duration_minutes:
     page.locator("#task-form button[type='submit']").click()
 
 
+def force_activity_mode(page: Any) -> None:
+    page.evaluate(
+        """
+        () => {
+            const scheduled = document.getElementById('scheduled');
+            const unscheduled = document.getElementById('unscheduled');
+            const activity = document.getElementById('activity');
+            if (!(activity instanceof HTMLInputElement)) {
+                return;
+            }
+
+            if (scheduled instanceof HTMLInputElement) {
+                scheduled.checked = false;
+            }
+            if (unscheduled instanceof HTMLInputElement) {
+                unscheduled.checked = false;
+            }
+
+            activity.checked = true;
+            activity.dispatchEvent(new Event('input', { bubbles: true }));
+            activity.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        """
+    )
+
+    wait_until(
+        lambda: not page.locator('#start-timer-btn').is_hidden()
+        and (
+            page.locator('#timer-display').is_visible()
+            or 'Log Activity' in (page.locator('#add-task-btn').text_content() or '')
+        ),
+        "activity mode sync",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+
+
+def start_activity_timer(
+    page: Any,
+    description: str,
+    category: str | None = None,
+    *,
+    room_code: str | None = None,
+) -> None:
+    timer_display = page.locator("#timer-display")
+    if not timer_display.is_visible():
+        force_activity_mode(page)
+
+    if timer_display.is_visible():
+        if category is not None:
+            page.locator("#timer-category").select_option(category)
+        fill_locator_value(
+            page,
+            page.locator("#timer-description"),
+            description,
+            description="running timer description",
+        )
+        wait_for_input_value(
+            page,
+            "#timer-description",
+            description,
+            description="running timer description before start",
+        )
+    else:
+        if category is not None:
+            page.locator('#task-form select[name="category"]').select_option(category)
+        fill_locator_value(
+            page,
+            page.locator(task_form_input_selector("description")),
+            description,
+            description="timer start description",
+        )
+        wait_for_input_value(
+            page,
+            task_form_input_selector("description"),
+            description,
+            description="timer start description before click",
+        )
+
+    page.locator("#start-timer-btn").click()
+    if room_code:
+        wait_for_running_activity_config(
+            page,
+            room_code,
+            expected_description=description,
+            expected_category=category,
+        )
+    wait_for_running_timer_ui(page, description)
+
+
+def get_relative_browser_time(page: Any, minutes_delta: int) -> str:
+    value = page.evaluate(
+        """
+        (offsetMinutes) => {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const requestedMinutes = currentMinutes + Number(offsetMinutes || 0);
+            const clampedMinutes = Math.max(0, Math.min(1439, requestedMinutes));
+            const hours = String(Math.floor(clampedMinutes / 60)).padStart(2, '0');
+            const minutes = String(clampedMinutes % 60).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+        """,
+        minutes_delta,
+    )
+    if not value:
+        raise ValueError("Could not derive a browser-relative time value.")
+    return value
+
+
+def stop_activity_timer(
+    page: Any, *, timeout_s: float = 10.0, interval_s: float = 0.2
+) -> None:
+    page.locator("#timer-stop-btn").click()
+    wait_until(
+        lambda: not page.locator("#timer-display").is_visible(),
+        "timer display hidden after stop",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
 def add_active_scheduled_task(page: Any, description: str, duration_minutes: int) -> None:
     page.locator("#scheduled").check()
-    start_time = page.locator(task_form_input_selector("start-time")).input_value()
-    if not start_time:
-        raise ValueError("Scheduled task form did not provide a suggested start time.")
+    start_time = get_relative_browser_time(page, -1)
 
     add_scheduled_task(page, description, start_time, duration_minutes)
 
@@ -497,6 +624,16 @@ def ensure_activity_doc_present(
     raise ValueError(f"Missing activity document for {room_code}: {description}")
 
 
+def get_running_activity_config(
+    room_code: str, docs: list[dict[str, Any]]
+) -> dict[str, Any]:
+    for doc in docs:
+        normalized = normalize_doc(doc)
+        if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID:
+            return normalized
+    raise ValueError(f"Missing running activity config for {room_code}")
+
+
 def wait_for_activity_doc(
     page: Any,
     room_code: str,
@@ -504,7 +641,7 @@ def wait_for_activity_doc(
     *,
     timeout_s: float = 15.0,
     interval_s: float = 0.2,
-) -> dict[str, Any]:
+    ) -> dict[str, Any]:
     return wait_until(
         lambda: next(
             (
@@ -516,6 +653,37 @@ def wait_for_activity_doc(
             False,
         ),
         f"activity persistence for {description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def wait_for_running_activity_config(
+    page: Any,
+    room_code: str,
+    *,
+    expected_description: str | None = None,
+    expected_category: str | None = None,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> dict[str, Any]:
+    return wait_until(
+        lambda: next(
+            (
+                normalized
+                for normalized in map(normalize_doc, read_docs(page, room_code))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+                and (
+                    expected_description is None
+                    or normalized.get("description") == expected_description
+                )
+                and (
+                    expected_category is None or normalized.get("category") == expected_category
+                )
+            ),
+            False,
+        ),
+        f"running activity config persistence for {room_code!r}",
         timeout_s=timeout_s,
         interval_s=interval_s,
     )
@@ -553,6 +721,24 @@ def wait_for_activity_failure_alert(
         )
     if outcome != "alert":
         raise TimeoutError(f"Timed out waiting for activity failure alert for {description!r}")
+
+
+def wait_for_running_timer_ui(
+    page: Any,
+    expected_description: str,
+    *,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    wait_until(
+        lambda: (
+            page.locator("#timer-display").is_visible()
+            and page.locator("#timer-description").input_value() == expected_description
+        ),
+        f"running timer UI for {expected_description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
 
 
 def add_category_via_settings(page: Any, group_key: str, label: str) -> None:
@@ -1054,15 +1240,23 @@ def assert_no_runtime_errors(
     page_errors: list[str],
     request_failures: list[str],
     response_errors: list[tuple[int, str, str]],
+    browser_captured_errors: list[dict[str, Any]] | None = None,
 ) -> None:
     filtered_console_errors, filtered_request_failures, filtered_response_errors = (
         filter_runtime_errors(console_errors, request_failures, response_errors)
     )
-    if filtered_console_errors or page_errors or filtered_request_failures or filtered_response_errors:
+    if (
+        filtered_console_errors
+        or page_errors
+        or filtered_request_failures
+        or filtered_response_errors
+        or browser_captured_errors
+    ):
         raise ValueError(
             "Runtime errors detected.\n"
             f"Console errors: {json.dumps(filtered_console_errors[:10], indent=2)}\n"
             f"Page errors: {json.dumps(page_errors[:10], indent=2)}\n"
+            f"Browser captured errors: {json.dumps((browser_captured_errors or [])[:10], indent=2)}\n"
             f"Request failures: {json.dumps(filtered_request_failures[:10], indent=2)}\n"
             f"Response errors: {json.dumps(filtered_response_errors[:10], indent=2)}"
         )
@@ -1074,10 +1268,20 @@ def save_failure_screenshot(page: Any) -> None:
     page.screenshot(path=str(screenshot_dir / "playwright_preview_smoke_failure.png"), full_page=True)
 
 
+def format_demo_timestamp() -> str:
+    return time.strftime("%H:%M:%S")
+
+
+def demo_note(message: str) -> None:
+    if not DEMO_LOGGING_ENABLED:
+        return
+    print(f"[demo {format_demo_timestamp()}] {message}")
+
+
 def demo_step(page: Any, message: str, step_pause_ms: int) -> None:
     if step_pause_ms <= 0:
         return
-    print(f"[demo] {message}")
+    demo_note(message)
     page.wait_for_timeout(step_pause_ms)
 
 
@@ -1094,6 +1298,591 @@ def wait_for_demo_start(
     input_fn("")
 
 
+def run_activities_room_scenario(
+    *,
+    page: Any,
+    rooms: dict[str, str],
+    step_pause_ms: int,
+    assert_no_page_errors_yet: Callable[[str], None],
+) -> None:
+    demo_step(page, "checking activities room flows", step_pause_ms)
+    switch_room(page, rooms["activities"])
+    clear_room_storage(page, rooms["activities"])
+    seed_docs(page, rooms["activities"], [build_phase3_taxonomy_config_doc()])
+    set_activities_enabled(page, True)
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+
+    add_activity(page, "Playwright manual activity", "13:00", 30)
+    manual_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright manual activity",
+    )
+    if manual_activity_doc.get("source") != "manual":
+        raise ValueError(
+            f"manual activity was not stored as manual.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    if manual_activity_doc.get("sourceTaskId") is not None:
+        raise ValueError(
+            f"manual activity unexpectedly linked to a source task.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    if manual_activity_doc.get("duration") != 30:
+        raise ValueError(
+            f"manual activity persisted wrong duration.\n{json.dumps(manual_activity_doc, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#activity-list",
+        "Playwright manual activity",
+        description="manual activity render",
+    )
+    demo_note("activities: manual activity add persisted and rendered")
+    assert_no_page_errors_yet("manual activity add")
+
+    queue_activity_smoke_failure(page, "manual-add", 1)
+    add_activity(page, "Playwright failed activity", "13:45", 15)
+    wait_for_activity_failure_alert(
+        page,
+        rooms["activities"],
+        "Playwright failed activity",
+    )
+    wait_for_text_in_locator(
+        page,
+        "#custom-alert-message",
+        "Could not log activity.",
+        description="manual activity failure alert",
+    )
+    failed_activity_description = page.locator(
+        task_form_input_selector("description")
+    ).input_value()
+    if failed_activity_description != "Playwright failed activity":
+        raise ValueError(
+            "manual activity failure cleared the form unexpectedly: "
+            f"{failed_activity_description!r}"
+        )
+    page.locator("#ok-custom-alert-modal").click()
+    page.locator("#custom-alert-modal").wait_for(state="hidden", timeout=10000)
+    if any(
+        doc.get("description") == "Playwright failed activity"
+        for doc in read_docs(page, rooms["activities"])
+    ):
+        raise ValueError("failed manual activity unexpectedly persisted")
+    demo_note("activities: manual add failure path preserved form state")
+    assert_no_page_errors_yet("manual add failure path")
+
+    add_active_scheduled_task(page, "Playwright auto-log success", 20)
+    success_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log success",
+    )
+    complete_scheduled_task_via_ui(page, success_task_doc["id"])
+    success_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log success",
+    )
+    if success_activity_doc.get("source") != "auto":
+        raise ValueError(
+            f"successful auto-log activity had wrong source.\n{json.dumps(success_activity_doc, indent=2)}"
+        )
+    if success_activity_doc.get("sourceTaskId") != success_task_doc["id"]:
+        raise ValueError(
+            "successful auto-log activity did not keep the source task id.\n"
+            f"{json.dumps(success_activity_doc, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#activity-list",
+        "Playwright auto-log success",
+        description="successful auto-log activity render",
+    )
+    demo_note("activities: scheduled-task auto-log success verified")
+    assert_no_page_errors_yet("auto-log success")
+
+    add_active_scheduled_task(page, "Playwright auto-log failure", 20)
+    failing_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright auto-log failure",
+    )
+    queue_activity_smoke_failure(page, "auto-log", 1)
+    complete_scheduled_task_via_ui(page, failing_task_doc["id"])
+    wait_for_toast_text(page, "Task completed, but activity auto-log failed.")
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright auto-log failure"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("failed auto-log unexpectedly created an activity")
+    demo_note("activities: auto-log failure path surfaced toast without persisting activity")
+    assert_no_page_errors_yet("auto-log failure path")
+
+    add_unscheduled_task(page, "Playwright delete confirm task", 15)
+    delete_confirm_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright delete confirm task",
+    )
+
+    add_activity(page, "Playwright editable activity", "15:30", 15)
+    editable_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright editable activity",
+    )
+    wait_for_activity_row_text(
+        page,
+        editable_activity_doc["id"],
+        "Playwright editable activity",
+    )
+    arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+    page.locator(
+        f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
+    ).click()
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+    ).wait_for(state="visible", timeout=10000)
+    current_modal_value = wait_for_input_value(
+        page,
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]',
+        "Playwright editable activity",
+        description="activity inline edit description preload",
+    )
+    if current_modal_value != "Playwright editable activity":
+        raise ValueError(
+            "activity inline edit lost the current description after rerender: "
+            f"{current_modal_value!r}"
+        )
+    fill_locator_value(
+        page,
+        page.locator(
+            f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]'
+        ),
+        "Playwright editable activity updated",
+        description="activity inline edit description",
+    )
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
+    ).click()
+    page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
+    ).wait_for(state="hidden", timeout=10000)
+    wait_until(
+        lambda: any(
+            doc.get("id") == editable_activity_doc["id"]
+            and doc.get("description") == "Playwright editable activity updated"
+            for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+        ),
+        "activity edit after delete-confirm rerender",
+    )
+    if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+        raise ValueError("delete confirm state was not cleared by activity edit")
+    demo_note("activities: inline edit survived delete-confirm rerender state")
+    assert_no_page_errors_yet("activity inline edit")
+
+    add_activity(page, "Playwright delete activity", "16:00", 10)
+    deletable_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright delete activity",
+    )
+    wait_for_activity_row_text(
+        page,
+        deletable_activity_doc["id"],
+        "Playwright delete activity",
+    )
+    arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
+    page.locator(
+        f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
+    ).click()
+    wait_until(
+        lambda: not any(
+            doc.get("id") == deletable_activity_doc["id"]
+            for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+        ),
+        "activity delete after delete-confirm rerender",
+    )
+    if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
+        raise ValueError("delete confirm state was not cleared by activity delete")
+    demo_note("activities: manual activity delete verified")
+    assert_no_page_errors_yet("manual activity delete")
+
+    try:
+        start_activity_timer(
+            page,
+            "Playwright timer start",
+            category="work/project",
+            room_code=rooms["activities"],
+        )
+    except Exception as error:
+        timer_start_state = page.evaluate(
+            """
+            () => ({
+                scheduledChecked: document.getElementById('scheduled')?.checked ?? null,
+                unscheduledChecked: document.getElementById('unscheduled')?.checked ?? null,
+                activityChecked: document.getElementById('activity')?.checked ?? null,
+                addTaskText: document.getElementById('add-task-btn')?.textContent ?? null,
+                startTimerHidden:
+                    document.getElementById('start-timer-btn')?.classList.contains('hidden') ??
+                    null,
+                formDescription:
+                    document.querySelector('#task-form input[name="description"]')?.value ??
+                    null,
+                formCategory:
+                    document.querySelector('#task-form select[name="category"]')?.value ??
+                    null,
+                formPlaceholder:
+                    document
+                        .querySelector('#task-form input[name="description"]')
+                        ?.getAttribute('placeholder') ?? null,
+                timerVisible:
+                    !(document.getElementById('timer-display')?.classList.contains('hidden') ??
+                    true),
+                timerDescription: document.getElementById('timer-description')?.value ?? null,
+                timerCategory: document.getElementById('timer-category')?.value ?? null,
+                alertVisible:
+                    !(document.getElementById('custom-alert-modal')?.classList.contains('hidden') ??
+                    true),
+                alertMessage:
+                    document.getElementById('custom-alert-message')?.textContent ?? null,
+                taskFormActivityClass:
+                    document.getElementById('task-form')?.classList.contains('task-form--activity') ??
+                    null
+            })
+            """
+        )
+        timer_start_docs = list(map(normalize_doc, read_docs(page, rooms["activities"])))
+        raise ValueError(
+            "Initial timer start failed.\n"
+            f"error={error!r}\n"
+            f"state={json.dumps(timer_start_state, indent=2)}\n"
+            f"docs={json.dumps(timer_start_docs, indent=2)}"
+        ) from error
+    running_timer_config = wait_for_running_activity_config(page, rooms["activities"])
+    if running_timer_config.get("description") != "Playwright timer start":
+        raise ValueError(
+            "running activity config stored wrong description after timer start.\n"
+            f"{json.dumps(running_timer_config, indent=2)}"
+        )
+    if running_timer_config.get("category") != "work/project":
+        raise ValueError(
+            "running activity config stored wrong category after timer start.\n"
+            f"{json.dumps(running_timer_config, indent=2)}"
+        )
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright timer start"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("starting a timer unexpectedly created an activity doc immediately")
+    demo_note("activities: timer started and running config persisted")
+    assert_no_page_errors_yet("timer start")
+
+    fill_locator_value(
+        page,
+        page.locator("#timer-description"),
+        "Playwright timer edited",
+        description="timer description edit",
+    )
+    page.locator("#timer-description").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("description") == "Playwright timer edited"
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer description config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    page.locator("#timer-category").select_option("work/meeting")
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("category") == "work/meeting"
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer category config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    original_start_date_time = wait_for_running_activity_config(
+        page, rooms["activities"]
+    ).get("startDateTime")
+    timer_start_backdate = get_relative_browser_time(page, -60)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        timer_start_backdate,
+        description="timer start time edit",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_until(
+        lambda: next(
+            (
+                normalized.get("startDateTime") != original_start_date_time
+                for normalized in map(normalize_doc, read_docs(page, rooms["activities"]))
+                if normalized.get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            ),
+            False,
+        ),
+        "timer start time config update",
+        timeout_s=10.0,
+        interval_s=0.1,
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        timer_start_backdate,
+        description="timer start time field after backdate",
+    )
+
+    stop_activity_timer(page)
+    wait_until(
+        lambda: not any(
+            normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            for doc in read_docs(page, rooms["activities"])
+        ),
+        "running activity config cleared after stop",
+    )
+    stopped_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer edited",
+    )
+    if stopped_timer_doc.get("source") != "timer":
+        raise ValueError(
+            f"stopped timer activity had wrong source.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("category") != "work/meeting":
+        raise ValueError(
+            f"stopped timer activity had wrong category.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("duration", 0) <= 0:
+        raise ValueError(
+            f"stopped timer activity did not record positive duration.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    if stopped_timer_doc.get("sourceTaskId") is not None:
+        raise ValueError(
+            f"timer activity unexpectedly linked to a source task.\n{json.dumps(stopped_timer_doc, indent=2)}"
+        )
+    demo_note("activities: timer edits and stop-to-activity persistence verified")
+    assert_no_page_errors_yet("timer stop persistence")
+
+    start_activity_timer(
+        page,
+        "Playwright timer replace first",
+        category="work/project",
+        room_code=rooms["activities"],
+    )
+    replacement_timer_start = get_relative_browser_time(page, -30)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        replacement_timer_start,
+        description="replacement timer first start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        replacement_timer_start,
+        description="replacement timer first start time applied",
+    )
+    start_activity_timer(
+        page,
+        "Playwright timer replace second",
+        category="work/comms",
+        room_code=rooms["activities"],
+    )
+    replacement_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    if replacement_running_config.get("description") != "Playwright timer replace second":
+        raise ValueError(
+            "replacement timer did not become the new running timer.\n"
+            f"{json.dumps(replacement_running_config, indent=2)}"
+        )
+    replaced_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer replace first",
+    )
+    if replaced_timer_doc.get("source") != "timer" or replaced_timer_doc.get("duration", 0) <= 0:
+        raise ValueError(
+            "replaced running timer did not persist as a positive-duration timer activity.\n"
+            f"{json.dumps(replaced_timer_doc, indent=2)}"
+        )
+    demo_note("activities: stop-on-start replacement flow verified")
+    assert_no_page_errors_yet("timer replacement flow")
+
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+    page.locator("#activity").check()
+    wait_for_running_timer_ui(page, "Playwright timer replace second")
+    restored_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    if restored_running_config.get("description") != "Playwright timer replace second":
+        raise ValueError(
+            "running timer was not restored after reload.\n"
+            f"{json.dumps(restored_running_config, indent=2)}"
+        )
+    demo_note("activities: running timer restored after reload")
+    assert_no_page_errors_yet("timer reload restore")
+
+    overlap_timer_start = get_relative_browser_time(page, -15)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        overlap_timer_start,
+        description="overlap timer start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        overlap_timer_start,
+        description="overlap timer start time applied",
+    )
+
+    add_active_scheduled_task(page, "Playwright overlap auto-stop", 20)
+    overlap_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright overlap auto-stop",
+    )
+    complete_scheduled_task_via_ui(page, overlap_task_doc["id"])
+    overlap_auto_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright overlap auto-stop",
+    )
+    overlap_timer_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright timer replace second",
+    )
+    if overlap_auto_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "overlap auto-log activity had wrong source.\n"
+            f"{json.dumps(overlap_auto_activity_doc, indent=2)}"
+        )
+    if overlap_timer_doc.get("source") != "timer":
+        raise ValueError(
+            "overlap auto-stop did not persist the running timer as a timer activity.\n"
+            f"{json.dumps(overlap_timer_doc, indent=2)}"
+        )
+    if any(
+        normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+        for doc in read_docs(page, rooms["activities"])
+    ):
+        raise ValueError("overlap auto-stop left a running activity config behind")
+    wait_until(
+        lambda: not page.locator("#timer-display").is_visible(),
+        "timer display hidden after overlap auto-stop",
+    )
+    demo_note("activities: overlapping scheduled completion auto-stopped running timer")
+    assert_no_page_errors_yet("overlap auto-stop")
+
+    start_activity_timer(
+        page,
+        "Playwright boundary timer",
+        room_code=rooms["activities"],
+    )
+    boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    boundary_safe_start = get_relative_browser_time(page, 5)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        boundary_safe_start,
+        description="boundary timer future start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        boundary_safe_start,
+        description="boundary timer future start time applied",
+    )
+    boundary_running_config = wait_for_running_activity_config(page, rooms["activities"])
+    add_active_scheduled_task(page, "Playwright boundary auto-log", 20)
+    boundary_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright boundary auto-log",
+    )
+    complete_scheduled_task_via_ui(page, boundary_task_doc["id"])
+    boundary_auto_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright boundary auto-log",
+    )
+    if boundary_auto_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "boundary auto-log activity had wrong source.\n"
+            f"{json.dumps(boundary_auto_activity_doc, indent=2)}"
+        )
+    boundary_running_config_after = wait_for_running_activity_config(
+        page,
+        rooms["activities"],
+    )
+    if boundary_running_config_after.get("description") != "Playwright boundary timer":
+        raise ValueError(
+            "boundary timer was unexpectedly replaced or stopped.\n"
+            f"{json.dumps(boundary_running_config_after, indent=2)}"
+        )
+    if boundary_running_config_after.get("startDateTime") != boundary_running_config.get(
+        "startDateTime"
+    ):
+        raise ValueError(
+            "boundary timer start time changed unexpectedly after non-overlap case.\n"
+            f"before={json.dumps(boundary_running_config, indent=2)}\n"
+            f"after={json.dumps(boundary_running_config_after, indent=2)}"
+        )
+    if any(
+        doc.get("docType") == "activity"
+        and doc.get("description") == "Playwright boundary timer"
+        for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
+    ):
+        raise ValueError("boundary timer unexpectedly auto-stopped in a non-overlap case")
+    page.locator("#activity").check()
+    wait_for_running_timer_ui(page, "Playwright boundary timer")
+    boundary_stop_start = get_relative_browser_time(page, -1)
+    fill_locator_value(
+        page,
+        page.locator("#timer-start-time"),
+        boundary_stop_start,
+        description="boundary timer stop start time",
+    )
+    page.locator("#timer-start-time").evaluate(
+        "(node) => node.dispatchEvent(new Event('change', { bubbles: true }))"
+    )
+    wait_for_input_value(
+        page,
+        "#timer-start-time",
+        boundary_stop_start,
+        description="boundary timer stop start time applied",
+    )
+    stop_activity_timer(page)
+    wait_for_activity_doc(page, rooms["activities"], "Playwright boundary timer")
+    demo_note("activities: boundary non-overlap preserved the running timer until manual stop")
+    assert_no_page_errors_yet("boundary non-overlap")
+
 def run_smoke(
     preview_url: str,
     *,
@@ -1106,6 +1895,7 @@ def run_smoke(
 ) -> bool:
     from playwright.sync_api import sync_playwright
 
+    configure_demo_logging(enabled=demo and not headless)
     hostname = get_hostname_from_url(preview_url)
     rooms = create_scenario_rooms(create_run_scoped_prefix(hostname))
     couchdb_url = fetch_preview_couchdb_url(preview_url)
@@ -1114,7 +1904,7 @@ def run_smoke(
         reset_remote_preview_rooms(preview_url, hostname, rooms)
 
     console_errors: list[str] = []
-    page_errors: list[str] = []
+    page_errors: list[dict[str, Any]] = []
     request_failures: list[str] = []
     response_errors: list[tuple[int, str, str]] = []
 
@@ -1126,6 +1916,33 @@ def run_smoke(
         )
         browser = playwright.chromium.launch(**launch_options)
         context = browser.new_context(viewport={"width": 1440, "height": 960})
+        context.add_init_script(
+            """
+            window.__fortudoSmokeBrowserErrors = [];
+            const captureBrowserError = (payload) => {
+                window.__fortudoSmokeBrowserErrors.push(payload);
+            };
+            window.addEventListener('error', (event) => {
+                captureBrowserError({
+                    type: 'error',
+                    message: String(event.message || ''),
+                    source: String(event.filename || ''),
+                    line: Number(event.lineno || 0),
+                    column: Number(event.colno || 0),
+                    error: event.error ? String(event.error) : '',
+                    stack: event.error && event.error.stack ? String(event.error.stack) : '',
+                });
+            });
+            window.addEventListener('unhandledrejection', (event) => {
+                const reason = event.reason;
+                captureBrowserError({
+                    type: 'unhandledrejection',
+                    message: reason ? String(reason) : '',
+                    stack: reason && reason.stack ? String(reason.stack) : '',
+                });
+            });
+            """
+        )
         page = context.new_page()
 
         page.on(
@@ -1134,7 +1951,20 @@ def run_smoke(
             if message.type == "error"
             else None,
         )
-        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "pageerror",
+            lambda error: page_errors.append(
+                {
+                    "type": type(error).__name__,
+                    "str": str(error),
+                    "repr": repr(error),
+                    "args": list(getattr(error, "args", [])),
+                    "name": getattr(error, "name", ""),
+                    "message": getattr(error, "message", ""),
+                    "stack": getattr(error, "stack", ""),
+                }
+            ),
+        )
         page.on(
             "requestfailed",
             lambda request: request_failures.append(
@@ -1151,6 +1981,12 @@ def run_smoke(
         )
 
         try:
+            def assert_no_page_errors_yet(label: str) -> None:
+                if page_errors:
+                    raise ValueError(
+                        f"Page errors surfaced by {label}.\n{json.dumps(page_errors, indent=2)}"
+                    )
+
             def wait_for_sync_status_normal(label: str) -> None:
                 if not couchdb_url:
                     return
@@ -1174,688 +2010,460 @@ def run_smoke(
                     fetch_remote_docs(couchdb_url, build_remote_db_name(hostname, room_code))
                 )
 
-            page.goto(preview_url, wait_until="load")
-            wait_for_app_ready(page)
-            wait_for_demo_start(demo=demo, headless=headless)
-            demo_step(page, "opening alpha room", step_pause_ms)
-            enter_room(page, rooms["alpha"])
-            clear_room_storage(page, rooms["alpha"])
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
+            def run_alpha_room_scenario() -> None:
+                demo_step(page, "opening alpha room", step_pause_ms)
+                enter_room(page, rooms["alpha"])
+                clear_room_storage(page, rooms["alpha"])
+                page.reload(wait_until="load")
+                wait_for_main_app(page)
 
-            demo_step(page, "adding fresh-room tasks", step_pause_ms)
-            add_scheduled_task(page, "Playwright scheduled task", "09:00", 30)
-            add_unscheduled_task(page, "Playwright unscheduled task", 15)
+                demo_step(page, "adding fresh-room tasks", step_pause_ms)
+                add_scheduled_task(page, "Playwright scheduled task", "09:00", 30)
+                add_unscheduled_task(page, "Playwright unscheduled task", 15)
 
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
+                page.reload(wait_until="load")
+                wait_for_main_app(page)
 
-            alpha_docs = read_docs(page, rooms["alpha"])
-            scheduled_doc = ensure_task_doc_present(
-                rooms["alpha"], "Playwright scheduled task", alpha_docs
-            )
-            unscheduled_doc = ensure_task_doc_present(
-                rooms["alpha"], "Playwright unscheduled task", alpha_docs
-            )
+                alpha_docs = read_docs(page, rooms["alpha"])
+                scheduled_doc = ensure_task_doc_present(
+                    rooms["alpha"], "Playwright scheduled task", alpha_docs
+                )
+                unscheduled_doc = ensure_task_doc_present(
+                    rooms["alpha"], "Playwright unscheduled task", alpha_docs
+                )
 
-            edit_form_selector = open_scheduled_edit_form(page, scheduled_doc["id"])
-            page.locator(f"{edit_form_selector} input[name='description']").fill(
-                "Playwright scheduled task edited"
-            )
-            page.locator(edit_form_selector).evaluate("(form) => form.requestSubmit()")
-            wait_until(
-                lambda: any(
-                    doc.get("id") == scheduled_doc["id"]
-                    and doc.get("description") == "Playwright scheduled task edited"
-                    for doc in list(map(normalize_doc, read_docs(page, rooms["alpha"])))
-                ),
-                "scheduled edit persistence",
-            )
+                edit_form_selector = open_scheduled_edit_form(page, scheduled_doc["id"])
+                page.locator(f"{edit_form_selector} input[name='description']").fill(
+                    "Playwright scheduled task edited"
+                )
+                page.locator(edit_form_selector).evaluate("(form) => form.requestSubmit()")
+                wait_until(
+                    lambda: any(
+                        doc.get("id") == scheduled_doc["id"]
+                        and doc.get("description") == "Playwright scheduled task edited"
+                        for doc in list(map(normalize_doc, read_docs(page, rooms["alpha"])))
+                    ),
+                    "scheduled edit persistence",
+                )
 
-            demo_step(page, "editing scheduled task and deleting unscheduled task", step_pause_ms)
-            delete_unscheduled_task_via_ui(page, unscheduled_doc["id"])
+                demo_step(page, "editing scheduled task and deleting unscheduled task", step_pause_ms)
+                delete_unscheduled_task_via_ui(page, unscheduled_doc["id"])
 
-            def fresh_room_storage_updated() -> bool:
-                docs = list(map(normalize_doc, read_docs(page, rooms["alpha"])))
-                return any(
-                    doc.get("description") == "Playwright scheduled task edited"
-                    and doc.get("docType") == "task"
-                    for doc in docs
-                ) and not any(doc.get("id") == unscheduled_doc["id"] for doc in docs)
+                def fresh_room_storage_updated() -> bool:
+                    docs = list(map(normalize_doc, read_docs(page, rooms["alpha"])))
+                    return any(
+                        doc.get("description") == "Playwright scheduled task edited"
+                        and doc.get("docType") == "task"
+                        for doc in docs
+                    ) and not any(doc.get("id") == unscheduled_doc["id"] for doc in docs)
 
-            try:
-                wait_until(fresh_room_storage_updated, "fresh-room storage update")
-            except TimeoutError as error:
-                snapshot = summarize_docs(read_docs(page, rooms["alpha"]))
-                raise TimeoutError(
-                    "Timed out waiting for fresh-room storage update.\n"
-                    f"{format_snapshot(snapshot)}"
-                ) from error
+                try:
+                    wait_until(fresh_room_storage_updated, "fresh-room storage update")
+                except TimeoutError as error:
+                    snapshot = summarize_docs(read_docs(page, rooms["alpha"]))
+                    raise TimeoutError(
+                        "Timed out waiting for fresh-room storage update.\n"
+                        f"{format_snapshot(snapshot)}"
+                    ) from error
 
-            alpha_summary = summarize_docs(read_docs(page, rooms["alpha"]))
-            if "Playwright scheduled task edited" not in [
-                doc.get("description") for doc in alpha_summary["tasks"]
-            ]:
-                raise ValueError(f"missing edited scheduled task.\n{format_snapshot(alpha_summary)}")
-            if couchdb_url:
-                request_manual_sync(page)
-                wait_for_sync_status_normal("taxonomy manual sync")
+                alpha_summary = summarize_docs(read_docs(page, rooms["alpha"]))
+                if "Playwright scheduled task edited" not in [
+                    doc.get("description") for doc in alpha_summary["tasks"]
+                ]:
+                    raise ValueError(
+                        f"missing edited scheduled task.\n{format_snapshot(alpha_summary)}"
+                    )
+                if couchdb_url:
+                    request_manual_sync(page)
+                    wait_for_sync_status_normal("taxonomy manual sync")
+                    wait_until(
+                        lambda: (
+                            lambda summary: any(
+                                doc.get("description") == "Playwright scheduled task edited"
+                                for doc in summary["tasks"]
+                            )
+                            and not any(
+                                doc.get("id") == unscheduled_doc["id"] for doc in summary["tasks"]
+                            )
+                        )(read_remote_summary(rooms["alpha"])),
+                        "alpha remote sync",
+                        timeout_s=25.0,
+                    )
+                    wait_for_sync_status_normal("alpha")
+
+            def run_legacy_room_scenario() -> None:
+                demo_step(page, "checking legacy migration room", step_pause_ms)
+                switch_room(page, rooms["legacy"])
+                clear_room_storage(page, rooms["legacy"])
+                seed_docs(
+                    page,
+                    rooms["legacy"],
+                    [
+                        {
+                            "_id": "sched-legacy",
+                            "type": "scheduled",
+                            "description": "Legacy scheduled task",
+                            "startDateTime": "2026-03-20T09:00:00",
+                            "endDateTime": "2026-03-20T09:30:00",
+                            "duration": 30,
+                            "status": "incomplete",
+                        },
+                        {
+                            "_id": "unsched-legacy",
+                            "type": "unscheduled",
+                            "description": "Legacy unscheduled task",
+                            "priority": "medium",
+                            "estDuration": 15,
+                            "status": "incomplete",
+                        },
+                    ],
+                )
+                page.reload(wait_until="load")
+                wait_for_main_app(page)
+
                 wait_until(
                     lambda: (
-                        lambda summary: any(
-                            doc.get("description") == "Playwright scheduled task edited"
-                            for doc in summary["tasks"]
+                        lambda docs: any(
+                            doc.get("id") == "sched-legacy" and doc.get("docType") == "task"
+                            for doc in docs
                         )
-                        and not any(doc.get("id") == unscheduled_doc["id"] for doc in summary["tasks"])
-                    )(read_remote_summary(rooms["alpha"])),
-                    "alpha remote sync",
-                    timeout_s=25.0,
-                )
-                wait_for_sync_status_normal("alpha")
-
-            demo_step(page, "checking legacy migration room", step_pause_ms)
-            switch_room(page, rooms["legacy"])
-            clear_room_storage(page, rooms["legacy"])
-            seed_docs(
-                page,
-                rooms["legacy"],
-                [
-                    {
-                        "_id": "sched-legacy",
-                        "type": "scheduled",
-                        "description": "Legacy scheduled task",
-                        "startDateTime": "2026-03-20T09:00:00",
-                        "endDateTime": "2026-03-20T09:30:00",
-                        "duration": 30,
-                        "status": "incomplete",
-                    },
-                    {
-                        "_id": "unsched-legacy",
-                        "type": "unscheduled",
-                        "description": "Legacy unscheduled task",
-                        "priority": "medium",
-                        "estDuration": 15,
-                        "status": "incomplete",
-                    },
-                ],
-            )
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
-
-            wait_until(
-                lambda: (
-                    lambda docs: any(
-                        doc.get("id") == "sched-legacy" and doc.get("docType") == "task"
-                        for doc in docs
-                    )
-                    and any(
-                        doc.get("id") == "unsched-legacy" and doc.get("docType") == "task"
-                        for doc in docs
-                    )
-                )(list(map(normalize_doc, read_docs(page, rooms["legacy"])))),
-                "legacy migration",
-            )
-            assert_migrated_task_docs(
-                summarize_docs(read_docs(page, rooms["legacy"])),
-                ["sched-legacy", "unsched-legacy"],
-            )
-            if couchdb_url:
-                wait_until(
-                    lambda: (
-                        lambda summary: format_doc_ids(summary["tasks"])
-                        == ["sched-legacy", "unsched-legacy"]
-                        and not summary["legacy_tasks"]
-                    )(read_remote_summary(rooms["legacy"])),
-                    "legacy remote sync",
-                    timeout_s=25.0,
-                )
-                wait_for_sync_status_normal("legacy")
-
-            demo_step(page, "checking cross-type isolation in alpha", step_pause_ms)
-            switch_room(page, rooms["alpha"])
-            wait_for_text_in_locator(
-                page,
-                "#scheduled-task-list",
-                "Playwright scheduled task edited",
-                description="alpha scheduled task reload",
-            )
-            seed_docs(
-                page,
-                rooms["alpha"],
-                [
-                    {"_id": "activity-smoke", "docType": "activity", "note": "keep me"},
-                    {"_id": "config-categories", "docType": "config", "categories": []},
-                ],
-            )
-
-            clear_all_tasks_via_ui(page)
-
-            wait_until(
-                lambda: (
-                    lambda docs: not any(
-                        doc.get("docType") == "task"
-                        or doc.get("type") in {"scheduled", "unscheduled"}
-                        for doc in docs
-                    )
-                    and any(doc.get("id") == "activity-smoke" for doc in docs)
-                    and any(doc.get("id") == "config-categories" for doc in docs)
-                )(list(map(normalize_doc, read_docs(page, rooms["alpha"])))),
-                "cross-type isolation persistence",
-            )
-            assert_non_task_docs_remain(
-                summarize_docs(read_docs(page, rooms["alpha"])),
-                {"activity_id": "activity-smoke", "config_id": "config-categories"},
-            )
-            if couchdb_url:
-                wait_until(
-                    lambda: (
-                        lambda summary: not summary["tasks"]
-                        and not summary["legacy_tasks"]
-                        and any(doc.get("id") == "activity-smoke" for doc in summary["activities"])
-                        and any(doc.get("id") == "config-categories" for doc in summary["configs"])
-                    )(read_remote_summary(rooms["alpha"])),
-                    "alpha remote clear-all sync",
-                    timeout_s=25.0,
-                )
-                wait_for_sync_status_normal("alpha clear-all")
-
-            demo_step(page, "checking beta room isolation", step_pause_ms)
-            dismiss_open_modals(page)
-            switch_room(page, rooms["beta"])
-            clear_room_storage(page, rooms["beta"])
-            beta_empty = summarize_docs(read_docs(page, rooms["beta"]))
-            if any(beta_empty[key] for key in beta_empty):
-                raise ValueError(f"beta room was not empty.\n{format_snapshot(beta_empty)}")
-
-            add_scheduled_task(page, "Playwright beta task", "10:00", 20)
-            wait_until(
-                lambda: any(
-                    doc.get("description") == "Playwright beta task"
-                    for doc in read_docs(page, rooms["beta"])
-                ),
-                "beta room task persistence",
-            )
-
-            beta_summary = summarize_docs(read_docs(page, rooms["beta"]))
-            if not any(
-                doc.get("description") == "Playwright beta task" for doc in beta_summary["tasks"]
-            ):
-                raise ValueError(f"beta room task missing.\n{format_snapshot(beta_summary)}")
-            if beta_summary["activities"] or beta_summary["configs"]:
-                raise ValueError(f"beta room leaked alpha docs.\n{format_snapshot(beta_summary)}")
-            if couchdb_url:
-                wait_until(
-                    lambda: (
-                        lambda summary: any(
-                            doc.get("description") == "Playwright beta task"
-                            for doc in summary["tasks"]
+                        and any(
+                            doc.get("id") == "unsched-legacy" and doc.get("docType") == "task"
+                            for doc in docs
                         )
-                        and not summary["activities"]
-                        and not summary["configs"]
-                    )(read_remote_summary(rooms["beta"])),
-                    "beta remote sync",
-                    timeout_s=25.0,
+                    )(list(map(normalize_doc, read_docs(page, rooms["legacy"])))),
+                    "legacy migration",
                 )
-                wait_for_sync_status_normal("beta")
-
-            demo_step(page, "returning to alpha for final sync verification", step_pause_ms)
-            switch_room(page, rooms["alpha"])
-            alpha_final = summarize_docs(read_docs(page, rooms["alpha"]))
-            if not any(doc.get("id") == "activity-smoke" for doc in alpha_final["activities"]):
-                raise ValueError(f"alpha room lost its activity doc.\n{format_snapshot(alpha_final)}")
-            if not any(doc.get("id") == "config-categories" for doc in alpha_final["configs"]):
-                raise ValueError(f"alpha room lost its config doc.\n{format_snapshot(alpha_final)}")
-            if any(
-                doc.get("description") == "Playwright beta task" for doc in alpha_final["tasks"]
-            ):
-                raise ValueError(f"alpha room picked up beta task data.\n{format_snapshot(alpha_final)}")
-            if couchdb_url:
-                alpha_remote_final = read_remote_summary(rooms["alpha"])
-                assert_non_task_docs_remain(
-                    alpha_remote_final,
-                    {"activity_id": "activity-smoke", "config_id": "config-categories"},
+                assert_migrated_task_docs(
+                    summarize_docs(read_docs(page, rooms["legacy"])),
+                    ["sched-legacy", "unsched-legacy"],
                 )
-                wait_for_sync_status_normal("alpha final")
+                if couchdb_url:
+                    wait_until(
+                        lambda: (
+                            lambda summary: format_doc_ids(summary["tasks"])
+                            == ["sched-legacy", "unsched-legacy"]
+                            and not summary["legacy_tasks"]
+                        )(read_remote_summary(rooms["legacy"])),
+                        "legacy remote sync",
+                        timeout_s=25.0,
+                    )
+                    wait_for_sync_status_normal("legacy")
 
-            demo_step(page, "checking phase 3 taxonomy and settings room", step_pause_ms)
-            switch_room(page, rooms["taxonomy"])
-            clear_room_storage(page, rooms["taxonomy"])
-            set_activities_enabled(page, True)
-            seed_docs(page, rooms["taxonomy"], [build_phase3_taxonomy_config_doc()])
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
+            def run_taxonomy_room_scenario() -> None:
+                demo_step(page, "checking phase 3 taxonomy and settings room", step_pause_ms)
+                switch_room(page, rooms["taxonomy"])
+                clear_room_storage(page, rooms["taxonomy"])
+                set_activities_enabled(page, True)
+                seed_docs(page, rooms["taxonomy"], [build_phase3_taxonomy_config_doc()])
+                page.reload(wait_until="load")
+                wait_for_main_app(page)
 
-            wait_until(
-                lambda: page.locator("#category-dropdown-row").is_visible(),
-                "activities-enabled category dropdown",
-            )
-            wait_until(
-                lambda: (
-                    page.locator('#category-select option[value="work/project"]').text_content() or ""
+                wait_until(
+                    lambda: page.locator("#category-dropdown-row").is_visible(),
+                    "activities-enabled category dropdown",
                 )
-                == "› Project",
-                "visible nested project category option",
-            )
-
-            open_settings_modal(page)
-            wait_for_text_in_locator(
-                page,
-                "#settings-content",
-                "Work",
-                description="seeded taxonomy settings content",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#settings-content",
-                "Family",
-                description="seeded family group content",
-            )
-            wait_until(
-                lambda: "settings-scroll-area"
-                in (page.locator("#settings-content").get_attribute("class") or ""),
-                "settings scroll shell class",
-            )
-
-            page.locator("#add-category-btn").click()
-            page.locator("#add-category-form").wait_for(state="visible", timeout=5000)
-            separator_text = (
-                page.locator("#add-category-form [data-category-path-separator]").text_content()
-                or ""
-            ).strip()
-            if separator_text != "/":
-                raise ValueError(f"unexpected add-category separator: {separator_text!r}")
-            group_placeholder = (
-                page.locator('#add-category-form select[name="parent-group"] option').first.text_content()
-                or ""
-            ).strip()
-            if group_placeholder != "Group":
-                raise ValueError(f"unexpected add-category group placeholder: {group_placeholder!r}")
-            category_placeholder = page.locator(
-                '#add-category-form input[name="category-label"]'
-            ).get_attribute("placeholder")
-            if category_placeholder != "Category name":
-                raise ValueError(
-                    f"unexpected add-category input placeholder: {category_placeholder!r}"
+                wait_until(
+                    lambda: (
+                        page.locator('#category-select option[value="work/project"]').text_content()
+                        or ""
+                    )
+                    == "Ã¢â‚¬Âº Project",
+                    "visible nested project category option",
                 )
 
-            add_category_via_settings(page, "break", "Walk")
-            wait_until(
-                lambda: page.locator('[data-category-key="break/walk"]').count() == 1,
-                "new break walk category row",
-            )
-            wait_until(
-                lambda: page.locator('#category-select option[value="break/walk"]').count() == 1,
-                "live dropdown refresh for added category",
-            )
+                open_settings_modal(page)
+                wait_for_text_in_locator(
+                    page,
+                    "#settings-content",
+                    "Work",
+                    description="seeded taxonomy settings content",
+                )
+                wait_for_text_in_locator(
+                    page,
+                    "#settings-content",
+                    "Family",
+                    description="seeded family group content",
+                )
+                wait_until(
+                    lambda: "settings-scroll-area"
+                    in (page.locator("#settings-content").get_attribute("class") or ""),
+                    "settings scroll shell class",
+                )
 
-            update_group_family_via_settings(page, "work", "amber")
-            wait_until(
-                lambda: "#b45309"
-                in (
-                    page.locator(
-                        '[data-category-key="work/project"] .category-dot'
-                    ).get_attribute("style")
+                page.locator("#add-category-btn").click()
+                page.locator("#add-category-form").wait_for(state="visible", timeout=5000)
+                separator_text = (
+                    page.locator("#add-category-form [data-category-path-separator]").text_content()
                     or ""
-                ),
-                "linked work/project category recolor",
-            )
-            close_settings_modal(page)
-
-            page.locator("#scheduled").check()
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("description")),
-                "Taxonomy scheduled group task",
-                description="taxonomy scheduled description",
-            )
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("start-time")),
-                "11:00",
-                description="taxonomy scheduled start",
-            )
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("duration-hours")),
-                "0",
-                description="taxonomy scheduled duration hours",
-            )
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("duration-minutes")),
-                "25",
-                description="taxonomy scheduled duration minutes",
-            )
-            page.locator("#category-select").select_option("family")
-            page.locator("#task-form button[type='submit']").click()
-
-            page.locator("#unscheduled").check()
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("description")),
-                "Taxonomy child category task",
-                description="taxonomy unscheduled description",
-            )
-            page.locator('input[name="priority"][value="medium"]').check(force=True)
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("est-duration-hours")),
-                "0",
-                description="taxonomy unscheduled duration hours",
-            )
-            fill_locator_value(
-                page,
-                page.locator(task_form_input_selector("est-duration-minutes")),
-                "15",
-                description="taxonomy unscheduled duration minutes",
-            )
-            page.locator("#category-select").select_option("work/project")
-            page.locator("#task-form button[type='submit']").click()
-
-            wait_until(
-                lambda: (
-                    lambda docs: any(
-                        doc.get("description") == "Taxonomy scheduled group task"
-                        and doc.get("category") == "family"
-                        for doc in docs
+                ).strip()
+                if separator_text != "/":
+                    raise ValueError(f"unexpected add-category separator: {separator_text!r}")
+                group_placeholder = (
+                    page.locator(
+                        '#add-category-form select[name="parent-group"] option'
+                    ).first.text_content()
+                    or ""
+                ).strip()
+                if group_placeholder != "Group":
+                    raise ValueError(
+                        f"unexpected add-category group placeholder: {group_placeholder!r}"
                     )
-                    and any(
-                        doc.get("description") == "Taxonomy child category task"
-                        and doc.get("category") == "work/project"
-                        for doc in docs
+                category_placeholder = page.locator(
+                    '#add-category-form input[name="category-label"]'
+                ).get_attribute("placeholder")
+                if category_placeholder != "Category name":
+                    raise ValueError(
+                        f"unexpected add-category input placeholder: {category_placeholder!r}"
                     )
-                )(list(map(normalize_doc, read_docs(page, rooms["taxonomy"])))),
-                "taxonomy task category persistence",
-            )
 
-            wait_until(
-                lambda: "Family" in (page.locator("#scheduled-task-list").text_content() or ""),
-                "scheduled group badge label",
-            )
-            wait_until(
-                lambda: "Project" in (page.locator("#unscheduled-task-list").text_content() or ""),
-                "unscheduled child badge label",
-            )
-            scheduled_badge_style = (
-                page.locator("#scheduled-task-list .category-badge").first.get_attribute("style")
-                or ""
-            )
-            unscheduled_badge_style = (
-                page.locator("#unscheduled-task-list .category-badge").first.get_attribute("style")
-                or ""
-            )
-            if "background-color: rgba(15, 23, 42, 0.9)" not in scheduled_badge_style:
-                raise ValueError(f"scheduled badge lost standardized background: {scheduled_badge_style}")
-            if "#4b5563" not in scheduled_badge_style:
-                raise ValueError(f"scheduled group badge lost gray accent: {scheduled_badge_style}")
-            if "background-color: rgba(15, 23, 42, 0.9)" not in unscheduled_badge_style:
-                raise ValueError(
-                    f"unscheduled badge lost standardized background: {unscheduled_badge_style}"
+                add_category_via_settings(page, "break", "Walk")
+                wait_until(
+                    lambda: page.locator('[data-category-key="break/walk"]').count() == 1,
+                    "new break walk category row",
                 )
-            if "#b45309" not in unscheduled_badge_style:
-                raise ValueError(f"unscheduled child badge did not reflect amber family: {unscheduled_badge_style}")
+                wait_until(
+                    lambda: page.locator('#category-select option[value="break/walk"]').count() == 1,
+                    "live dropdown refresh for added category",
+                )
 
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
-            wait_for_text_in_locator(
-                page,
-                "#scheduled-task-list",
-                "Taxonomy scheduled group task",
-                description="taxonomy scheduled task after reload",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#unscheduled-task-list",
-                "Taxonomy child category task",
-                description="taxonomy unscheduled task after reload",
-            )
+                update_group_family_via_settings(page, "work", "amber")
+                wait_until(
+                    lambda: "#b45309"
+                    in (
+                        page.locator(
+                            '[data-category-key="work/project"] .category-dot'
+                        ).get_attribute("style")
+                        or ""
+                    ),
+                    "linked work/project category recolor",
+                )
+                demo_note("taxonomy: added break/walk and recolored work family to amber")
+                assert_no_page_errors_yet("taxonomy category mutations")
+                close_settings_modal(page)
 
-            open_settings_modal(page)
-            wait_for_text_in_locator(
-                page,
-                "#settings-content",
-                "Walk",
-                description="persisted added category after reload",
-            )
-            page.locator('.btn-delete-group[data-key="family"]').click()
-            wait_for_toast_text(page, 'Group "family" is referenced by tasks')
-            page.locator('.btn-delete-category[data-key="work/project"]').click()
-            wait_for_toast_text(page, 'Category "work/project" is referenced by tasks')
-            close_settings_modal(page)
+                page.locator("#scheduled").check()
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("description")),
+                    "Taxonomy scheduled group task",
+                    description="taxonomy scheduled description",
+                )
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("start-time")),
+                    "11:00",
+                    description="taxonomy scheduled start",
+                )
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("duration-hours")),
+                    "0",
+                    description="taxonomy scheduled duration hours",
+                )
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("duration-minutes")),
+                    "25",
+                    description="taxonomy scheduled duration minutes",
+                )
+                page.locator("#category-select").select_option("family")
+                page.locator("#task-form button[type='submit']").click()
 
-            taxonomy_summary = summarize_docs(read_docs(page, rooms["taxonomy"]))
-            taxonomy_config = next(
-                (doc for doc in taxonomy_summary["configs"] if doc.get("id") == "config-categories"),
-                None,
-            )
-            if not taxonomy_config:
-                raise ValueError(
-                    f"taxonomy room missing config-categories doc.\n{format_snapshot(taxonomy_summary)}"
+                page.locator("#unscheduled").check()
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("description")),
+                    "Taxonomy child category task",
+                    description="taxonomy unscheduled description",
                 )
-            if not any(group.get("key") == "work" and group.get("colorFamily") == "amber" for group in taxonomy_config.get("groups", [])):
-                raise ValueError(
-                    f"taxonomy room did not persist work family edit.\n{format_snapshot(taxonomy_summary)}"
+                page.locator('input[name="priority"][value="medium"]').check(force=True)
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("est-duration-hours")),
+                    "0",
+                    description="taxonomy unscheduled duration hours",
                 )
-            if not any(category.get("key") == "break/walk" for category in taxonomy_config.get("categories", [])):
-                raise ValueError(
-                    f"taxonomy room did not persist compact add-category flow.\n{format_snapshot(taxonomy_summary)}"
+                fill_locator_value(
+                    page,
+                    page.locator(task_form_input_selector("est-duration-minutes")),
+                    "15",
+                    description="taxonomy unscheduled duration minutes",
                 )
-            if couchdb_url:
+                page.locator("#category-select").select_option("work/project")
+                page.locator("#task-form button[type='submit']").click()
+
                 wait_until(
                     lambda: (
-                        lambda summary: any(
+                        lambda docs: any(
                             doc.get("description") == "Taxonomy scheduled group task"
                             and doc.get("category") == "family"
-                            for doc in summary["tasks"]
+                            for doc in docs
                         )
                         and any(
                             doc.get("description") == "Taxonomy child category task"
                             and doc.get("category") == "work/project"
-                            for doc in summary["tasks"]
+                            for doc in docs
                         )
-                        and any(
-                            doc.get("id") == "config-categories"
-                            and any(
-                                group.get("key") == "work"
-                                and group.get("colorFamily") == "amber"
-                                for group in doc.get("groups", [])
+                    )(list(map(normalize_doc, read_docs(page, rooms["taxonomy"])))),
+                    "taxonomy task category persistence",
+                )
+
+                wait_until(
+                    lambda: "Family" in (page.locator("#scheduled-task-list").text_content() or ""),
+                    "scheduled group badge label",
+                )
+                wait_until(
+                    lambda: "Project" in (page.locator("#unscheduled-task-list").text_content() or ""),
+                    "unscheduled child badge label",
+                )
+                scheduled_badge_style = (
+                    page.locator("#scheduled-task-list .category-badge").first.get_attribute("style")
+                    or ""
+                )
+                unscheduled_badge_style = (
+                    page.locator("#unscheduled-task-list .category-badge").first.get_attribute("style")
+                    or ""
+                )
+                if "background-color: rgba(15, 23, 42, 0.9)" not in scheduled_badge_style:
+                    raise ValueError(
+                        f"scheduled badge lost standardized background: {scheduled_badge_style}"
+                    )
+                if "#4b5563" not in scheduled_badge_style:
+                    raise ValueError(
+                        f"scheduled group badge lost gray accent: {scheduled_badge_style}"
+                    )
+                if "background-color: rgba(15, 23, 42, 0.9)" not in unscheduled_badge_style:
+                    raise ValueError(
+                        f"unscheduled badge lost standardized background: {unscheduled_badge_style}"
+                    )
+                if "#b45309" not in unscheduled_badge_style:
+                    raise ValueError(
+                        "unscheduled child badge did not reflect amber family: "
+                        f"{unscheduled_badge_style}"
+                    )
+                demo_note(
+                    "taxonomy: scheduled and unscheduled tasks persisted with expected category badges"
+                )
+                assert_no_page_errors_yet("taxonomy task persistence")
+
+                page.reload(wait_until="load")
+                wait_for_main_app(page)
+                wait_for_text_in_locator(
+                    page,
+                    "#scheduled-task-list",
+                    "Taxonomy scheduled group task",
+                    description="taxonomy scheduled task after reload",
+                )
+                wait_for_text_in_locator(
+                    page,
+                    "#unscheduled-task-list",
+                    "Taxonomy child category task",
+                    description="taxonomy unscheduled task after reload",
+                )
+
+                open_settings_modal(page)
+                wait_for_text_in_locator(
+                    page,
+                    "#settings-content",
+                    "Walk",
+                    description="persisted added category after reload",
+                )
+                page.locator('.btn-delete-group[data-key="family"]').click()
+                wait_for_toast_text(page, 'Group "family" is referenced by tasks')
+                page.locator('.btn-delete-category[data-key="work/project"]').click()
+                wait_for_toast_text(page, 'Category "work/project" is referenced by tasks')
+                close_settings_modal(page)
+
+                taxonomy_summary = summarize_docs(read_docs(page, rooms["taxonomy"]))
+                taxonomy_config = next(
+                    (
+                        doc
+                        for doc in taxonomy_summary["configs"]
+                        if doc.get("id") == "config-categories"
+                    ),
+                    None,
+                )
+                if not taxonomy_config:
+                    raise ValueError(
+                        "taxonomy room missing config-categories doc.\n"
+                        f"{format_snapshot(taxonomy_summary)}"
+                    )
+                if not any(
+                    group.get("key") == "work" and group.get("colorFamily") == "amber"
+                    for group in taxonomy_config.get("groups", [])
+                ):
+                    raise ValueError(
+                        "taxonomy room did not persist work family edit.\n"
+                        f"{format_snapshot(taxonomy_summary)}"
+                    )
+                if not any(
+                    category.get("key") == "break/walk"
+                    for category in taxonomy_config.get("categories", [])
+                ):
+                    raise ValueError(
+                        "taxonomy room did not persist compact add-category flow.\n"
+                        f"{format_snapshot(taxonomy_summary)}"
+                    )
+                demo_note("taxonomy: reload and settings persistence checks passed")
+                assert_no_page_errors_yet("taxonomy reload and settings persistence")
+                if couchdb_url:
+                    wait_until(
+                        lambda: (
+                            lambda summary: any(
+                                doc.get("description") == "Taxonomy scheduled group task"
+                                and doc.get("category") == "family"
+                                for doc in summary["tasks"]
                             )
                             and any(
-                                category.get("key") == "break/walk"
-                                for category in doc.get("categories", [])
+                                doc.get("description") == "Taxonomy child category task"
+                                and doc.get("category") == "work/project"
+                                for doc in summary["tasks"]
                             )
-                            for doc in summary["configs"]
-                        )
-                    )(read_remote_summary(rooms["taxonomy"])),
-                    "taxonomy remote sync",
-                    timeout_s=60.0,
-                )
-                wait_for_sync_status_normal("taxonomy")
+                            and any(
+                                doc.get("id") == "config-categories"
+                                and any(
+                                    group.get("key") == "work"
+                                    and group.get("colorFamily") == "amber"
+                                    for group in doc.get("groups", [])
+                                )
+                                and any(
+                                    category.get("key") == "break/walk"
+                                    for category in doc.get("categories", [])
+                                )
+                                for doc in summary["configs"]
+                            )
+                        )(read_remote_summary(rooms["taxonomy"])),
+                        "taxonomy remote sync",
+                        timeout_s=60.0,
+                    )
+                    wait_for_sync_status_normal("taxonomy")
 
-            demo_step(page, "checking activities room flows", step_pause_ms)
-            switch_room(page, rooms["activities"])
-            clear_room_storage(page, rooms["activities"])
-            set_activities_enabled(page, True)
-            page.reload(wait_until="load")
-            wait_for_main_app(page)
+            page.goto(preview_url, wait_until="load")
+            wait_for_app_ready(page)
+            wait_for_demo_start(demo=demo, headless=headless)
+            run_alpha_room_scenario()
 
-            add_activity(page, "Playwright manual activity", "13:00", 30)
-            wait_until(
-                lambda: any(
-                    doc.get("description") == "Playwright manual activity"
-                    for doc in read_docs(page, rooms["activities"])
-                ),
-                "manual activity persistence",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#activity-list",
-                "Playwright manual activity",
-                description="manual activity render",
-            )
+            run_legacy_room_scenario()
 
-            queue_activity_smoke_failure(page, "manual-add", 1)
-            add_activity(page, "Playwright failed activity", "13:45", 15)
-            wait_for_activity_failure_alert(
-                page,
-                rooms["activities"],
-                "Playwright failed activity",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#custom-alert-message",
-                "Could not log activity.",
-                description="manual activity failure alert",
-            )
-            failed_activity_description = page.locator(
-                task_form_input_selector("description")
-            ).input_value()
-            if failed_activity_description != "Playwright failed activity":
-                raise ValueError(
-                    "manual activity failure cleared the form unexpectedly: "
-                    f"{failed_activity_description!r}"
-                )
-            page.locator("#ok-custom-alert-modal").click()
-            page.locator("#custom-alert-modal").wait_for(state="hidden", timeout=10000)
-            if any(
-                doc.get("description") == "Playwright failed activity"
-                for doc in read_docs(page, rooms["activities"])
-            ):
-                raise ValueError("failed manual activity unexpectedly persisted")
-
-            add_active_scheduled_task(page, "Playwright auto-log success", 20)
-            success_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright auto-log success",
-            )
-            complete_scheduled_task_via_ui(page, success_task_doc["id"])
-            wait_until(
-                lambda: any(
-                    doc.get("docType") == "activity"
-                    and doc.get("description") == "Playwright auto-log success"
-                    and doc.get("source") == "auto"
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "successful auto-log activity persistence",
-            )
-            wait_for_text_in_locator(
-                page,
-                "#activity-list",
-                "Playwright auto-log success",
-                description="successful auto-log activity render",
+            run_taxonomy_room_scenario()
+            run_activities_room_scenario(
+                page=page,
+                rooms=rooms,
+                step_pause_ms=step_pause_ms,
+                assert_no_page_errors_yet=assert_no_page_errors_yet,
             )
 
-            add_active_scheduled_task(page, "Playwright auto-log failure", 20)
-            failing_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright auto-log failure",
+            browser_captured_errors = page.evaluate(
+                "() => window.__fortudoSmokeBrowserErrors || []"
             )
-            queue_activity_smoke_failure(page, "auto-log", 1)
-            complete_scheduled_task_via_ui(page, failing_task_doc["id"])
-            wait_for_toast_text(page, "Task completed, but activity auto-log failed.")
-            wait_until(
-                lambda: any(
-                    doc.get("id") == failing_task_doc["id"] and doc.get("status") == "completed"
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "failed auto-log task completion persistence",
+            assert_no_runtime_errors(
+                console_errors,
+                page_errors,
+                request_failures,
+                response_errors,
+                browser_captured_errors,
             )
-            if any(
-                doc.get("docType") == "activity"
-                and doc.get("description") == "Playwright auto-log failure"
-                for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-            ):
-                raise ValueError("failed auto-log unexpectedly created an activity")
-
-            add_unscheduled_task(page, "Playwright delete confirm task", 15)
-            delete_confirm_task_doc = wait_for_task_doc(
-                page,
-                rooms["activities"],
-                "Playwright delete confirm task",
-            )
-
-            add_activity(page, "Playwright editable activity", "15:30", 15)
-            editable_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright editable activity",
-            )
-            wait_for_activity_row_text(
-                page,
-                editable_activity_doc["id"],
-                "Playwright editable activity",
-            )
-            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-            page.locator(
-                f'[data-activity-id="{editable_activity_doc["id"]}"] .btn-edit-activity'
-            ).click()
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
-            ).wait_for(state="visible", timeout=10000)
-            current_modal_value = wait_for_input_value(
-                page,
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]',
-                "Playwright editable activity",
-                description="activity inline edit description preload",
-            )
-            if current_modal_value != "Playwright editable activity":
-                raise ValueError(
-                    "activity inline edit lost the current description after rerender: "
-                    f"{current_modal_value!r}"
-                )
-            fill_locator_value(
-                page,
-                page.locator(
-                    f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] input[name="description"]'
-                ),
-                "Playwright editable activity updated",
-                description="activity inline edit description",
-            )
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
-            ).click()
-            page.locator(
-                f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"]'
-            ).wait_for(state="hidden", timeout=10000)
-            wait_until(
-                lambda: any(
-                    doc.get("id") == editable_activity_doc["id"]
-                    and doc.get("description") == "Playwright editable activity updated"
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "activity edit after delete-confirm rerender",
-            )
-            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
-                raise ValueError("delete confirm state was not cleared by activity edit")
-
-            add_activity(page, "Playwright delete activity", "16:00", 10)
-            deletable_activity_doc = wait_for_activity_doc(
-                page,
-                rooms["activities"],
-                "Playwright delete activity",
-            )
-            wait_for_activity_row_text(
-                page,
-                deletable_activity_doc["id"],
-                "Playwright delete activity",
-            )
-            arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-            page.locator(
-                f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
-            ).click()
-            wait_until(
-                lambda: not any(
-                    doc.get("id") == deletable_activity_doc["id"]
-                    for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
-                ),
-                "activity delete after delete-confirm rerender",
-            )
-            if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
-                raise ValueError("delete confirm state was not cleared by activity delete")
-
-            assert_no_runtime_errors(console_errors, page_errors, request_failures, response_errors)
 
             if keep_open and not headless:
                 input("Smoke passed. Press Enter to close the browser...")

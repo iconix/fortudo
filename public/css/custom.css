@@ -70,6 +70,62 @@
     background: linear-gradient(180deg, rgba(94, 234, 212, 0.95), rgba(45, 212, 191, 0.8));
 }
 
+#activity-action-group {
+    display: contents;
+}
+
+#task-form.task-form--activity #time-inputs {
+    display: grid;
+    grid-template-columns: minmax(8.5rem, 1fr) auto;
+    align-items: center;
+    column-gap: 0.75rem;
+    padding-bottom: 0;
+}
+
+#task-form.task-form--activity #task-form-main-row {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#task-form.task-form--activity #task-form-main-row > :first-child {
+    min-width: 0;
+    width: 100%;
+}
+
+#task-form.task-form--activity #time-inputs > :last-child {
+    flex: 0 0 auto;
+}
+
+#task-form.task-form--activity input[name='duration-hours'],
+#task-form.task-form--activity input[name='duration-minutes'] {
+    width: 4.5rem;
+}
+
+#task-form.task-form--activity #activity-action-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+#task-form.task-form--activity #add-task-btn,
+#task-form.task-form--activity #start-timer-btn {
+    width: 100%;
+}
+
+@media (min-width: 640px) {
+    #task-form.task-form--activity #activity-action-group {
+        width: 100%;
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+
+    #task-form.task-form--activity #add-task-btn,
+    #task-form.task-form--activity #start-timer-btn {
+        width: 10.75rem;
+    }
+}
+
 /* === Celebration Animation === */
 .celebration-container {
     position: absolute;

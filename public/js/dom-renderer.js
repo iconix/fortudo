@@ -3,6 +3,7 @@ import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from '
 import { isScheduledTask } from './tasks/validators.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
+import { getSuggestedActivityStartTime } from './activities/manager.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -114,12 +115,14 @@ export function startRealTimeClock() {
 }
 
 export function initializeTaskTypeToggle() {
+    const taskForm = document.getElementById('task-form');
     const scheduledRadio = document.getElementById('scheduled');
     const unscheduledRadio = document.getElementById('unscheduled');
     const activityRadio = document.getElementById('activity');
     const timeInputs = document.getElementById('time-inputs');
     const priorityInput = document.getElementById('priority-input');
     const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+    const startTimerButton = document.getElementById('start-timer-btn');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
     const durationHoursInput = document.querySelector('input[name="duration-hours"]');
@@ -142,6 +145,29 @@ export function initializeTaskTypeToggle() {
         );
     };
 
+    const applyActivityStartTimeDefault = () => {
+        if (!(startTimeInput instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const latestActivityEndTime = getSuggestedActivityStartTime();
+        if (!latestActivityEndTime) {
+            return;
+        }
+
+        const genericSuggestedTime = getSuggestedStartTime();
+        const shouldUseActivityDefault =
+            !startTimeInput.value ||
+            startTimeInput.value === genericSuggestedTime ||
+            startTimeAutoUpdate.isEnabled();
+
+        if (!shouldUseActivityDefault) {
+            return;
+        }
+
+        updateStartTimeField(latestActivityEndTime, true);
+    };
+
     const applyTaskFormMode = (mode) => {
         const config = TASK_FORM_MODE_CONFIG[mode];
         if (!config) {
@@ -161,9 +187,20 @@ export function initializeTaskTypeToggle() {
 
         addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonClasses}`;
         addTaskButton.innerHTML = config.submitButtonHtml;
+        addTaskButton.dataset.defaultButtonHtml = config.submitButtonHtml;
+        addTaskButton.dataset.defaultButtonClasses = addTaskButton.className;
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
         setInputTheme(config.inputTheme);
+        if (taskForm instanceof HTMLElement) {
+            taskForm.classList.toggle('task-form--activity', mode === 'activity');
+        }
+        if (startTimerButton instanceof HTMLElement) {
+            startTimerButton.classList.toggle('hidden', mode !== 'activity');
+        }
+        if (mode === 'activity') {
+            applyActivityStartTimeDefault();
+        }
     };
 
     if (
@@ -425,10 +462,15 @@ function handleUnscheduledTaskListClick(event) {
     const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
 
     if (!taskCard || !globalUnscheduledTaskCallbacks) return;
+    if (target.closest('button[disabled]')) return;
 
     const taskId = taskCard.dataset.taskId;
 
-    if (target.closest('.btn-schedule-task')) {
+    if (target.closest('.btn-start-unscheduled-timer')) {
+        if (globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask && taskId) {
+            globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask(taskId);
+        }
+    } else if (target.closest('.btn-schedule-task')) {
         if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
             const taskName = taskCard.dataset.taskName || 'Task';
             const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
@@ -566,7 +608,17 @@ export function refreshUI() {
     if (isActivitiesEnabled()) {
         renderTodayActivities(true);
     }
-    updateStartTimeField(getSuggestedStartTime(), true);
+    updateStartTimeField(getSuggestedFormStartTime(), true);
+}
+
+export function getSuggestedFormStartTime() {
+    const activityRadio = document.getElementById('activity');
+
+    if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
+        return getSuggestedActivityStartTime() || getSuggestedStartTime();
+    }
+
+    return getSuggestedStartTime();
 }
 
 // --- Start Time Field Management ---

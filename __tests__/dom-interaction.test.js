@@ -18,11 +18,13 @@ import {
 } from '../public/js/dom-renderer.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/tasks/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
+import { resetActivityState, updateActivityState } from '../public/js/activities/manager.js';
 import {
     convertTo12HourTime,
     timeToDateTime,
     calculateEndDateTime,
-    extractDateFromDateTime
+    extractDateFromDateTime,
+    extractTimeFromDateTime
 } from '../public/js/utils.js';
 
 // Mock storage.js before importing task-manager
@@ -34,7 +36,7 @@ jest.mock('../public/js/storage.js', () => ({
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
-import { updateTaskState } from '../public/js/tasks/manager.js';
+import { getSuggestedStartTime, updateTaskState } from '../public/js/tasks/manager.js';
 
 describe('DOM Handler Interaction Tests', () => {
     let mockAppCallbacks;
@@ -53,30 +55,45 @@ describe('DOM Handler Interaction Tests', () => {
                     <div class="form-group">
                         <input type="text" name="description" placeholder="Task description" required />
                     </div>
+                    <div id="category-dropdown-row">
+                        <span id="category-color-indicator"></span>
+                        <select name="category" id="category-select">
+                            <option value="">No category</option>
+                        </select>
+                    </div>
                     <div class="task-type-toggle">
                         <input type="radio" id="scheduled" name="task-type" value="scheduled" checked />
                         <label for="scheduled">Scheduled</label>
                         <input type="radio" id="unscheduled" name="task-type" value="unscheduled" />
                         <label for="unscheduled">Unscheduled</label>
-                    </div>
-                    <div id="time-inputs">
-                        <div class="form-group">
-                            <input type="time" name="start-time" required />
-                        </div>
-                        <div class="form-group">
-                            <input type="number" name="duration-hours" min="0" value="1" />
-                            <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                        <div id="activity-toggle-option">
+                            <input type="radio" id="activity" name="task-type" value="activity" />
+                            <label for="activity">Activity</label>
                         </div>
                     </div>
-                    <div id="priority-input" style="display: none;">
-                        <select name="priority">
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="low">Low</option>
-                        </select>
-                        <input type="number" name="est-duration" placeholder="Est. minutes" />
+                    <div id="task-form-main-row">
+                        <div>
+                            <div id="time-inputs">
+                                <div class="form-group">
+                                    <input type="time" name="start-time" required />
+                                </div>
+                                <div class="form-group">
+                                    <input type="number" name="duration-hours" min="0" value="1" />
+                                    <input type="number" name="duration-minutes" min="0" max="59" value="00" />
+                                </div>
+                            </div>
+                            <div id="priority-input" style="display: none;">
+                                <select name="priority">
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="low">Low</option>
+                                </select>
+                                <input type="number" name="est-duration" placeholder="Est. minutes" />
+                            </div>
+                        </div>
+                        <button type="submit" id="add-task-btn">Add Task</button>
+                        <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
                     </div>
-                    <button type="submit">Add Task</button>
                 </form>
                 <div id="scheduled-task-list" class="task-list"></div>
                 <div id="unscheduled-task-list" class="unscheduled-task-list"></div>
@@ -126,6 +143,7 @@ describe('DOM Handler Interaction Tests', () => {
     afterEach(() => {
         jest.clearAllMocks();
         resetEventDelegation();
+        resetActivityState();
         document.body.innerHTML = '';
     });
 
@@ -903,6 +921,7 @@ describe('DOM Handler Interaction Tests', () => {
                 onEditUnscheduledTask: jest.fn(),
                 onDeleteUnscheduledTask: jest.fn(),
                 onScheduleUnscheduledTask: jest.fn(),
+                onStartTimerFromUnscheduledTask: jest.fn(),
                 onSaveUnscheduledTaskEdit: jest.fn(),
                 onCancelUnscheduledTaskEdit: jest.fn()
             };
@@ -917,6 +936,7 @@ describe('DOM Handler Interaction Tests', () => {
                             <i class="fa-regular ${isCompleted ? 'fa-check-square' : 'fa-square'}"></i>
                         </label>
                         <span>Test Task</span>
+                        <button class="btn-start-unscheduled-timer" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Start Timer</button>
                         <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
                         <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
                         <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
@@ -961,6 +981,17 @@ describe('DOM Handler Interaction Tests', () => {
                 'Test Task',
                 '1h'
             );
+        });
+
+        test('start timer button calls onStartTimerFromUnscheduledTask', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const startTimerBtn = document.querySelector('.btn-start-unscheduled-timer');
+            startTimerBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(
+                mockUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask
+            ).toHaveBeenCalledWith('unsched-1');
         });
 
         test('schedule button does not call callback for completed task', () => {
@@ -1201,6 +1232,107 @@ describe('DOM Handler Interaction Tests', () => {
                 taskForm.dispatchEvent(new Event('submit'));
             }).not.toThrow();
         });
+
+        test('switching to activity keeps the category color indicator visible', () => {
+            const activityRadio = document.getElementById('activity');
+            const scheduledRadio = document.getElementById('scheduled');
+            const categoryIndicator = document.getElementById('category-color-indicator');
+
+            if (!(activityRadio instanceof HTMLInputElement)) {
+                throw new Error('Activity radio not found');
+            }
+
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(categoryIndicator.classList.contains('hidden')).toBe(false);
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(categoryIndicator.classList.contains('hidden')).toBe(false);
+        });
+
+        test('switching task type toggles activity mode on the shared production row', () => {
+            const taskForm = document.getElementById('task-form');
+            const activityRadio = document.getElementById('activity');
+            const scheduledRadio = document.getElementById('scheduled');
+            const startTimerButton = document.getElementById('start-timer-btn');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(taskForm.classList.contains('task-form--activity')).toBe(true);
+            expect(startTimerButton.classList.contains('hidden')).toBe(false);
+
+            scheduledRadio.checked = true;
+            scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(taskForm.classList.contains('task-form--activity')).toBe(false);
+            expect(startTimerButton.classList.contains('hidden')).toBe(true);
+        });
+
+        test('switching to activity replaces the generic default with the latest activity end time', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Standup',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30,
+                    source: 'manual'
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Focus',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T11:15:00.000Z',
+                    duration: 75,
+                    source: 'auto',
+                    sourceTaskId: 'sched-2'
+                }
+            ]);
+
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            const activityRadio = document.getElementById('activity');
+
+            updateStartTimeField(getSuggestedStartTime(), true);
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(startTimeInput.value).toBe(
+                extractTimeFromDateTime(new Date('2026-04-07T11:15:00.000Z'))
+            );
+
+            jest.useRealTimers();
+        });
+
+        test('switching to activity preserves a user-edited start-time draft', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+
+            updateActivityState([
+                {
+                    id: 'activity-3',
+                    description: 'Review',
+                    startDateTime: '2026-04-07T12:00:00.000Z',
+                    endDateTime: '2026-04-07T12:45:00.000Z',
+                    duration: 45,
+                    source: 'manual'
+                }
+            ]);
+
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+            const activityRadio = document.getElementById('activity');
+
+            startTimeInput.value = '10:00';
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(startTimeInput.value).toBe('10:00');
+
+            jest.useRealTimers();
+        });
     });
 
     describe('refreshUI', () => {
@@ -1253,6 +1385,46 @@ describe('DOM Handler Interaction Tests', () => {
 
             // refreshUI should render the task
             expect(() => refreshUI()).not.toThrow();
+        });
+
+        test('uses the latest activity end time when refreshing in activity mode', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+
+            const scheduledCallbacks = { onCompleteTask: jest.fn() };
+            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
+
+            renderTasks([], scheduledCallbacks);
+            renderUnscheduledTasks([], unscheduledCallbacks);
+
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Deep work',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T11:32:00.000Z',
+                    duration: 92,
+                    source: 'manual'
+                }
+            ]);
+
+            const { initializeTaskTypeToggle } = require('../public/js/dom-renderer.js');
+            initializeTaskTypeToggle();
+
+            const activityRadio = document.getElementById('activity');
+            const startTimeInput = document.querySelector('input[name="start-time"]');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            updateStartTimeField(getSuggestedStartTime(), true);
+            refreshUI();
+
+            expect(startTimeInput.value).toBe(
+                extractTimeFromDateTime(new Date('2026-04-07T11:32:00.000Z'))
+            );
+
+            jest.useRealTimers();
         });
     });
 });

@@ -1211,6 +1211,39 @@ describe('Form Utils Tests', () => {
             expect(warningElement.textContent).toBe('');
             expect(buttonElement.innerHTML).toContain('Add Task');
         });
+
+        test('skips overlap warning updates when shouldWarn returns false', () => {
+            const tasks = makeTasks(['Meeting', '10:00', 60]);
+
+            setupOverlapWarning(
+                startTimeInput,
+                hoursInput,
+                minutesInput,
+                warningElement,
+                buttonElement,
+                () => tasks,
+                {
+                    defaultButtonHTML,
+                    defaultButtonClasses,
+                    overlapButtonHTML,
+                    overlapButtonClasses,
+                    shouldWarn: () => false
+                }
+            );
+
+            buttonElement.innerHTML = '<i class="fa-regular fa-clock mr-2"></i>Log Activity';
+            buttonElement.className =
+                'bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300';
+            buttonElement.dataset.defaultButtonHtml = buttonElement.innerHTML;
+            buttonElement.dataset.defaultButtonClasses = buttonElement.className;
+
+            startTimeInput.value = '10:30';
+            startTimeInput.dispatchEvent(new Event('input'));
+
+            expect(warningElement.textContent).toBe('');
+            expect(buttonElement.innerHTML).toContain('Log Activity');
+            expect(buttonElement.className).toContain('from-sky-500');
+        });
     });
 
     describe('resetTaskFormPreviewState', () => {

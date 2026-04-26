@@ -5,7 +5,9 @@
 jest.mock('../public/js/activities/manager.js', () => ({
     addActivity: jest.fn(),
     editActivity: jest.fn(),
-    removeActivity: jest.fn()
+    removeActivity: jest.fn(),
+    startTimerReplacingCurrent: jest.fn(),
+    stopTimer: jest.fn()
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
@@ -22,14 +24,26 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
+jest.mock('../public/js/tasks/manager.js', () => ({
+    consumeUnscheduledTask: jest.fn(() => ({ success: true }))
+}));
+
 import {
     handleAddActivity,
     handleEditActivity,
     handleDeleteActivity,
     handleSaveActivityEdit,
+    handleStartTimer,
+    handleStopTimer,
     createActivityCallbacks
 } from '../public/js/activities/handlers.js';
-import { addActivity, editActivity, removeActivity } from '../public/js/activities/manager.js';
+import {
+    addActivity,
+    editActivity,
+    removeActivity,
+    startTimerReplacingCurrent,
+    stopTimer
+} from '../public/js/activities/manager.js';
 import {
     onActivityCreated,
     onActivityEdited,
@@ -37,6 +51,7 @@ import {
 } from '../public/js/app-coordinator.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
+import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
 
 describe('activity handlers', () => {
     beforeEach(() => {
@@ -230,5 +245,148 @@ describe('activity handlers', () => {
             onDeleteActivity: handleDeleteActivity,
             onSaveActivityEdit: handleSaveActivityEdit
         });
+    });
+
+    test('handleStartTimer starts a timer and shows a toast', async () => {
+        startTimerReplacingCurrent.mockResolvedValue({
+            success: true,
+            runningActivity: {
+                description: 'Focus block',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            },
+            stoppedActivity: null
+        });
+
+        const result = await handleStartTimer({
+            description: 'Focus block',
+            category: 'work/deep'
+        });
+
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({
+            description: 'Focus block',
+            category: 'work/deep'
+        });
+        expect(result.success).toBe(true);
+        expect(showToast).toHaveBeenCalledWith('Timer started.', { theme: 'sky' });
+        expect(onActivityCreated).not.toHaveBeenCalled();
+    });
+
+    test('handleStartTimer auto-stops an existing timer before starting a new one', async () => {
+        startTimerReplacingCurrent.mockResolvedValueOnce({
+            success: true,
+            stoppedActivity: {
+                id: 'activity-1',
+                description: 'Current timer',
+                duration: 30,
+                sourceTaskId: 'unsched-7'
+            },
+            runningActivity: {
+                description: 'Next timer',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            }
+        });
+
+        const result = await handleStartTimer({ description: 'Next timer', category: null });
+
+        expect(onActivityCreated).toHaveBeenCalledWith({
+            activity: {
+                id: 'activity-1',
+                description: 'Current timer',
+                duration: 30,
+                sourceTaskId: 'unsched-7'
+            }
+        });
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({
+            description: 'Next timer',
+            category: null
+        });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-7');
+        expect(result.success).toBe(true);
+    });
+
+    test('handleStartTimer stops when auto-stop fails', async () => {
+        startTimerReplacingCurrent.mockResolvedValueOnce({
+            success: false,
+            reason: 'Could not stop timer.'
+        });
+
+        const result = await handleStartTimer({ description: 'Next timer' });
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'Could not stop timer.'
+        });
+        expect(startTimerReplacingCurrent).toHaveBeenCalledWith({ description: 'Next timer' });
+    });
+
+    test('handleStartTimer still emits the stopped activity when replacement start fails', async () => {
+        startTimerReplacingCurrent.mockResolvedValueOnce({
+            success: false,
+            reason: 'Description is required to start a timer.',
+            stoppedActivity: {
+                id: 'activity-9',
+                description: 'Stopped timer',
+                duration: 15,
+                sourceTaskId: 'unsched-9'
+            }
+        });
+
+        const result = await handleStartTimer({ description: '' });
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'Description is required to start a timer.'
+        });
+        expect(onActivityCreated).toHaveBeenCalledWith({
+            activity: {
+                id: 'activity-9',
+                description: 'Stopped timer',
+                duration: 15,
+                sourceTaskId: 'unsched-9'
+            }
+        });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-9');
+        expect(showAlert).toHaveBeenCalledWith('Description is required to start a timer.', 'sky');
+    });
+
+    test('handleStopTimer emits coordinator + toast on success', async () => {
+        stopTimer.mockResolvedValueOnce({
+            success: true,
+            activity: {
+                id: 'activity-stop-1',
+                description: 'Stopped timer',
+                sourceTaskId: 'unsched-88'
+            }
+        });
+
+        const result = await handleStopTimer();
+
+        expect(stopTimer).toHaveBeenCalled();
+        expect(result.success).toBe(true);
+        expect(onActivityCreated).toHaveBeenCalledWith({
+            activity: {
+                id: 'activity-stop-1',
+                description: 'Stopped timer',
+                sourceTaskId: 'unsched-88'
+            }
+        });
+        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-88');
+        expect(showToast).toHaveBeenCalledWith('Timer stopped.', { theme: 'sky' });
+    });
+
+    test('handleStopTimer shows alert on stop failure', async () => {
+        stopTimer.mockResolvedValueOnce({
+            success: false,
+            reason: 'No timer is currently running.'
+        });
+
+        const result = await handleStopTimer();
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'No timer is currently running.'
+        });
+        expect(showAlert).toHaveBeenCalledWith('No timer is currently running.', 'sky');
     });
 });

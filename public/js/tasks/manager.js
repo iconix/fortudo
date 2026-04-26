@@ -1180,6 +1180,21 @@ export function deleteUnscheduledTask(taskId) {
     return deleteTask(taskIndex, tasks[taskIndex].confirmingDelete);
 }
 
+export function consumeUnscheduledTask(taskId) {
+    const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
+    if (taskIndex === -1) {
+        return { success: false, reason: 'Unscheduled task not found.' };
+    }
+
+    const taskToConsume = tasks[taskIndex];
+    tasks.splice(taskIndex, 1);
+    resetAllUIFlags();
+    invalidateTaskCaches();
+    deleteTaskFromStorage(taskToConsume.id);
+
+    return { success: true, task: taskToConsume };
+}
+
 export function deleteAllTasks() {
     if (tasks.length === 0) return { success: true, tasksDeleted: 0 };
     const num = tasks.length;

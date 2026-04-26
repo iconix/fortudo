@@ -41,11 +41,27 @@ jest.mock('../public/js/sync-manager.js', () => ({
 }));
 jest.mock('../public/js/activities/manager.js', () => ({
     loadActivitiesState: jest.fn(() => Promise.resolve([])),
+    loadRunningActivity: jest.fn(() => Promise.resolve(null)),
+    stopTimerAt: jest.fn(() => Promise.resolve({ success: true })),
+    getRunningActivity: jest.fn(() => null),
     getActivityState: jest.fn(() => []),
-    getTodaysActivities: jest.fn(() => [])
+    getTodaysActivities: jest.fn(() => []),
+    getLiveTodayActivitySummary: jest.fn(() => null),
+    getSuggestedActivityStartTime: jest.fn(() => null)
 }));
+jest.mock('../public/js/activities/timer-ui.js', () => ({
+    hideTimerDisplay: jest.fn(),
+    disposeTimerUI: jest.fn(),
+    initializeTimerUI: jest.fn(),
+    syncTimerFormState: jest.fn()
+}));
+jest.mock('../public/js/activities/ui-handlers.js', () => {
+    const actual = jest.requireActual('../public/js/activities/ui-handlers.js');
+    return actual;
+});
 jest.mock('../public/js/activities/renderer.js', () => ({
-    renderActivities: jest.fn()
+    renderActivities: jest.fn(),
+    renderActivitySummaryOnly: jest.fn()
 }));
 jest.mock('../public/js/activities/handlers.js', () => ({
     handleAddActivity: jest.fn(() => Promise.resolve()),
@@ -70,9 +86,16 @@ import {
 } from '../public/js/sync-manager.js';
 import {
     loadActivitiesState as mockLoadActivitiesStateInternal,
+    loadRunningActivity as mockLoadRunningActivityInternal,
+    stopTimerAt as mockStopTimerAtInternal,
+    getRunningActivity as mockGetRunningActivityInternal,
     getActivityState as mockGetActivityStateInternal,
     getTodaysActivities as mockGetTodaysActivitiesInternal
 } from '../public/js/activities/manager.js';
+import {
+    initializeTimerUI as mockInitializeTimerUIInternal,
+    syncTimerFormState as mockSyncTimerFormStateInternal
+} from '../public/js/activities/timer-ui.js';
 import { renderActivities as mockRenderActivitiesInternal } from '../public/js/activities/renderer.js';
 import {
     handleAddActivity as mockHandleAddActivityInternal,
@@ -94,8 +117,13 @@ const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
+const mockLoadRunningActivity = jest.mocked(mockLoadRunningActivityInternal);
+const mockStopTimerAt = jest.mocked(mockStopTimerAtInternal);
+const mockGetRunningActivity = jest.mocked(mockGetRunningActivityInternal);
 const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
 const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
+const mockInitializeTimerUI = jest.mocked(mockInitializeTimerUIInternal);
+const mockSyncTimerFormState = jest.mocked(mockSyncTimerFormStateInternal);
 const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
 const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
@@ -160,6 +188,7 @@ describe('App.js Callback Functions', () => {
     beforeEach(async () => {
         // Reset DOM and app state
         document.body.innerHTML = '';
+        window.alert = jest.fn();
         clearLocalStorage();
         jest.clearAllMocks();
         resetEventDelegation();
@@ -168,8 +197,12 @@ describe('App.js Callback Functions', () => {
         mockLoadConfig.mockResolvedValue(null);
         mockPutConfig.mockResolvedValue(undefined);
         mockLoadActivitiesState.mockResolvedValue([]);
+        mockLoadRunningActivity.mockResolvedValue(null);
+        mockGetRunningActivity.mockReturnValue(null);
         mockGetActivityState.mockReturnValue([]);
         mockRenderActivities.mockClear();
+        mockInitializeTimerUI.mockClear();
+        mockSyncTimerFormState.mockClear();
         mockHandleAddActivity.mockClear();
         mockHandleEditActivity.mockClear();
         mockHandleDeleteActivity.mockClear();
@@ -328,6 +361,74 @@ describe('App.js Callback Functions', () => {
             ).toBe(false);
         });
 
+        test('when a timer is restored on boot, app loads it and initializes timer UI', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadRunningActivity.mockResolvedValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+            mockGetRunningActivity.mockReturnValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+
+            await setupAppWithTasks([]);
+
+            expect(mockLoadRunningActivity).toHaveBeenCalled();
+            expect(mockInitializeTimerUI).toHaveBeenCalledWith({
+                refreshUI: expect.any(Function),
+                refreshActivitySummary: expect.any(Function)
+            });
+            expect(mockSyncTimerFormState).toHaveBeenCalled();
+        });
+
+        test('when a timer is restored on boot, app selects activity mode before syncing timer UI', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadRunningActivity.mockResolvedValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+            mockGetRunningActivity.mockReturnValue({
+                description: 'Persisted timer',
+                startDateTime: '2026-04-09T09:00:00.000Z'
+            });
+
+            await setupAppWithTasks([]);
+
+            expect(document.getElementById('activity').checked).toBe(true);
+        });
+
+        test('stops a running timer at midnight boundary', async () => {
+            jest.useFakeTimers();
+            try {
+                jest.setSystemTime(new Date('2026-04-09T23:59:59'));
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                mockLoadRunningActivity.mockResolvedValue({
+                    description: 'Late timer',
+                    startDateTime: '2026-04-09T23:00:00.000Z'
+                });
+                mockGetRunningActivity.mockReturnValue({
+                    description: 'Late timer',
+                    startDateTime: '2026-04-09T23:00:00.000Z'
+                });
+                mockStopTimerAt.mockResolvedValue({ success: true });
+
+                const setupPromise = setupAppWithTasks([]);
+                await Promise.resolve();
+                await jest.runOnlyPendingTimersAsync();
+                await setupPromise;
+
+                await jest.advanceTimersByTimeAsync(1000);
+
+                const expectedMidnight = new Date('2026-04-10T00:00:00');
+
+                expect(mockStopTimerAt).toHaveBeenCalledWith(expectedMidnight.toISOString());
+                expect(mockSyncTimerFormState).toHaveBeenCalled();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
         test('activity mode submits through the activity handler and uses activity UI state', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
@@ -367,6 +468,31 @@ describe('App.js Callback Functions', () => {
             expect(descriptionInput.getAttribute('placeholder')).toBe('What did you work on?');
         });
 
+        test('activity mode keeps the activity button label when time inputs change', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityRadio = document.getElementById('activity');
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            const durationHoursInput = document.querySelector(
+                '#task-form input[name="duration-hours"]'
+            );
+            const addTaskButton = document.getElementById('add-task-btn');
+            const overlapWarning = document.getElementById('overlap-warning');
+
+            activityRadio.checked = true;
+            activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+
+            startTimeInput.value = '10:00';
+            startTimeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            durationHoursInput.value = '1';
+            durationHoursInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            expect(addTaskButton.textContent).toContain('Log Activity');
+            expect(overlapWarning.textContent).toBe('');
+        });
+
         test('activity list delegates inline activity save and delete controls to the activity handlers', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
@@ -398,6 +524,9 @@ describe('App.js Callback Functions', () => {
             `;
             activityList
                 .querySelector('.btn-save-activity-edit')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             activityList
                 .querySelector('.btn-delete-activity')
@@ -438,6 +567,39 @@ describe('App.js Callback Functions', () => {
             expect(mockHandleSaveActivityEdit).not.toHaveBeenCalled();
         });
 
+        test('pressing Enter in an activity inline edit form saves the edit', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+
+            await setupAppWithTasks([]);
+
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <form class="activity-inline-edit-form" data-activity-id="activity-43" data-activity-date="2026-04-07">
+                    <input name="description" value="Updated activity" />
+                    <input name="start-time" value="09:00" />
+                    <input name="duration-hours" value="1" />
+                    <input name="duration-minutes" value="0" />
+                    <select name="category"></select>
+                    <button type="submit" class="btn-save-activity-edit">Save</button>
+                </form>
+            `;
+
+            activityList.querySelector('input[name="description"]').dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    bubbles: true,
+                    cancelable: true
+                })
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockHandleSaveActivityEdit).toHaveBeenCalledWith(
+                'activity-43',
+                expect.any(HTMLFormElement)
+            );
+        });
+
         test('activity actions can resolve ids from the ancestor activity element', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
@@ -464,6 +626,9 @@ describe('App.js Callback Functions', () => {
             `;
             activityList
                 .querySelector('.btn-save-activity-edit span')
+                .dispatchEvent(new Event('click', { bubbles: true }));
+            activityList
+                .querySelector('.btn-delete-activity span')
                 .dispatchEvent(new Event('click', { bubbles: true }));
             activityList
                 .querySelector('.btn-delete-activity span')
@@ -496,6 +661,9 @@ describe('App.js Callback Functions', () => {
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(mockHandleAddActivity).not.toHaveBeenCalled();
+            expect(window.alert).toHaveBeenCalledWith(
+                'Alert: Activity description cannot be empty.'
+            );
             expect(document.activeElement).toBe(descriptionInput);
             expect(activityRadio.checked).toBe(true);
             expect(addTaskButton.textContent).toContain('Log Activity');
@@ -1541,6 +1709,41 @@ describe('App.js Callback Functions', () => {
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Synced Task');
                 expect(mockSaveTasks).not.toHaveBeenCalled();
+            });
+
+            test('should re-sync the timer ui when a running timer changes after sync completes', async () => {
+                const initialTasks = [
+                    createTaskWithDateTime({
+                        description: 'Local Task',
+                        startTime: '09:00',
+                        duration: 60
+                    })
+                ];
+
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                await setupAppWithTasks(initialTasks);
+
+                const syncStatusCallback = mockOnSyncStatusChange.mock.calls.at(-1)?.[0];
+                expect(syncStatusCallback).toEqual(expect.any(Function));
+
+                mockSyncTimerFormState.mockClear();
+                mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+                mockLoadRunningActivity.mockImplementation(async () => {
+                    mockGetRunningActivity.mockReturnValue({
+                        description: 'Synced timer',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    });
+                    return {
+                        description: 'Synced timer',
+                        startDateTime: '2026-04-09T10:00:00.000Z'
+                    };
+                });
+
+                syncStatusCallback('synced');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(document.getElementById('activity').checked).toBe(true);
+                expect(mockSyncTimerFormState).toHaveBeenCalledTimes(1);
             });
 
             test('should refresh tasks from storage when the tab becomes visible again', async () => {

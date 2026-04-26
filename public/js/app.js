@@ -3,7 +3,6 @@ import {
     updateTaskState,
     getTaskState,
     resetAllConfirmingDeleteFlags,
-    getSuggestedStartTime,
     getSortedUnscheduledTasks
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
@@ -21,6 +20,7 @@ import {
     renderTasks,
     renderUnscheduledTasks,
     refreshUI,
+    getSuggestedFormStartTime,
     updateStartTimeField,
     initializePageEventListeners,
     refreshStartTimeField,
@@ -28,13 +28,19 @@ import {
     startRealTimeClock,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
-import { loadActivitiesState } from './activities/manager.js';
 import {
-    syncActivitiesUI,
-    renderTodayActivities,
-    handleActivityAwareFormSubmit,
-    handleActivityListClick
-} from './activities/ui-handlers.js';
+    loadActivitiesState,
+    loadRunningActivity,
+    getRunningActivity,
+    stopTimerAt
+} from './activities/manager.js';
+import { syncActivitiesUI, renderTodayActivities } from './activities/ui-handlers.js';
+import {
+    createActivityAppCallbacks,
+    initializeActivityUi,
+    syncRestoredRunningTimer
+} from './activities/app-wiring.js';
+import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
@@ -53,11 +59,8 @@ import { COUCHDB_URL } from './config.js';
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
 
-/** @type {(() => void) | null} */
-let unsubscribeSyncStatus = null;
-
-/** @type {Promise<void> | null} */
-let refreshFromStoragePromise = null;
+/** @type {{ refreshFromStorage: () => Promise<void>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
+let roomSessionLifecycle = null;
 
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
@@ -94,25 +97,7 @@ async function loadAppState() {
     await loadTasksIntoState();
     if (isActivitiesEnabled()) {
         await loadActivitiesState();
-    }
-}
-
-async function refreshFromStorage() {
-    if (refreshFromStoragePromise) {
-        return refreshFromStoragePromise;
-    }
-
-    refreshFromStoragePromise = (async () => {
-        await loadAppState();
-        refreshUI();
-        refreshActiveTaskColor(getTaskState());
-        refreshCurrentGapHighlight();
-    })();
-
-    try {
-        await refreshFromStoragePromise;
-    } finally {
-        refreshFromStoragePromise = null;
+        await loadRunningActivity();
     }
 }
 
@@ -121,16 +106,15 @@ async function refreshFromStorage() {
  * @param {string} roomCode
  */
 async function initAndBootApp(roomCode) {
+    if (roomSessionLifecycle) {
+        roomSessionLifecycle.stop();
+        roomSessionLifecycle = null;
+    }
     if (appLifecycleAbortController) {
         appLifecycleAbortController.abort();
     }
     appLifecycleAbortController = new AbortController();
     const { signal } = appLifecycleAbortController;
-
-    if (unsubscribeSyncStatus) {
-        unsubscribeSyncStatus();
-        unsubscribeSyncStatus = null;
-    }
 
     showMainApp(roomCode);
 
@@ -163,34 +147,43 @@ async function initAndBootApp(roomCode) {
         refreshCurrentGapHighlight();
     };
 
-    const appCallbacks = {
-        onTaskFormSubmit: async (formElement) => {
-            await handleActivityAwareFormSubmit(formElement, {
-                activitiesEnabled: isActivitiesEnabled(),
-                resetTaskFormPreviewState,
-                initializeTaskTypeToggle,
-                focusTaskDescriptionInput,
-                handleTaskSubmit: async (taskFormElement) => {
-                    const taskData = extractTaskFormData(taskFormElement);
-                    if (!taskData) {
-                        focusTaskDescriptionInput();
-                        return;
-                    }
-                    const overlapEl = document.getElementById('overlap-warning');
-                    const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
-                    await handleAddTaskProcess(taskFormElement, taskData, {
-                        reschedulePreApproved
-                    });
-                }
-            });
-        },
-        onGlobalClick: (event) => {
-            handleActivityListClick(event.target, {
-                refreshUI,
-                resetAllConfirmingDeleteFlags
+    const appCallbacks = createActivityAppCallbacks({
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        refreshUI,
+        resetAllConfirmingDeleteFlags,
+        focusTaskDescriptionInput,
+        resetTaskFormPreviewState,
+        initializeTaskTypeToggle,
+        handleTaskSubmit: async (taskFormElement) => {
+            const taskData = extractTaskFormData(taskFormElement);
+            if (!taskData) {
+                focusTaskDescriptionInput();
+                return;
+            }
+            const overlapEl = document.getElementById('overlap-warning');
+            const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+            await handleAddTaskProcess(taskFormElement, taskData, {
+                reschedulePreApproved
             });
         }
-    };
+    });
+
+    roomSessionLifecycle = createRoomSessionLifecycle({
+        loadAppState,
+        refreshUI,
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        syncRestoredRunningTimer,
+        getTaskState,
+        refreshActiveTaskColor,
+        refreshCurrentGapHighlight,
+        refreshStartTimeField,
+        getRunningActivity,
+        stopTimerAt,
+        onSyncStatusChange,
+        updateSyncStatusUI,
+        triggerSync,
+        logger
+    });
 
     // Initialize event listeners
     const taskFormElement = getTaskFormElement();
@@ -217,6 +210,15 @@ async function initAndBootApp(roomCode) {
                 addTaskBtn,
                 () => getTaskState().filter((t) => t.type === 'scheduled'),
                 {
+                    shouldWarn: () => {
+                        const selectedTaskType = taskFormElement?.querySelector(
+                            'input[name="task-type"]:checked'
+                        );
+                        return (
+                            selectedTaskType instanceof HTMLInputElement &&
+                            selectedTaskType.value !== 'activity'
+                        );
+                    },
                     defaultButtonHTML: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
                     defaultButtonClasses: addTaskBtn.className,
                     overlapButtonHTML:
@@ -243,68 +245,38 @@ async function initAndBootApp(roomCode) {
 
     initializePageEventListeners(appCallbacks, taskFormElement);
     initializeTaskTypeToggle();
+    initializeActivityUi({
+        signal,
+        refreshUI,
+        refreshTaskDisplays,
+        getActivitiesEnabled: () => isActivitiesEnabled()
+    });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
-
-    // Wire up sync status indicator + refresh after sync
-    unsubscribeSyncStatus = onSyncStatusChange((status) => {
-        updateSyncStatusUI(status);
-        if (status === 'synced') {
-            refreshFromStorage().catch((err) => {
-                logger.error('Failed to refresh tasks after sync:', err);
-            });
-        }
-    });
-
-    const refreshFromExternalChange = () => {
-        refreshFromStorage().catch((err) => {
-            logger.error('Failed to refresh tasks after external change:', err);
-        });
-    };
-
-    const syncOnFocus = () => {
-        triggerSync({ respectCooldown: true }).catch((err) => {
-            logger.error('Failed to sync tasks after window focus:', err);
-        });
-    };
-
-    document.addEventListener(
-        'visibilitychange',
-        () => {
-            if (!document.hidden) {
-                refreshFromExternalChange();
-            }
-        },
-        { signal }
-    );
-
-    window.addEventListener('focus', syncOnFocus, { signal });
+    roomSessionLifecycle.start({ signal });
 
     // Initial render
     refreshTaskDisplays();
+    const restoredRunningActivity = isActivitiesEnabled() ? getRunningActivity() : null;
+    if (restoredRunningActivity) {
+        syncRestoredRunningTimer(isActivitiesEnabled());
 
-    const suggested = getSuggestedStartTime();
-    logger.debug('initAndBootApp - getSuggestedStartTime() returned:', suggested);
+        const activityToggle = document.getElementById('activity-toggle-option');
+        if (activityToggle) {
+            activityToggle.classList.add('ring-2', 'ring-sky-400/50');
+            setTimeout(() => {
+                activityToggle.classList.remove('ring-2', 'ring-sky-400/50');
+            }, 3000);
+        }
+    }
+
+    const suggested = getSuggestedFormStartTime();
+    logger.debug('initAndBootApp - getSuggestedFormStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
-
-    // Active task color refresh interval
-    const activeTaskColorInterval = setInterval(() => {
-        refreshActiveTaskColor(getTaskState());
-        refreshCurrentGapHighlight();
-        refreshStartTimeField();
-    }, 1000);
-
-    window.addEventListener(
-        'beforeunload',
-        () => {
-            clearInterval(activeTaskColorInterval);
-        },
-        { signal }
-    );
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
