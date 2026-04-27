@@ -46,6 +46,6 @@
     "jest-environment-jsdom": "^30.0.0",
     "pouchdb": "^9.0.0",
     "pouchdb-adapter-memory": "^9.0.0",
-    "prettier": "^3.8.2"
+    "prettier": "^3.8.3"
   }
 }
