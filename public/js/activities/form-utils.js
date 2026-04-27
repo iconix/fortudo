@@ -5,7 +5,7 @@ import {
     timeToDateTime
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
-import { validateCategoryKey } from '../tasks/form-utils.js';
+import { validateCategoryKey } from '../category-form-utils.js';
 
 function extractActivityFields(formElement, options = {}) {
     const formData = new FormData(formElement);

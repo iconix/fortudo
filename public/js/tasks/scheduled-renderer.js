@@ -10,10 +10,9 @@ import { findScheduleGaps } from '../reschedule-engine.js';
 import {
     computeEndTimePreview,
     computeOverlapPreview,
-    formatOverlapWarning,
-    renderCategoryOptionsHtml,
-    syncCategoryColorDot
+    formatOverlapWarning
 } from './form-utils.js';
+import { renderCategorySelectRow, syncCategoryColorDot } from '../category-form-utils.js';
 import {
     getSelectableCategoryOptions,
     renderCategoryBadge
@@ -46,10 +45,14 @@ export function renderEditTaskHTML(task, index) {
         : '';
     const durationHours = task.duration ? Math.floor(task.duration / 60) : 0;
     const durationMinutes = task.duration ? task.duration % 60 : 0;
-    const categoryOptionsHtml = renderCategoryOptionsHtml(
-        getSelectableCategoryOptions(),
-        task.category || ''
-    );
+    const categoryRowHtml = renderCategorySelectRow({
+        selectName: 'category',
+        selectedValue: task.category || '',
+        options: getSelectableCategoryOptions(),
+        dotClass: 'scheduled-edit-category-dot',
+        selectClass:
+            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
+    });
 
     return `
         <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 shadow-lg text-left space-y-4">
@@ -63,14 +66,7 @@ export function renderEditTaskHTML(task, index) {
             </div>
 
             <!-- Category Row -->
-            <div class="flex items-center gap-2">
-                <span class="scheduled-edit-category-dot w-3 h-3 rounded-full shrink-0" aria-hidden="true"></span>
-                <select name="category"
-                    class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
-                    <option value="">No category</option>
-                    ${categoryOptionsHtml}
-                </select>
-            </div>
+            ${categoryRowHtml}
 
             <!-- Time, Duration, and Buttons Row -->
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:pb-5">

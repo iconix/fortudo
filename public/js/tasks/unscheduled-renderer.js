@@ -1,5 +1,6 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { renderCategoryOptionsHtml, toggleUnscheduledTaskInlineEdit } from './form-utils.js';
+import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
+import { renderCategorySelectRow } from '../category-form-utils.js';
 import {
     getSelectableCategoryOptions,
     renderCategoryBadge
@@ -127,10 +128,14 @@ function createInlineEditFormHTML(task) {
     const checkedHigh = task.priority === 'high' ? 'checked' : '';
     const checkedMed = task.priority === 'medium' ? 'checked' : '';
     const checkedLow = task.priority === 'low' ? 'checked' : '';
-    const categoryOptionsHtml = renderCategoryOptionsHtml(
-        getSelectableCategoryOptions(),
-        task.category || ''
-    );
+    const categoryRowHtml = renderCategorySelectRow({
+        selectName: 'inline-edit-category',
+        selectedValue: task.category || '',
+        options: getSelectableCategoryOptions(),
+        dotClass: 'unscheduled-edit-category-dot',
+        selectClass:
+            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base'
+    });
 
     return `
         <form class="space-y-3">
@@ -143,14 +148,7 @@ function createInlineEditFormHTML(task) {
             </div>
 
             <!-- Category Row -->
-            <div class="flex items-center gap-2">
-                <span class="unscheduled-edit-category-dot w-3 h-3 rounded-full shrink-0" aria-hidden="true"></span>
-                <select name="inline-edit-category"
-                    class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
-                    <option value="">No category</option>
-                    ${categoryOptionsHtml}
-                </select>
-            </div>
+            ${categoryRowHtml}
 
             <!-- Priority, Duration, and Buttons Row -->
             <div class="flex flex-col sm:flex-row gap-3">

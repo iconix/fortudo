@@ -7,10 +7,6 @@ import {
     getUnscheduledTaskInlineFormData,
     toggleUnscheduledTaskInlineEdit,
     extractTaskFormData,
-    renderCategoryOptionsHtml,
-    populateCategorySelect,
-    validateCategoryKey,
-    syncCategoryColorDot,
     populateCategoryDropdown,
     initializeCategoryDropdownListener,
     getTaskFormElement,
@@ -348,95 +344,7 @@ describe('Form Utils Tests', () => {
         });
     });
 
-    describe('category helpers', () => {
-        test('renderCategoryOptionsHtml returns escaped flat options with selected value', () => {
-            const html = renderCategoryOptionsHtml(
-                [
-                    { value: 'work', label: 'Work & Admin', indentLevel: 0 },
-                    { value: 'work/deep', label: '<Deep Work>', indentLevel: 1 }
-                ],
-                'work/deep'
-            );
-
-            expect(html).toContain('<option value="work">Work &amp; Admin</option>');
-            expect(html).toContain(
-                '<option value="work/deep" selected>&rsaquo; &lt;Deep Work&gt;</option>'
-            );
-        });
-
-        test('populateCategorySelect preserves the default option and selected value', () => {
-            document.body.innerHTML = `
-                <select id="category-select">
-                    <option value="">No category</option>
-                </select>
-            `;
-
-            const select = document.getElementById('category-select');
-            populateCategorySelect(
-                select,
-                [
-                    { value: 'work', label: 'Work', indentLevel: 0 },
-                    { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
-                ],
-                'work/deep'
-            );
-
-            expect(select.options).toHaveLength(3);
-            expect(select.options[0].value).toBe('');
-            expect(select.value).toBe('work/deep');
-            expect(select.options[2].textContent).toBe('› Deep Work');
-        });
-
-        test('validateCategoryKey accepts empty and valid keys', () => {
-            resolveCategoryKey.mockImplementation((key) =>
-                key === 'work' ? { kind: 'group', record: { key, color: '#2563eb' } } : null
-            );
-
-            expect(validateCategoryKey('', 'teal')).toEqual({ valid: true, category: null });
-            expect(validateCategoryKey('work', 'teal')).toEqual({
-                valid: true,
-                category: 'work'
-            });
-        });
-
-        test('validateCategoryKey rejects stale keys with the provided theme', () => {
-            resolveCategoryKey.mockReturnValue(null);
-
-            expect(validateCategoryKey('missing', 'indigo')).toEqual({
-                valid: false,
-                category: null
-            });
-            expect(showAlert).toHaveBeenCalledWith(
-                'Selected category is no longer available.',
-                'indigo'
-            );
-        });
-
-        test('syncCategoryColorDot initializes and updates a specific dot/select pair', () => {
-            document.body.innerHTML = `
-                <span id="category-dot"></span>
-                <select id="category-select">
-                    <option value="">No category</option>
-                    <option value="work/deep">Deep Work</option>
-                </select>
-            `;
-
-            resolveCategoryKey.mockImplementation((key) =>
-                key === 'work/deep' ? { kind: 'category', record: { key, color: '#0ea5e9' } } : null
-            );
-
-            const select = document.getElementById('category-select');
-            const dot = document.getElementById('category-dot');
-            syncCategoryColorDot(select, dot);
-
-            expect(dot.style.backgroundColor).toBe('rgb(100, 116, 139)');
-
-            select.value = 'work/deep';
-            select.dispatchEvent(new Event('change'));
-
-            expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
-        });
-
+    describe('category dropdown integration', () => {
         test('populateCategoryDropdown renders a group option followed by indented children', () => {
             document.body.innerHTML = `
                 <select id="category-select">
