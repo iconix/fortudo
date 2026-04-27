@@ -3,6 +3,15 @@
  */
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
+    getSelectableCategoryOptions: jest.fn(() => [
+        { value: 'work', label: 'Work', indentLevel: 0 },
+        { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+    ]),
+    resolveCategoryKey: jest.fn((key) =>
+        key === 'work/deep'
+            ? { kind: 'category', record: { key, label: 'Deep Work', color: '#0ea5e9' } }
+            : null
+    ),
     renderCategoryBadge: jest.fn((categoryKey) =>
         categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
     )
@@ -461,6 +470,40 @@ describe('Scheduled Task Renderer Tests', () => {
             const hintEl = list.querySelector('.edit-end-time-hint');
             expect(hintEl).not.toBeNull();
             expect(hintEl.textContent).toContain('AM');
+        });
+
+        test('renders category select for editing task with current category selected', () => {
+            const tasks = [
+                {
+                    ...createTask('1', '10:00', 90, { editing: true, date: today }),
+                    category: 'work/deep'
+                }
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const select = document.querySelector('form[id^="edit-task-"] select[name="category"]');
+            const dot = document.querySelector('.scheduled-edit-category-dot');
+            expect(select).not.toBeNull();
+            expect(select.value).toBe('work/deep');
+            expect(select.querySelector('option[value="work/deep"]').textContent).toBe(
+                '› Deep Work'
+            );
+            expect(dot).not.toBeNull();
+            expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
+        });
+
+        test('updates scheduled edit category color dot when category changes', () => {
+            const tasks = [createTask('1', '10:00', 90, { editing: true, date: today })];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const select = document.querySelector('form[id^="edit-task-"] select[name="category"]');
+            const dot = document.querySelector('.scheduled-edit-category-dot');
+            select.value = 'work/deep';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
         });
     });
 });

@@ -9,7 +9,7 @@ import {
     convertTo12HourTime,
     extractDateFromDateTime
 } from '../utils.js';
-import { computeEndTimePreview } from '../tasks/form-utils.js';
+import { computeEndTimePreview, renderCategoryOptionsHtml } from '../tasks/form-utils.js';
 import { buildActivitySummaryModel } from './summary.js';
 
 function escapeHtml(value) {
@@ -25,20 +25,6 @@ function formatTimeRange(startDateTime, endDateTime) {
     const startTime = extractTimeFromDateTime(new Date(startDateTime));
     const endTime = extractTimeFromDateTime(new Date(endDateTime));
     return `${convertTo12HourTime(startTime)} - ${convertTo12HourTime(endTime)}`;
-}
-
-function renderCategoryOptions(selectedCategory) {
-    const options = getSelectableCategoryOptions();
-    const baseOption = '<option value="">No category</option>';
-    const renderedOptions = options
-        .map((option) => {
-            const indent = option.indentLevel > 0 ? '&nbsp;&nbsp;' : '';
-            const selected = option.value === selectedCategory ? ' selected' : '';
-            return `<option value="${escapeHtml(option.value)}"${selected}>${indent}${escapeHtml(option.label)}</option>`;
-        })
-        .join('');
-
-    return `${baseOption}${renderedOptions}`;
 }
 
 function getSummarySwatchStyle(summaryItem) {
@@ -204,6 +190,10 @@ function renderInlineEditActivityItem(activity) {
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
     const resolvedCategory = activity.category ? resolveCategoryKey(activity.category) : null;
     const categoryColor = resolvedCategory?.record?.color || '#64748b';
+    const categoryOptionsHtml = renderCategoryOptionsHtml(
+        getSelectableCategoryOptions(),
+        activity.category || ''
+    );
     const endTimeHint = computeEndTimePreview(
         displayStartTime,
         durationHours.toString(),
@@ -231,7 +221,8 @@ function renderInlineEditActivityItem(activity) {
                 <div class="flex items-center gap-2">
                 <span class="activity-edit-category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${escapeHtml(categoryColor)};"></span>
                 <select name="category" class="bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
-                    ${renderCategoryOptions(activity.category)}
+                    <option value="">No category</option>
+                    ${categoryOptionsHtml}
                 </select>
                 </div>
             </div>

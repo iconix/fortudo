@@ -10,9 +10,23 @@ import {
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
 import { checkOverlap } from '../reschedule-engine.js';
-import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import {
+    getSelectableCategoryOptions,
+    resolveCategoryKey
+} from '../taxonomy/taxonomy-selectors.js';
+
+const DEFAULT_CATEGORY_DOT_COLOR = '#64748b';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 /**
  * Populates the inline edit form for an unscheduled task with existing task data
@@ -41,6 +55,8 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
     const hoursInput = form.querySelector('input[name="inline-edit-est-duration-hours"]');
     const minutesInput = form.querySelector('input[name="inline-edit-est-duration-minutes"]');
     const priorityRadios = form.querySelectorAll('input[name="inline-edit-priority"]');
+    const categorySelect = form.querySelector('select[name="inline-edit-category"]');
+    const categoryDot = form.querySelector('.unscheduled-edit-category-dot');
 
     if (descriptionInput instanceof HTMLInputElement) descriptionInput.value = taskData.description;
     else logger.warn('Description input not found for inline edit form', form);
@@ -56,6 +72,15 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
             radio.checked = radio.value === taskData.priority;
         }
     });
+
+    if (categorySelect instanceof HTMLSelectElement) {
+        populateCategorySelect(
+            categorySelect,
+            getSelectableCategoryOptions(),
+            taskData.category || ''
+        );
+    }
+    syncCategoryColorDot(categorySelect, categoryDot);
 }
 
 /**
@@ -87,6 +112,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
     const selectedPriorityElement = form.querySelector(
         'input[name="inline-edit-priority"]:checked'
     );
+    const categorySelect = form.querySelector('select[name="inline-edit-category"]');
 
     const description =
         descriptionInput instanceof HTMLInputElement ? descriptionInput.value.trim() : '';
@@ -110,8 +136,18 @@ export function getUnscheduledTaskInlineFormData(taskId) {
         selectedPriorityElement instanceof HTMLInputElement
             ? selectedPriorityElement.value
             : 'medium';
+    const categoryValue = categorySelect instanceof HTMLSelectElement ? categorySelect.value : '';
+    const categoryResult = validateCategoryKey(categoryValue, 'indigo');
+    if (!categoryResult.valid) {
+        return null;
+    }
 
-    return { description, priority, estDuration: durationResult.duration };
+    return {
+        description,
+        priority,
+        estDuration: durationResult.duration,
+        category: categoryResult.category
+    };
 }
 
 /**
@@ -167,13 +203,15 @@ export function extractTaskFormData(formElement) {
     }
 
     let taskData = { description, taskType };
-    const categoryKey = formData.get('category')?.toString() || null;
-    if (categoryKey) {
-        if (!resolveCategoryKey(categoryKey)) {
-            showAlert('Selected category is no longer available.', getThemeForTaskType(taskType));
-            return null;
-        }
-        taskData.category = categoryKey;
+    const categoryResult = validateCategoryKey(
+        formData.get('category')?.toString() || '',
+        getThemeForTaskType(taskType)
+    );
+    if (!categoryResult.valid) {
+        return null;
+    }
+    if (categoryResult.category) {
+        taskData.category = categoryResult.category;
     }
 
     if (taskType === 'scheduled') {
@@ -227,8 +265,27 @@ export function getTaskFormElement() {
  * @param {Array<{value: string, label: string, indentLevel: number}>} options
  */
 export function populateCategoryDropdown(selectElement, options) {
-    const currentValue = selectElement.value;
+    populateCategorySelect(selectElement, options, selectElement.value);
+}
 
+export function renderCategoryOptionsHtml(options, selectedValue = '') {
+    return options
+        .map((optionData) => {
+            const label =
+                optionData.indentLevel > 0
+                    ? `${'&rsaquo; '.repeat(optionData.indentLevel)}${escapeHtml(optionData.label)}`
+                    : escapeHtml(optionData.label);
+            const selected = optionData.value === selectedValue ? ' selected' : '';
+            return `<option value="${escapeHtml(optionData.value)}"${selected}>${label}</option>`;
+        })
+        .join('');
+}
+
+export function populateCategorySelect(
+    selectElement,
+    options,
+    selectedValue = selectElement.value
+) {
     while (selectElement.options.length > 1) {
         selectElement.remove(1);
     }
@@ -236,19 +293,46 @@ export function populateCategoryDropdown(selectElement, options) {
     for (const optionData of options) {
         const option = document.createElement('option');
         option.value = optionData.value;
-        option.textContent =
-            optionData.indentLevel > 0
-                ? `${'› '.repeat(optionData.indentLevel)}${optionData.label}`
-                : optionData.label;
+        const indentPrefix = '\u203A '.repeat(optionData.indentLevel);
+        option.textContent = `${indentPrefix}${optionData.label}`;
         selectElement.appendChild(option);
     }
 
     if (
-        currentValue &&
-        Array.from(selectElement.options).some((option) => option.value === currentValue)
+        selectedValue &&
+        Array.from(selectElement.options).some((option) => option.value === selectedValue)
     ) {
-        selectElement.value = currentValue;
+        selectElement.value = selectedValue;
     }
+}
+
+export function validateCategoryKey(categoryKey, theme) {
+    if (!categoryKey) {
+        return { valid: true, category: null };
+    }
+
+    if (!resolveCategoryKey(categoryKey)) {
+        showAlert('Selected category is no longer available.', theme);
+        return { valid: false, category: null };
+    }
+
+    return { valid: true, category: categoryKey };
+}
+
+export function syncCategoryColorDot(selectElement, dotElement) {
+    if (!(selectElement instanceof HTMLSelectElement) || !(dotElement instanceof HTMLElement)) {
+        return;
+    }
+
+    const updateIndicator = () => {
+        const resolved = resolveCategoryKey(selectElement.value);
+        dotElement.style.backgroundColor = resolved
+            ? resolved.record.color
+            : DEFAULT_CATEGORY_DOT_COLOR;
+    };
+
+    selectElement.addEventListener('change', updateIndicator);
+    updateIndicator();
 }
 
 /**
@@ -261,13 +345,7 @@ export function initializeCategoryDropdownListener() {
         return;
     }
 
-    const updateIndicator = () => {
-        const resolved = resolveCategoryKey(select.value);
-        dot.style.backgroundColor = resolved ? resolved.record.color : '#64748b';
-    };
-
-    select.addEventListener('change', updateIndicator);
-    updateIndicator();
+    syncCategoryColorDot(select, dot);
 }
 
 // --- End Time Preview Functions ---

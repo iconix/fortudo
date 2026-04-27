@@ -1,6 +1,9 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
-import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
+import { renderCategoryOptionsHtml, toggleUnscheduledTaskInlineEdit } from './form-utils.js';
+import {
+    getSelectableCategoryOptions,
+    renderCategoryBadge
+} from '../taxonomy/taxonomy-selectors.js';
 import { getRunningActivity } from '../activities/manager.js';
 
 // --- DOM Element Getters ---
@@ -124,6 +127,10 @@ function createInlineEditFormHTML(task) {
     const checkedHigh = task.priority === 'high' ? 'checked' : '';
     const checkedMed = task.priority === 'medium' ? 'checked' : '';
     const checkedLow = task.priority === 'low' ? 'checked' : '';
+    const categoryOptionsHtml = renderCategoryOptionsHtml(
+        getSelectableCategoryOptions(),
+        task.category || ''
+    );
 
     return `
         <form class="space-y-3">
@@ -133,6 +140,16 @@ function createInlineEditFormHTML(task) {
                 <input type="text" id="inline-edit-description-${task.id}" name="inline-edit-description"
                     placeholder="What needs to be done?"
                     class="task-edit-description bg-gray-700 pl-9 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base" required>
+            </div>
+
+            <!-- Category Row -->
+            <div class="flex items-center gap-2">
+                <span class="unscheduled-edit-category-dot w-3 h-3 rounded-full shrink-0" aria-hidden="true"></span>
+                <select name="inline-edit-category"
+                    class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
+                    <option value="">No category</option>
+                    ${categoryOptionsHtml}
+                </select>
             </div>
 
             <!-- Priority, Duration, and Buttons Row -->

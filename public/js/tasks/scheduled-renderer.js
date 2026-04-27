@@ -10,9 +10,14 @@ import { findScheduleGaps } from '../reschedule-engine.js';
 import {
     computeEndTimePreview,
     computeOverlapPreview,
-    formatOverlapWarning
+    formatOverlapWarning,
+    renderCategoryOptionsHtml,
+    syncCategoryColorDot
 } from './form-utils.js';
-import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
+import {
+    getSelectableCategoryOptions,
+    renderCategoryBadge
+} from '../taxonomy/taxonomy-selectors.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -41,6 +46,10 @@ export function renderEditTaskHTML(task, index) {
         : '';
     const durationHours = task.duration ? Math.floor(task.duration / 60) : 0;
     const durationMinutes = task.duration ? task.duration % 60 : 0;
+    const categoryOptionsHtml = renderCategoryOptionsHtml(
+        getSelectableCategoryOptions(),
+        task.category || ''
+    );
 
     return `
         <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 shadow-lg text-left space-y-4">
@@ -51,6 +60,16 @@ export function renderEditTaskHTML(task, index) {
                 <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                 <input type="text" name="description" value="${task.description}" placeholder="What needs to be done?"
                     class="bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+            </div>
+
+            <!-- Category Row -->
+            <div class="flex items-center gap-2">
+                <span class="scheduled-edit-category-dot w-3 h-3 rounded-full shrink-0" aria-hidden="true"></span>
+                <select name="category"
+                    class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                    <option value="">No category</option>
+                    ${categoryOptionsHtml}
+                </select>
             </div>
 
             <!-- Time, Duration, and Buttons Row -->
@@ -292,6 +311,8 @@ export function renderTasks(
         const startInput = form.querySelector('input[name="start-time"]');
         const hoursInput = form.querySelector('input[name="duration-hours"]');
         const minutesInput = form.querySelector('input[name="duration-minutes"]');
+        const categorySelect = form.querySelector('select[name="category"]');
+        const categoryDot = form.querySelector('.scheduled-edit-category-dot');
 
         if (
             !(startInput instanceof HTMLInputElement) ||
@@ -337,6 +358,8 @@ export function renderTasks(
                     .replace(/hover:to-teal-300/g, 'hover:to-amber-300');
             }
         }
+
+        syncCategoryColorDot(categorySelect, categoryDot);
     });
 
     return updatedCallbacks;
