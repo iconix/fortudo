@@ -1464,6 +1464,9 @@ def run_activities_room_scenario(
         description="activity inline edit description",
     )
     page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] select[name="category"]'
+    ).select_option("work/project")
+    page.locator(
         f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
     ).click()
     page.locator(
@@ -1473,9 +1476,10 @@ def run_activities_room_scenario(
         lambda: any(
             doc.get("id") == editable_activity_doc["id"]
             and doc.get("description") == "Playwright editable activity updated"
+            and doc.get("category") == "work/project"
             for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
         ),
-        "activity edit after delete-confirm rerender",
+        "activity edit category after delete-confirm rerender",
     )
     if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
         raise ValueError("delete confirm state was not cleared by activity edit")
@@ -1494,9 +1498,21 @@ def run_activities_room_scenario(
         "Playwright delete activity",
     )
     arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-    page.locator(
+    delete_activity_button = page.locator(
         f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
-    ).click()
+    )
+    delete_activity_button.click()
+    wait_until(
+        lambda: "fa-check-circle"
+        in (
+            page.locator(
+                f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity i'
+            ).get_attribute("class")
+            or ""
+        ),
+        "activity delete confirmation arm",
+    )
+    delete_activity_button.click()
     wait_until(
         lambda: not any(
             doc.get("id") == deletable_activity_doc["id"]
@@ -2168,7 +2184,7 @@ def run_smoke(
                         page.locator('#category-select option[value="work/project"]').text_content()
                         or ""
                     )
-                    == "Ã¢â‚¬Âº Project",
+                    == "› Project",
                     "visible nested project category option",
                 )
 
@@ -2375,6 +2391,67 @@ def run_smoke(
                 wait_for_toast_text(page, 'Category "work/project" is referenced by tasks')
                 close_settings_modal(page)
 
+                scheduled_taxonomy_doc = wait_for_task_doc(
+                    page,
+                    rooms["taxonomy"],
+                    "Taxonomy scheduled group task",
+                )
+                scheduled_edit_form_selector = open_scheduled_edit_form(
+                    page, scheduled_taxonomy_doc["id"]
+                )
+                page.locator(
+                    f'{scheduled_edit_form_selector} select[name="category"]'
+                ).select_option("work/meeting")
+                page.locator(scheduled_edit_form_selector).evaluate(
+                    "(form) => form.requestSubmit()"
+                )
+                page.locator(scheduled_edit_form_selector).wait_for(
+                    state="hidden", timeout=10000
+                )
+
+                unscheduled_taxonomy_doc = wait_for_task_doc(
+                    page,
+                    rooms["taxonomy"],
+                    "Taxonomy child category task",
+                )
+                unscheduled_card_selector = (
+                    f'.task-card[data-task-id="{unscheduled_taxonomy_doc["id"]}"]'
+                )
+                page.locator(f"{unscheduled_card_selector} .btn-edit-unscheduled").click()
+                page.locator(
+                    f'{unscheduled_card_selector} select[name="inline-edit-category"]'
+                ).wait_for(state="visible", timeout=10000)
+                page.locator(
+                    f'{unscheduled_card_selector} select[name="inline-edit-category"]'
+                ).select_option("break/walk")
+                page.locator(f"{unscheduled_card_selector} .btn-save-inline-edit").click()
+
+                wait_until(
+                    lambda: (
+                        lambda docs: any(
+                            doc.get("description") == "Taxonomy scheduled group task"
+                            and doc.get("category") == "work/meeting"
+                            for doc in docs
+                        )
+                        and any(
+                            doc.get("description") == "Taxonomy child category task"
+                            and doc.get("category") == "break/walk"
+                            for doc in docs
+                        )
+                    )(list(map(normalize_doc, read_docs(page, rooms["taxonomy"])))),
+                    "taxonomy task edit category persistence",
+                )
+                wait_until(
+                    lambda: "Meeting" in (page.locator("#scheduled-task-list").text_content() or ""),
+                    "scheduled edited category badge label",
+                )
+                wait_until(
+                    lambda: "Walk" in (page.locator("#unscheduled-task-list").text_content() or ""),
+                    "unscheduled edited category badge label",
+                )
+                demo_note("taxonomy: scheduled and unscheduled category edits persisted")
+                assert_no_page_errors_yet("taxonomy task category edits")
+
                 taxonomy_summary = summarize_docs(read_docs(page, rooms["taxonomy"]))
                 taxonomy_config = next(
                     (
@@ -2412,12 +2489,12 @@ def run_smoke(
                         lambda: (
                             lambda summary: any(
                                 doc.get("description") == "Taxonomy scheduled group task"
-                                and doc.get("category") == "family"
+                                and doc.get("category") == "work/meeting"
                                 for doc in summary["tasks"]
                             )
                             and any(
                                 doc.get("description") == "Taxonomy child category task"
-                                and doc.get("category") == "work/project"
+                                and doc.get("category") == "break/walk"
                                 for doc in summary["tasks"]
                             )
                             and any(
