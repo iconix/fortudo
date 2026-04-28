@@ -38,6 +38,7 @@ from scripts.playwright_preview_smoke import (
     queue_activity_smoke_failure,
     request_manual_sync,
     start_activity_timer,
+    start_timer_from_unscheduled_task,
     stop_activity_timer,
     supports_activity_smoke_failure_host,
     summarize_docs,
@@ -670,6 +671,39 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(duration_minutes.value, "30")
         self.assertEqual(submit_button.clicks, 1)
 
+    def test_add_unscheduled_task_can_set_category(self):
+        from scripts.playwright_preview_smoke import add_unscheduled_task
+
+        unscheduled_radio = FakeLocator()
+        description = FakeLocator()
+        priority = FakeLocator()
+        duration_hours = FakeLocator()
+        duration_minutes = FakeLocator()
+        category = FakeLocator()
+        submit_button = FakeLocator()
+        page = FakePage(
+            {
+                "#unscheduled": unscheduled_radio,
+                task_form_input_selector("description"): description,
+                'input[name="priority"][value="medium"]': priority,
+                task_form_input_selector("est-duration-hours"): duration_hours,
+                task_form_input_selector("est-duration-minutes"): duration_minutes,
+                "#category-select": category,
+                "#task-form button[type='submit']": submit_button,
+            }
+        )
+        unscheduled_radio.check = lambda: setattr(unscheduled_radio, "value", "checked")
+        priority.check = lambda force=False: setattr(priority, "value", "checked")
+
+        add_unscheduled_task(page, "Linked timer task", 45, category="work/project")
+
+        self.assertEqual(unscheduled_radio.value, "checked")
+        self.assertEqual(description.value, "Linked timer task")
+        self.assertEqual(duration_hours.value, "0")
+        self.assertEqual(duration_minutes.value, "45")
+        self.assertEqual(category.value, "work/project")
+        self.assertEqual(submit_button.clicks, 1)
+
     def test_add_active_scheduled_task_uses_current_browser_time(self):
         scheduled_radio = FakeLocator()
         description = FakeLocator()
@@ -753,12 +787,14 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(description.value, "Focus timer")
         self.assertEqual(start_timer_button.clicks, 1)
 
-    def test_start_activity_timer_uses_timer_display_when_timer_is_running(self):
+    def test_start_activity_timer_uses_next_activity_draft_when_timer_is_running(self):
         activity_radio = FakeLocator()
         add_task_button = FakeLocator(text_values=["Add Task"])
         start_timer_button = FakeLocator()
         timer_display = FakeLocator(visible=True)
         timer_description = FakeLocator()
+        next_description = FakeLocator()
+        next_category = FakeLocator()
         page = FakePage(
             {
                 "#activity": activity_radio,
@@ -766,6 +802,8 @@ class PreviewWaitHelperTests(unittest.TestCase):
                 "#start-timer-btn": start_timer_button,
                 "#timer-display": timer_display,
                 "#timer-description": timer_description,
+                "#next-activity-description": next_description,
+                "#next-activity-category": next_category,
             }
         )
         page.evaluate = (
@@ -773,11 +811,45 @@ class PreviewWaitHelperTests(unittest.TestCase):
             if "activity.checked = true" in script
             else page.evaluations.append((script, payload))
         )
+        original_click = start_timer_button.click
 
-        start_activity_timer(page, "Replacement timer")
+        def click_and_replace_timer():
+            original_click()
+            timer_description.value = next_description.value
 
-        self.assertEqual(timer_description.value, "Replacement timer")
+        start_timer_button.click = click_and_replace_timer
+
+        start_activity_timer(page, "Replacement timer", category="work/project")
+
+        self.assertEqual(next_description.value, "Replacement timer")
+        self.assertEqual(next_category.value, "work/project")
         self.assertEqual(start_timer_button.clicks, 1)
+
+    def test_start_timer_from_unscheduled_task_clicks_task_timer_action_and_waits_for_ui(self):
+        task_id = "unsched-123"
+        start_button = FakeLocator()
+        timer_display = FakeLocator(visible=True)
+        timer_description = FakeLocator()
+        page = FakePage(
+            {
+                f'.task-card[data-task-id="{task_id}"] .btn-start-unscheduled-timer': start_button,
+                "#timer-display": timer_display,
+                "#timer-description": timer_description,
+            }
+        )
+        timer_display.visible = False
+        original_click = start_button.click
+
+        def click_and_show_linked_timer():
+            original_click()
+            timer_display.visible = True
+            timer_description.value = "Linked task"
+
+        start_button.click = click_and_show_linked_timer
+
+        start_timer_from_unscheduled_task(page, task_id, "Linked task")
+
+        self.assertEqual(start_button.clicks, 1)
 
     def test_stop_activity_timer_clicks_stop_button_and_waits_for_form(self):
         timer_display = FakeLocator(visible=True)

@@ -535,18 +535,18 @@ def start_activity_timer(
 
     if timer_display.is_visible():
         if category is not None:
-            page.locator("#timer-category").select_option(category)
+            page.locator("#next-activity-category").select_option(category)
         fill_locator_value(
             page,
-            page.locator("#timer-description"),
+            page.locator("#next-activity-description"),
             description,
-            description="running timer description",
+            description="next timer description",
         )
         wait_for_input_value(
             page,
-            "#timer-description",
+            "#next-activity-description",
             description,
-            description="running timer description before start",
+            description="next timer description before start",
         )
     else:
         if category is not None:
@@ -605,6 +605,11 @@ def stop_activity_timer(
         timeout_s=timeout_s,
         interval_s=interval_s,
     )
+
+
+def start_timer_from_unscheduled_task(page: Any, task_id: str, expected_description: str) -> None:
+    page.locator(f'.task-card[data-task-id="{task_id}"] .btn-start-unscheduled-timer').click()
+    wait_for_running_timer_ui(page, expected_description)
 
 
 def add_active_scheduled_task(page: Any, description: str, duration_minutes: int) -> None:
@@ -969,7 +974,13 @@ def add_scheduled_task(page: Any, description: str, start_time: str, duration_mi
     page.locator("#task-form button[type='submit']").click()
 
 
-def add_unscheduled_task(page: Any, description: str, est_minutes: int, priority: str = "medium") -> None:
+def add_unscheduled_task(
+    page: Any,
+    description: str,
+    est_minutes: int,
+    priority: str = "medium",
+    category: str | None = None,
+) -> None:
     page.locator("#unscheduled").check()
     fill_locator_value(
         page,
@@ -990,6 +1001,8 @@ def add_unscheduled_task(page: Any, description: str, est_minutes: int, priority
         str(est_minutes % 60),
         description="unscheduled task duration minutes",
     )
+    if category is not None:
+        page.locator("#category-select").select_option(category)
     page.locator("#task-form button[type='submit']").click()
 
 
@@ -1418,6 +1431,75 @@ def run_activities_room_scenario(
         raise ValueError("failed auto-log unexpectedly created an activity")
     demo_note("activities: auto-log failure path surfaced toast without persisting activity")
     assert_no_page_errors_yet("auto-log failure path")
+
+    add_unscheduled_task(
+        page,
+        "Playwright linked timer task",
+        25,
+        category="work/project",
+    )
+    linked_timer_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright linked timer task",
+    )
+    start_timer_from_unscheduled_task(
+        page,
+        linked_timer_task_doc["id"],
+        "Playwright linked timer task",
+    )
+    linked_running_config = wait_for_running_activity_config(
+        page,
+        rooms["activities"],
+        expected_description="Playwright linked timer task",
+        expected_category="work/project",
+    )
+    if linked_running_config.get("source") != "auto":
+        raise ValueError(
+            "unscheduled timer did not persist the auto source.\n"
+            f"{json.dumps(linked_running_config, indent=2)}"
+        )
+    if linked_running_config.get("sourceTaskId") != linked_timer_task_doc["id"]:
+        raise ValueError(
+            "unscheduled timer did not keep the source task id.\n"
+            f"{json.dumps(linked_running_config, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#unscheduled-task-list",
+        "In progress",
+        description="unscheduled linked timer in-progress badge",
+    )
+    stop_activity_timer(page)
+    wait_until(
+        lambda: not any(
+            normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            for doc in read_docs(page, rooms["activities"])
+        ),
+        "linked running activity config cleared after stop",
+    )
+    linked_timer_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright linked timer task",
+    )
+    if linked_timer_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "stopped unscheduled timer had wrong source.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    if linked_timer_activity_doc.get("sourceTaskId") != linked_timer_task_doc["id"]:
+        raise ValueError(
+            "stopped unscheduled timer did not keep the source task id.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    if linked_timer_activity_doc.get("category") != "work/project":
+        raise ValueError(
+            "stopped unscheduled timer did not inherit the task category.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    demo_note("activities: unscheduled task start-timer bridge verified")
+    assert_no_page_errors_yet("unscheduled start timer bridge")
 
     add_unscheduled_task(page, "Playwright delete confirm task", 15)
     delete_confirm_task_doc = wait_for_task_doc(
