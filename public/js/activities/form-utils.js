@@ -5,7 +5,7 @@ import {
     timeToDateTime
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
-import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import { validateCategoryKey } from '../category-form-utils.js';
 
 function extractActivityFields(formElement, options = {}) {
     const formData = new FormData(formElement);
@@ -32,8 +32,8 @@ function extractActivityFields(formElement, options = {}) {
         return null;
     }
 
-    if (categoryKey && !resolveCategoryKey(categoryKey)) {
-        showAlert('Selected category is no longer available.', 'sky');
+    const categoryResult = validateCategoryKey(categoryKey, 'sky');
+    if (!categoryResult.valid) {
         return null;
     }
 
@@ -43,7 +43,7 @@ function extractActivityFields(formElement, options = {}) {
 
     return {
         description,
-        category: categoryKey || null,
+        category: categoryResult.category,
         startDateTime,
         endDateTime,
         duration: durationResult.duration

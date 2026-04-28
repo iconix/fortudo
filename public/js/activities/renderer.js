@@ -9,6 +9,7 @@ import {
     convertTo12HourTime,
     extractDateFromDateTime
 } from '../utils.js';
+import { renderCategorySelectRow } from '../category-form-utils.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { buildActivitySummaryModel } from './summary.js';
 
@@ -25,20 +26,6 @@ function formatTimeRange(startDateTime, endDateTime) {
     const startTime = extractTimeFromDateTime(new Date(startDateTime));
     const endTime = extractTimeFromDateTime(new Date(endDateTime));
     return `${convertTo12HourTime(startTime)} - ${convertTo12HourTime(endTime)}`;
-}
-
-function renderCategoryOptions(selectedCategory) {
-    const options = getSelectableCategoryOptions();
-    const baseOption = '<option value="">No category</option>';
-    const renderedOptions = options
-        .map((option) => {
-            const indent = option.indentLevel > 0 ? '&nbsp;&nbsp;' : '';
-            const selected = option.value === selectedCategory ? ' selected' : '';
-            return `<option value="${escapeHtml(option.value)}"${selected}>${indent}${escapeHtml(option.label)}</option>`;
-        })
-        .join('');
-
-    return `${baseOption}${renderedOptions}`;
 }
 
 function getSummarySwatchStyle(summaryItem) {
@@ -204,6 +191,15 @@ function renderInlineEditActivityItem(activity) {
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
     const resolvedCategory = activity.category ? resolveCategoryKey(activity.category) : null;
     const categoryColor = resolvedCategory?.record?.color || '#64748b';
+    const categoryRowHtml = renderCategorySelectRow({
+        selectName: 'category',
+        selectedValue: activity.category || '',
+        options: getSelectableCategoryOptions(),
+        dotClass: 'activity-edit-category-dot',
+        selectClass:
+            'bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100',
+        dotStyle: `background-color: ${categoryColor};`
+    });
     const endTimeHint = computeEndTimePreview(
         displayStartTime,
         durationHours.toString(),
@@ -228,12 +224,7 @@ function renderInlineEditActivityItem(activity) {
                     class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100" required>
             </div>
             <div class="sm:flex-1 sm:min-w-[13rem]">
-                <div class="flex items-center gap-2">
-                <span class="activity-edit-category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${escapeHtml(categoryColor)};"></span>
-                <select name="category" class="bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
-                    ${renderCategoryOptions(activity.category)}
-                </select>
-                </div>
+                ${categoryRowHtml}
             </div>
         </div>
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:pb-5">

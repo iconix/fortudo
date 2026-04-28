@@ -723,6 +723,7 @@ export function updateTask(index, taskData) {
         return { success: false, reason: 'Invalid task index.' };
     }
     const existingTask = tasks[index];
+    const hasCategoryUpdate = Object.prototype.hasOwnProperty.call(taskData, 'category');
     let updatedProposedDetails = {
         description:
             taskData.description !== undefined ? taskData.description : existingTask.description,
@@ -731,7 +732,8 @@ export function updateTask(index, taskData) {
         id: existingTask.id,
         editing: false,
         confirmingDelete: existingTask.confirmingDelete,
-        locked: taskData.locked !== undefined ? taskData.locked : existingTask.locked
+        locked: taskData.locked !== undefined ? taskData.locked : existingTask.locked,
+        category: hasCategoryUpdate ? taskData.category || null : existingTask.category || null
     };
 
     let wasShiftedByLocked = false;
@@ -873,6 +875,9 @@ export function updateUnscheduledTask(taskId, newData) {
     taskToUpdate.description = newData.description;
     taskToUpdate.priority = newData.priority;
     taskToUpdate.estDuration = newData.estDuration;
+    if (Object.prototype.hasOwnProperty.call(newData, 'category')) {
+        taskToUpdate.category = newData.category || null;
+    }
 
     finalizeTaskModification(taskToUpdate);
     return { success: true, task: taskToUpdate };

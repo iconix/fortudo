@@ -10,7 +10,12 @@ import {
 } from '../utils.js';
 import { showAlert } from '../modal-manager.js';
 import { checkOverlap } from '../reschedule-engine.js';
-import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import { getSelectableCategoryOptions } from '../taxonomy/taxonomy-selectors.js';
+import {
+    populateCategorySelect,
+    syncCategoryColorDot,
+    validateCategoryKey
+} from '../category-form-utils.js';
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
@@ -41,6 +46,8 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
     const hoursInput = form.querySelector('input[name="inline-edit-est-duration-hours"]');
     const minutesInput = form.querySelector('input[name="inline-edit-est-duration-minutes"]');
     const priorityRadios = form.querySelectorAll('input[name="inline-edit-priority"]');
+    const categorySelect = form.querySelector('select[name="inline-edit-category"]');
+    const categoryDot = form.querySelector('.unscheduled-edit-category-dot');
 
     if (descriptionInput instanceof HTMLInputElement) descriptionInput.value = taskData.description;
     else logger.warn('Description input not found for inline edit form', form);
@@ -56,6 +63,15 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
             radio.checked = radio.value === taskData.priority;
         }
     });
+
+    if (categorySelect instanceof HTMLSelectElement) {
+        populateCategorySelect(
+            categorySelect,
+            getSelectableCategoryOptions(),
+            taskData.category || ''
+        );
+    }
+    syncCategoryColorDot(categorySelect, categoryDot);
 }
 
 /**
@@ -87,6 +103,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
     const selectedPriorityElement = form.querySelector(
         'input[name="inline-edit-priority"]:checked'
     );
+    const categorySelect = form.querySelector('select[name="inline-edit-category"]');
 
     const description =
         descriptionInput instanceof HTMLInputElement ? descriptionInput.value.trim() : '';
@@ -110,8 +127,18 @@ export function getUnscheduledTaskInlineFormData(taskId) {
         selectedPriorityElement instanceof HTMLInputElement
             ? selectedPriorityElement.value
             : 'medium';
+    const categoryValue = categorySelect instanceof HTMLSelectElement ? categorySelect.value : '';
+    const categoryResult = validateCategoryKey(categoryValue, 'indigo');
+    if (!categoryResult.valid) {
+        return null;
+    }
 
-    return { description, priority, estDuration: durationResult.duration };
+    return {
+        description,
+        priority,
+        estDuration: durationResult.duration,
+        category: categoryResult.category
+    };
 }
 
 /**
@@ -167,13 +194,15 @@ export function extractTaskFormData(formElement) {
     }
 
     let taskData = { description, taskType };
-    const categoryKey = formData.get('category')?.toString() || null;
-    if (categoryKey) {
-        if (!resolveCategoryKey(categoryKey)) {
-            showAlert('Selected category is no longer available.', getThemeForTaskType(taskType));
-            return null;
-        }
-        taskData.category = categoryKey;
+    const categoryResult = validateCategoryKey(
+        formData.get('category')?.toString() || '',
+        getThemeForTaskType(taskType)
+    );
+    if (!categoryResult.valid) {
+        return null;
+    }
+    if (categoryResult.category) {
+        taskData.category = categoryResult.category;
     }
 
     if (taskType === 'scheduled') {
@@ -227,28 +256,7 @@ export function getTaskFormElement() {
  * @param {Array<{value: string, label: string, indentLevel: number}>} options
  */
 export function populateCategoryDropdown(selectElement, options) {
-    const currentValue = selectElement.value;
-
-    while (selectElement.options.length > 1) {
-        selectElement.remove(1);
-    }
-
-    for (const optionData of options) {
-        const option = document.createElement('option');
-        option.value = optionData.value;
-        option.textContent =
-            optionData.indentLevel > 0
-                ? `${'› '.repeat(optionData.indentLevel)}${optionData.label}`
-                : optionData.label;
-        selectElement.appendChild(option);
-    }
-
-    if (
-        currentValue &&
-        Array.from(selectElement.options).some((option) => option.value === currentValue)
-    ) {
-        selectElement.value = currentValue;
-    }
+    populateCategorySelect(selectElement, options, selectElement.value);
 }
 
 /**
@@ -261,13 +269,7 @@ export function initializeCategoryDropdownListener() {
         return;
     }
 
-    const updateIndicator = () => {
-        const resolved = resolveCategoryKey(select.value);
-        dot.style.backgroundColor = resolved ? resolved.record.color : '#64748b';
-    };
-
-    select.addEventListener('change', updateIndicator);
-    updateIndicator();
+    syncCategoryColorDot(select, dot);
 }
 
 // --- End Time Preview Functions ---

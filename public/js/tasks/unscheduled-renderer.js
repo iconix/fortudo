@@ -1,6 +1,10 @@
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
-import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
+import { renderCategorySelectRow } from '../category-form-utils.js';
+import {
+    getSelectableCategoryOptions,
+    renderCategoryBadge
+} from '../taxonomy/taxonomy-selectors.js';
 import { getRunningActivity } from '../activities/manager.js';
 
 // --- DOM Element Getters ---
@@ -124,6 +128,14 @@ function createInlineEditFormHTML(task) {
     const checkedHigh = task.priority === 'high' ? 'checked' : '';
     const checkedMed = task.priority === 'medium' ? 'checked' : '';
     const checkedLow = task.priority === 'low' ? 'checked' : '';
+    const categoryRowHtml = renderCategorySelectRow({
+        selectName: 'inline-edit-category',
+        selectedValue: task.category || '',
+        options: getSelectableCategoryOptions(),
+        dotClass: 'unscheduled-edit-category-dot',
+        selectClass:
+            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base'
+    });
 
     return `
         <form class="space-y-3">
@@ -134,6 +146,9 @@ function createInlineEditFormHTML(task) {
                     placeholder="What needs to be done?"
                     class="task-edit-description bg-gray-700 pl-9 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base" required>
             </div>
+
+            <!-- Category Row -->
+            ${categoryRowHtml}
 
             <!-- Priority, Duration, and Buttons Row -->
             <div class="flex flex-col sm:flex-row gap-3">
