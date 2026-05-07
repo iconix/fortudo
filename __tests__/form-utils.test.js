@@ -28,6 +28,10 @@ jest.mock('../public/js/modal-manager.js', () => ({
 }));
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
+    getSelectableCategoryOptions: jest.fn(() => [
+        { value: 'work', label: 'Work', indentLevel: 0 },
+        { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+    ]),
     resolveCategoryKey: jest.fn()
 }));
 
@@ -340,7 +344,7 @@ describe('Form Utils Tests', () => {
         });
     });
 
-    describe('category helpers', () => {
+    describe('category dropdown integration', () => {
         test('populateCategoryDropdown renders a group option followed by indented children', () => {
             document.body.innerHTML = `
                 <select id="category-select">
@@ -466,6 +470,10 @@ describe('Form Utils Tests', () => {
                     <div class="inline-edit-unscheduled-form hidden">
                         <form>
                             <input type="text" name="inline-edit-description" value="" />
+                            <span class="unscheduled-edit-category-dot"></span>
+                            <select name="inline-edit-category">
+                                <option value="">No category</option>
+                            </select>
                             <input type="number" name="inline-edit-est-duration-hours" value="" />
                             <input type="number" name="inline-edit-est-duration-minutes" value="" />
                             <input type="radio" name="inline-edit-priority" value="high" ${checkedHigh} />
@@ -523,6 +531,33 @@ describe('Form Utils Tests', () => {
                 expect(minutesInput.value).toBe('30');
             });
 
+            test('populates category select and color dot from task data', () => {
+                createUnscheduledTaskCard('task-1', 'Original', 'medium', 60);
+                resolveCategoryKey.mockImplementation((key) =>
+                    key === 'work/deep'
+                        ? { kind: 'category', record: { key, color: '#0ea5e9' } }
+                        : null
+                );
+
+                populateUnscheduledTaskInlineEditForm('task-1', {
+                    description: 'Updated task',
+                    priority: 'medium',
+                    estDuration: 60,
+                    category: 'work/deep'
+                });
+
+                const categorySelect = document.querySelector(
+                    'select[name="inline-edit-category"]'
+                );
+                const categoryDot = document.querySelector('.unscheduled-edit-category-dot');
+
+                expect(categorySelect.value).toBe('work/deep');
+                expect(categorySelect.querySelector('option[value="work/deep"]').textContent).toBe(
+                    '› Deep Work'
+                );
+                expect(categoryDot.style.backgroundColor).toBe('rgb(14, 165, 233)');
+            });
+
             test('does not throw when task card not found', () => {
                 createUnscheduledTaskCard('task-1', 'Original', 'medium', 60);
                 expect(() => {
@@ -561,8 +596,61 @@ describe('Form Utils Tests', () => {
                 expect(result).toEqual({
                     description: 'Updated description',
                     priority: 'high',
-                    estDuration: 150
+                    estDuration: 150,
+                    category: null
                 });
+            });
+
+            test('extracts selected category from inline edit form', () => {
+                createUnscheduledTaskCard('task-1', 'Original', 'medium', 60);
+                resolveCategoryKey.mockImplementation((key) =>
+                    key === 'work/deep'
+                        ? { kind: 'category', record: { key, color: '#0ea5e9' } }
+                        : null
+                );
+
+                document.querySelector('input[name="inline-edit-description"]').value = 'Updated';
+                document.querySelector('input[name="inline-edit-est-duration-hours"]').value = '1';
+                document.querySelector('input[name="inline-edit-est-duration-minutes"]').value =
+                    '0';
+                document.querySelector('select[name="inline-edit-category"]').innerHTML = `
+                    <option value="">No category</option>
+                    <option value="work/deep">Deep Work</option>
+                `;
+                document.querySelector('select[name="inline-edit-category"]').value = 'work/deep';
+
+                const result = getUnscheduledTaskInlineFormData('task-1');
+
+                expect(result).toEqual({
+                    description: 'Updated',
+                    priority: 'medium',
+                    estDuration: 60,
+                    category: 'work/deep'
+                });
+            });
+
+            test('rejects stale inline edit category keys', () => {
+                createUnscheduledTaskCard('task-1', 'Original', 'medium', 60);
+                resolveCategoryKey.mockReturnValue(null);
+
+                document.querySelector('input[name="inline-edit-description"]').value = 'Updated';
+                document.querySelector('input[name="inline-edit-est-duration-hours"]').value = '1';
+                document.querySelector('input[name="inline-edit-est-duration-minutes"]').value =
+                    '0';
+                document.querySelector('select[name="inline-edit-category"]').innerHTML = `
+                    <option value="">No category</option>
+                    <option value="missing/category">Missing</option>
+                `;
+                document.querySelector('select[name="inline-edit-category"]').value =
+                    'missing/category';
+
+                const result = getUnscheduledTaskInlineFormData('task-1');
+
+                expect(result).toBeNull();
+                expect(showAlert).toHaveBeenCalledWith(
+                    'Selected category is no longer available.',
+                    'indigo'
+                );
             });
 
             test('returns null and shows alert when description is empty', () => {
@@ -616,7 +704,8 @@ describe('Form Utils Tests', () => {
                 expect(result).toEqual({
                     description: 'No estimate',
                     priority: 'medium',
-                    estDuration: 0
+                    estDuration: 0,
+                    category: null
                 });
             });
 

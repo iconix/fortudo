@@ -535,18 +535,18 @@ def start_activity_timer(
 
     if timer_display.is_visible():
         if category is not None:
-            page.locator("#timer-category").select_option(category)
+            page.locator("#next-activity-category").select_option(category)
         fill_locator_value(
             page,
-            page.locator("#timer-description"),
+            page.locator("#next-activity-description"),
             description,
-            description="running timer description",
+            description="next timer description",
         )
         wait_for_input_value(
             page,
-            "#timer-description",
+            "#next-activity-description",
             description,
-            description="running timer description before start",
+            description="next timer description before start",
         )
     else:
         if category is not None:
@@ -605,6 +605,11 @@ def stop_activity_timer(
         timeout_s=timeout_s,
         interval_s=interval_s,
     )
+
+
+def start_timer_from_unscheduled_task(page: Any, task_id: str, expected_description: str) -> None:
+    page.locator(f'.task-card[data-task-id="{task_id}"] .btn-start-unscheduled-timer').click()
+    wait_for_running_timer_ui(page, expected_description)
 
 
 def add_active_scheduled_task(page: Any, description: str, duration_minutes: int) -> None:
@@ -969,7 +974,13 @@ def add_scheduled_task(page: Any, description: str, start_time: str, duration_mi
     page.locator("#task-form button[type='submit']").click()
 
 
-def add_unscheduled_task(page: Any, description: str, est_minutes: int, priority: str = "medium") -> None:
+def add_unscheduled_task(
+    page: Any,
+    description: str,
+    est_minutes: int,
+    priority: str = "medium",
+    category: str | None = None,
+) -> None:
     page.locator("#unscheduled").check()
     fill_locator_value(
         page,
@@ -990,6 +1001,8 @@ def add_unscheduled_task(page: Any, description: str, est_minutes: int, priority
         str(est_minutes % 60),
         description="unscheduled task duration minutes",
     )
+    if category is not None:
+        page.locator("#category-select").select_option(category)
     page.locator("#task-form button[type='submit']").click()
 
 
@@ -1419,6 +1432,75 @@ def run_activities_room_scenario(
     demo_note("activities: auto-log failure path surfaced toast without persisting activity")
     assert_no_page_errors_yet("auto-log failure path")
 
+    add_unscheduled_task(
+        page,
+        "Playwright linked timer task",
+        25,
+        category="work/project",
+    )
+    linked_timer_task_doc = wait_for_task_doc(
+        page,
+        rooms["activities"],
+        "Playwright linked timer task",
+    )
+    start_timer_from_unscheduled_task(
+        page,
+        linked_timer_task_doc["id"],
+        "Playwright linked timer task",
+    )
+    linked_running_config = wait_for_running_activity_config(
+        page,
+        rooms["activities"],
+        expected_description="Playwright linked timer task",
+        expected_category="work/project",
+    )
+    if linked_running_config.get("source") != "auto":
+        raise ValueError(
+            "unscheduled timer did not persist the auto source.\n"
+            f"{json.dumps(linked_running_config, indent=2)}"
+        )
+    if linked_running_config.get("sourceTaskId") != linked_timer_task_doc["id"]:
+        raise ValueError(
+            "unscheduled timer did not keep the source task id.\n"
+            f"{json.dumps(linked_running_config, indent=2)}"
+        )
+    wait_for_text_in_locator(
+        page,
+        "#unscheduled-task-list",
+        "In progress",
+        description="unscheduled linked timer in-progress badge",
+    )
+    stop_activity_timer(page)
+    wait_until(
+        lambda: not any(
+            normalize_doc(doc).get("id") == RUNNING_ACTIVITY_CONFIG_ID
+            for doc in read_docs(page, rooms["activities"])
+        ),
+        "linked running activity config cleared after stop",
+    )
+    linked_timer_activity_doc = wait_for_activity_doc(
+        page,
+        rooms["activities"],
+        "Playwright linked timer task",
+    )
+    if linked_timer_activity_doc.get("source") != "auto":
+        raise ValueError(
+            "stopped unscheduled timer had wrong source.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    if linked_timer_activity_doc.get("sourceTaskId") != linked_timer_task_doc["id"]:
+        raise ValueError(
+            "stopped unscheduled timer did not keep the source task id.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    if linked_timer_activity_doc.get("category") != "work/project":
+        raise ValueError(
+            "stopped unscheduled timer did not inherit the task category.\n"
+            f"{json.dumps(linked_timer_activity_doc, indent=2)}"
+        )
+    demo_note("activities: unscheduled task start-timer bridge verified")
+    assert_no_page_errors_yet("unscheduled start timer bridge")
+
     add_unscheduled_task(page, "Playwright delete confirm task", 15)
     delete_confirm_task_doc = wait_for_task_doc(
         page,
@@ -1464,6 +1546,9 @@ def run_activities_room_scenario(
         description="activity inline edit description",
     )
     page.locator(
+        f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] select[name="category"]'
+    ).select_option("work/project")
+    page.locator(
         f'form.activity-inline-edit-form[data-activity-id="{editable_activity_doc["id"]}"] .btn-save-activity-edit'
     ).click()
     page.locator(
@@ -1473,9 +1558,10 @@ def run_activities_room_scenario(
         lambda: any(
             doc.get("id") == editable_activity_doc["id"]
             and doc.get("description") == "Playwright editable activity updated"
+            and doc.get("category") == "work/project"
             for doc in map(normalize_doc, read_docs(page, rooms["activities"]))
         ),
-        "activity edit after delete-confirm rerender",
+        "activity edit category after delete-confirm rerender",
     )
     if get_unscheduled_delete_state(page, delete_confirm_task_doc["id"]) != "idle":
         raise ValueError("delete confirm state was not cleared by activity edit")
@@ -1494,9 +1580,21 @@ def run_activities_room_scenario(
         "Playwright delete activity",
     )
     arm_unscheduled_delete_confirm(page, delete_confirm_task_doc["id"])
-    page.locator(
+    delete_activity_button = page.locator(
         f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity'
-    ).click()
+    )
+    delete_activity_button.click()
+    wait_until(
+        lambda: "fa-check-circle"
+        in (
+            page.locator(
+                f'[data-activity-id="{deletable_activity_doc["id"]}"] .btn-delete-activity i'
+            ).get_attribute("class")
+            or ""
+        ),
+        "activity delete confirmation arm",
+    )
+    delete_activity_button.click()
     wait_until(
         lambda: not any(
             doc.get("id") == deletable_activity_doc["id"]
@@ -2168,7 +2266,7 @@ def run_smoke(
                         page.locator('#category-select option[value="work/project"]').text_content()
                         or ""
                     )
-                    == "Ã¢â‚¬Âº Project",
+                    == "› Project",
                     "visible nested project category option",
                 )
 
@@ -2375,6 +2473,67 @@ def run_smoke(
                 wait_for_toast_text(page, 'Category "work/project" is referenced by tasks')
                 close_settings_modal(page)
 
+                scheduled_taxonomy_doc = wait_for_task_doc(
+                    page,
+                    rooms["taxonomy"],
+                    "Taxonomy scheduled group task",
+                )
+                scheduled_edit_form_selector = open_scheduled_edit_form(
+                    page, scheduled_taxonomy_doc["id"]
+                )
+                page.locator(
+                    f'{scheduled_edit_form_selector} select[name="category"]'
+                ).select_option("work/meeting")
+                page.locator(scheduled_edit_form_selector).evaluate(
+                    "(form) => form.requestSubmit()"
+                )
+                page.locator(scheduled_edit_form_selector).wait_for(
+                    state="hidden", timeout=10000
+                )
+
+                unscheduled_taxonomy_doc = wait_for_task_doc(
+                    page,
+                    rooms["taxonomy"],
+                    "Taxonomy child category task",
+                )
+                unscheduled_card_selector = (
+                    f'.task-card[data-task-id="{unscheduled_taxonomy_doc["id"]}"]'
+                )
+                page.locator(f"{unscheduled_card_selector} .btn-edit-unscheduled").click()
+                page.locator(
+                    f'{unscheduled_card_selector} select[name="inline-edit-category"]'
+                ).wait_for(state="visible", timeout=10000)
+                page.locator(
+                    f'{unscheduled_card_selector} select[name="inline-edit-category"]'
+                ).select_option("break/walk")
+                page.locator(f"{unscheduled_card_selector} .btn-save-inline-edit").click()
+
+                wait_until(
+                    lambda: (
+                        lambda docs: any(
+                            doc.get("description") == "Taxonomy scheduled group task"
+                            and doc.get("category") == "work/meeting"
+                            for doc in docs
+                        )
+                        and any(
+                            doc.get("description") == "Taxonomy child category task"
+                            and doc.get("category") == "break/walk"
+                            for doc in docs
+                        )
+                    )(list(map(normalize_doc, read_docs(page, rooms["taxonomy"])))),
+                    "taxonomy task edit category persistence",
+                )
+                wait_until(
+                    lambda: "Meeting" in (page.locator("#scheduled-task-list").text_content() or ""),
+                    "scheduled edited category badge label",
+                )
+                wait_until(
+                    lambda: "Walk" in (page.locator("#unscheduled-task-list").text_content() or ""),
+                    "unscheduled edited category badge label",
+                )
+                demo_note("taxonomy: scheduled and unscheduled category edits persisted")
+                assert_no_page_errors_yet("taxonomy task category edits")
+
                 taxonomy_summary = summarize_docs(read_docs(page, rooms["taxonomy"]))
                 taxonomy_config = next(
                     (
@@ -2412,12 +2571,12 @@ def run_smoke(
                         lambda: (
                             lambda summary: any(
                                 doc.get("description") == "Taxonomy scheduled group task"
-                                and doc.get("category") == "family"
+                                and doc.get("category") == "work/meeting"
                                 for doc in summary["tasks"]
                             )
                             and any(
                                 doc.get("description") == "Taxonomy child category task"
-                                and doc.get("category") == "work/project"
+                                and doc.get("category") == "break/walk"
                                 for doc in summary["tasks"]
                             )
                             and any(

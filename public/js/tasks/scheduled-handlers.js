@@ -152,6 +152,13 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     if (!taskData) {
         return;
     }
+    const categorySelect = formElement.querySelector('select[name="category"]');
+    if (
+        categorySelect instanceof HTMLSelectElement &&
+        !Object.prototype.hasOwnProperty.call(taskData, 'category')
+    ) {
+        taskData.category = null;
+    }
 
     const taskToSave = getTaskById(taskId);
     if (!taskToSave || taskToSave.type !== 'scheduled') {

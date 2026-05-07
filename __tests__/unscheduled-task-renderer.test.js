@@ -6,6 +6,21 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getRunningActivity: jest.fn(() => null)
 }));
 
+jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
+    getSelectableCategoryOptions: jest.fn(() => [
+        { value: 'work', label: 'Work', indentLevel: 0 },
+        { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+    ]),
+    resolveCategoryKey: jest.fn((key) =>
+        key === 'work/deep'
+            ? { kind: 'category', record: { key, label: 'Deep Work', color: '#0ea5e9' } }
+            : null
+    ),
+    renderCategoryBadge: jest.fn((categoryKey) =>
+        categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
+    )
+}));
+
 import { renderUnscheduledTasks } from '../public/js/tasks/unscheduled-renderer.js';
 import { getRunningActivity } from '../public/js/activities/manager.js';
 
@@ -78,5 +93,31 @@ describe('unscheduled task renderer', () => {
         expect(document.querySelector('.btn-delete-unscheduled').hasAttribute('disabled')).toBe(
             true
         );
+    });
+
+    test('renders category select and color dot for inline editing task', () => {
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-3',
+                    type: 'unscheduled',
+                    description: 'Inbox zero',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'incomplete',
+                    isEditingInline: true,
+                    category: 'work/deep'
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const select = document.querySelector('select[name="inline-edit-category"]');
+        const dot = document.querySelector('.unscheduled-edit-category-dot');
+        expect(select).not.toBeNull();
+        expect(select.value).toBe('work/deep');
+        expect(select.querySelector('option[value="work/deep"]').textContent).toBe('› Deep Work');
+        expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
     });
 });

@@ -111,11 +111,13 @@ Ephemeral config doc representing a live timer. Created on timer start, deleted 
     id: 'config-running-activity',
     description: String,
     category: String | null,
-    startDateTime: String  // ISO datetime, real wall-clock time
+    startDateTime: String,  // ISO datetime, real wall-clock time
+    source: 'timer' | 'auto',
+    sourceTaskId: String | null
 }
 ```
 
-When the timer stops, this config doc is deleted and a normal activity document is created with `source: 'timer'`, computed `endDateTime` and `duration`.
+When the timer stops, this config doc is deleted and a normal activity document is created with the timer's source metadata, computed `endDateTime`, and `duration`.
 
 Shared field names between tasks and activities: `description`, `startDateTime`, `endDateTime`, `duration`, `category`.
 
@@ -204,9 +206,14 @@ public/js/
 |   |-- handlers.js               # activity add/edit/delete handlers
 |   |-- form-utils.js             # activity form extraction (add + edit)
 |   |-- ui-handlers.js            # activity UI orchestration (form routing, list clicks, edit state, timer display)
+|   |-- app-wiring.js             # activity-specific app callback and listener setup
+|   |-- running-activity-repository.js # config doc persistence for running timer state
+|   |-- summary.js                # activity category summary selectors/model
+|   |-- timer-ui.js               # live timer display, elapsed counter, and timer form synchronization
 |   |-- smoke-hooks.js            # testability hooks for forcing activity failures in preview/smoke
 |   `-- insights-renderer.js      # (Phase 5) insights dashboard, timeline, charts
 |-- app.js                        # boot sequence, DOM setup, storage + room wiring
+|-- app-lifecycle.js              # room/session lifecycle, midnight checks, and session-scoped refresh
 |-- app-coordinator.js            # runtime post-mutation orchestration
 |-- storage.js                    # PouchDB persistence layer
 |-- dom-renderer.js               # page-level rendering and event wiring
@@ -269,13 +276,13 @@ Bridges the gap between Fortudo's retrospective logging and the real-time start/
 
 **Backdating:** The start time on the timer display is editable via a time picker. Use case: you forgot to start the timer 20 minutes ago.
 
-**Boot restoration:** If a `config-running-activity` doc exists on load, the timer state is silently restored and the elapsed counter resumes from the persisted `startDateTime`. The user stays on whichever tab they land on, but the activity tab gets a brief UI highlight (pulse, badge, or similar) to signal that a timer is running. Navigating to the activity tab shows the timer display.
+**Boot restoration:** If a `config-running-activity` doc exists on load, the timer state is silently restored and the elapsed counter resumes from the persisted `startDateTime`. The implementation switches the form back into Activity mode when a running timer is restored so the active timer is immediately visible.
 
 **Stop triggers:**
 
 1. **Explicit stop** -- user clicks "Stop" button
 2. **Stop-on-start** -- starting a new timer auto-stops the running one (no confirmation). The stopped timer's `endDateTime` is set to now, its activity is created, then the new timer starts. Sequential execution to avoid two config docs existing simultaneously.
-3. **Task completion with overlap** -- when auto-logging fires in `onTaskCompleted`, if the auto-logged activity's time range overlaps with the running timer's active range (`startDateTime` through now), the timer is stopped with `endDateTime` set to the auto-log's `startDateTime`. If no overlap, the timer keeps running. **Guard:** if the early-completion time adjustment shifts the auto-log's `startDateTime` to before the timer's own `startDateTime`, clamp the timer's `endDateTime` to its `startDateTime` (producing a zero-duration activity) rather than creating a negative duration. The zero-duration activity is still saved per the "always create" edge case decision.
+3. **Task completion with overlap** -- when auto-logging fires in `onTaskCompleted`, if the auto-logged activity's time range overlaps with the running timer's active range (`startDateTime` through now), the timer is stopped with `endDateTime` set to the auto-log's `startDateTime`. If no overlap, the timer keeps running. **Guard:** if the early-completion time adjustment shifts the auto-log's `startDateTime` to before the timer's own `startDateTime`, clamp the timer stop boundary to the timer's `startDateTime` rather than creating a negative duration. Completed activity saves enforce a one-minute minimum duration, so the stored timer activity remains valid for the activity log and summary views.
 
 **Early task completion adjustment:** When `createActivityFromTask` runs and the task's planned `startDateTime` is in the future, the auto-log times are adjusted: `endDateTime` = now, `startDateTime` = now minus the task's `duration`. This ensures auto-logged activities reflect when the work actually happened rather than when it was planned.
 
@@ -284,7 +291,9 @@ Bridges the gap between Fortudo's retrospective logging and the real-time start/
 **Timer state management** in `activities/manager.js`:
 
 - `startTimer({ description, category })` -- writes config doc, returns running state
+- `startTimerReplacingCurrent(timerData)` -- stop-on-start flow that converts the current timer into an activity before starting the next timer
 - `stopTimer()` -- reads config doc, computes duration, creates activity, deletes config doc
+- `stopTimerAt(endDateTime)` -- stops the timer at a supplied boundary for auto-log overlap and midnight rollover handling
 - `getRunningActivity()` -- synchronous read from in-memory cache (same pattern as `isActivitiesEnabled()`)
 - `updateRunningActivity({ description, category, startDateTime })` -- updates config doc (for backdating or mid-timer changes)
 - `loadRunningActivity()` -- called during boot, populates in-memory cache
@@ -305,7 +314,7 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
    - Category breakdown bars
 
 2. **Activity Log**
-   - Chronological list of today's activities
+   - Newest-first list of today's activities
    - Each entry shows description, category badge, time range, and duration
    - All entries (manual and auto-logged) are editable and deletable via inline editing
    - Auto entries show a source task link with provenance metadata; editing creates a modified copy retaining `sourceTaskId`
@@ -391,7 +400,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 1. **Timer state as PouchDB config doc, not activity doc.** A running timer is ephemeral coordinator state, not a first-class activity. It becomes an activity only when stopped. This keeps the activity schema clean (no `status: 'running'` partial documents) and avoids confusing insights queries. The config doc syncs across devices and survives page reloads.
 
-2. **No new files.** Timer logic extends `activities/manager.js` (state, start/stop/update) and `activities/ui-handlers.js` (timer display, elapsed counter, form transitions). The timer is a feature of activity management, not a separate module.
+2. **Focused timer extraction.** Timer state still belongs to activity management, but the implementation extracted persistence and UI mechanics into focused helpers: `activities/running-activity-repository.js` owns the `config-running-activity` config doc, and `activities/timer-ui.js` owns elapsed display, timer form synchronization, debug snapshots, and server-clock correction. `activities/manager.js` remains the source of truth for timer state transitions.
 
 3. **Overlap check uses real time ranges, not assumptions.** The auto-log's time range may be shifted (early completion adjustment), may be in the past (task was earlier), or may be in the future (planned for later). The overlap check compares the running timer's active range (`startDateTime` through now) against the auto-log's actual time range. Only true overlaps trigger a timer stop.
 
@@ -465,44 +474,62 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Added empty states for activity views
 - Both manual and auto-logged activities are editable; auto entries retain provenance metadata (`sourceTaskId`) through edits
 
-### Next Planned Work
+### Completed Live Timer Work
 
 **Phase 4.5: Live activity timer**
 
-- Add timer state management to `activities/manager.js`: `startTimer`, `stopTimer`, `getRunningActivity`, `updateRunningActivity`, `loadRunningActivity`
-- Add `config-running-activity` PouchDB config doc persistence with in-memory cache
-- Add timer display UI to `activities/ui-handlers.js`: elapsed counter, stop button, editable fields (description, category, start time), form-to-timer and timer-to-form transitions
-- Add side-by-side "Log Activity" / "Start Timer" buttons on the activity form
-- Add stop-on-start behavior (starting a new timer auto-stops the running one)
-- Add early task completion time adjustment in `createActivityFromTask` (shift auto-log window to end at now when task was scheduled in the future)
-- Extend `onTaskCompleted` auto-log chain in coordinator: overlap detection with running timer, auto-stop at auto-log's `startDateTime` when ranges intersect
-- Add boot restoration of running timer from persisted config doc
-- Verify `deleteConfig` exists in `storage.js` or add it
+- Added running timer state management in `activities/manager.js`: `startTimer`, `startTimerReplacingCurrent`, `stopTimer`, `stopTimerAt`, `getRunningActivity`, `updateRunningActivity`, and `loadRunningActivity`
+- Added `config-running-activity` PouchDB config persistence through `activities/running-activity-repository.js`
+- Added timer display UI in `activities/timer-ui.js`: elapsed counter, stop button, editable description/category/start time, form-to-timer transitions, and timer field persistence
+- Added side-by-side "Log Activity" / "Start Timer" actions for the activity form
+- Added stop-on-start behavior through `startTimerReplacingCurrent`
+- Added early task completion time adjustment in `createActivityFromTask`
+- Extended `onTaskCompleted` auto-log chaining so overlapping scheduled-task auto-logs stop the running timer at the auto-log boundary
+- Added boot restoration of persisted running timer state and activity-mode resynchronization
+- Added midnight rollover handling in `app-lifecycle.js` so a running timer is stopped at the local day boundary
+- Added server-clock-corrected elapsed display and timer debug snapshots for diagnosing device clock skew
+- Added category summary bars for today's activities, including parent-group aggregation, expandable child breakdowns, count badges, and live running-timer inclusion
+- Added newest-first activity log ordering, delete confirmation for activities, duplicate edit-save guards, and category dots on activity forms
+
+### Next Planned Work
 
 **Phase 4.7: Category editing parity**
 
-- Keep full-field inline editing on activities, including category changes
-- Add category editing to scheduled task inline edit forms
-- Add category editing to unscheduled task inline edit forms
-- Align task and activity edit layouts so category editing no longer exists only on activities
-- Add renderer, form-utils, handler, app, and smoke coverage for task category edit flows
+- Keep scheduled, unscheduled, and activity edit forms owned by their current feature modules; do not introduce a generic edit-form abstraction.
+- Add narrow shared category form helpers for the stable seams only: option HTML/population, category validation, and color-dot synchronization for a specific select/dot pair.
+- Add category editing to scheduled task inline edit forms, preserving existing start-time, duration, end-time hint, overlap warning, and reschedule-confirmation behavior.
+- Add category editing to unscheduled task inline edit forms, preserving existing priority, estimated-duration, completed-task, and in-progress timer behavior.
+- Continue supporting full-field inline editing on activities, including category changes; migrate activity inline category rendering to the shared helper only if it stays mechanical and low-risk.
+- Update scheduled and unscheduled task save paths so category changes persist through `updateTask` and `updateUnscheduledTask`.
+- Reject stale or deleted category keys on save with the existing themed alert behavior and without mutating the task.
+- Add renderer, form-utils, manager/handler, app, and smoke coverage for task category edit flows.
+- Acceptance coverage: scheduled category render/save/reject paths, scheduled overlap behavior with category edits, unscheduled category render/save/reject paths, edited unscheduled category flowing into "start timer from task," and unchanged activity category edit behavior.
 
 **Phase 5: Insights view**
 
 - Add header tab toggle for Tasks / Insights
 - Add two-row plan-vs-actual timeline
-- Add activity log list with edit/delete for manual entries
-- Add category breakdown bars and summary stats
+- Promote the existing newest-first Activity Log into the Insights view rather than rebuilding it from scratch
+- Reuse and refine the existing parent-group activity summary bars, including expandable child breakdowns and count badges
+- Ensure today's actual totals and summary bars include the live running-timer snapshot when a timer is active
+- Make the plan-vs-actual timeline handle in-progress activity ranges, midnight-clamped timer stops, and restored timer state
 - Add trends section
 - Add keyboard shortcut for tab toggle if it still feels worthwhile
+- Treat restored timers, stop-on-start, unscheduled task timer promotion, and overlap auto-stop as Phase 5 acceptance coverage rather than deferring all activity E2E coverage to polish
 
 **Phase 6: Polish and E2E**
 
-- Add E2E coverage for activity flows
+- Expand E2E coverage for remaining activity flows and cross-device/sync confidence after Phase 5 acceptance coverage is in place
 - Add a one-time "What's new?" prompt on initial app load after Activities ships, highlighting activity logging, timer capture, and insights
-- Rename orchestration modules to clarify responsibilities, e.g. distinguish the room/session lifecycle coordinator from the post-mutation coordinator (`app-lifecycle.js` / `app-coordinator.js`)
+- Review orchestration module naming and docs so `app-lifecycle.js` clearly owns room/session lifecycle and day-boundary timers, while `app-coordinator.js` owns post-mutation side effects
 - Finalize activity accent color
 - Add transitions and micro-interactions
 - Adapt timeline UX for mobile
 - Add onboarding tooltips on first Activities enable
 - Evaluate Chart.js only if the hand-rolled visuals are too plain
+
+**Operational hardening follow-up**
+
+- Preserve the timer debug snapshot seam and server-clock offset handling for future elapsed-time work
+- Add focused regression coverage whenever a feature touches elapsed counters, midnight boundaries, restored timer state, or cross-device running-timer sync
+- Keep lifecycle behavior session-scoped so room switches and in-flight sync cannot mutate the wrong room's activity/timer UI

@@ -12,7 +12,11 @@ import {
     computeOverlapPreview,
     formatOverlapWarning
 } from './form-utils.js';
-import { renderCategoryBadge } from '../taxonomy/taxonomy-selectors.js';
+import { renderCategorySelectRow, syncCategoryColorDot } from '../category-form-utils.js';
+import {
+    getSelectableCategoryOptions,
+    renderCategoryBadge
+} from '../taxonomy/taxonomy-selectors.js';
 
 // --- DOM Element Getters ---
 export function getScheduledTaskListElement() {
@@ -41,6 +45,14 @@ export function renderEditTaskHTML(task, index) {
         : '';
     const durationHours = task.duration ? Math.floor(task.duration / 60) : 0;
     const durationMinutes = task.duration ? task.duration % 60 : 0;
+    const categoryRowHtml = renderCategorySelectRow({
+        selectName: 'category',
+        selectedValue: task.category || '',
+        options: getSelectableCategoryOptions(),
+        dotClass: 'scheduled-edit-category-dot',
+        selectClass:
+            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
+    });
 
     return `
         <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 shadow-lg text-left space-y-4">
@@ -52,6 +64,9 @@ export function renderEditTaskHTML(task, index) {
                 <input type="text" name="description" value="${task.description}" placeholder="What needs to be done?"
                     class="bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
             </div>
+
+            <!-- Category Row -->
+            ${categoryRowHtml}
 
             <!-- Time, Duration, and Buttons Row -->
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:pb-5">
@@ -292,6 +307,8 @@ export function renderTasks(
         const startInput = form.querySelector('input[name="start-time"]');
         const hoursInput = form.querySelector('input[name="duration-hours"]');
         const minutesInput = form.querySelector('input[name="duration-minutes"]');
+        const categorySelect = form.querySelector('select[name="category"]');
+        const categoryDot = form.querySelector('.scheduled-edit-category-dot');
 
         if (
             !(startInput instanceof HTMLInputElement) ||
@@ -337,6 +354,8 @@ export function renderTasks(
                     .replace(/hover:to-teal-300/g, 'hover:to-amber-300');
             }
         }
+
+        syncCategoryColorDot(categorySelect, categoryDot);
     });
 
     return updatedCallbacks;

@@ -928,6 +928,40 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(mockPutTask).toHaveBeenCalled();
         });
 
+        test('updates a scheduled task category when edit data includes category', () => {
+            const updatedData = {
+                description: 'Task 1 Updated',
+                startTime: '09:00',
+                duration: 30,
+                category: 'work/deep'
+            };
+
+            const result = updateTask(0, updatedData);
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()[0].category).toBe('work/deep');
+            expect(mockPutTask).toHaveBeenCalledWith(
+                expect.objectContaining({ category: 'work/deep' })
+            );
+        });
+
+        test('clears a scheduled task category when edit data includes null category', () => {
+            const [task1, task2] = getTaskState();
+            updateTaskState([{ ...task1, category: 'work/deep' }, task2]);
+            mockPutTask.mockClear();
+
+            const result = updateTask(0, {
+                description: 'Task 1 Updated',
+                startTime: '09:00',
+                duration: 30,
+                category: null
+            });
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()[0].category).toBeNull();
+            expect(mockPutTask).toHaveBeenCalledWith(expect.objectContaining({ category: null }));
+        });
+
         test('should require confirmation if updating a task creates an overlap', () => {
             const updatedData = { description: 'Task 1 Updated', startTime: '09:30', duration: 60 }; // Now 09:30 - 10:30, overlaps Task 2
             const result = updateTask(0, updatedData);
@@ -2373,6 +2407,54 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].description).toBe('Updated');
             expect(tasks[0].priority).toBe('high');
             expect(tasks[0].estDuration).toBe(60);
+        });
+
+        test('updates unscheduled task category', () => {
+            const task = {
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Original',
+                priority: 'low',
+                estDuration: 30,
+                status: 'incomplete',
+                isEditingInline: true,
+                category: null
+            };
+            updateTaskState([task]);
+
+            const result = updateUnscheduledTask('unsched-1', {
+                description: 'Updated',
+                priority: 'high',
+                estDuration: 60,
+                category: 'work/deep'
+            });
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()[0].category).toBe('work/deep');
+        });
+
+        test('clears unscheduled task category', () => {
+            const task = {
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Original',
+                priority: 'low',
+                estDuration: 30,
+                status: 'incomplete',
+                isEditingInline: true,
+                category: 'work/deep'
+            };
+            updateTaskState([task]);
+
+            const result = updateUnscheduledTask('unsched-1', {
+                description: 'Updated',
+                priority: 'high',
+                estDuration: 60,
+                category: null
+            });
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()[0].category).toBeNull();
         });
 
         test('returns failure for non-existent task', () => {

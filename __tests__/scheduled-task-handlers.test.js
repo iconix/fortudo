@@ -137,7 +137,7 @@ describe('Scheduled Task Handlers', () => {
                 startTime: '09:00',
                 duration: 60
             });
-            updateTaskState([task]);
+            updateTaskState([{ ...task, category: 'work/deep' }]);
 
             handleLockTask(task.id, 0);
 
@@ -283,6 +283,38 @@ describe('Scheduled Task Handlers', () => {
                 })
             });
             expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('clears category when scheduled edit form selects no category', async () => {
+            const task = createTaskWithDateTime({
+                description: 'Before',
+                startTime: '09:00',
+                duration: 60,
+                editing: true
+            });
+            updateTaskState([{ ...task, category: 'work/deep' }]);
+            extractTaskFormData.mockReturnValue({
+                description: 'After',
+                startTime: '10:00',
+                duration: 45,
+                taskType: 'scheduled'
+            });
+
+            const formElement = document.createElement('form');
+            formElement.innerHTML = `
+                <select name="category">
+                    <option value="" selected>No category</option>
+                </select>
+            `;
+
+            await handleSaveTaskEdit(task.id, formElement, 0);
+
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({
+                    id: task.id,
+                    category: null
+                })
+            });
         });
 
         test('routes a confirmed reschedule edit through the coordinator based on the confirmed result', async () => {
