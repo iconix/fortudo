@@ -16,7 +16,8 @@ import { getActivityState, getRunningActivity } from '../public/js/activities/ma
 import { renderActivities } from '../public/js/activities/renderer.js';
 import {
     expandInsightsActivityLogLimit,
-    renderInsightsView
+    renderInsightsView,
+    setInsightsTrendDateRange
 } from '../public/js/activities/insights-renderer.js';
 import { replaceTaxonomyState } from '../public/js/taxonomy/taxonomy-store.js';
 import { calculateEndDateTime, timeToDateTime } from '../public/js/utils.js';
@@ -85,6 +86,8 @@ describe('activity insights renderer', () => {
     beforeEach(() => {
         setupDOM();
         jest.clearAllMocks();
+        expandInsightsActivityLogLimit(0);
+        setInsightsTrendDateRange(null);
         replaceTaxonomyState({
             groups: [{ key: 'work', label: 'Work', color: '#0f172a', colorFamily: 'blue' }],
             categories: [
@@ -151,6 +154,59 @@ describe('activity insights renderer', () => {
         expect(actualBlock.textContent).toContain('Actual focus');
     });
 
+    test('timeline block category color falls back when taxonomy color is unsafe', () => {
+        replaceTaxonomyState({
+            groups: [{ key: 'work', label: 'Work', color: '#0f172a', colorFamily: 'blue' }],
+            categories: [
+                {
+                    key: 'work/deep',
+                    label: 'Deep Work',
+                    groupKey: 'work',
+                    color: '#0ea5e9; background-image: url(javascript:alert(1))',
+                    isLinkedToGroupFamily: true
+                }
+            ]
+        });
+
+        renderWith({ tasks: [scheduledTask()] });
+
+        const plannedBlock = document.querySelector('[data-timeline-block="planned"]');
+
+        expect(plannedBlock.getAttribute('style')).toContain('background-color: #64748b;');
+        expect(plannedBlock.getAttribute('style')).not.toContain('javascript:');
+    });
+
+    test('timeline blocks include accessible text with label time range and duration', () => {
+        renderWith({
+            tasks: [
+                scheduledTask({
+                    description: 'Plan focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60
+                })
+            ],
+            activities: [
+                activity({
+                    description: 'Actual focus',
+                    startDateTime: isoAt('09:05'),
+                    endDateTime: isoAt('09:45'),
+                    duration: 40
+                })
+            ]
+        });
+
+        const plannedBlock = document.querySelector('[data-timeline-block="planned"]');
+        const actualBlock = document.querySelector('[data-timeline-block="actual"]');
+
+        expect(plannedBlock.querySelector('.sr-only').textContent).toBe(
+            'Plan focus, 9:00 AM - 10:00 AM, 1h'
+        );
+        expect(actualBlock.querySelector('.sr-only').textContent).toBe(
+            'Actual focus, 9:05 AM - 9:45 AM, 40m'
+        );
+    });
+
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {
         const activities = [
             activity({ id: 'activity-1', endDateTime: isoAt('09:30') }),
@@ -197,6 +253,29 @@ describe('activity insights renderer', () => {
 
         expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(55);
         expect(document.querySelector('[data-show-more-activities]')).toBeNull();
+    });
+
+    test('changing the trend date range resets Activity Log visible limit to default', () => {
+        const activities = Array.from({ length: 75 }, (_, index) =>
+            activity({
+                id: `activity-${index + 1}`,
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('09:30')
+            })
+        );
+
+        expandInsightsActivityLogLimit(50);
+        renderWith({ activities });
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(75);
+
+        setInsightsTrendDateRange({
+            startDate: '2026-04-24',
+            endDate: '2026-05-07'
+        });
+        renderWith({ activities });
+
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(50);
+        expect(document.querySelector('[data-show-more-activities]')).not.toBeNull();
     });
 
     test('initial Activity Log uses the default 14-day trend range', () => {

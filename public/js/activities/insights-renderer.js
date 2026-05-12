@@ -8,6 +8,7 @@ import { renderActivities } from './renderer.js';
 import { buildInsightsModel, buildTrendModel, getDefaultTrendDateRange } from './insights-model.js';
 
 const DEFAULT_ACTIVITY_LOG_LIMIT = 50;
+const FALLBACK_TIMELINE_COLOR = '#64748b';
 
 let activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 let storedTrendDateRange = null;
@@ -27,6 +28,16 @@ function formatTime(dateTime) {
 
 function getItemLabel(block) {
     return block.description || block.title || 'Untitled';
+}
+
+function normalizeTimelineColor(color) {
+    const value = String(color ?? '').trim();
+
+    if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value)) {
+        return value;
+    }
+
+    return FALLBACK_TIMELINE_COLOR;
 }
 
 function renderSummaryStat({ label, value }) {
@@ -67,7 +78,7 @@ function renderSummary(model) {
 }
 
 function getTimelineBlockStyle(block) {
-    const color = block.categoryMeta?.color || '#64748b';
+    const color = normalizeTimelineColor(block.categoryMeta?.color);
     const leftPercent = Math.max(0, Math.min(100, block.leftPercent || 0));
     const widthPercent = Math.max(0.25, Math.min(100 - leftPercent, block.widthPercent || 0));
 
@@ -85,6 +96,7 @@ function renderTimelineBlock(block, type) {
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">
         ${escapeHtml(label)}
+        <span class="sr-only">${escapeHtml(title)}</span>
     </div>`;
 }
 
@@ -176,6 +188,11 @@ function resolveDateRange({ dateRange = null, activityLogDateRange = null, now =
  * @param {number} increment
  */
 export function expandInsightsActivityLogLimit(increment = DEFAULT_ACTIVITY_LOG_LIMIT) {
+    if (Number(increment) === 0) {
+        activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
+        return;
+    }
+
     activityLogVisibleLimit += Math.max(0, Number(increment) || 0);
 }
 
@@ -185,6 +202,7 @@ export function expandInsightsActivityLogLimit(increment = DEFAULT_ACTIVITY_LOG_
  */
 export function setInsightsTrendDateRange(dateRange) {
     storedTrendDateRange = dateRange || null;
+    activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 }
 
 /**
