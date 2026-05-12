@@ -3,6 +3,7 @@ import { getTodaysActivities, getRunningActivity, getLiveTodayActivitySummary } 
 import { renderActivities, renderActivitySummaryOnly } from './renderer.js';
 import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from './handlers.js';
 import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
+import { syncActivitiesViewToggle } from './view-toggle.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 
@@ -64,6 +65,17 @@ export function syncActivitiesUI(enabled) {
             scheduledRadio.checked = true;
         }
     }
+
+    syncActivitiesViewToggle(enabled);
+}
+
+export function getActivityRenderOptions() {
+    return {
+        editingActivityId: activityUiState.editingActivityId,
+        expandedParentGroupKey: activityUiState.expandedParentGroupKey,
+        confirmingDeleteActivityId: activityUiState.confirmingDeleteActivityId,
+        summaryActivities: getActivitiesForSummary()
+    };
 }
 
 export function renderTodayActivities(enabled) {
@@ -75,12 +87,7 @@ export function renderTodayActivities(enabled) {
     renderActivities(
         todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        {
-            editingActivityId: activityUiState.editingActivityId,
-            expandedParentGroupKey: activityUiState.expandedParentGroupKey,
-            confirmingDeleteActivityId: activityUiState.confirmingDeleteActivityId,
-            summaryActivities: getActivitiesForSummary()
-        }
+        getActivityRenderOptions()
     );
 }
 

@@ -19,7 +19,7 @@ import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/sche
 import {
     renderTasks,
     renderUnscheduledTasks,
-    refreshUI,
+    refreshUI as refreshDomUI,
     getSuggestedFormStartTime,
     updateStartTimeField,
     initializePageEventListeners,
@@ -34,12 +34,21 @@ import {
     getRunningActivity,
     stopTimerAt
 } from './activities/manager.js';
-import { syncActivitiesUI, renderTodayActivities } from './activities/ui-handlers.js';
+import {
+    syncActivitiesUI,
+    renderTodayActivities,
+    getActivityRenderOptions
+} from './activities/ui-handlers.js';
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
     syncRestoredRunningTimer
 } from './activities/app-wiring.js';
+import {
+    initializeActivitiesViewToggle,
+    renderActiveInsightsView
+} from './activities/view-toggle.js';
+import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
@@ -145,11 +154,16 @@ async function initAndBootApp(roomCode) {
         renderTodayActivities(isActivitiesEnabled());
         refreshActiveTaskColor(allTasks);
         refreshCurrentGapHighlight();
+        renderActiveInsightsView();
+    };
+    const refreshAppUI = () => {
+        refreshDomUI();
+        renderActiveInsightsView();
     };
 
     const appCallbacks = createActivityAppCallbacks({
         getActivitiesEnabled: () => isActivitiesEnabled(),
-        refreshUI,
+        refreshUI: refreshAppUI,
         resetAllConfirmingDeleteFlags,
         focusTaskDescriptionInput,
         resetTaskFormPreviewState,
@@ -170,7 +184,7 @@ async function initAndBootApp(roomCode) {
 
     roomSessionLifecycle = createRoomSessionLifecycle({
         loadAppState,
-        refreshUI,
+        refreshUI: refreshAppUI,
         getActivitiesEnabled: () => isActivitiesEnabled(),
         syncRestoredRunningTimer,
         getTaskState,
@@ -247,9 +261,18 @@ async function initAndBootApp(roomCode) {
     initializeTaskTypeToggle();
     initializeActivityUi({
         signal,
-        refreshUI,
+        refreshUI: refreshAppUI,
         refreshTaskDisplays,
         getActivitiesEnabled: () => isActivitiesEnabled()
+    });
+    initializeActivitiesViewToggle({
+        isActivitiesEnabled: () => isActivitiesEnabled(),
+        renderInsights: () =>
+            renderInsightsView({
+                tasks: getTaskState(),
+                activityRenderOptions: getActivityRenderOptions(),
+                now: new Date()
+            })
     });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
