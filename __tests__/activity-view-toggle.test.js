@@ -48,9 +48,19 @@ describe('activity view shell', () => {
 
     test('hides toggle and forces tasks view when activities are disabled', () => {
         setupDOM();
+        const renderInsights = jest.fn();
+
+        initializeActivitiesViewToggle({
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
 
         syncActivitiesViewToggle(true);
         document.getElementById('view-toggle-insights').click();
+
+        expect(getActiveActivitiesView()).toBe('insights');
+        expect(renderInsights).toHaveBeenCalledTimes(1);
+
         syncActivitiesViewToggle(false);
 
         expect(document.getElementById('view-toggle').classList.contains('hidden')).toBe(true);
@@ -79,8 +89,10 @@ describe('activity view shell', () => {
     test('hides clear actions and closes dropdown while insights is active', () => {
         setupDOM();
         const dropdown = document.getElementById('clear-tasks-dropdown');
+        const clearOptionsButton = document.getElementById('clear-options-dropdown-trigger-btn');
         dropdown.classList.remove('hidden');
         dropdown.style.display = 'block';
+        clearOptionsButton.setAttribute('aria-expanded', 'true');
 
         initializeActivitiesViewToggle({
             getActivitiesEnabled: () => true,
@@ -99,13 +111,39 @@ describe('activity view shell', () => {
         ).toBe(true);
         expect(dropdown.classList.contains('hidden')).toBe(true);
         expect(dropdown.style.display).toBe('none');
+        expect(clearOptionsButton.getAttribute('aria-expanded')).toBe('false');
 
         document.getElementById('view-toggle-tasks').click();
 
         expect(document.getElementById('clear-schedule-button').classList.contains('hidden')).toBe(
             false
         );
+        expect(clearOptionsButton.classList.contains('hidden')).toBe(false);
         expect(getActiveActivitiesView()).toBe('tasks');
+    });
+
+    test('Tab does not toggle views from editable targets', () => {
+        setupDOM();
+        const renderInsights = jest.fn();
+        const editableTarget = document.createElement('input');
+        document.body.append(editableTarget);
+
+        initializeActivitiesViewToggle({
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+        syncActivitiesViewToggle(true);
+
+        const tabEvent = new KeyboardEvent('keydown', {
+            key: 'Tab',
+            bubbles: true,
+            cancelable: true
+        });
+        editableTarget.dispatchEvent(tabEvent);
+
+        expect(getActiveActivitiesView()).toBe('tasks');
+        expect(renderInsights).not.toHaveBeenCalled();
+        expect(tabEvent.defaultPrevented).toBe(false);
     });
 
     test('Tab toggles views when activities are enabled and focus is not editable', () => {
