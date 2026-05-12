@@ -12,6 +12,7 @@ jest.mock('../public/js/activities/renderer.js', () => ({
 }));
 
 import { setupDOM } from './test-utils.js';
+import { getByRole } from '@testing-library/dom';
 import { getActivityState, getRunningActivity } from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
 import {
@@ -205,6 +206,37 @@ describe('activity insights renderer', () => {
         expect(actualBlock.querySelector('.sr-only').textContent).toBe(
             'Actual focus, 9:05 AM - 9:45 AM, 40m'
         );
+    });
+
+    test('timeline blocks expose full accessible labels through an image role', () => {
+        renderWith({
+            tasks: [
+                scheduledTask({
+                    description: 'Plan focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60
+                })
+            ],
+            activities: [
+                activity({
+                    description: 'Actual focus',
+                    startDateTime: isoAt('09:05'),
+                    endDateTime: isoAt('09:45'),
+                    duration: 40
+                })
+            ]
+        });
+
+        const plannedBlock = getByRole(document.body, 'img', {
+            name: 'Plan focus, 9:00 AM - 10:00 AM, 1h'
+        });
+        const actualBlock = getByRole(document.body, 'img', {
+            name: 'Actual focus, 9:05 AM - 9:45 AM, 40m'
+        });
+
+        expect(plannedBlock.dataset.timelineBlock).toBe('planned');
+        expect(actualBlock.dataset.timelineBlock).toBe('actual');
     });
 
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {

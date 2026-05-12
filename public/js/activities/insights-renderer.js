@@ -91,7 +91,7 @@ function renderTimelineBlock(block, type) {
     const duration = calculateHoursAndMinutes(block.duration);
     const title = `${label}, ${timeRange}, ${duration}`;
 
-    return `<div data-timeline-block="${type}" class="absolute top-1 h-8 overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-8 text-white shadow-sm"
+    return `<div data-timeline-block="${type}" role="img" class="absolute top-1 h-8 overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-8 text-white shadow-sm"
         style="${getTimelineBlockStyle(block)}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">
