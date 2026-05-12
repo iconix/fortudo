@@ -220,6 +220,40 @@ describe('activity insights model', () => {
         expect(model.activityLog.map((entry) => entry.id)).toEqual(['old-activity']);
     });
 
+    test('buildInsightsModel sorts the Activity Log by newest end time', () => {
+        const model = buildInsightsModel({
+            tasks: [],
+            activities: [
+                activity({
+                    id: 'long-ends-later',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('11:00'),
+                    duration: 120
+                }),
+                activity({
+                    id: 'short-starts-later',
+                    startDateTime: isoAt('10:00'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 30
+                }),
+                activity({
+                    id: 'same-end-later-start',
+                    startDateTime: isoAt('10:15'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 15
+                })
+            ],
+            now: new Date(isoAt('12:00')),
+            activityLogDateRange: { startDate: '2026-05-07', endDate: '2026-05-07' }
+        });
+
+        expect(model.activityLog.map((entry) => entry.id)).toEqual([
+            'long-ends-later',
+            'same-end-later-start',
+            'short-starts-later'
+        ]);
+    });
+
     test('buildInsightsModel detects activityLogIssues inside the selected historical range', () => {
         const model = buildInsightsModel({
             tasks: [],

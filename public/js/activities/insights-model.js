@@ -338,6 +338,12 @@ function compareOldestFirst(left, right) {
 }
 
 function compareNewestFirst(left, right) {
+    const endTimeDifference = new Date(right.endDateTime) - new Date(left.endDateTime);
+
+    if (endTimeDifference !== 0) {
+        return endTimeDifference;
+    }
+
     return new Date(right.startDateTime) - new Date(left.startDateTime);
 }
 
