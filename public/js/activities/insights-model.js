@@ -208,7 +208,12 @@ function buildTimelineBlock(item, now) {
 }
 
 function normalizeRunningActivity(runningActivity, today, now) {
-    if (!runningActivity || !isActivityOnDate(runningActivity, today)) {
+    if (!runningActivity?.startDateTime) {
+        return null;
+    }
+
+    const startDate = new Date(runningActivity.startDateTime);
+    if (!isFinite(startDate.getTime()) || extractDateFromDateTime(startDate) !== today) {
         return null;
     }
 
@@ -216,6 +221,7 @@ function normalizeRunningActivity(runningActivity, today, now) {
 
     return {
         ...runningActivity,
+        docType: 'activity',
         endDateTime: now.toISOString(),
         duration
     };

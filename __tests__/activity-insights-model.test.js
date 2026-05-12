@@ -163,14 +163,13 @@ describe('activity insights model', () => {
 
     test('buildInsightsModel normalizes today running activity with effective end time', () => {
         const now = new Date(isoAt('10:30'));
-        const runningActivity = activity({
-            id: 'running-activity',
+        const runningActivity = {
+            description: 'Running focus',
+            category: 'work/deep',
             startDateTime: isoAt('10:00'),
-            endDateTime: undefined,
-            duration: undefined,
             source: 'timer',
             sourceTaskId: null
-        });
+        };
 
         const model = buildInsightsModel({
             tasks: [],
@@ -183,7 +182,8 @@ describe('activity insights model', () => {
         expect(model.summary.totalActualMinutes).toBe(30);
         expect(model.actualBlocks).toEqual([
             expect.objectContaining({
-                id: 'running-activity',
+                docType: 'activity',
+                description: 'Running focus',
                 duration: 30,
                 endDateTime: now.toISOString()
             })
