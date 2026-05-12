@@ -104,8 +104,30 @@
                             ></i>
                         </button>
                     </div>
+                    <div
+                        id="view-toggle"
+                        class="hidden mt-3 inline-flex rounded-lg border border-slate-700 bg-slate-800/80 p-1"
+                    >
+                        <button
+                            id="view-toggle-tasks"
+                            type="button"
+                            data-view-toggle="tasks"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-teal-500/20 px-3 py-1.5 text-sm text-teal-200 border border-teal-400/40"
+                        >
+                            <i class="fa-solid fa-list-check"></i>Tasks
+                        </button>
+                        <button
+                            id="view-toggle-insights"
+                            type="button"
+                            data-view-toggle="insights"
+                            class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
+                        >
+                            <i class="fa-solid fa-chart-line"></i>Insights
+                        </button>
+                    </div>
                 </div>
 
+                <div id="tasks-view">
                 <!-- Task Form with refined styling -->
                 <form
                     id="task-form"
@@ -486,6 +508,20 @@
                     <div id="activity-list" class="grid grid-cols-1 gap-2">
                         <!-- activities will be generated here by JavaScript -->
                     </div>
+                </div>
+
+                </div>
+
+                <div id="insights-view" class="hidden text-left px-2 sm:px-0 space-y-4">
+                    <div id="insights-summary"></div>
+                    <div id="insights-timeline"></div>
+                    <div id="insights-activity-log">
+                        <h3 class="text-lg sm:text-xl font-normal text-sky-400 pl-2 flex items-center">
+                            <i class="fa-regular fa-clock mr-2"></i>Activity Log
+                        </h3>
+                        <div id="insights-activity-list" class="grid grid-cols-1 gap-2"></div>
+                    </div>
+                    <div id="insights-trends"></div>
                 </div>
 
                 <!-- Info Panel -->

@@ -42,7 +42,12 @@ function setupDOM() {
           <span id="sync-status-text"></span>
         </button>
         <button id="settings-gear-btn" type="button"><i class="fa-solid fa-gear"></i></button>
+        <div id="view-toggle" class="hidden">
+          <button id="view-toggle-tasks" type="button" data-view-toggle="tasks">Tasks</button>
+          <button id="view-toggle-insights" type="button" data-view-toggle="insights">Insights</button>
+        </div>
       </div>
+      <div id="tasks-view">
       <form id="task-form">
         <div id="task-form-fields">
         <div class="form-group">
@@ -102,6 +107,16 @@ function setupDOM() {
       <div id="clear-tasks-dropdown" style="display: none;">
         <button id="clear-completed-tasks-option">Clear Completed</button>
         <button id="clear-all-tasks-option">Clear All</button>
+      </div>
+      </div>
+      <div id="insights-view" class="hidden">
+        <div id="insights-summary"></div>
+        <div id="insights-timeline"></div>
+        <div id="insights-activity-log">
+          <h3>Activity Log</h3>
+          <div id="insights-activity-list"></div>
+        </div>
+        <div id="insights-trends"></div>
       </div>
 
       <!-- Schedule Modal for unscheduled tasks -->
@@ -476,6 +491,7 @@ function createTaskWithDateTime({
 export {
     createTaskWithDateTime,
     calculateDurationMidnightAware,
+    setupDOM,
     setupIntegrationTestEnvironment,
     addTaskDOM,
     updateTaskDOM,
