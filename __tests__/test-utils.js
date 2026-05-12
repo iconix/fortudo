@@ -103,11 +103,6 @@ function setupDOM() {
       <div id="activities-container" class="hidden">
         <div id="activity-list"></div>
       </div>
-      <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
-      <div id="clear-tasks-dropdown" style="display: none;">
-        <button id="clear-completed-tasks-option">Clear Completed</button>
-        <button id="clear-all-tasks-option">Clear All</button>
-      </div>
       </div>
       <div id="insights-view" class="hidden">
         <div id="insights-summary"></div>
@@ -117,6 +112,14 @@ function setupDOM() {
           <div id="insights-activity-list"></div>
         </div>
         <div id="insights-trends"></div>
+      </div>
+      <div id="info-panel">
+        <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
+        <button id="clear-options-dropdown-trigger-btn" type="button">Options</button>
+        <div id="clear-tasks-dropdown" style="display: none;">
+          <button id="clear-completed-tasks-option">Clear Completed</button>
+          <button id="clear-all-tasks-option">Clear All</button>
+        </div>
       </div>
 
       <!-- Schedule Modal for unscheduled tasks -->
