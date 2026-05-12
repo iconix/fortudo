@@ -110,7 +110,7 @@ describe('activity view shell', () => {
                 .classList.contains('hidden')
         ).toBe(true);
         expect(dropdown.classList.contains('hidden')).toBe(true);
-        expect(dropdown.style.display).toBe('none');
+        expect(dropdown.style.display).toBe('block');
         expect(clearOptionsButton.getAttribute('aria-expanded')).toBe('false');
 
         document.getElementById('view-toggle-tasks').click();
@@ -120,6 +120,24 @@ describe('activity view shell', () => {
         );
         expect(clearOptionsButton.classList.contains('hidden')).toBe(false);
         expect(getActiveActivitiesView()).toBe('tasks');
+    });
+
+    test('clear dropdown remains class-showable after returning to tasks view', () => {
+        setupDOM();
+        const dropdown = document.getElementById('clear-tasks-dropdown');
+
+        initializeActivitiesViewToggle({
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        syncActivitiesViewToggle(true);
+        document.getElementById('view-toggle-insights').click();
+        document.getElementById('view-toggle-tasks').click();
+
+        dropdown.classList.remove('hidden');
+
+        expect(dropdown.style.display).not.toBe('none');
+        expect(dropdown.classList.contains('hidden')).toBe(false);
     });
 
     test('Tab does not toggle views from editable targets', () => {
@@ -140,6 +158,55 @@ describe('activity view shell', () => {
             cancelable: true
         });
         editableTarget.dispatchEvent(tabEvent);
+
+        expect(getActiveActivitiesView()).toBe('tasks');
+        expect(renderInsights).not.toHaveBeenCalled();
+        expect(tabEvent.defaultPrevented).toBe(false);
+    });
+
+    test('Tab does not toggle views from focused button targets', () => {
+        setupDOM();
+        const renderInsights = jest.fn();
+        const buttonTarget = document.createElement('button');
+        document.body.append(buttonTarget);
+
+        initializeActivitiesViewToggle({
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+        syncActivitiesViewToggle(true);
+
+        const tabEvent = new KeyboardEvent('keydown', {
+            key: 'Tab',
+            bubbles: true,
+            cancelable: true
+        });
+        buttonTarget.dispatchEvent(tabEvent);
+
+        expect(getActiveActivitiesView()).toBe('tasks');
+        expect(renderInsights).not.toHaveBeenCalled();
+        expect(tabEvent.defaultPrevented).toBe(false);
+    });
+
+    test('Tab does not toggle views from focused anchor targets', () => {
+        setupDOM();
+        const renderInsights = jest.fn();
+        const anchorTarget = document.createElement('a');
+        anchorTarget.href = '#tasks';
+        document.body.append(anchorTarget);
+
+        initializeActivitiesViewToggle({
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+        syncActivitiesViewToggle(true);
+
+        const tabEvent = new KeyboardEvent('keydown', {
+            key: 'Tab',
+            bubbles: true,
+            cancelable: true
+        });
+        anchorTarget.dispatchEvent(tabEvent);
 
         expect(getActiveActivitiesView()).toBe('tasks');
         expect(renderInsights).not.toHaveBeenCalled();

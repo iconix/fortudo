@@ -53,10 +53,9 @@ export function syncActivitiesViewToggle(activitiesEnabled) {
 
     if (hideTaskActions) {
         clearTasksDropdown?.classList.add('hidden');
-        if (clearTasksDropdown) {
-            clearTasksDropdown.style.display = 'none';
-        }
         clearOptionsButton?.setAttribute('aria-expanded', 'false');
+    } else if (clearTasksDropdown?.style.display === 'none') {
+        clearTasksDropdown.style.display = '';
     }
 }
 
@@ -89,7 +88,7 @@ export function initializeActivitiesViewToggle({
             if (
                 event.key !== 'Tab' ||
                 event.defaultPrevented ||
-                isEditableTarget(event.target) ||
+                isEditableOrInteractiveTarget(event.target) ||
                 !activitiesEnabledCallback()
             ) {
                 return;
@@ -127,4 +126,29 @@ function isEditableTarget(target) {
         target.isContentEditable ||
         target.closest('[contenteditable="true"]') !== null
     );
+}
+
+function isEditableOrInteractiveTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return isEditableTarget(target) || target.closest(getInteractiveSelector()) !== null;
+}
+
+function getInteractiveSelector() {
+    return [
+        'a[href]',
+        'area[href]',
+        'button',
+        'input',
+        'select',
+        'textarea',
+        'summary',
+        '[tabindex]:not([tabindex="-1"])',
+        '[role="button"]',
+        '[role="link"]',
+        '[role="menuitem"]',
+        '[role="tab"]'
+    ].join(',');
 }
