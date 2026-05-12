@@ -39,21 +39,24 @@ import {
     detectActivityDataIssues,
     getDefaultTrendDateRange
 } from '../public/js/activities/insights-model.js';
+import { calculateEndDateTime, timeToDateTime } from '../public/js/utils.js';
 
 function isoAt(time) {
-    return `2026-05-07T${time}:00.000Z`;
+    return timeToDateTime(time, '2026-05-07');
 }
 
 function isoOn(date, time) {
-    return `${date}T${time}:00.000Z`;
+    return timeToDateTime(time, date);
+}
+
+function addMinutes(startDateTime, duration) {
+    return calculateEndDateTime(startDateTime, duration);
 }
 
 function scheduledTask(overrides = {}) {
     const startDateTime = overrides.startDateTime || isoAt('09:00');
     const duration = overrides.duration || 30;
-    const endDateTime =
-        overrides.endDateTime ||
-        new Date(new Date(startDateTime).getTime() + duration * 60 * 1000).toISOString();
+    const endDateTime = overrides.endDateTime || addMinutes(startDateTime, duration);
 
     return {
         id: 'task-1',
@@ -71,9 +74,7 @@ function scheduledTask(overrides = {}) {
 function activity(overrides = {}) {
     const startDateTime = overrides.startDateTime || isoAt('09:00');
     const duration = overrides.duration || 30;
-    const endDateTime =
-        overrides.endDateTime ||
-        new Date(new Date(startDateTime).getTime() + duration * 60 * 1000).toISOString();
+    const endDateTime = overrides.endDateTime || addMinutes(startDateTime, duration);
 
     return {
         id: 'activity-1',
@@ -196,6 +197,73 @@ describe('activity insights model', () => {
                 })
             ])
         );
+    });
+
+    test('buildInsightsModel counts only the portion of previous-day items overlapping today', () => {
+        const crossingTaskStart = isoOn('2026-05-06', '23:30');
+        const crossingTaskEnd = addMinutes(crossingTaskStart, 60);
+        const crossingActivityStart = isoOn('2026-05-06', '23:30');
+        const crossingActivityEnd = addMinutes(crossingActivityStart, 60);
+
+        const model = buildInsightsModel({
+            tasks: [
+                scheduledTask({
+                    id: 'crossing-task',
+                    startDateTime: crossingTaskStart,
+                    endDateTime: crossingTaskEnd,
+                    duration: 60,
+                    status: 'pending'
+                })
+            ],
+            activities: [
+                activity({
+                    id: 'crossing-activity',
+                    startDateTime: crossingActivityStart,
+                    endDateTime: crossingActivityEnd,
+                    duration: 60
+                })
+            ],
+            now: new Date(isoAt('08:00')),
+            activityLogDateRange: { startDate: '2026-05-07', endDate: '2026-05-07' }
+        });
+
+        expect(model.summary.totalPlannedMinutes).toBe(30);
+        expect(model.summary.totalActualMinutes).toBe(30);
+        expect(model.plannedBlocks.map((block) => block.id)).toEqual(['crossing-task']);
+        expect(model.actualBlocks.map((block) => block.id)).toEqual(['crossing-activity']);
+    });
+
+    test('buildInsightsModel clips previous-day timeline blocks to today bounds', () => {
+        const startDateTime = isoOn('2026-05-06', '23:30');
+        const endDateTime = addMinutes(startDateTime, 60);
+
+        const model = buildInsightsModel({
+            tasks: [
+                scheduledTask({
+                    id: 'crossing-task',
+                    startDateTime,
+                    endDateTime,
+                    duration: 60
+                })
+            ],
+            activities: [],
+            now: new Date(isoAt('08:00')),
+            activityLogDateRange: { startDate: '2026-05-07', endDate: '2026-05-07' }
+        });
+
+        expect(model.plannedBlocks).toEqual([
+            expect.objectContaining({
+                id: 'crossing-task',
+                startDateTime: isoAt('00:00'),
+                endDateTime: isoAt('00:30'),
+                duration: 30
+            })
+        ]);
+        expect(model.plannedBlocks[0].leftPercent).toBe(0);
+        expect(model.plannedBlocks[0].widthPercent).toBeCloseTo((30 / (24 * 60)) * 100);
+        expect(
+            model.plannedBlocks[0].leftPercent + model.plannedBlocks[0].widthPercent
+        ).toBeLessThanOrEqual(100);
     });
 
     test('buildInsightsModel filters the Insights Activity Log by selected date range', () => {
@@ -381,6 +449,53 @@ describe('activity insights model', () => {
             color: '#0f172a',
             minutes: 90
         });
+    });
+
+    test('buildTrendModel splits midnight-crossing activities across local day buckets', () => {
+        const startDateTime = isoOn('2026-05-06', '23:30');
+        const endDateTime = addMinutes(startDateTime, 60);
+
+        const model = buildTrendModel({
+            activities: [
+                activity({
+                    id: 'crossing-activity',
+                    startDateTime,
+                    endDateTime,
+                    duration: 60
+                })
+            ],
+            dateRange: { startDate: '2026-05-06', endDate: '2026-05-07' },
+            now: new Date(isoAt('12:00'))
+        });
+
+        expect(model.dailyHours).toEqual([
+            expect.objectContaining({
+                date: '2026-05-06',
+                minutes: 30,
+                categorySegments: [
+                    expect.objectContaining({
+                        key: 'work',
+                        minutes: 30
+                    })
+                ]
+            }),
+            expect.objectContaining({
+                date: '2026-05-07',
+                minutes: 30,
+                categorySegments: [
+                    expect.objectContaining({
+                        key: 'work',
+                        minutes: 30
+                    })
+                ]
+            })
+        ]);
+        expect(model.categoryTotals[0]).toEqual(
+            expect.objectContaining({
+                key: 'work',
+                minutes: 60
+            })
+        );
     });
 
     test('getDefaultTrendDateRange returns the last 14 local days ending today', () => {

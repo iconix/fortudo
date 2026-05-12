@@ -22,11 +22,12 @@ export function buildInsightsModel({
     activityLogDateRange = null
 } = {}) {
     const today = extractDateFromDateTime(now);
+    const todayInterval = getDayInterval(today);
     const selectedLogRange = activityLogDateRange || { startDate: today, endDate: today };
-    const todayTasks = tasks.filter((task) => isScheduledOnDate(task, today));
+    const todayTasks = tasks.filter((task) => isScheduledOnDate(task, todayInterval));
     const normalizedRunningActivity = normalizeRunningActivity(runningActivity, today, now);
     const todayActivities = [
-        ...activities.filter((activityItem) => isActivityOnDate(activityItem, today)),
+        ...activities.filter((activityItem) => isActivityOnDate(activityItem, todayInterval)),
         ...(normalizedRunningActivity ? [normalizedRunningActivity] : [])
     ];
     const selectedLogActivities = activities
@@ -38,16 +39,22 @@ export function buildInsightsModel({
         date: today,
         activityLogDateRange: selectedLogRange,
         summary: {
-            totalPlannedMinutes: todayTasks.reduce((total, task) => total + getDuration(task), 0),
+            totalPlannedMinutes: todayTasks.reduce(
+                (total, task) => total + getOverlapDuration(task, todayInterval, now),
+                0
+            ),
             totalActualMinutes: todayActivities.reduce(
-                (total, activityItem) => total + getActivityDuration(activityItem, now),
+                (total, activityItem) =>
+                    total + getOverlapDuration(activityItem, todayInterval, now),
                 0
             ),
             completedTaskCount: todayTasks.filter((task) => task.status === 'completed').length,
             currentlyLateTaskCount: todayTasks.filter((task) => isCurrentlyLate(task, now)).length
         },
-        plannedBlocks: todayTasks.map((task) => buildTimelineBlock(task, now)),
-        actualBlocks: todayActivities.map((activityItem) => buildTimelineBlock(activityItem, now)),
+        plannedBlocks: todayTasks.map((task) => buildTimelineBlock(task, todayInterval, now)),
+        actualBlocks: todayActivities.map((activityItem) =>
+            buildTimelineBlock(activityItem, todayInterval, now)
+        ),
         activityLog: selectedLogActivities,
         issues: detectActivityDataIssues(todayActivities),
         activityLogIssues: detectActivityDataIssues(selectedLogActivities)
@@ -127,23 +134,29 @@ export function buildTrendModel({
     const categoryTotals = new Map();
 
     for (const activityItem of activities.filter(isCompletedActivity)) {
-        if (!isActivityWithinRange(activityItem, selectedDateRange)) {
-            continue;
-        }
+        const activityInterval = getItemInterval(activityItem);
 
-        const date = extractDateFromDateTime(new Date(activityItem.startDateTime));
-        const dailyBucket = dailyBuckets.get(date);
-
-        if (!dailyBucket) {
+        if (
+            !activityInterval ||
+            !intervalsOverlap(activityInterval, getDateRangeInterval(selectedDateRange))
+        ) {
             continue;
         }
 
         const categoryMeta = getParentGroupMeta(activityItem.category);
-        const duration = getDuration(activityItem);
 
-        addCategoryMinutes(dailyBucket.categorySegments, categoryMeta, duration);
-        addCategoryMinutes(categoryTotals, categoryMeta, duration);
-        dailyBucket.minutes += duration;
+        for (const dailyBucket of dailyBuckets.values()) {
+            const bucketInterval = getDayInterval(dailyBucket.date);
+            const duration = getOverlapDuration(activityItem, bucketInterval, now);
+
+            if (duration <= 0) {
+                continue;
+            }
+
+            addCategoryMinutes(dailyBucket.categorySegments, categoryMeta, duration);
+            addCategoryMinutes(categoryTotals, categoryMeta, duration);
+            dailyBucket.minutes += duration;
+        }
     }
 
     return {
@@ -191,13 +204,18 @@ function buildDailyBuckets(dateRange) {
     return buckets;
 }
 
-function buildTimelineBlock(item, now) {
-    const startDate = new Date(item.startDateTime);
+function buildTimelineBlock(item, visibleInterval, now) {
+    const clippedInterval = getClippedInterval(item, visibleInterval, now);
+    const startDate = clippedInterval?.start || new Date(item.startDateTime);
     const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-    const duration = getActivityDuration(item, now);
+    const duration = clippedInterval
+        ? getIntervalDuration(clippedInterval)
+        : getActivityDuration(item, now);
 
     return {
         ...item,
+        startDateTime: clippedInterval ? clippedInterval.start.toISOString() : item.startDateTime,
+        endDateTime: clippedInterval ? clippedInterval.end.toISOString() : item.endDateTime,
         duration,
         categoryMeta: getCategoryMeta(item.category),
         leftPercent: (startMinutes / MINUTES_PER_DAY) * 100,
@@ -212,12 +230,17 @@ function normalizeRunningActivity(runningActivity, today, now) {
         return null;
     }
 
-    const startDate = new Date(runningActivity.startDateTime);
-    if (!isFinite(startDate.getTime()) || extractDateFromDateTime(startDate) !== today) {
+    const todayInterval = getDayInterval(today);
+    const runningInterval = getItemInterval(
+        { ...runningActivity, endDateTime: now.toISOString() },
+        now
+    );
+
+    if (!runningInterval || !intervalsOverlap(runningInterval, todayInterval)) {
         return null;
     }
 
-    const duration = getActivityDuration(runningActivity, now);
+    const duration = getOverlapDuration(runningActivity, todayInterval, now);
 
     return {
         ...runningActivity,
@@ -301,17 +324,16 @@ function sortCategoryEntries(categoryMap) {
     );
 }
 
-function isScheduledOnDate(task, date) {
-    return task.type === 'scheduled' && getStartDate(task) === date;
+function isScheduledOnDate(task, dayInterval) {
+    return task.type === 'scheduled' && itemOverlapsInterval(task, dayInterval);
 }
 
-function isActivityOnDate(activityItem, date) {
-    return activityItem.docType === 'activity' && getStartDate(activityItem) === date;
+function isActivityOnDate(activityItem, dayInterval) {
+    return activityItem.docType === 'activity' && itemOverlapsInterval(activityItem, dayInterval);
 }
 
 function isActivityWithinRange(activityItem, dateRange) {
-    const activityDate = getStartDate(activityItem);
-    return activityDate >= dateRange.startDate && activityDate <= dateRange.endDate;
+    return itemOverlapsInterval(activityItem, getDateRangeInterval(dateRange));
 }
 
 function isCompletedActivity(activityItem) {
@@ -320,10 +342,6 @@ function isCompletedActivity(activityItem) {
 
 function isCurrentlyLate(task, now) {
     return task.status !== 'completed' && task.endDateTime && new Date(task.endDateTime) < now;
-}
-
-function getStartDate(item) {
-    return extractDateFromDateTime(new Date(item.startDateTime));
 }
 
 function getDuration(item) {
@@ -355,6 +373,62 @@ function compareNewestFirst(left, right) {
 
 function parseLocalDate(date) {
     return new Date(`${date}T00:00:00`);
+}
+
+function getDayInterval(date) {
+    const start = parseLocalDate(date);
+    const end = new Date(start.getTime());
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+}
+
+function getDateRangeInterval(dateRange) {
+    return {
+        start: parseLocalDate(dateRange.startDate),
+        end: getDayInterval(dateRange.endDate).end
+    };
+}
+
+function getItemInterval(item, now = new Date()) {
+    const start = new Date(item.startDateTime);
+    const end = item.endDateTime ? new Date(item.endDateTime) : now;
+
+    if (!isFinite(start.getTime()) || !isFinite(end.getTime()) || end <= start) {
+        return null;
+    }
+
+    return { start, end };
+}
+
+function intervalsOverlap(left, right) {
+    return left.start < right.end && left.end > right.start;
+}
+
+function getClippedInterval(item, visibleInterval, now = new Date()) {
+    const itemInterval = getItemInterval(item, now);
+
+    if (!itemInterval || !intervalsOverlap(itemInterval, visibleInterval)) {
+        return null;
+    }
+
+    return {
+        start: new Date(Math.max(itemInterval.start.getTime(), visibleInterval.start.getTime())),
+        end: new Date(Math.min(itemInterval.end.getTime(), visibleInterval.end.getTime()))
+    };
+}
+
+function itemOverlapsInterval(item, visibleInterval, now = new Date()) {
+    const itemInterval = getItemInterval(item, now);
+    return Boolean(itemInterval && intervalsOverlap(itemInterval, visibleInterval));
+}
+
+function getIntervalDuration(interval) {
+    return Math.max(0, Math.round((interval.end.getTime() - interval.start.getTime()) / 60000));
+}
+
+function getOverlapDuration(item, visibleInterval, now = new Date()) {
+    const clippedInterval = getClippedInterval(item, visibleInterval, now);
+    return clippedInterval ? getIntervalDuration(clippedInterval) : 0;
 }
 
 function titleizeKey(key) {
