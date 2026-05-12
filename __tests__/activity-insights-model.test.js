@@ -161,6 +161,43 @@ describe('activity insights model', () => {
         expect(model.actualBlocks[0].widthPercent).toBeGreaterThan(0);
     });
 
+    test('buildInsightsModel normalizes today running activity with effective end time', () => {
+        const now = new Date(isoAt('10:30'));
+        const runningActivity = activity({
+            id: 'running-activity',
+            startDateTime: isoAt('10:00'),
+            endDateTime: undefined,
+            duration: undefined,
+            source: 'timer',
+            sourceTaskId: null
+        });
+
+        const model = buildInsightsModel({
+            tasks: [],
+            activities: [],
+            runningActivity,
+            now,
+            activityLogDateRange: { startDate: '2026-05-07', endDate: '2026-05-07' }
+        });
+
+        expect(model.summary.totalActualMinutes).toBe(30);
+        expect(model.actualBlocks).toEqual([
+            expect.objectContaining({
+                id: 'running-activity',
+                duration: 30,
+                endDateTime: now.toISOString()
+            })
+        ]);
+        expect(model.issues).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'invalid-range',
+                    activityId: 'running-activity'
+                })
+            ])
+        );
+    });
+
     test('buildInsightsModel filters the Insights Activity Log by selected date range', () => {
         const model = buildInsightsModel({
             tasks: [],

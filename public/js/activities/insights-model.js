@@ -9,6 +9,7 @@ const DEFAULT_TREND_DAYS = 14;
  * @param {Object} options - Selector inputs.
  * @param {Array<Object>} [options.tasks=[]] - Scheduled and unscheduled tasks.
  * @param {Array<Object>} [options.activities=[]] - Activity records.
+ * @param {Object|null} [options.runningActivity=null] - In-progress activity for today.
  * @param {Date} [options.now=new Date()] - Current date/time.
  * @param {{startDate: string, endDate: string}} [options.activityLogDateRange] - Log range.
  * @returns {Object} Insights model.
@@ -16,15 +17,18 @@ const DEFAULT_TREND_DAYS = 14;
 export function buildInsightsModel({
     tasks = [],
     activities = [],
+    runningActivity = null,
     now = new Date(),
     activityLogDateRange = null
 } = {}) {
     const today = extractDateFromDateTime(now);
     const selectedLogRange = activityLogDateRange || { startDate: today, endDate: today };
     const todayTasks = tasks.filter((task) => isScheduledOnDate(task, today));
-    const todayActivities = activities.filter((activityItem) =>
-        isActivityOnDate(activityItem, today)
-    );
+    const normalizedRunningActivity = normalizeRunningActivity(runningActivity, today, now);
+    const todayActivities = [
+        ...activities.filter((activityItem) => isActivityOnDate(activityItem, today)),
+        ...(normalizedRunningActivity ? [normalizedRunningActivity] : [])
+    ];
     const selectedLogActivities = activities
         .filter(isCompletedActivity)
         .filter((activityItem) => isActivityWithinRange(activityItem, selectedLogRange))
@@ -200,6 +204,20 @@ function buildTimelineBlock(item, now) {
         widthPercent: (duration / MINUTES_PER_DAY) * 100,
         source: item.source,
         sourceTaskId: item.sourceTaskId
+    };
+}
+
+function normalizeRunningActivity(runningActivity, today, now) {
+    if (!runningActivity || !isActivityOnDate(runningActivity, today)) {
+        return null;
+    }
+
+    const duration = getActivityDuration(runningActivity, now);
+
+    return {
+        ...runningActivity,
+        endDateTime: now.toISOString(),
+        duration
     };
 }
 
