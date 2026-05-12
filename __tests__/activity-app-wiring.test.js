@@ -42,6 +42,7 @@ describe('activity app wiring', () => {
         document.body.innerHTML = `
             <form id="task-form"></form>
             <div id="activity-list"></div>
+            <div id="insights-activity-list"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
         `;
     });
@@ -113,6 +114,30 @@ describe('activity app wiring', () => {
         const refreshSummary = initializeTimerUI.mock.calls[0][0].refreshActivitySummary;
         refreshSummary();
         expect(refreshTodayActivitySummary).toHaveBeenCalledWith(true);
+    });
+
+    test('delegates insights activity list edit events', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true
+        });
+
+        const insightsActivityList = document.getElementById('insights-activity-list');
+        insightsActivityList.dispatchEvent(new Event('submit', { bubbles: true }));
+        insightsActivityList.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+        );
+        insightsActivityList.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(handleActivityListSubmit).toHaveBeenCalled();
+        expect(handleActivityListKeydown).toHaveBeenCalled();
+        expect(handleActivityListInput).toHaveBeenCalled();
     });
 
     test('restores activity mode before syncing timer ui when a running timer exists', () => {

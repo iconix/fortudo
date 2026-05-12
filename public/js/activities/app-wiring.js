@@ -37,18 +37,7 @@ export function createActivityAppCallbacks({
     };
 }
 
-export function initializeActivityUi({
-    signal,
-    refreshUI,
-    refreshTaskDisplays,
-    getActivitiesEnabled
-}) {
-    initializeTimerUI({
-        refreshUI: refreshTaskDisplays,
-        refreshActivitySummary: () => refreshTodayActivitySummary(getActivitiesEnabled())
-    });
-
-    const activityListElement = document.getElementById('activity-list');
+function initializeActivityListEventHandlers(activityListElement, { signal, refreshUI }) {
     if (!activityListElement) {
         return;
     }
@@ -72,6 +61,27 @@ export function initializeActivityUi({
         { signal }
     );
     activityListElement.addEventListener('input', handleActivityListInput, { signal });
+}
+
+export function initializeActivityUi({
+    signal,
+    refreshUI,
+    refreshTaskDisplays,
+    getActivitiesEnabled
+}) {
+    initializeTimerUI({
+        refreshUI: refreshTaskDisplays,
+        refreshActivitySummary: () => refreshTodayActivitySummary(getActivitiesEnabled())
+    });
+
+    initializeActivityListEventHandlers(document.getElementById('activity-list'), {
+        signal,
+        refreshUI
+    });
+    initializeActivityListEventHandlers(document.getElementById('insights-activity-list'), {
+        signal,
+        refreshUI
+    });
 }
 
 export function syncRestoredRunningTimer(activitiesEnabled) {

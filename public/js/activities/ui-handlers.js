@@ -69,12 +69,12 @@ export function syncActivitiesUI(enabled) {
     syncActivitiesViewToggle(enabled);
 }
 
-export function getActivityRenderOptions() {
+export function getActivityRenderOptions(overrides = {}) {
     return {
         editingActivityId: activityUiState.editingActivityId,
         expandedParentGroupKey: activityUiState.expandedParentGroupKey,
         confirmingDeleteActivityId: activityUiState.confirmingDeleteActivityId,
-        summaryActivities: getActivitiesForSummary()
+        ...overrides
     };
 }
 
@@ -87,7 +87,7 @@ export function renderTodayActivities(enabled) {
     renderActivities(
         todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        getActivityRenderOptions()
+        getActivityRenderOptions({ summaryActivities: getActivitiesForSummary() })
     );
 }
 
@@ -97,10 +97,11 @@ export function refreshTodayActivitySummary(enabled) {
     }
 
     const activityList = /** @type {HTMLElement|null} */ (document.getElementById('activity-list'));
-    renderActivitySummaryOnly(getTodaysActivities(), activityList, {
-        expandedParentGroupKey: activityUiState.expandedParentGroupKey,
-        summaryActivities: getActivitiesForSummary()
-    });
+    renderActivitySummaryOnly(
+        getTodaysActivities(),
+        activityList,
+        getActivityRenderOptions({ summaryActivities: getActivitiesForSummary() })
+    );
 }
 
 export async function handleActivityAwareFormSubmit(formElement, deps) {
