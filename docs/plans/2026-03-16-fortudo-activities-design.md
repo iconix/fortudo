@@ -230,6 +230,7 @@ public/js/
 |-- settings/
 |   `-- taxonomy-settings.js     # taxonomy management UI inside settings modal
 |-- category-colors.js            # color family palettes and helpers
+|-- category-form-utils.js        # shared category select rendering, validation, and color-dot sync
 |-- settings-manager.js           # Activities toggle (PouchDB config doc + in-memory cache)
 |-- settings-renderer.js          # settings modal shell, toggle wiring, delegates to taxonomy-settings
 |-- utils.js                      # shared utilities
@@ -286,7 +287,7 @@ Bridges the gap between Fortudo's retrospective logging and the real-time start/
 
 **Early task completion adjustment:** When `createActivityFromTask` runs and the task's planned `startDateTime` is in the future, the auto-log times are adjusted: `endDateTime` = now, `startDateTime` = now minus the task's `duration`. This ensures auto-logged activities reflect when the work actually happened rather than when it was planned.
 
-**Unscheduled tasks and the timer:** Completing an unscheduled task does not affect a running timer (unscheduled completions are lightweight and often happen mid-flow). Users who want to track unscheduled work can: start a timer for it, schedule it first then complete for auto-logging, or manually log it after the fact.
+**Unscheduled tasks and the timer:** Completing an unscheduled task does not affect a running timer (unscheduled completions are lightweight and often happen mid-flow). Users who want to track unscheduled work can: start a timer for it directly from the unscheduled task card, schedule it first then complete for auto-logging, or manually log it after the fact. Starting from the card promotes the task into a running timer using the task's description and category, keeps `sourceTaskId` provenance, and marks the task as in progress while the linked timer runs.
 
 **Timer state management** in `activities/manager.js`:
 
@@ -368,7 +369,7 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
-**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, reload persistence, and referenced-delete safety. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
+**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, category edit persistence, timer start/edit/stop/replacement, unscheduled task timer promotion, reload persistence, overlap auto-stop, and referenced-delete safety. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
 
 ### Sync Considerations
 
@@ -491,19 +492,20 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Added category summary bars for today's activities, including parent-group aggregation, expandable child breakdowns, count badges, and live running-timer inclusion
 - Added newest-first activity log ordering, delete confirmation for activities, duplicate edit-save guards, and category dots on activity forms
 
-### Next Planned Work
+### Completed Category Editing Work
 
 **Phase 4.7: Category editing parity**
 
-- Keep scheduled, unscheduled, and activity edit forms owned by their current feature modules; do not introduce a generic edit-form abstraction.
-- Add narrow shared category form helpers for the stable seams only: option HTML/population, category validation, and color-dot synchronization for a specific select/dot pair.
-- Add category editing to scheduled task inline edit forms, preserving existing start-time, duration, end-time hint, overlap warning, and reschedule-confirmation behavior.
-- Add category editing to unscheduled task inline edit forms, preserving existing priority, estimated-duration, completed-task, and in-progress timer behavior.
-- Continue supporting full-field inline editing on activities, including category changes; migrate activity inline category rendering to the shared helper only if it stays mechanical and low-risk.
-- Update scheduled and unscheduled task save paths so category changes persist through `updateTask` and `updateUnscheduledTask`.
-- Reject stale or deleted category keys on save with the existing themed alert behavior and without mutating the task.
-- Add renderer, form-utils, manager/handler, app, and smoke coverage for task category edit flows.
-- Acceptance coverage: scheduled category render/save/reject paths, scheduled overlap behavior with category edits, unscheduled category render/save/reject paths, edited unscheduled category flowing into "start timer from task," and unchanged activity category edit behavior.
+- Kept scheduled, unscheduled, and activity edit forms owned by their current feature modules; no generic edit-form abstraction was introduced.
+- Added `category-form-utils.js` for the stable shared seams only: option HTML/population, category validation, and color-dot synchronization for a specific select/dot pair.
+- Added category editing to scheduled task inline edit forms while preserving existing start-time, duration, end-time hint, overlap warning, and reschedule-confirmation behavior.
+- Added category editing to unscheduled task inline edit forms while preserving existing priority, estimated-duration, completed-task, and in-progress timer behavior.
+- Continued supporting full-field inline editing on activities, including category changes, with shared helper usage limited to mechanical category rendering/validation seams.
+- Updated scheduled and unscheduled task save paths so category changes persist through `updateTask` and `updateUnscheduledTask`, including explicit category clears.
+- Rejected stale or deleted category keys on save with the existing themed alert behavior and without mutating the task.
+- Added renderer, form-utils, manager/handler, app, and smoke coverage for task category edit flows, including scheduled and unscheduled persistence plus unscheduled timer category inheritance.
+
+### Next Planned Work
 
 **Phase 5: Insights view**
 
@@ -515,7 +517,7 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Make the plan-vs-actual timeline handle in-progress activity ranges, midnight-clamped timer stops, and restored timer state
 - Add trends section
 - Add keyboard shortcut for tab toggle if it still feels worthwhile
-- Treat restored timers, stop-on-start, unscheduled task timer promotion, and overlap auto-stop as Phase 5 acceptance coverage rather than deferring all activity E2E coverage to polish
+- Preserve the smoke-covered timer baselines -- restored timers, stop-on-start, unscheduled task timer promotion, and overlap auto-stop -- while adding Phase 5 acceptance coverage for the new insights surfaces that consume those states
 
 **Phase 6: Polish and E2E**
 
