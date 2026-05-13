@@ -5,7 +5,9 @@ import {
 } from '../utils.js';
 import { getActivityState, getRunningActivity } from './manager.js';
 import { renderActivities } from './renderer.js';
-import { buildInsightsModel, buildTrendModel, getDefaultTrendDateRange } from './insights-model.js';
+import { buildInsightsModel } from './insights-model.js';
+import { mergeActivityIssuesById } from './insights-issues.js';
+import { buildTrendModel, getDefaultTrendDateRange } from './insights-trends.js';
 
 const DEFAULT_ACTIVITY_LOG_LIMIT = 50;
 const FALLBACK_TIMELINE_COLOR = '#64748b';
@@ -121,49 +123,6 @@ function renderTimeline(model) {
         ${renderTimelineRow('Planned', 'planned', model.plannedBlocks)}
         ${renderTimelineRow('Actual', 'actual', model.actualBlocks)}
     </div>`;
-}
-
-function groupIssuesByActivityId(issues = []) {
-    const issuesById = {};
-
-    for (const issue of issues) {
-        if (!issue) {
-            continue;
-        }
-
-        const relatedActivityId =
-            issue.relatedActivityId || issue.overlappingActivityId || issue.duplicateActivityId;
-        const activityIds = [issue.activityId, relatedActivityId].filter(Boolean);
-
-        for (const activityId of activityIds) {
-            issuesById[activityId] = issuesById[activityId] || [];
-            issuesById[activityId].push(issue);
-        }
-    }
-
-    return issuesById;
-}
-
-function mergeActivityIssuesById(existingIssuesById, modelIssues = []) {
-    const mergedIssuesById = {};
-
-    if (existingIssuesById instanceof Map) {
-        for (const [activityId, issues] of existingIssuesById) {
-            mergedIssuesById[activityId] = [...issues];
-        }
-    } else {
-        for (const [activityId, issues] of Object.entries(existingIssuesById || {})) {
-            mergedIssuesById[activityId] = [...issues];
-        }
-    }
-
-    const modelIssuesById = groupIssuesByActivityId(modelIssues);
-
-    for (const [activityId, issues] of Object.entries(modelIssuesById)) {
-        mergedIssuesById[activityId] = [...(mergedIssuesById[activityId] || []), ...issues];
-    }
-
-    return mergedIssuesById;
 }
 
 function renderShowMoreButton(hiddenCount) {

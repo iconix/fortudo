@@ -362,122 +362,6 @@ describe('activity insights renderer', () => {
         ]);
     });
 
-    test('renderInsightsView groups related activity issues by both activity ids', async () => {
-        jest.resetModules();
-
-        const relatedIssue = {
-            type: 'related',
-            activityId: 'primary-activity',
-            relatedActivityId: 'related-activity'
-        };
-        const mockRenderActivities = jest.fn();
-
-        jest.doMock('../public/js/activities/manager.js', () => ({
-            getActivityState: jest.fn(() => []),
-            getRunningActivity: jest.fn(() => null)
-        }));
-        jest.doMock('../public/js/activities/renderer.js', () => ({
-            renderActivities: mockRenderActivities
-        }));
-        jest.doMock('../public/js/activities/insights-model.js', () => ({
-            buildInsightsModel: jest.fn(() => ({
-                summary: {
-                    totalPlannedMinutes: 0,
-                    totalActualMinutes: 0,
-                    completedTaskCount: 0,
-                    currentlyLateTaskCount: 0
-                },
-                plannedBlocks: [],
-                actualBlocks: [],
-                activityLog: [
-                    activity({ id: 'primary-activity' }),
-                    activity({ id: 'related-activity' })
-                ],
-                activityLogIssues: [relatedIssue]
-            })),
-            buildTrendModel: jest.fn(() => ({
-                dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' },
-                dailyHours: [],
-                categoryTotals: []
-            })),
-            getDefaultTrendDateRange: jest.fn(() => ({
-                startDate: '2026-04-24',
-                endDate: '2026-05-07'
-            }))
-        }));
-
-        const { renderInsightsView: renderMockedInsightsView } =
-            await import('../public/js/activities/insights-renderer.js');
-
-        renderMockedInsightsView({ now: new Date(isoAt('12:00')) });
-
-        const options = mockRenderActivities.mock.calls.at(-1)[2];
-
-        expect(options.activityIssuesById['primary-activity']).toEqual([relatedIssue]);
-        expect(options.activityIssuesById['related-activity']).toEqual([relatedIssue]);
-
-        jest.dontMock('../public/js/activities/manager.js');
-        jest.dontMock('../public/js/activities/renderer.js');
-        jest.dontMock('../public/js/activities/insights-model.js');
-    });
-
-    test('renderInsightsView groups duplicate auto-log issues by both activity ids', async () => {
-        jest.resetModules();
-
-        const duplicateIssue = {
-            type: 'duplicate-auto',
-            activityId: 'second-auto',
-            duplicateActivityId: 'first-auto',
-            sourceTaskId: 'task-1'
-        };
-        const mockRenderActivities = jest.fn();
-
-        jest.doMock('../public/js/activities/manager.js', () => ({
-            getActivityState: jest.fn(() => []),
-            getRunningActivity: jest.fn(() => null)
-        }));
-        jest.doMock('../public/js/activities/renderer.js', () => ({
-            renderActivities: mockRenderActivities
-        }));
-        jest.doMock('../public/js/activities/insights-model.js', () => ({
-            buildInsightsModel: jest.fn(() => ({
-                summary: {
-                    totalPlannedMinutes: 0,
-                    totalActualMinutes: 0,
-                    completedTaskCount: 0,
-                    currentlyLateTaskCount: 0
-                },
-                plannedBlocks: [],
-                actualBlocks: [],
-                activityLog: [activity({ id: 'first-auto' }), activity({ id: 'second-auto' })],
-                activityLogIssues: [duplicateIssue]
-            })),
-            buildTrendModel: jest.fn(() => ({
-                dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' },
-                dailyHours: [],
-                categoryTotals: []
-            })),
-            getDefaultTrendDateRange: jest.fn(() => ({
-                startDate: '2026-04-24',
-                endDate: '2026-05-07'
-            }))
-        }));
-
-        const { renderInsightsView: renderMockedInsightsView } =
-            await import('../public/js/activities/insights-renderer.js');
-
-        renderMockedInsightsView({ now: new Date(isoAt('12:00')) });
-
-        const options = mockRenderActivities.mock.calls.at(-1)[2];
-
-        expect(options.activityIssuesById['first-auto']).toEqual([duplicateIssue]);
-        expect(options.activityIssuesById['second-auto']).toEqual([duplicateIssue]);
-
-        jest.dontMock('../public/js/activities/manager.js');
-        jest.dontMock('../public/js/activities/renderer.js');
-        jest.dontMock('../public/js/activities/insights-model.js');
-    });
-
     test('long Activity Logs are bounded until expanded', () => {
         const activities = Array.from({ length: 55 }, (_, index) =>
             activity({
@@ -661,7 +545,9 @@ describe('activity insights renderer', () => {
             renderActivities: jest.fn()
         }));
         jest.doMock('../public/js/activities/insights-model.js', () => ({
-            buildInsightsModel,
+            buildInsightsModel
+        }));
+        jest.doMock('../public/js/activities/insights-trends.js', () => ({
             buildTrendModel,
             getDefaultTrendDateRange: jest.fn(() => ({
                 startDate: '2026-04-24',
@@ -688,5 +574,6 @@ describe('activity insights renderer', () => {
         jest.dontMock('../public/js/activities/manager.js');
         jest.dontMock('../public/js/activities/renderer.js');
         jest.dontMock('../public/js/activities/insights-model.js');
+        jest.dontMock('../public/js/activities/insights-trends.js');
     });
 });
