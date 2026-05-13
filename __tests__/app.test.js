@@ -15,7 +15,7 @@ import {
     getSuggestedStartTime,
     cancelEdit as cancelEditDirect
 } from '../public/js/tasks/manager.js';
-import { resetEventDelegation, renderTasks } from '../public/js/dom-renderer.js';
+import { resetEventDelegation, renderTasks, refreshUI } from '../public/js/dom-renderer.js';
 import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 
 // Mock storage.js to spy on saveTasks
@@ -54,6 +54,11 @@ jest.mock('../public/js/activities/timer-ui.js', () => ({
     disposeTimerUI: jest.fn(),
     initializeTimerUI: jest.fn(),
     syncTimerFormState: jest.fn()
+}));
+jest.mock('../public/js/activities/view-toggle.js', () => ({
+    initializeActivitiesViewToggle: jest.fn(),
+    renderActiveInsightsView: jest.fn(),
+    syncActivitiesViewToggle: jest.fn()
 }));
 jest.mock('../public/js/activities/ui-handlers.js', () => {
     const actual = jest.requireActual('../public/js/activities/ui-handlers.js');
@@ -96,6 +101,7 @@ import {
     initializeTimerUI as mockInitializeTimerUIInternal,
     syncTimerFormState as mockSyncTimerFormStateInternal
 } from '../public/js/activities/timer-ui.js';
+import { renderActiveInsightsView as mockRenderActiveInsightsViewInternal } from '../public/js/activities/view-toggle.js';
 import { renderActivities as mockRenderActivitiesInternal } from '../public/js/activities/renderer.js';
 import {
     handleAddActivity as mockHandleAddActivityInternal,
@@ -124,6 +130,7 @@ const mockGetActivityState = jest.mocked(mockGetActivityStateInternal);
 const mockGetTodaysActivities = jest.mocked(mockGetTodaysActivitiesInternal);
 const mockInitializeTimerUI = jest.mocked(mockInitializeTimerUIInternal);
 const mockSyncTimerFormState = jest.mocked(mockSyncTimerFormStateInternal);
+const mockRenderActiveInsightsView = jest.mocked(mockRenderActiveInsightsViewInternal);
 const mockRenderActivities = jest.mocked(mockRenderActivitiesInternal);
 const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
@@ -203,6 +210,7 @@ describe('App.js Callback Functions', () => {
         mockRenderActivities.mockClear();
         mockInitializeTimerUI.mockClear();
         mockSyncTimerFormState.mockClear();
+        mockRenderActiveInsightsView.mockClear();
         mockHandleAddActivity.mockClear();
         mockHandleEditActivity.mockClear();
         mockHandleDeleteActivity.mockClear();
@@ -361,6 +369,19 @@ describe('App.js Callback Functions', () => {
             ).toBe(false);
         });
 
+        test('dom refresh refreshes active insights after activities render', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            await setupAppWithTasks([]);
+            mockRenderActiveInsightsView.mockClear();
+
+            refreshUI();
+
+            expect(mockRenderActiveInsightsView).toHaveBeenCalledTimes(1);
+            expect(mockRenderActivities.mock.invocationCallOrder.at(-1)).toBeLessThan(
+                mockRenderActiveInsightsView.mock.invocationCallOrder.at(-1)
+            );
+        });
+
         test('when a timer is restored on boot, app loads it and initializes timer UI', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
             mockLoadRunningActivity.mockResolvedValue({
@@ -380,6 +401,20 @@ describe('App.js Callback Functions', () => {
                 refreshActivitySummary: expect.any(Function)
             });
             expect(mockSyncTimerFormState).toHaveBeenCalled();
+        });
+
+        test('app task display refresh callback refreshes active insights after activities render', async () => {
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            await setupAppWithTasks([]);
+            mockRenderActiveInsightsView.mockClear();
+
+            const refreshTaskDisplays = mockInitializeTimerUI.mock.calls[0][0].refreshUI;
+            refreshTaskDisplays();
+
+            expect(mockRenderActiveInsightsView).toHaveBeenCalledTimes(1);
+            expect(mockRenderActivities.mock.invocationCallOrder.at(-1)).toBeLessThan(
+                mockRenderActiveInsightsView.mock.invocationCallOrder.at(-1)
+            );
         });
 
         test('when a timer is restored on boot, app selects activity mode before syncing timer UI', async () => {

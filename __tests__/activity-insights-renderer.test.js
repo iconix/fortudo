@@ -1,0 +1,579 @@
+/**
+ * @jest-environment jsdom
+ */
+
+jest.mock('../public/js/activities/manager.js', () => ({
+    getActivityState: jest.fn(() => []),
+    getRunningActivity: jest.fn(() => null)
+}));
+
+jest.mock('../public/js/activities/renderer.js', () => ({
+    renderActivities: jest.fn()
+}));
+
+import { setupDOM } from './test-utils.js';
+import { getByRole } from '@testing-library/dom';
+import { getActivityState, getRunningActivity } from '../public/js/activities/manager.js';
+import { renderActivities } from '../public/js/activities/renderer.js';
+import {
+    expandInsightsActivityLogLimit,
+    renderInsightsView,
+    setInsightsTrendDateRange
+} from '../public/js/activities/insights-renderer.js';
+import { replaceTaxonomyState } from '../public/js/taxonomy/taxonomy-store.js';
+import { calculateEndDateTime, timeToDateTime } from '../public/js/utils.js';
+
+function isoAt(time) {
+    return timeToDateTime(time, '2026-05-07');
+}
+
+function isoOn(date, time) {
+    return timeToDateTime(time, date);
+}
+
+function addMinutes(startDateTime, duration) {
+    return calculateEndDateTime(startDateTime, duration);
+}
+
+function scheduledTask(overrides = {}) {
+    const startDateTime = overrides.startDateTime || isoAt('09:00');
+    const duration = overrides.duration || 30;
+    const endDateTime = overrides.endDateTime || addMinutes(startDateTime, duration);
+
+    return {
+        id: 'task-1',
+        type: 'scheduled',
+        description: 'Deep work',
+        startDateTime,
+        endDateTime,
+        duration,
+        status: 'pending',
+        category: 'work/deep',
+        ...overrides
+    };
+}
+
+function activity(overrides = {}) {
+    const startDateTime = overrides.startDateTime || isoAt('09:00');
+    const duration = overrides.duration || 30;
+    const endDateTime = overrides.endDateTime || addMinutes(startDateTime, duration);
+
+    return {
+        id: 'activity-1',
+        docType: 'activity',
+        description: 'Actual focus',
+        startDateTime,
+        endDateTime,
+        duration,
+        source: 'task',
+        sourceTaskId: 'task-1',
+        category: 'work/deep',
+        ...overrides
+    };
+}
+
+function renderWith({ tasks = [], activities = [], now = new Date(isoAt('12:00')) } = {}) {
+    getActivityState.mockReturnValue(activities);
+    getRunningActivity.mockReturnValue(null);
+
+    renderInsightsView({
+        tasks,
+        now,
+        activityRenderOptions: { confirmingDeleteActivityId: 'activity-3' }
+    });
+}
+
+describe('activity insights renderer', () => {
+    beforeEach(() => {
+        setupDOM();
+        jest.clearAllMocks();
+        expandInsightsActivityLogLimit(0);
+        setInsightsTrendDateRange(null);
+        replaceTaxonomyState({
+            groups: [{ key: 'work', label: 'Work', color: '#0f172a', colorFamily: 'blue' }],
+            categories: [
+                {
+                    key: 'work/deep',
+                    label: 'Deep Work',
+                    groupKey: 'work',
+                    color: '#0ea5e9',
+                    isLinkedToGroupFamily: true
+                }
+            ]
+        });
+    });
+
+    test('renderInsightsView renders summary stats and category-colored timeline blocks', () => {
+        renderWith({
+            tasks: [
+                scheduledTask({
+                    id: 'task-1',
+                    description: 'Plan focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60,
+                    status: 'completed'
+                }),
+                scheduledTask({
+                    id: 'task-2',
+                    description: 'Late task',
+                    startDateTime: isoAt('10:00'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 30,
+                    status: 'pending'
+                })
+            ],
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    description: 'Actual focus',
+                    startDateTime: isoAt('09:05'),
+                    endDateTime: isoAt('09:45'),
+                    duration: 40
+                })
+            ],
+            now: new Date(isoAt('11:00'))
+        });
+
+        const summary = document.getElementById('insights-summary');
+        const timeline = document.getElementById('insights-timeline');
+        const plannedBlock = timeline.querySelector('[data-timeline-block="planned"]');
+        const actualBlock = timeline.querySelector('[data-timeline-block="actual"]');
+
+        expect(summary.textContent).toContain('Planned');
+        expect(summary.textContent).toContain('1h 30m');
+        expect(summary.textContent).toContain('Actual');
+        expect(summary.textContent).toContain('40m');
+        expect(summary.textContent).toContain('Completed');
+        expect(summary.textContent).toContain('1');
+        expect(summary.textContent).toContain('Currently Late');
+        expect(summary.textContent).toContain('1');
+        expect(plannedBlock).not.toBeNull();
+        expect(actualBlock).not.toBeNull();
+        expect(plannedBlock.getAttribute('style')).toContain('#0ea5e9');
+        expect(plannedBlock.getAttribute('title')).toContain('Plan focus');
+        expect(actualBlock.textContent).toContain('Actual focus');
+    });
+
+    test('timeline block category color falls back when taxonomy color is unsafe', () => {
+        replaceTaxonomyState({
+            groups: [{ key: 'work', label: 'Work', color: '#0f172a', colorFamily: 'blue' }],
+            categories: [
+                {
+                    key: 'work/deep',
+                    label: 'Deep Work',
+                    groupKey: 'work',
+                    color: '#0ea5e9; background-image: url(javascript:alert(1))',
+                    isLinkedToGroupFamily: true
+                }
+            ]
+        });
+
+        renderWith({ tasks: [scheduledTask()] });
+
+        const plannedBlock = document.querySelector('[data-timeline-block="planned"]');
+
+        expect(plannedBlock.getAttribute('style')).toContain('background-color: #64748b;');
+        expect(plannedBlock.getAttribute('style')).not.toContain('javascript:');
+    });
+
+    test('timeline blocks include accessible text with label time range and duration', () => {
+        renderWith({
+            tasks: [
+                scheduledTask({
+                    description: 'Plan focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60
+                })
+            ],
+            activities: [
+                activity({
+                    description: 'Actual focus',
+                    startDateTime: isoAt('09:05'),
+                    endDateTime: isoAt('09:45'),
+                    duration: 40
+                })
+            ]
+        });
+
+        const plannedBlock = document.querySelector('[data-timeline-block="planned"]');
+        const actualBlock = document.querySelector('[data-timeline-block="actual"]');
+
+        expect(plannedBlock.querySelector('.sr-only').textContent).toBe(
+            'Plan focus, 9:00 AM - 10:00 AM, 1h'
+        );
+        expect(actualBlock.querySelector('.sr-only').textContent).toBe(
+            'Actual focus, 9:05 AM - 9:45 AM, 40m'
+        );
+    });
+
+    test('timeline blocks expose full accessible labels through an image role', () => {
+        renderWith({
+            tasks: [
+                scheduledTask({
+                    description: 'Plan focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60
+                })
+            ],
+            activities: [
+                activity({
+                    description: 'Actual focus',
+                    startDateTime: isoAt('09:05'),
+                    endDateTime: isoAt('09:45'),
+                    duration: 40
+                })
+            ]
+        });
+
+        const plannedBlock = getByRole(document.body, 'img', {
+            name: 'Plan focus, 9:00 AM - 10:00 AM, 1h'
+        });
+        const actualBlock = getByRole(document.body, 'img', {
+            name: 'Actual focus, 9:05 AM - 9:45 AM, 40m'
+        });
+
+        expect(plannedBlock.dataset.timelineBlock).toBe('planned');
+        expect(actualBlock.dataset.timelineBlock).toBe('actual');
+    });
+
+    test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {
+        const activities = [
+            activity({ id: 'activity-1', endDateTime: isoAt('09:30') }),
+            activity({ id: 'activity-2', endDateTime: isoAt('10:30') })
+        ];
+
+        renderWith({ activities });
+
+        expect(renderActivities).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ id: 'activity-2' })]),
+            document.getElementById('insights-activity-list'),
+            expect.objectContaining({
+                confirmingDeleteActivityId: 'activity-3',
+                summaryActivities: expect.arrayContaining([
+                    expect.objectContaining({ id: 'activity-1' }),
+                    expect.objectContaining({ id: 'activity-2' })
+                ]),
+                activityIssuesById: expect.any(Object)
+            })
+        );
+    });
+
+    test('renderInsightsView groups overlapping activity issues by affected and related activity ids', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-overlapped',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'activity-overlapping',
+                    startDateTime: isoAt('09:30'),
+                    endDateTime: isoAt('10:30'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ]
+        });
+
+        const options = renderActivities.mock.calls.at(-1)[2];
+
+        expect(options.activityIssuesById['activity-overlapping']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options.activityIssuesById['activity-overlapped']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options).toEqual(
+            expect.objectContaining({
+                confirmingDeleteActivityId: 'activity-3',
+                summaryActivities: expect.arrayContaining([
+                    expect.objectContaining({ id: 'activity-overlapped' }),
+                    expect.objectContaining({ id: 'activity-overlapping' })
+                ])
+            })
+        );
+    });
+
+    test('renderInsightsView preserves caller activity issue annotations with model issues', () => {
+        const existingIssue = {
+            type: 'manual-review',
+            activityId: 'activity-overlapping',
+            message: 'Needs human review'
+        };
+
+        getActivityState.mockReturnValue([
+            activity({
+                id: 'activity-overlapped',
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('10:00'),
+                source: 'manual',
+                sourceTaskId: null
+            }),
+            activity({
+                id: 'activity-overlapping',
+                startDateTime: isoAt('09:30'),
+                endDateTime: isoAt('10:30'),
+                source: 'manual',
+                sourceTaskId: null
+            })
+        ]);
+        getRunningActivity.mockReturnValue(null);
+
+        renderInsightsView({
+            now: new Date(isoAt('12:00')),
+            activityRenderOptions: {
+                confirmingDeleteActivityId: 'activity-3',
+                activityIssuesById: {
+                    'activity-overlapping': [existingIssue]
+                }
+            }
+        });
+
+        const options = renderActivities.mock.calls.at(-1)[2];
+
+        expect(options.activityIssuesById['activity-overlapping']).toEqual([
+            existingIssue,
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options.activityIssuesById['activity-overlapped']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+    });
+
+    test('long Activity Logs are bounded until expanded', () => {
+        const activities = Array.from({ length: 55 }, (_, index) =>
+            activity({
+                id: `activity-${index + 1}`,
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('09:30')
+            })
+        );
+
+        renderWith({ activities });
+
+        expect(renderActivities).toHaveBeenLastCalledWith(
+            expect.arrayContaining([expect.objectContaining({ id: 'activity-50' })]),
+            document.getElementById('insights-activity-list'),
+            expect.objectContaining({ summaryActivities: expect.any(Array) })
+        );
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(50);
+        expect(document.querySelector('[data-show-more-activities]')).not.toBeNull();
+
+        expandInsightsActivityLogLimit(50);
+        renderWith({ activities });
+
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(55);
+        expect(document.querySelector('[data-show-more-activities]')).toBeNull();
+    });
+
+    test('changing the trend date range resets Activity Log visible limit to default', () => {
+        const activities = Array.from({ length: 75 }, (_, index) =>
+            activity({
+                id: `activity-${index + 1}`,
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('09:30')
+            })
+        );
+
+        expandInsightsActivityLogLimit(50);
+        renderWith({ activities });
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(75);
+
+        setInsightsTrendDateRange({
+            startDate: '2026-04-24',
+            endDate: '2026-05-07'
+        });
+        renderWith({ activities });
+
+        expect(renderActivities.mock.calls.at(-1)[0]).toHaveLength(50);
+        expect(document.querySelector('[data-show-more-activities]')).not.toBeNull();
+    });
+
+    test('initial Activity Log uses the default 14-day trend range', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'inside-range',
+                    startDateTime: isoOn('2026-04-24', '09:00'),
+                    endDateTime: isoOn('2026-04-24', '09:30')
+                }),
+                activity({
+                    id: 'outside-range',
+                    startDateTime: isoOn('2026-04-23', '09:00'),
+                    endDateTime: isoOn('2026-04-23', '09:30')
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        expect(renderActivities.mock.calls.at(-1)[0]).toEqual([
+            expect.objectContaining({ id: 'inside-range' })
+        ]);
+    });
+
+    test('renderInsightsView renders collapsed Trends with date filters and category daily bars', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-04-24', '09:00'),
+                    endDateTime: isoOn('2026-04-24', '10:30'),
+                    duration: 90
+                }),
+                activity({
+                    id: 'activity-2',
+                    startDateTime: isoOn('2026-05-07', '14:00'),
+                    endDateTime: isoOn('2026-05-07', '15:00'),
+                    duration: 60
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const trends = document.getElementById('insights-trends');
+        const details = trends.querySelector('details');
+
+        expect(trends.textContent).toContain('Trends');
+        expect(details).not.toBeNull();
+        expect(details.open).toBe(false);
+        expect(trends.querySelector('[data-trend-start-date]')).not.toBeNull();
+        expect(trends.querySelector('[data-trend-end-date]')).not.toBeNull();
+        expect(trends.querySelector('[data-category-trend-chart]')).not.toBeNull();
+        expect(trends.querySelectorAll('[data-category-trend-segment]').length).toBeGreaterThan(0);
+        expect(trends.querySelectorAll('[data-daily-trend-bar]')).toHaveLength(14);
+        expect(trends.querySelectorAll('[data-daily-trend-segment]').length).toBeGreaterThan(0);
+        expect(trends.querySelector('[data-daily-trend-grid]')).not.toBeNull();
+        expect(trends.textContent).toContain('Work');
+    });
+
+    test('renderInsightsView preserves open Trends details across re-renders', () => {
+        renderWith();
+
+        const details = document.querySelector('#insights-trends details');
+        details.open = true;
+
+        renderWith();
+
+        expect(document.querySelector('#insights-trends details').open).toBe(true);
+    });
+
+    test('daily trend stacked segment container fills the fixed-height bar', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:30'),
+                    duration: 90
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const segment = document.querySelector('[data-daily-trend-segment]');
+        const stackContainer = segment.parentElement;
+
+        expect(stackContainer.classList.contains('h-full')).toBe(true);
+    });
+
+    test('category trend segments normalize percentage dash lengths to path length 100', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:00'),
+                    duration: 60
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const segment = document.querySelector('[data-category-trend-segment]');
+
+        expect(segment.getAttribute('pathLength')).toBe('100');
+    });
+
+    test('renderInsightsView passes one effective date range to insights and trends models', async () => {
+        jest.resetModules();
+
+        const buildInsightsModel = jest.fn(() => ({
+            summary: {
+                totalPlannedMinutes: 0,
+                totalActualMinutes: 0,
+                completedTaskCount: 0,
+                currentlyLateTaskCount: 0
+            },
+            plannedBlocks: [],
+            actualBlocks: [],
+            activityLog: [],
+            activityLogIssues: []
+        }));
+        const buildTrendModel = jest.fn(() => ({
+            dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' },
+            dailyHours: [],
+            categoryTotals: []
+        }));
+
+        jest.doMock('../public/js/activities/manager.js', () => ({
+            getActivityState: jest.fn(() => []),
+            getRunningActivity: jest.fn(() => null)
+        }));
+        jest.doMock('../public/js/activities/renderer.js', () => ({
+            renderActivities: jest.fn()
+        }));
+        jest.doMock('../public/js/activities/insights-model.js', () => ({
+            buildInsightsModel
+        }));
+        jest.doMock('../public/js/activities/insights-trends.js', () => ({
+            buildTrendModel,
+            getDefaultTrendDateRange: jest.fn(() => ({
+                startDate: '2026-04-24',
+                endDate: '2026-05-07'
+            }))
+        }));
+
+        const { renderInsightsView: renderMockedInsightsView } =
+            await import('../public/js/activities/insights-renderer.js');
+
+        renderMockedInsightsView({ now: new Date(isoAt('12:00')) });
+
+        expect(buildInsightsModel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                activityLogDateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+            })
+        );
+        expect(buildTrendModel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+            })
+        );
+
+        jest.dontMock('../public/js/activities/manager.js');
+        jest.dontMock('../public/js/activities/renderer.js');
+        jest.dontMock('../public/js/activities/insights-model.js');
+        jest.dontMock('../public/js/activities/insights-trends.js');
+    });
+});

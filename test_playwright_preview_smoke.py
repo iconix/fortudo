@@ -6,6 +6,7 @@ from scripts.playwright_preview_smoke import (
     add_active_scheduled_task,
     add_category_via_settings,
     arm_unscheduled_delete_confirm,
+    assert_phase5_insights_view,
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
     build_phase3_taxonomy_config_doc,
@@ -37,6 +38,7 @@ from scripts.playwright_preview_smoke import (
     parse_cli_args,
     queue_activity_smoke_failure,
     request_manual_sync,
+    run_phase5_insights_smoke,
     start_activity_timer,
     start_timer_from_unscheduled_task,
     stop_activity_timer,
@@ -583,6 +585,9 @@ class FakePage:
     def wait_for_timeout(self, timeout_ms):
         self.waits.append(timeout_ms)
 
+    def reload(self, *, wait_until):
+        self.evaluations.append(("reload", wait_until))
+
     def evaluate(self, script, payload=None):
         self.evaluations.append((script, payload))
 
@@ -1039,6 +1044,85 @@ class PreviewWaitHelperTests(unittest.TestCase):
             "Focus timer",
             timeout_s=0.05,
             interval_s=0,
+        )
+
+    def test_assert_phase5_insights_view_requires_summary_timeline_and_log(self):
+        page = FakePage(
+            {
+                "#insights-view": FakeLocator(visible=True),
+                "#insights-summary": FakeLocator(text_values=["Planned Actual Completed"]),
+                "#insights-timeline [data-timeline-block=\"planned\"]": FakeLocator(count=1),
+                "#insights-timeline [data-timeline-block=\"actual\"]": FakeLocator(count=1),
+                "#insights-timeline": FakeLocator(
+                    text_values=[
+                        "Planned Playwright insights auto-log Actual Playwright insights auto-log "
+                        "Playwright insights live timer"
+                    ]
+                ),
+                "#insights-activity-list": FakeLocator(
+                    text_values=["Playwright insights auto-log"]
+                ),
+            }
+        )
+
+        assert_phase5_insights_view(
+            page,
+            activity_description="Playwright insights auto-log",
+            running_timer_description="Playwright insights live timer",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+    @patch("scripts.playwright_preview_smoke.assert_phase5_insights_view")
+    @patch("scripts.playwright_preview_smoke.start_activity_timer")
+    @patch("scripts.playwright_preview_smoke.wait_for_activity_doc")
+    @patch("scripts.playwright_preview_smoke.complete_scheduled_task_via_ui")
+    @patch("scripts.playwright_preview_smoke.wait_for_task_doc")
+    @patch("scripts.playwright_preview_smoke.add_active_scheduled_task")
+    @patch("scripts.playwright_preview_smoke.wait_for_main_app")
+    @patch("scripts.playwright_preview_smoke.set_activities_enabled")
+    def test_run_phase5_insights_smoke_seeds_activity_and_opens_insights(
+        self,
+        mock_set_activities_enabled,
+        mock_wait_for_main_app,
+        mock_add_active_scheduled_task,
+        mock_wait_for_task_doc,
+        mock_complete_scheduled_task_via_ui,
+        mock_wait_for_activity_doc,
+        mock_start_activity_timer,
+        mock_assert_phase5_insights_view,
+    ):
+        insights_button = FakeLocator()
+        page = FakePage({"#view-toggle-insights": insights_button})
+        mock_wait_for_task_doc.return_value = {"id": "task-insights"}
+        mock_wait_for_activity_doc.return_value = {"id": "activity-insights"}
+
+        run_phase5_insights_smoke(page, "room-a")
+
+        mock_set_activities_enabled.assert_called_once_with(page, True)
+        self.assertIn(("reload", "load"), page.evaluations)
+        mock_wait_for_main_app.assert_called_once_with(page)
+        mock_add_active_scheduled_task.assert_called_once_with(
+            page,
+            "Playwright insights auto-log",
+            20,
+        )
+        mock_complete_scheduled_task_via_ui.assert_called_once_with(page, "task-insights")
+        mock_wait_for_activity_doc.assert_called_once_with(
+            page,
+            "room-a",
+            "Playwright insights auto-log",
+        )
+        mock_start_activity_timer.assert_called_once_with(
+            page,
+            "Playwright insights live timer",
+            room_code="room-a",
+        )
+        self.assertEqual(insights_button.clicks, 1)
+        mock_assert_phase5_insights_view.assert_called_once_with(
+            page,
+            activity_description="Playwright insights auto-log",
+            running_timer_description="Playwright insights live timer",
         )
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):

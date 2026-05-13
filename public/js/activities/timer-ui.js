@@ -2,6 +2,7 @@ import { showAlert } from '../modal-manager.js';
 import { logger } from '../utils.js';
 import { getRunningActivity, updateRunningActivity } from './manager.js';
 import { handleStartTimer, handleStopTimer } from './handlers.js';
+import { renderActiveInsightsView } from './view-toggle.js';
 
 const timerUiState = {
     tickTimeoutId: null,
@@ -52,6 +53,11 @@ function refreshActivitySummary() {
     if (typeof timerUiState.refreshActivitySummary === 'function') {
         timerUiState.refreshActivitySummary();
     }
+}
+
+function refreshTimerDerivedViews() {
+    refreshActivitySummary();
+    renderActiveInsightsView();
 }
 
 function getEffectiveNowMs() {
@@ -222,7 +228,7 @@ async function refreshServerClockOffset(sessionId) {
     }
 
     startElapsedCounter(runningActivity.startDateTime);
-    refreshActivitySummary();
+    refreshTimerDerivedViews();
 }
 
 function registerTimerDebugHelper() {
@@ -261,7 +267,7 @@ function startElapsedCounter(startDateTime) {
             typeof timerUiState.refreshActivitySummary === 'function'
         ) {
             timerUiState.lastSummaryElapsedMinutes = elapsedMinutes;
-            refreshActivitySummary();
+            refreshTimerDerivedViews();
             return;
         }
 
@@ -573,7 +579,7 @@ export function initializeTimerUI(deps) {
                             if (result?.success && result.runningActivity) {
                                 timerDescriptionInput.value =
                                     result.runningActivity.description || '';
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
@@ -610,7 +616,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 timerCategorySelect.value = result.runningActivity.category || '';
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
@@ -659,7 +665,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 showTimerDisplay(result.runningActivity);
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
