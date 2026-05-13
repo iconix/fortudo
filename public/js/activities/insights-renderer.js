@@ -295,6 +295,7 @@ function renderCategoryTrendChart(categoryTotals = []) {
                 fill="none"
                 stroke-width="7"
                 stroke="${normalizeTimelineColor(category.color)}"
+                pathLength="100"
                 stroke-dasharray="${dashArray}"
                 stroke-dashoffset="${dashOffset}"></circle>`;
         })
@@ -351,7 +352,7 @@ function renderDailyTrendBars(dailyHours = []) {
             return `<div class="flex min-w-0 flex-col items-center gap-2">
                 <div data-daily-trend-bar
                     class="flex h-24 w-full max-w-8 items-end overflow-hidden rounded bg-slate-800/80">
-                    <div class="flex w-full flex-col-reverse">${segments}</div>
+                    <div class="flex h-full w-full flex-col-reverse">${segments}</div>
                 </div>
                 <div class="truncate text-[10px] text-slate-500">${escapeHtml(day.date.slice(5))}</div>
             </div>`;

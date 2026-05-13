@@ -527,6 +527,43 @@ describe('activity insights renderer', () => {
         expect(trends.textContent).toContain('Work');
     });
 
+    test('daily trend stacked segment container fills the fixed-height bar', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:30'),
+                    duration: 90
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const segment = document.querySelector('[data-daily-trend-segment]');
+        const stackContainer = segment.parentElement;
+
+        expect(stackContainer.classList.contains('h-full')).toBe(true);
+    });
+
+    test('category trend segments normalize percentage dash lengths to path length 100', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:00'),
+                    duration: 60
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const segment = document.querySelector('[data-category-trend-segment]');
+
+        expect(segment.getAttribute('pathLength')).toBe('100');
+    });
+
     test('renderInsightsView passes one effective date range to insights and trends models', async () => {
         jest.resetModules();
 
