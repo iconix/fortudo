@@ -527,6 +527,17 @@ describe('activity insights renderer', () => {
         expect(trends.textContent).toContain('Work');
     });
 
+    test('renderInsightsView preserves open Trends details across re-renders', () => {
+        renderWith();
+
+        const details = document.querySelector('#insights-trends details');
+        details.open = true;
+
+        renderWith();
+
+        expect(document.querySelector('#insights-trends details').open).toBe(true);
+    });
+
     test('daily trend stacked segment container fills the fixed-height bar', () => {
         renderWith({
             activities: [

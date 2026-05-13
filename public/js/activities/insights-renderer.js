@@ -378,8 +378,9 @@ export function renderTrends(trendModel = {}) {
     }
 
     const dateRange = trendModel.dateRange || {};
+    const wasOpen = Boolean(trendsContainer.querySelector('details')?.open);
 
-    trendsContainer.innerHTML = `<details class="rounded-lg border border-slate-700 bg-slate-950/80 p-4 shadow-sm">
+    trendsContainer.innerHTML = `<details${wasOpen ? ' open' : ''} class="rounded-lg border border-slate-700 bg-slate-950/80 p-4 shadow-sm">
         <summary class="cursor-pointer text-sm font-semibold text-slate-100">Trends</summary>
         <div class="mt-4 space-y-4">
             <div class="grid grid-cols-2 gap-3">
