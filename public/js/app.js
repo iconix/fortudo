@@ -158,7 +158,6 @@ async function initAndBootApp(roomCode) {
     };
     const refreshAppUI = () => {
         refreshDomUI();
-        renderActiveInsightsView();
     };
     const renderInsights = () =>
         renderInsightsView({

@@ -16,6 +16,10 @@ jest.mock('../public/js/activities/manager.js', () => ({
     updateRunningActivity: jest.fn(() => Promise.resolve({ success: true }))
 }));
 
+jest.mock('../public/js/activities/view-toggle.js', () => ({
+    renderActiveInsightsView: jest.fn()
+}));
+
 import {
     showTimerDisplay,
     hideTimerDisplay,
@@ -25,6 +29,7 @@ import {
 } from '../public/js/activities/timer-ui.js';
 import { handleStartTimer, handleStopTimer } from '../public/js/activities/handlers.js';
 import { getRunningActivity, updateRunningActivity } from '../public/js/activities/manager.js';
+import { renderActiveInsightsView } from '../public/js/activities/view-toggle.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { logger } from '../public/js/utils.js';
 
@@ -778,6 +783,24 @@ describe('activity timer ui', () => {
 
             jest.advanceTimersByTime(1000);
             expect(refreshActivitySummary).toHaveBeenCalledTimes(1);
+        });
+
+        test('refreshes active insights when elapsed summary crosses a rounded-minute boundary', () => {
+            const refreshActivitySummary = jest.fn();
+
+            initializeTimerUI({ refreshUI: jest.fn(), refreshActivitySummary });
+            showTimerDisplay({
+                description: 'Timer work',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            jest.advanceTimersByTime(30000);
+
+            expect(refreshActivitySummary).toHaveBeenCalledTimes(1);
+            expect(renderActiveInsightsView).toHaveBeenCalledTimes(1);
+            expect(refreshActivitySummary.mock.invocationCallOrder[0]).toBeLessThan(
+                renderActiveInsightsView.mock.invocationCallOrder[0]
+            );
         });
 
         test('stop timer waits for pending timer edits before delegating', async () => {
