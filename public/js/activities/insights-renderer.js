@@ -143,6 +143,28 @@ function groupIssuesByActivityId(issues = []) {
     return issuesById;
 }
 
+function mergeActivityIssuesById(existingIssuesById, modelIssues = []) {
+    const mergedIssuesById = {};
+
+    if (existingIssuesById instanceof Map) {
+        for (const [activityId, issues] of existingIssuesById) {
+            mergedIssuesById[activityId] = [...issues];
+        }
+    } else {
+        for (const [activityId, issues] of Object.entries(existingIssuesById || {})) {
+            mergedIssuesById[activityId] = [...issues];
+        }
+    }
+
+    const modelIssuesById = groupIssuesByActivityId(modelIssues);
+
+    for (const [activityId, issues] of Object.entries(modelIssuesById)) {
+        mergedIssuesById[activityId] = [...(mergedIssuesById[activityId] || []), ...issues];
+    }
+
+    return mergedIssuesById;
+}
+
 function renderShowMoreButton(hiddenCount) {
     const logContainer = document.getElementById('insights-activity-log');
     if (!logContainer) {
@@ -176,7 +198,10 @@ function renderActivityLog(model, activityRenderOptions = {}) {
     renderActivities(visibleActivities, listContainer, {
         ...activityRenderOptions,
         summaryActivities: model.activityLog,
-        activityIssuesById: groupIssuesByActivityId(model.activityLogIssues)
+        activityIssuesById: mergeActivityIssuesById(
+            activityRenderOptions.activityIssuesById,
+            model.activityLogIssues
+        )
     });
     renderShowMoreButton(hiddenCount);
 }

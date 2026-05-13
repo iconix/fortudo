@@ -308,6 +308,119 @@ describe('activity insights renderer', () => {
         );
     });
 
+    test('renderInsightsView preserves caller activity issue annotations with model issues', () => {
+        const existingIssue = {
+            type: 'manual-review',
+            activityId: 'activity-overlapping',
+            message: 'Needs human review'
+        };
+
+        getActivityState.mockReturnValue([
+            activity({
+                id: 'activity-overlapped',
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('10:00'),
+                source: 'manual',
+                sourceTaskId: null
+            }),
+            activity({
+                id: 'activity-overlapping',
+                startDateTime: isoAt('09:30'),
+                endDateTime: isoAt('10:30'),
+                source: 'manual',
+                sourceTaskId: null
+            })
+        ]);
+        getRunningActivity.mockReturnValue(null);
+
+        renderInsightsView({
+            now: new Date(isoAt('12:00')),
+            activityRenderOptions: {
+                confirmingDeleteActivityId: 'activity-3',
+                activityIssuesById: {
+                    'activity-overlapping': [existingIssue]
+                }
+            }
+        });
+
+        const options = renderActivities.mock.calls.at(-1)[2];
+
+        expect(options.activityIssuesById['activity-overlapping']).toEqual([
+            existingIssue,
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options.activityIssuesById['activity-overlapped']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+    });
+
+    test('renderInsightsView groups related activity issues by both activity ids', async () => {
+        jest.resetModules();
+
+        const relatedIssue = {
+            type: 'related',
+            activityId: 'primary-activity',
+            relatedActivityId: 'related-activity'
+        };
+        const mockRenderActivities = jest.fn();
+
+        jest.doMock('../public/js/activities/manager.js', () => ({
+            getActivityState: jest.fn(() => []),
+            getRunningActivity: jest.fn(() => null)
+        }));
+        jest.doMock('../public/js/activities/renderer.js', () => ({
+            renderActivities: mockRenderActivities
+        }));
+        jest.doMock('../public/js/activities/insights-model.js', () => ({
+            buildInsightsModel: jest.fn(() => ({
+                summary: {
+                    totalPlannedMinutes: 0,
+                    totalActualMinutes: 0,
+                    completedTaskCount: 0,
+                    currentlyLateTaskCount: 0
+                },
+                plannedBlocks: [],
+                actualBlocks: [],
+                activityLog: [
+                    activity({ id: 'primary-activity' }),
+                    activity({ id: 'related-activity' })
+                ],
+                activityLogIssues: [relatedIssue]
+            })),
+            buildTrendModel: jest.fn(() => ({
+                dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' },
+                dailyHours: [],
+                categoryTotals: []
+            })),
+            getDefaultTrendDateRange: jest.fn(() => ({
+                startDate: '2026-04-24',
+                endDate: '2026-05-07'
+            }))
+        }));
+
+        const { renderInsightsView: renderMockedInsightsView } =
+            await import('../public/js/activities/insights-renderer.js');
+
+        renderMockedInsightsView({ now: new Date(isoAt('12:00')) });
+
+        const options = mockRenderActivities.mock.calls.at(-1)[2];
+
+        expect(options.activityIssuesById['primary-activity']).toEqual([relatedIssue]);
+        expect(options.activityIssuesById['related-activity']).toEqual([relatedIssue]);
+
+        jest.dontMock('../public/js/activities/manager.js');
+        jest.dontMock('../public/js/activities/renderer.js');
+        jest.dontMock('../public/js/activities/insights-model.js');
+    });
+
     test('long Activity Logs are bounded until expanded', () => {
         const activities = Array.from({ length: 55 }, (_, index) =>
             activity({
