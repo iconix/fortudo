@@ -166,12 +166,12 @@ function mergeActivityIssuesById(existingIssuesById, modelIssues = []) {
 }
 
 function renderShowMoreButton(hiddenCount) {
-    const logContainer = document.getElementById('insights-activity-log');
-    if (!logContainer) {
+    const listContainer = document.getElementById('insights-activity-list');
+    if (!listContainer) {
         return;
     }
 
-    logContainer.querySelector('[data-show-more-activities]')?.remove();
+    listContainer.querySelector('[data-show-more-activities]')?.remove();
 
     if (hiddenCount <= 0) {
         return;
@@ -183,7 +183,7 @@ function renderShowMoreButton(hiddenCount) {
     button.className =
         'mt-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800';
     button.textContent = `Show ${hiddenCount} more`;
-    logContainer.append(button);
+    listContainer.append(button);
 }
 
 function renderActivityLog(model, activityRenderOptions = {}) {
@@ -267,7 +267,134 @@ export function renderInsightsView({
     renderTrends(trendModel);
 }
 
+function getTotalMinutes(items = []) {
+    return items.reduce((total, item) => total + (Number(item.minutes) || 0), 0);
+}
+
+function renderCategoryTrendChart(categoryTotals = []) {
+    const totalMinutes = getTotalMinutes(categoryTotals);
+    let consumedPercent = 0;
+
+    const segments = categoryTotals
+        .map((category) => {
+            const minutes = Number(category.minutes) || 0;
+            if (minutes <= 0 || totalMinutes <= 0) {
+                return '';
+            }
+
+            const percent = (minutes / totalMinutes) * 100;
+            const dashArray = `${percent} ${100 - percent}`;
+            const dashOffset = -consumedPercent;
+            consumedPercent += percent;
+
+            return `<circle data-category-trend-segment
+                class="origin-center -rotate-90"
+                cx="18"
+                cy="18"
+                r="14"
+                fill="none"
+                stroke-width="7"
+                stroke="${normalizeTimelineColor(category.color)}"
+                stroke-dasharray="${dashArray}"
+                stroke-dashoffset="${dashOffset}"></circle>`;
+        })
+        .join('');
+
+    const legend = categoryTotals
+        .map(
+            (category) => `<div class="flex items-center justify-between gap-3 text-xs">
+                <span class="flex min-w-0 items-center gap-2 text-slate-300">
+                    <span class="h-2.5 w-2.5 shrink-0 rounded-sm"
+                        style="background-color: ${normalizeTimelineColor(category.color)};"></span>
+                    <span class="truncate">${escapeHtml(category.label)}</span>
+                </span>
+                <span class="shrink-0 font-medium text-slate-100">
+                    ${escapeHtml(calculateHoursAndMinutes(category.minutes))}
+                </span>
+            </div>`
+        )
+        .join('');
+
+    return `<div class="grid grid-cols-[4.5rem_1fr] items-center gap-4">
+        <svg data-category-trend-chart viewBox="0 0 36 36" class="h-16 w-16 text-slate-800">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" stroke-width="7"></circle>
+            ${segments}
+        </svg>
+        <div class="space-y-2">${legend || '<div class="text-xs text-slate-400">No activity</div>'}</div>
+    </div>`;
+}
+
+function renderDailyTrendBars(dailyHours = []) {
+    const maxMinutes = Math.max(1, ...dailyHours.map((day) => Number(day.minutes) || 0));
+
+    const bars = dailyHours
+        .map((day) => {
+            const dayMinutes = Number(day.minutes) || 0;
+            const barHeight = Math.max(3, (dayMinutes / maxMinutes) * 100);
+            const segments = (day.categorySegments || [])
+                .map((segment) => {
+                    const minutes = Number(segment.minutes) || 0;
+                    if (minutes <= 0 || dayMinutes <= 0) {
+                        return '';
+                    }
+
+                    const height = Math.max(3, (minutes / dayMinutes) * barHeight);
+
+                    return `<span data-daily-trend-segment class="block w-full"
+                        title="${escapeHtml(segment.label)} ${escapeHtml(calculateHoursAndMinutes(minutes))}"
+                        style="height: ${height}%; background-color: ${normalizeTimelineColor(
+                            segment.color
+                        )};"></span>`;
+                })
+                .join('');
+
+            return `<div class="flex min-w-0 flex-col items-center gap-2">
+                <div data-daily-trend-bar
+                    class="flex h-24 w-full max-w-8 items-end overflow-hidden rounded bg-slate-800/80">
+                    <div class="flex w-full flex-col-reverse">${segments}</div>
+                </div>
+                <div class="truncate text-[10px] text-slate-500">${escapeHtml(day.date.slice(5))}</div>
+            </div>`;
+        })
+        .join('');
+
+    return `<div class="relative">
+        <div data-daily-trend-grid
+            class="pointer-events-none absolute inset-x-0 top-0 h-24 rounded border-y border-slate-700/60 bg-[linear-gradient(to_top,rgba(148,163,184,0.16)_1px,transparent_1px)] bg-[length:100%_33.333%]">
+        </div>
+        <div class="relative grid grid-cols-7 gap-2 md:grid-cols-14">${bars}</div>
+    </div>`;
+}
+
 /**
- * Placeholder for Phase 5 trend rendering.
+ * Renders the lightweight Trends panel for activity insights.
+ * @param {Object} trendModel
  */
-export function renderTrends() {}
+export function renderTrends(trendModel = {}) {
+    const trendsContainer = document.getElementById('insights-trends');
+    if (!trendsContainer) {
+        return;
+    }
+
+    const dateRange = trendModel.dateRange || {};
+
+    trendsContainer.innerHTML = `<details class="rounded-lg border border-slate-700 bg-slate-950/80 p-4 shadow-sm">
+        <summary class="cursor-pointer text-sm font-semibold text-slate-100">Trends</summary>
+        <div class="mt-4 space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <label class="text-xs font-medium uppercase text-slate-400">
+                    Start
+                    <input data-trend-start-date type="date" value="${escapeHtml(dateRange.startDate)}"
+                        class="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm normal-case text-slate-100">
+                </label>
+                <label class="text-xs font-medium uppercase text-slate-400">
+                    End
+                    <input data-trend-end-date type="date" value="${escapeHtml(dateRange.endDate)}"
+                        class="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm normal-case text-slate-100">
+                </label>
+            </div>
+            ${renderCategoryTrendChart(trendModel.categoryTotals || [])}
+            ${renderDailyTrendBars(trendModel.dailyHours || [])}
+        </div>
+    </details>`;
+}

@@ -491,4 +491,97 @@ describe('activity insights renderer', () => {
             expect.objectContaining({ id: 'inside-range' })
         ]);
     });
+
+    test('renderInsightsView renders collapsed Trends with date filters and category daily bars', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    startDateTime: isoOn('2026-04-24', '09:00'),
+                    endDateTime: isoOn('2026-04-24', '10:30'),
+                    duration: 90
+                }),
+                activity({
+                    id: 'activity-2',
+                    startDateTime: isoOn('2026-05-07', '14:00'),
+                    endDateTime: isoOn('2026-05-07', '15:00'),
+                    duration: 60
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const trends = document.getElementById('insights-trends');
+        const details = trends.querySelector('details');
+
+        expect(trends.textContent).toContain('Trends');
+        expect(details).not.toBeNull();
+        expect(details.open).toBe(false);
+        expect(trends.querySelector('[data-trend-start-date]')).not.toBeNull();
+        expect(trends.querySelector('[data-trend-end-date]')).not.toBeNull();
+        expect(trends.querySelector('[data-category-trend-chart]')).not.toBeNull();
+        expect(trends.querySelectorAll('[data-category-trend-segment]').length).toBeGreaterThan(0);
+        expect(trends.querySelectorAll('[data-daily-trend-bar]')).toHaveLength(14);
+        expect(trends.querySelectorAll('[data-daily-trend-segment]').length).toBeGreaterThan(0);
+        expect(trends.querySelector('[data-daily-trend-grid]')).not.toBeNull();
+        expect(trends.textContent).toContain('Work');
+    });
+
+    test('renderInsightsView passes one effective date range to insights and trends models', async () => {
+        jest.resetModules();
+
+        const buildInsightsModel = jest.fn(() => ({
+            summary: {
+                totalPlannedMinutes: 0,
+                totalActualMinutes: 0,
+                completedTaskCount: 0,
+                currentlyLateTaskCount: 0
+            },
+            plannedBlocks: [],
+            actualBlocks: [],
+            activityLog: [],
+            activityLogIssues: []
+        }));
+        const buildTrendModel = jest.fn(() => ({
+            dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' },
+            dailyHours: [],
+            categoryTotals: []
+        }));
+
+        jest.doMock('../public/js/activities/manager.js', () => ({
+            getActivityState: jest.fn(() => []),
+            getRunningActivity: jest.fn(() => null)
+        }));
+        jest.doMock('../public/js/activities/renderer.js', () => ({
+            renderActivities: jest.fn()
+        }));
+        jest.doMock('../public/js/activities/insights-model.js', () => ({
+            buildInsightsModel,
+            buildTrendModel,
+            getDefaultTrendDateRange: jest.fn(() => ({
+                startDate: '2026-04-24',
+                endDate: '2026-05-07'
+            }))
+        }));
+
+        const { renderInsightsView: renderMockedInsightsView } =
+            await import('../public/js/activities/insights-renderer.js');
+
+        renderMockedInsightsView({ now: new Date(isoAt('12:00')) });
+
+        expect(buildInsightsModel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                activityLogDateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+            })
+        );
+        expect(buildTrendModel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+            })
+        );
+
+        jest.dontMock('../public/js/activities/manager.js');
+        jest.dontMock('../public/js/activities/renderer.js');
+        jest.dontMock('../public/js/activities/insights-model.js');
+    });
 });

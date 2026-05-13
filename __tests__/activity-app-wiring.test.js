@@ -20,6 +20,11 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getRunningActivity: jest.fn(() => null)
 }));
 
+jest.mock('../public/js/activities/insights-renderer.js', () => ({
+    expandInsightsActivityLogLimit: jest.fn(),
+    setInsightsTrendDateRange: jest.fn()
+}));
+
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
@@ -35,6 +40,10 @@ import {
 } from '../public/js/activities/ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from '../public/js/activities/timer-ui.js';
 import { getRunningActivity } from '../public/js/activities/manager.js';
+import {
+    expandInsightsActivityLogLimit,
+    setInsightsTrendDateRange
+} from '../public/js/activities/insights-renderer.js';
 
 describe('activity app wiring', () => {
     beforeEach(() => {
@@ -42,6 +51,10 @@ describe('activity app wiring', () => {
         document.body.innerHTML = `
             <form id="task-form"></form>
             <div id="activity-list"></div>
+            <div id="insights-trends">
+                <input data-trend-start-date value="2026-04-24">
+                <input data-trend-end-date value="2026-05-07">
+            </div>
             <div id="insights-activity-list"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
         `;
@@ -138,6 +151,55 @@ describe('activity app wiring', () => {
         expect(handleActivityListSubmit).toHaveBeenCalled();
         expect(handleActivityListKeydown).toHaveBeenCalled();
         expect(handleActivityListInput).toHaveBeenCalled();
+    });
+
+    test('changing trend date filters stores the range and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const startDate = document.querySelector('[data-trend-start-date]');
+        startDate.value = '2026-05-01';
+        startDate.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(setInsightsTrendDateRange).toHaveBeenCalledWith({
+            startDate: '2026-05-01',
+            endDate: '2026-05-07'
+        });
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking show more expands the insights activity log and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const insightsActivityList = document.getElementById('insights-activity-list');
+        insightsActivityList.innerHTML = '<button data-show-more-activities>Show 50 more</button>';
+        insightsActivityList
+            .querySelector('[data-show-more-activities]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(expandInsightsActivityLogLimit).toHaveBeenCalledWith(50);
+        expect(renderInsights).toHaveBeenCalled();
     });
 
     test('restores activity mode before syncing timer ui when a running timer exists', () => {

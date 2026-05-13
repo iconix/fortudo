@@ -8,6 +8,7 @@ import {
 } from './ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './timer-ui.js';
 import { getRunningActivity } from './manager.js';
+import { expandInsightsActivityLogLimit, setInsightsTrendDateRange } from './insights-renderer.js';
 
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
@@ -63,11 +64,59 @@ function initializeActivityListEventHandlers(activityListElement, { signal, refr
     activityListElement.addEventListener('input', handleActivityListInput, { signal });
 }
 
+function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderInsights }) {
+    if (!trendsElement) {
+        return;
+    }
+
+    trendsElement.addEventListener(
+        'change',
+        (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) {
+                return;
+            }
+
+            if (!target.matches('[data-trend-start-date], [data-trend-end-date]')) {
+                return;
+            }
+
+            const startDate = trendsElement.querySelector('[data-trend-start-date]')?.value || '';
+            const endDate = trendsElement.querySelector('[data-trend-end-date]')?.value || '';
+
+            setInsightsTrendDateRange({ startDate, endDate });
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
+function initializeInsightsActivityListEventHandlers(listElement, { signal, renderInsights }) {
+    if (!listElement) {
+        return;
+    }
+
+    listElement.addEventListener(
+        'click',
+        (event) => {
+            const showMoreButton = event.target.closest('[data-show-more-activities]');
+            if (!showMoreButton) {
+                return;
+            }
+
+            expandInsightsActivityLogLimit(50);
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
 export function initializeActivityUi({
     signal,
     refreshUI,
     refreshTaskDisplays,
-    getActivitiesEnabled
+    getActivitiesEnabled,
+    renderInsights = () => {}
 }) {
     initializeTimerUI({
         refreshUI: refreshTaskDisplays,
@@ -81,6 +130,14 @@ export function initializeActivityUi({
     initializeActivityListEventHandlers(document.getElementById('insights-activity-list'), {
         signal,
         refreshUI
+    });
+    initializeInsightsTrendEventHandlers(document.getElementById('insights-trends'), {
+        signal,
+        renderInsights
+    });
+    initializeInsightsActivityListEventHandlers(document.getElementById('insights-activity-list'), {
+        signal,
+        renderInsights
     });
 }
 

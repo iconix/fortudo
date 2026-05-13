@@ -160,6 +160,12 @@ async function initAndBootApp(roomCode) {
         refreshDomUI();
         renderActiveInsightsView();
     };
+    const renderInsights = () =>
+        renderInsightsView({
+            tasks: getTaskState(),
+            activityRenderOptions: getActivityRenderOptions(),
+            now: new Date()
+        });
 
     const appCallbacks = createActivityAppCallbacks({
         getActivitiesEnabled: () => isActivitiesEnabled(),
@@ -263,16 +269,12 @@ async function initAndBootApp(roomCode) {
         signal,
         refreshUI: refreshAppUI,
         refreshTaskDisplays,
-        getActivitiesEnabled: () => isActivitiesEnabled()
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        renderInsights
     });
     initializeActivitiesViewToggle({
         isActivitiesEnabled: () => isActivitiesEnabled(),
-        renderInsights: () =>
-            renderInsightsView({
-                tasks: getTaskState(),
-                activityRenderOptions: getActivityRenderOptions(),
-                now: new Date()
-            })
+        renderInsights
     });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
