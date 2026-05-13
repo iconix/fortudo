@@ -50,6 +50,13 @@ describe('activity timer ui', () => {
             await Promise.resolve();
         }
     };
+    const expectTimerDerivedViewsRefreshed = (refreshActivitySummary) => {
+        expect(refreshActivitySummary).toHaveBeenCalledTimes(1);
+        expect(renderActiveInsightsView).toHaveBeenCalledTimes(1);
+        expect(refreshActivitySummary.mock.invocationCallOrder[0]).toBeLessThan(
+            renderActiveInsightsView.mock.invocationCallOrder[0]
+        );
+    };
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -796,11 +803,7 @@ describe('activity timer ui', () => {
 
             jest.advanceTimersByTime(30000);
 
-            expect(refreshActivitySummary).toHaveBeenCalledTimes(1);
-            expect(renderActiveInsightsView).toHaveBeenCalledTimes(1);
-            expect(refreshActivitySummary.mock.invocationCallOrder[0]).toBeLessThan(
-                renderActiveInsightsView.mock.invocationCallOrder[0]
-            );
+            expectTimerDerivedViewsRefreshed(refreshActivitySummary);
         });
 
         test('stop timer waits for pending timer edits before delegating', async () => {
@@ -931,7 +934,7 @@ describe('activity timer ui', () => {
             expect(document.getElementById('timer-elapsed').textContent).toBe('00:30:00');
         });
 
-        test('successful timer description edits refresh the activity summary immediately', async () => {
+        test('successful timer description edits refresh timer-derived summary and insights immediately', async () => {
             const refreshActivitySummary = jest.fn();
             getRunningActivity.mockReturnValue({
                 description: 'Running',
@@ -959,10 +962,10 @@ describe('activity timer ui', () => {
             descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
             await flushAsyncWork(6);
 
-            expect(refreshActivitySummary).toHaveBeenCalled();
+            expectTimerDerivedViewsRefreshed(refreshActivitySummary);
         });
 
-        test('successful timer category edits refresh the activity summary immediately', async () => {
+        test('successful timer category edits refresh timer-derived summary and insights immediately', async () => {
             const refreshActivitySummary = jest.fn();
             getRunningActivity.mockReturnValue({
                 description: 'Running',
@@ -992,7 +995,7 @@ describe('activity timer ui', () => {
             categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
             await flushAsyncWork(6);
 
-            expect(refreshActivitySummary).toHaveBeenCalled();
+            expectTimerDerivedViewsRefreshed(refreshActivitySummary);
         });
 
         test('failed timer description edits rollback the visible value and alert', async () => {
@@ -1097,7 +1100,7 @@ describe('activity timer ui', () => {
             expect(showAlert).toHaveBeenCalledWith('Start time update failed.', 'sky');
         });
 
-        test('successful timer start time edits refresh the activity summary immediately', async () => {
+        test('successful timer start time edits refresh timer-derived summary and insights immediately', async () => {
             const refreshActivitySummary = jest.fn();
             getRunningActivity.mockReturnValue({
                 description: 'Running',
@@ -1125,7 +1128,7 @@ describe('activity timer ui', () => {
             startTimeInput.dispatchEvent(new Event('change', { bubbles: true }));
             await flushAsyncWork(6);
 
-            expect(refreshActivitySummary).toHaveBeenCalled();
+            expectTimerDerivedViewsRefreshed(refreshActivitySummary);
         });
     });
 });

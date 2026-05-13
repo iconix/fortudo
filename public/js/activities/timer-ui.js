@@ -579,7 +579,7 @@ export function initializeTimerUI(deps) {
                             if (result?.success && result.runningActivity) {
                                 timerDescriptionInput.value =
                                     result.runningActivity.description || '';
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
@@ -616,7 +616,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 timerCategorySelect.value = result.runningActivity.category || '';
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
@@ -665,7 +665,7 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 showTimerDisplay(result.runningActivity);
-                                refreshActivitySummary();
+                                refreshTimerDerivedViews();
                                 return;
                             }
 
