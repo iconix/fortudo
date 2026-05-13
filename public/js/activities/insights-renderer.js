@@ -131,7 +131,8 @@ function groupIssuesByActivityId(issues = []) {
             continue;
         }
 
-        const relatedActivityId = issue.relatedActivityId || issue.overlappingActivityId;
+        const relatedActivityId =
+            issue.relatedActivityId || issue.overlappingActivityId || issue.duplicateActivityId;
         const activityIds = [issue.activityId, relatedActivityId].filter(Boolean);
 
         for (const activityId of activityIds) {

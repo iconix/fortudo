@@ -358,6 +358,44 @@ describe('activity insights model', () => {
         expect(model.issues).toEqual([]);
     });
 
+    test('buildInsightsModel keeps invalid-range activities in the selected Activity Log', () => {
+        const model = buildInsightsModel({
+            tasks: [],
+            activities: [
+                activity({
+                    id: 'invalid-range',
+                    startDateTime: isoOn('2026-05-06', '11:00'),
+                    endDateTime: isoOn('2026-05-06', '10:45')
+                }),
+                activity({
+                    id: 'valid-range',
+                    startDateTime: isoOn('2026-05-06', '09:00'),
+                    endDateTime: isoOn('2026-05-06', '09:30')
+                }),
+                activity({
+                    id: 'today-activity',
+                    startDateTime: isoAt('12:00'),
+                    endDateTime: isoAt('12:30')
+                })
+            ],
+            now: new Date(isoAt('12:45')),
+            activityLogDateRange: { startDate: '2026-05-06', endDate: '2026-05-06' }
+        });
+
+        expect(model.activityLog.map((entry) => entry.id)).toEqual([
+            'invalid-range',
+            'valid-range'
+        ]);
+        expect(model.activityLogIssues).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'invalid-range',
+                    activityId: 'invalid-range'
+                })
+            ])
+        );
+    });
+
     test('detectActivityDataIssues detects overlap, invalid-range, and duplicate-auto', () => {
         const issues = detectActivityDataIssues([
             activity({

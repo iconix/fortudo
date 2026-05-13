@@ -32,7 +32,7 @@ export function buildInsightsModel({
     ];
     const selectedLogActivities = activities
         .filter(isCompletedActivity)
-        .filter((activityItem) => isActivityWithinRange(activityItem, selectedLogRange))
+        .filter((activityItem) => isActivityVisibleInLogRange(activityItem, selectedLogRange))
         .sort(compareNewestFirst);
 
     return {
@@ -332,8 +332,13 @@ function isActivityOnDate(activityItem, dayInterval) {
     return activityItem.docType === 'activity' && itemOverlapsInterval(activityItem, dayInterval);
 }
 
-function isActivityWithinRange(activityItem, dateRange) {
-    return itemOverlapsInterval(activityItem, getDateRangeInterval(dateRange));
+function isActivityVisibleInLogRange(activityItem, dateRange) {
+    const rangeInterval = getDateRangeInterval(dateRange);
+
+    return (
+        itemOverlapsInterval(activityItem, rangeInterval) ||
+        invalidActivityTouchesInterval(activityItem, rangeInterval)
+    );
 }
 
 function isCompletedActivity(activityItem) {
@@ -420,6 +425,23 @@ function getClippedInterval(item, visibleInterval, now = new Date()) {
 function itemOverlapsInterval(item, visibleInterval, now = new Date()) {
     const itemInterval = getItemInterval(item, now);
     return Boolean(itemInterval && intervalsOverlap(itemInterval, visibleInterval));
+}
+
+function invalidActivityTouchesInterval(item, visibleInterval) {
+    const start = new Date(item.startDateTime);
+    const end = new Date(item.endDateTime);
+
+    if (!isFinite(start.getTime()) || !isFinite(end.getTime()) || end > start) {
+        return false;
+    }
+
+    return (
+        isPointWithinInterval(start, visibleInterval) || isPointWithinInterval(end, visibleInterval)
+    );
+}
+
+function isPointWithinInterval(point, visibleInterval) {
+    return point >= visibleInterval.start && point < visibleInterval.end;
 }
 
 function getIntervalDuration(interval) {
