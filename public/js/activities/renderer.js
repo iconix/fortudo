@@ -28,6 +28,39 @@ function formatTimeRange(startDateTime, endDateTime) {
     return `${convertTo12HourTime(startTime)} - ${convertTo12HourTime(endTime)}`;
 }
 
+function getActivityDataIssueLabel(issue) {
+    if (issue?.type === 'overlap') {
+        return 'Overlapping activity';
+    }
+
+    if (issue?.type === 'invalid-range') {
+        return 'Activity ends before it starts';
+    }
+
+    if (issue?.type === 'duplicate-auto') {
+        return 'Duplicate auto-logged task activity';
+    }
+
+    return 'Activity data issue';
+}
+
+function getActivityIssuesForId(activityIssuesById, activityId) {
+    return activityIssuesById?.[activityId] || activityIssuesById?.get?.(activityId) || [];
+}
+
+function renderActivityDataIssueText(issues = []) {
+    if (issues.length === 0) {
+        return '';
+    }
+
+    const labels = [...new Set(issues.map(getActivityDataIssueLabel))];
+
+    return `<div data-activity-data-issue class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-amber-200">
+        <span class="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">Data issue</span>
+        <span>${escapeHtml(labels.join(', '))}</span>
+    </div>`;
+}
+
 function getSummarySwatchStyle(summaryItem) {
     if (summaryItem.isUncategorized) {
         return 'background: repeating-linear-gradient(135deg, #64748b 0, #64748b 6px, #334155 6px, #334155 12px); border: 1px solid rgba(148, 163, 184, 0.35);';
@@ -184,7 +217,7 @@ export function renderActivitySummaryOnly(activities, container, options = {}) {
     targetContainer.insertAdjacentHTML('afterbegin', summaryHtml);
 }
 
-function renderInlineEditActivityItem(activity) {
+function renderInlineEditActivityItem(activity, options = {}) {
     const durationHours = Math.floor(activity.duration / 60);
     const durationMinutes = activity.duration % 60;
     const displayStartTime = extractTimeFromDateTime(new Date(activity.startDateTime));
@@ -214,8 +247,11 @@ function renderInlineEditActivityItem(activity) {
                <span class="text-slate-500">Edited copy of a completed task</span>
            </div>`
         : '';
+    const activityIssues = getActivityIssuesForId(options.activityIssuesById, activity.id);
+    const issueClasses = activityIssues.length > 0 ? ' bg-amber-950/30 border-amber-500/50' : '';
+    const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 shadow-md space-y-3" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
+    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 shadow-md space-y-3${issueClasses}" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
         ${provenanceHtml}
         <div class="flex flex-col sm:flex-row gap-3">
             <div class="relative sm:flex-[1.8]">
@@ -257,6 +293,7 @@ function renderInlineEditActivityItem(activity) {
                 </button>
             </div>
         </div>
+        ${issueHtml}
     </form>`;
 }
 
@@ -280,8 +317,14 @@ function renderActivityItem(activity, options = {}) {
                    <i class="fa-${isConfirmingDelete ? 'regular fa-check-circle' : 'solid fa-trash-can'}"></i>
                </button>
            </div>`;
+    const activityIssues = getActivityIssuesForId(options.activityIssuesById, activity.id);
+    const issueClasses =
+        activityIssues.length > 0
+            ? ' bg-amber-950/30 border-amber-500/50 hover:border-amber-400/60'
+            : ' bg-slate-800/60 border-slate-700/50 hover:border-sky-700/30';
+    const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:border-sky-700/30 transition-colors" data-activity-id="${escapeHtml(activity.id)}">
+    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors${issueClasses}" data-activity-id="${escapeHtml(activity.id)}">
         <div class="flex-grow min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm text-slate-200 truncate">${escapeHtml(activity.description)}</span>
@@ -290,6 +333,7 @@ function renderActivityItem(activity, options = {}) {
             <div class="text-xs text-slate-400 mt-0.5">
                 ${escapeHtml(timeRange)} · ${escapeHtml(durationText)}
             </div>
+            ${issueHtml}
         </div>
         <div class="shrink-0">
             ${actionsHtml}
@@ -326,7 +370,7 @@ export function renderActivities(activities, container, options = {}) {
     const activitiesHtml = activities
         .map((activity) =>
             activity.id === editingActivityId
-                ? renderInlineEditActivityItem(activity)
+                ? renderInlineEditActivityItem(activity, options)
                 : renderActivityItem(activity, options)
         )
         .join('');

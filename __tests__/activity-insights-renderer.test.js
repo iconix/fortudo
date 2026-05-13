@@ -256,7 +256,54 @@ describe('activity insights renderer', () => {
                     expect.objectContaining({ id: 'activity-1' }),
                     expect.objectContaining({ id: 'activity-2' })
                 ]),
-                activityIssuesById: expect.any(Map)
+                activityIssuesById: expect.any(Object)
+            })
+        );
+    });
+
+    test('renderInsightsView groups overlapping activity issues by affected and related activity ids', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-overlapped',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'activity-overlapping',
+                    startDateTime: isoAt('09:30'),
+                    endDateTime: isoAt('10:30'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ]
+        });
+
+        const options = renderActivities.mock.calls.at(-1)[2];
+
+        expect(options.activityIssuesById['activity-overlapping']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options.activityIssuesById['activity-overlapped']).toEqual([
+            expect.objectContaining({
+                type: 'overlap',
+                activityId: 'activity-overlapping',
+                overlappingActivityId: 'activity-overlapped'
+            })
+        ]);
+        expect(options).toEqual(
+            expect.objectContaining({
+                confirmingDeleteActivityId: 'activity-3',
+                summaryActivities: expect.arrayContaining([
+                    expect.objectContaining({ id: 'activity-overlapped' }),
+                    expect.objectContaining({ id: 'activity-overlapping' })
+                ])
             })
         );
     });

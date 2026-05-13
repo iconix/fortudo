@@ -124,16 +124,20 @@ function renderTimeline(model) {
 }
 
 function groupIssuesByActivityId(issues = []) {
-    const issuesById = new Map();
+    const issuesById = {};
 
     for (const issue of issues) {
-        if (!issue?.activityId) {
+        if (!issue) {
             continue;
         }
 
-        const groupedIssues = issuesById.get(issue.activityId) || [];
-        groupedIssues.push(issue);
-        issuesById.set(issue.activityId, groupedIssues);
+        const relatedActivityId = issue.relatedActivityId || issue.overlappingActivityId;
+        const activityIds = [issue.activityId, relatedActivityId].filter(Boolean);
+
+        for (const activityId of activityIds) {
+            issuesById[activityId] = issuesById[activityId] || [];
+            issuesById[activityId].push(issue);
+        }
     }
 
     return issuesById;
