@@ -945,6 +945,96 @@ def wait_for_activity_row_text(
     )
 
 
+def assert_phase5_insights_view(
+    page: Any,
+    *,
+    activity_description: str,
+    running_timer_description: str,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> None:
+    page.locator("#insights-view").wait_for(state="visible", timeout=10000)
+    wait_for_text_in_locator(
+        page,
+        "#insights-summary",
+        "Planned",
+        description="insights planned summary",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-summary",
+        "Actual",
+        description="insights actual summary",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_until(
+        lambda: page.locator('#insights-timeline [data-timeline-block="planned"]').count() > 0,
+        "insights planned timeline row",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_until(
+        lambda: page.locator('#insights-timeline [data-timeline-block="actual"]').count() > 0,
+        "insights actual timeline row",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-timeline",
+        activity_description,
+        description="insights completed activity timeline block",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-timeline",
+        running_timer_description,
+        description="insights running timer timeline block",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-activity-list",
+        activity_description,
+        description="insights activity log entry",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def run_phase5_insights_smoke(page: Any, room_code: str) -> None:
+    auto_log_description = "Playwright insights auto-log"
+    live_timer_description = "Playwright insights live timer"
+
+    set_activities_enabled(page, True)
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+
+    add_active_scheduled_task(page, auto_log_description, 20)
+    task_doc = wait_for_task_doc(page, room_code, auto_log_description)
+    complete_scheduled_task_via_ui(page, task_doc["id"])
+    wait_for_activity_doc(page, room_code, auto_log_description)
+
+    start_activity_timer(
+        page,
+        live_timer_description,
+        room_code=room_code,
+    )
+
+    page.locator("#view-toggle-insights").click()
+    assert_phase5_insights_view(
+        page,
+        activity_description=auto_log_description,
+        running_timer_description=live_timer_description,
+    )
+
+
 def add_scheduled_task(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
     page.locator("#scheduled").check()
     fill_locator_value(
@@ -1980,6 +2070,10 @@ def run_activities_room_scenario(
     wait_for_activity_doc(page, rooms["activities"], "Playwright boundary timer")
     demo_note("activities: boundary non-overlap preserved the running timer until manual stop")
     assert_no_page_errors_yet("boundary non-overlap")
+
+    run_phase5_insights_smoke(page, rooms["activities"])
+    demo_note("activities: phase 5 insights summary, timeline, and log verified")
+    assert_no_page_errors_yet("phase 5 insights smoke")
 
 def run_smoke(
     preview_url: str,
