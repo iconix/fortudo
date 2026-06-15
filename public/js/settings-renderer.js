@@ -101,7 +101,7 @@ function wireSettingsEvents(options) {
             }
             if (message) {
                 message.textContent = newValue
-                    ? 'Activities enabled. Category tracking and insights will be available after reload.'
+                    ? 'Activities enabled. Category tracking, insights, and taxonomy controls will be available after reload.'
                     : 'Activities disabled. Category and activity features will be hidden after reload.';
             }
             if (taxonomySection) {

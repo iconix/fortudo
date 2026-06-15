@@ -277,6 +277,7 @@ describe('settings-renderer', () => {
             expect(reloadPrompt).not.toBeNull();
             expect(reloadPrompt.classList.contains('hidden')).toBe(false);
             expect(message.textContent).toContain('Activities enabled');
+            expect(message.textContent).toContain('taxonomy controls will be available');
             expect(taxonomySection.classList.contains('hidden')).toBe(true);
         });
 
