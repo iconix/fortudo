@@ -68,7 +68,7 @@ import { COUCHDB_URL } from './config.js';
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
 
-/** @type {{ refreshFromStorage: () => Promise<void>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
+/** @type {{ refreshFromStorage: () => Promise<void>, stopStaleRunningTimerIfNeeded: () => Promise<Object|null>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
 let roomSessionLifecycle = null;
 
 /** @type {() => void} */
@@ -280,6 +280,7 @@ async function initAndBootApp(roomCode) {
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
     roomSessionLifecycle.start({ signal });
+    await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
 
     // Initial render
     refreshTaskDisplays();

@@ -464,6 +464,24 @@ describe('App.js Callback Functions', () => {
             }
         });
 
+        test('stops a stale restored timer before syncing timer UI on boot', async () => {
+            const staleTimer = {
+                description: 'Stale persisted timer',
+                startDateTime: '2026-04-21T23:30:00.000Z'
+            };
+            const expectedBoundary = new Date(staleTimer.startDateTime);
+            expectedBoundary.setHours(24, 0, 0, 0);
+            mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
+            mockLoadRunningActivity.mockResolvedValue(staleTimer);
+            mockGetRunningActivity.mockReturnValueOnce(staleTimer).mockReturnValue(null);
+            mockStopTimerAt.mockResolvedValue({ success: true });
+
+            await setupAppWithTasks([]);
+
+            expect(mockStopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
+            expect(mockSyncTimerFormState).not.toHaveBeenCalled();
+        });
+
         test('activity mode submits through the activity handler and uses activity UI state', async () => {
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
 
