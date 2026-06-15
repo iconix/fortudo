@@ -263,6 +263,9 @@ describe('settings-renderer', () => {
             await renderDisabledSettings();
 
             const toggle = document.getElementById('activities-toggle');
+            const taxonomySection = document.getElementById('taxonomy-management-section');
+            const message = document.getElementById('reload-prompt-message');
+
             toggle.checked = true;
             toggle.dispatchEvent(new Event('change'));
             await waitForCondition(() => {
@@ -273,6 +276,8 @@ describe('settings-renderer', () => {
             const reloadPrompt = document.getElementById('reload-prompt');
             expect(reloadPrompt).not.toBeNull();
             expect(reloadPrompt.classList.contains('hidden')).toBe(false);
+            expect(message.textContent).toContain('Activities enabled');
+            expect(taxonomySection.classList.contains('hidden')).toBe(true);
         });
 
         test('toggling Activities off shows disabled reload message and hides taxonomy management', async () => {

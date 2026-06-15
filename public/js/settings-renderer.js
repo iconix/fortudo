@@ -105,7 +105,7 @@ function wireSettingsEvents(options) {
                     : 'Activities disabled. Category and activity features will be hidden after reload.';
             }
             if (taxonomySection) {
-                taxonomySection.classList.toggle('hidden', !newValue);
+                taxonomySection.classList.add('hidden');
             }
         };
     }
