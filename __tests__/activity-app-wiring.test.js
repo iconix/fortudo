@@ -22,6 +22,7 @@ jest.mock('../public/js/activities/manager.js', () => ({
 
 jest.mock('../public/js/activities/insights-renderer.js', () => ({
     expandInsightsActivityLogLimit: jest.fn(),
+    setInsightsSelectedDate: jest.fn(),
     setInsightsTrendDateRange: jest.fn()
 }));
 
@@ -42,6 +43,7 @@ import { initializeTimerUI, syncTimerFormState } from '../public/js/activities/t
 import { getRunningActivity } from '../public/js/activities/manager.js';
 import {
     expandInsightsActivityLogLimit,
+    setInsightsSelectedDate,
     setInsightsTrendDateRange
 } from '../public/js/activities/insights-renderer.js';
 
@@ -175,6 +177,33 @@ describe('activity app wiring', () => {
             startDate: '2026-05-01',
             endDate: '2026-05-07'
         });
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking a trend day stores the selected date and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const trends = document.getElementById('insights-trends');
+        trends.insertAdjacentHTML(
+            'beforeend',
+            '<button type="button" data-trend-day="2026-05-06">May 6</button>'
+        );
+        trends
+            .querySelector('[data-trend-day="2026-05-06"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(setInsightsSelectedDate).toHaveBeenCalledWith('2026-05-06');
         expect(renderInsights).toHaveBeenCalled();
     });
 

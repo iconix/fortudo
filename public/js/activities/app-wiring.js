@@ -8,7 +8,11 @@ import {
 } from './ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './timer-ui.js';
 import { getRunningActivity } from './manager.js';
-import { expandInsightsActivityLogLimit, setInsightsTrendDateRange } from './insights-renderer.js';
+import {
+    expandInsightsActivityLogLimit,
+    setInsightsSelectedDate,
+    setInsightsTrendDateRange
+} from './insights-renderer.js';
 
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
@@ -68,6 +72,20 @@ function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderIns
     if (!trendsElement) {
         return;
     }
+
+    trendsElement.addEventListener(
+        'click',
+        (event) => {
+            const dayButton = event.target.closest('[data-trend-day]');
+            if (!dayButton) {
+                return;
+            }
+
+            setInsightsSelectedDate(dayButton.dataset.trendDay);
+            renderInsights();
+        },
+        { signal }
+    );
 
     trendsElement.addEventListener(
         'change',
