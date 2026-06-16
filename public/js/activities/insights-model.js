@@ -30,15 +30,17 @@ export function buildInsightsModel({
     activities = [],
     runningActivity = null,
     now = new Date(),
+    selectedDate = null,
     activityLogDateRange = null
 } = {}) {
     const today = extractDateFromDateTime(now);
-    const todayInterval = getDayInterval(today);
-    const selectedLogRange = activityLogDateRange || { startDate: today, endDate: today };
-    const todayTasks = tasks.filter((task) => isScheduledOnDate(task, todayInterval));
-    const normalizedRunningActivity = normalizeRunningActivity(runningActivity, today, now);
-    const todayActivities = [
-        ...activities.filter((activityItem) => isActivityOnDate(activityItem, todayInterval)),
+    const detailDate = selectedDate || today;
+    const detailInterval = getDayInterval(detailDate);
+    const selectedLogRange = activityLogDateRange || { startDate: detailDate, endDate: detailDate };
+    const detailTasks = tasks.filter((task) => isScheduledOnDate(task, detailInterval));
+    const normalizedRunningActivity = normalizeRunningActivity(runningActivity, detailDate, now);
+    const detailActivities = [
+        ...activities.filter((activityItem) => isActivityOnDate(activityItem, detailInterval)),
         ...(normalizedRunningActivity ? [normalizedRunningActivity] : [])
     ];
     const selectedLogActivities = activities
@@ -47,27 +49,27 @@ export function buildInsightsModel({
         .sort(compareNewestFirst);
 
     return {
-        date: today,
+        date: detailDate,
         activityLogDateRange: selectedLogRange,
         summary: {
-            totalPlannedMinutes: todayTasks.reduce(
-                (total, task) => total + getOverlapDuration(task, todayInterval, now),
+            totalPlannedMinutes: detailTasks.reduce(
+                (total, task) => total + getOverlapDuration(task, detailInterval, now),
                 0
             ),
-            totalActualMinutes: todayActivities.reduce(
+            totalActualMinutes: detailActivities.reduce(
                 (total, activityItem) =>
-                    total + getOverlapDuration(activityItem, todayInterval, now),
+                    total + getOverlapDuration(activityItem, detailInterval, now),
                 0
             ),
-            completedTaskCount: todayTasks.filter((task) => task.status === 'completed').length,
-            currentlyLateTaskCount: todayTasks.filter((task) => isCurrentlyLate(task, now)).length
+            completedTaskCount: detailTasks.filter((task) => task.status === 'completed').length,
+            currentlyLateTaskCount: detailTasks.filter((task) => isCurrentlyLate(task, now)).length
         },
-        plannedBlocks: todayTasks.map((task) => buildTimelineBlock(task, todayInterval, now)),
-        actualBlocks: todayActivities.map((activityItem) =>
-            buildTimelineBlock(activityItem, todayInterval, now)
+        plannedBlocks: detailTasks.map((task) => buildTimelineBlock(task, detailInterval, now)),
+        actualBlocks: detailActivities.map((activityItem) =>
+            buildTimelineBlock(activityItem, detailInterval, now)
         ),
         activityLog: selectedLogActivities,
-        issues: detectActivityDataIssues(todayActivities),
+        issues: detectActivityDataIssues(detailActivities),
         activityLogIssues: detectActivityDataIssues(selectedLogActivities)
     };
 }

@@ -86,6 +86,82 @@ function activity(overrides = {}) {
 }
 
 describe('activity insights model', () => {
+    test('buildInsightsModel scopes summary timeline and log to selectedDate', () => {
+        const now = new Date(isoOn('2026-06-16', '12:00'));
+        const tasks = [
+            scheduledTask({
+                id: 'today-task',
+                description: 'today plan',
+                startDateTime: isoOn('2026-06-16', '10:00'),
+                endDateTime: isoOn('2026-06-16', '10:30'),
+                duration: 30,
+                status: 'completed'
+            }),
+            scheduledTask({
+                id: 'yesterday-task',
+                description: 'yesterday plan',
+                startDateTime: isoOn('2026-06-15', '09:00'),
+                endDateTime: isoOn('2026-06-15', '10:00'),
+                duration: 60,
+                status: 'completed'
+            })
+        ];
+        const activities = [
+            activity({
+                id: 'today-activity',
+                description: 'today actual',
+                startDateTime: isoOn('2026-06-16', '10:00'),
+                endDateTime: isoOn('2026-06-16', '10:30'),
+                duration: 30
+            }),
+            activity({
+                id: 'yesterday-activity',
+                description: 'yesterday actual',
+                startDateTime: isoOn('2026-06-15', '09:00'),
+                endDateTime: isoOn('2026-06-15', '09:45'),
+                duration: 45
+            })
+        ];
+
+        const model = buildInsightsModel({
+            tasks,
+            activities,
+            now,
+            selectedDate: '2026-06-15'
+        });
+
+        expect(model.date).toBe('2026-06-15');
+        expect(model.summary.totalPlannedMinutes).toBe(60);
+        expect(model.summary.totalActualMinutes).toBe(45);
+        expect(model.plannedBlocks.map((block) => block.id)).toEqual(['yesterday-task']);
+        expect(model.actualBlocks.map((block) => block.id)).toEqual(['yesterday-activity']);
+        expect(model.activityLog.map((entry) => entry.id)).toEqual(['yesterday-activity']);
+    });
+
+    test('buildInsightsModel includes running activity only when it overlaps selectedDate', () => {
+        const now = new Date(isoOn('2026-06-16', '10:30'));
+        const runningActivity = {
+            id: 'config-running-activity',
+            description: 'live work',
+            startDateTime: isoOn('2026-06-16', '10:00'),
+            category: null
+        };
+
+        const todayModel = buildInsightsModel({
+            runningActivity,
+            now,
+            selectedDate: '2026-06-16'
+        });
+        const yesterdayModel = buildInsightsModel({
+            runningActivity,
+            now,
+            selectedDate: '2026-06-15'
+        });
+
+        expect(todayModel.actualBlocks).toHaveLength(1);
+        expect(yesterdayModel.actualBlocks).toHaveLength(0);
+    });
+
     test('buildInsightsModel builds today summary stats and timeline blocks', () => {
         const model = buildInsightsModel({
             tasks: [
