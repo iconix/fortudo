@@ -628,6 +628,18 @@ describe('activity insights renderer', () => {
         expect(trends.textContent).toContain('Work');
     });
 
+    test('trend day strip supports horizontal scrolling on small screens', () => {
+        renderInsightsView({
+            activities: [],
+            now: new Date(isoAt('12:00')),
+            dateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+        });
+
+        const strip = document.querySelector('[data-trend-day-strip]');
+        expect(strip.className).toContain('overflow-x-auto');
+        expect(strip.className).toContain('auto-cols');
+    });
+
     test('daily trend stacked segment container fills the fixed-height bar', () => {
         renderWith({
             activities: [
