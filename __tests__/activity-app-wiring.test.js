@@ -23,6 +23,7 @@ jest.mock('../public/js/activities/manager.js', () => ({
 jest.mock('../public/js/activities/insights-renderer.js', () => ({
     expandInsightsActivityLogLimit: jest.fn(),
     setInsightsSelectedDate: jest.fn(),
+    setSelectedTimelineBlock: jest.fn(),
     setInsightsTrendDateRange: jest.fn()
 }));
 
@@ -44,6 +45,7 @@ import { getRunningActivity } from '../public/js/activities/manager.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
+    setSelectedTimelineBlock,
     setInsightsTrendDateRange
 } from '../public/js/activities/insights-renderer.js';
 
@@ -58,6 +60,7 @@ describe('activity app wiring', () => {
                 <input data-trend-end-date value="2026-05-07">
             </div>
             <div id="insights-activity-list"></div>
+            <div id="insights-timeline"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
         `;
     });
@@ -204,6 +207,31 @@ describe('activity app wiring', () => {
             .dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
         expect(setInsightsSelectedDate).toHaveBeenCalledWith('2026-05-06');
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking a timeline block stores the selected block and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const timeline = document.getElementById('insights-timeline');
+        timeline.innerHTML =
+            '<button type="button" data-timeline-block-id="activity-1">Block</button>';
+        timeline
+            .querySelector('[data-timeline-block-id="activity-1"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(setSelectedTimelineBlock).toHaveBeenCalledWith('activity-1');
         expect(renderInsights).toHaveBeenCalled();
     });
 

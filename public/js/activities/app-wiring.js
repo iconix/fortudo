@@ -11,6 +11,7 @@ import { getRunningActivity } from './manager.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
+    setSelectedTimelineBlock,
     setInsightsTrendDateRange
 } from './insights-renderer.js';
 
@@ -129,6 +130,26 @@ function initializeInsightsActivityListEventHandlers(listElement, { signal, rend
     );
 }
 
+function initializeInsightsTimelineEventHandlers(timelineElement, { signal, renderInsights }) {
+    if (!timelineElement) {
+        return;
+    }
+
+    timelineElement.addEventListener(
+        'click',
+        (event) => {
+            const block = event.target.closest('[data-timeline-block-id]');
+            if (!block) {
+                return;
+            }
+
+            setSelectedTimelineBlock(block.dataset.timelineBlockId);
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
 export function initializeActivityUi({
     signal,
     refreshUI,
@@ -150,6 +171,10 @@ export function initializeActivityUi({
         refreshUI
     });
     initializeInsightsTrendEventHandlers(document.getElementById('insights-trends'), {
+        signal,
+        renderInsights
+    });
+    initializeInsightsTimelineEventHandlers(document.getElementById('insights-timeline'), {
         signal,
         renderInsights
     });

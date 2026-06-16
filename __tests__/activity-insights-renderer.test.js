@@ -18,6 +18,7 @@ import { renderActivities } from '../public/js/activities/renderer.js';
 import {
     expandInsightsActivityLogLimit,
     renderInsightsView,
+    setSelectedTimelineBlock,
     setInsightsTrendDateRange
 } from '../public/js/activities/insights-renderer.js';
 import { replaceTaxonomyState } from '../public/js/taxonomy/taxonomy-store.js';
@@ -97,6 +98,7 @@ describe('activity insights renderer', () => {
         jest.clearAllMocks();
         expandInsightsActivityLogLimit(0);
         setInsightsTrendDateRange(null);
+        setSelectedTimelineBlock(null);
         replaceTaxonomyState({
             groups: [{ key: 'work', label: 'Work', color: '#0f172a', colorFamily: 'blue' }],
             categories: [
@@ -245,6 +247,76 @@ describe('activity insights renderer', () => {
 
         expect(plannedBlock.dataset.timelineBlock).toBe('planned');
         expect(actualBlock.dataset.timelineBlock).toBe('actual');
+    });
+
+    test('timeline renders focused range and compact narrow blocks', () => {
+        renderInsightsView({
+            tasks: [
+                scheduledTask({
+                    id: 'planned-1',
+                    description: 'meeting',
+                    startDateTime: isoAt('10:20'),
+                    endDateTime: isoAt('10:40'),
+                    duration: 20,
+                    status: 'pending'
+                })
+            ],
+            activities: [
+                activity({
+                    id: 'actual-1',
+                    description: 'standup',
+                    startDateTime: isoAt('10:00'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 30
+                }),
+                activity({
+                    id: 'actual-2',
+                    description: 'tiny review',
+                    startDateTime: isoAt('10:39'),
+                    endDateTime: isoAt('10:48'),
+                    duration: 9
+                })
+            ],
+            now: new Date(isoAt('12:00')),
+            selectedDate: '2026-05-07'
+        });
+
+        expect(document.querySelector('[data-timeline-range]').textContent).toContain('9:30 AM');
+        expect(document.querySelector('[data-timeline-range]').textContent).toContain('11:18 AM');
+        const narrow = document.querySelector('[data-timeline-block-id="actual-2"]');
+        expect(narrow.dataset.compact).toBe('true');
+        expect(narrow.querySelector('[data-timeline-visible-label]')).toBeNull();
+        expect(narrow.querySelector('.sr-only').textContent).toContain('tiny review');
+    });
+
+    test('timeline selected block detail follows selected timeline block state', () => {
+        setSelectedTimelineBlock('actual-2');
+
+        renderInsightsView({
+            activities: [
+                activity({
+                    id: 'actual-1',
+                    description: 'standup',
+                    startDateTime: isoAt('10:00'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 30
+                }),
+                activity({
+                    id: 'actual-2',
+                    description: 'tiny review',
+                    startDateTime: isoAt('10:39'),
+                    endDateTime: isoAt('10:48'),
+                    duration: 9
+                })
+            ],
+            now: new Date(isoAt('12:00')),
+            selectedDate: '2026-05-07'
+        });
+
+        const detail = document.querySelector('[data-selected-timeline-block]');
+        expect(detail.textContent).toContain('tiny review');
+        expect(detail.textContent).toContain('10:39 AM - 10:48 AM');
+        expect(detail.textContent).toContain('9m');
     });
 
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {

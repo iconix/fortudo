@@ -12,10 +12,14 @@ import { buildTrendModel, getDefaultTrendDateRange } from './insights-trends.js'
 
 const DEFAULT_ACTIVITY_LOG_LIMIT = 50;
 const FALLBACK_TIMELINE_COLOR = '#64748b';
+const MINUTES_PER_DAY = 24 * 60;
+const TIMELINE_VIEWPORT_PADDING_MINUTES = 30;
+const COMPACT_TIMELINE_BLOCK_PERCENT = 9;
 
 let activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 let storedTrendDateRange = null;
 let storedSelectedInsightsDate = null;
+let selectedTimelineBlockId = null;
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -28,6 +32,14 @@ function escapeHtml(value) {
 
 function formatTime(dateTime) {
     return convertTo12HourTime(extractTimeFromDateTime(new Date(dateTime)));
+}
+
+function formatMinutesAsTime(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return convertTo12HourTime(
+        `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+    );
 }
 
 function getItemLabel(block) {
@@ -81,37 +93,111 @@ function renderSummary(model) {
     </div>`;
 }
 
-function getTimelineBlockStyle(block) {
-    const color = normalizeTimelineColor(block.categoryMeta?.color);
-    const leftPercent = Math.max(0, Math.min(100, block.leftPercent || 0));
-    const widthPercent = Math.max(0.25, Math.min(100 - leftPercent, block.widthPercent || 0));
-
-    return `left: ${leftPercent}%; width: ${widthPercent}%; background-color: ${color};`;
+function getMinutesFromDateTime(dateTime) {
+    const date = new Date(dateTime);
+    return date.getHours() * 60 + date.getMinutes();
 }
 
-function renderTimelineBlock(block, type) {
+function getTimelineViewport(blocks = []) {
+    if (blocks.length === 0) {
+        return { startMinutes: 0, endMinutes: MINUTES_PER_DAY };
+    }
+
+    const starts = blocks.map((block) => getMinutesFromDateTime(block.startDateTime));
+    const ends = blocks.map((block) => getMinutesFromDateTime(block.endDateTime));
+    const startMinutes = Math.max(0, Math.min(...starts) - TIMELINE_VIEWPORT_PADDING_MINUTES);
+    const endMinutes = Math.min(
+        MINUTES_PER_DAY,
+        Math.max(...ends) + TIMELINE_VIEWPORT_PADDING_MINUTES
+    );
+
+    if (endMinutes <= startMinutes) {
+        return { startMinutes: 0, endMinutes: MINUTES_PER_DAY };
+    }
+
+    return { startMinutes, endMinutes };
+}
+
+function getViewportBlockStyle(block, viewport) {
+    const color = normalizeTimelineColor(block.categoryMeta?.color);
+    const startMinutes = getMinutesFromDateTime(block.startDateTime);
+    const endMinutes = getMinutesFromDateTime(block.endDateTime);
+    const viewportMinutes = viewport.endMinutes - viewport.startMinutes;
+    const leftPercent = Math.max(
+        0,
+        Math.min(100, ((startMinutes - viewport.startMinutes) / viewportMinutes) * 100)
+    );
+    const widthPercent = Math.max(
+        0.8,
+        Math.min(100 - leftPercent, ((endMinutes - startMinutes) / viewportMinutes) * 100)
+    );
+
+    return {
+        style: `left: ${leftPercent}%; width: ${widthPercent}%; background-color: ${color};`,
+        widthPercent
+    };
+}
+
+function renderTimelineBlock(block, type, viewport) {
     const label = getItemLabel(block);
     const timeRange = `${formatTime(block.startDateTime)} - ${formatTime(block.endDateTime)}`;
     const duration = calculateHoursAndMinutes(block.duration);
     const title = `${label}, ${timeRange}, ${duration}`;
+    const { style, widthPercent } = getViewportBlockStyle(block, viewport);
+    const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
 
-    return `<div data-timeline-block="${type}" role="img" class="absolute top-1 h-8 overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-8 text-white shadow-sm"
-        style="${getTimelineBlockStyle(block)}"
+    return `<div data-timeline-block="${type}" data-timeline-block-id="${escapeHtml(block.id)}"
+        data-compact="${compact ? 'true' : 'false'}"
+        role="img" class="absolute top-2 h-9 overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm"
+        style="${style}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">
-        ${escapeHtml(label)}
+        ${compact ? '' : `<span data-timeline-visible-label>${escapeHtml(label)}</span>`}
         <span class="sr-only">${escapeHtml(title)}</span>
     </div>`;
 }
 
-function renderTimelineRow(label, type, blocks) {
-    const blocksHtml = blocks.map((block) => renderTimelineBlock(block, type)).join('');
+function renderTimelineTicks(viewport) {
+    const midpoint = Math.round((viewport.startMinutes + viewport.endMinutes) / 2);
+
+    return `<div class="grid grid-cols-3 pl-[5.25rem] pr-1 pb-2 text-[10px] text-slate-500">
+        <span>${escapeHtml(formatMinutesAsTime(viewport.startMinutes))}</span>
+        <span class="text-center">${escapeHtml(formatMinutesAsTime(midpoint))}</span>
+        <span class="text-right">${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}</span>
+    </div>`;
+}
+
+function renderTimelineRow(label, type, blocks, viewport) {
+    const blocksHtml = blocks.map((block) => renderTimelineBlock(block, type, viewport)).join('');
 
     return `<div class="grid grid-cols-[4.5rem_1fr] items-center gap-3">
         <div class="text-xs font-medium uppercase text-slate-400">${escapeHtml(label)}</div>
-        <div class="relative h-10 rounded-lg border border-slate-700/70 bg-slate-950/60">
+        <div class="relative h-12 rounded-lg border border-slate-700/70 bg-slate-950/60">
             ${blocksHtml}
         </div>
+    </div>`;
+}
+
+function renderSelectedTimelineBlockDetail(blocks) {
+    const selectedBlock =
+        blocks.find((block) => block.id === selectedTimelineBlockId) ||
+        blocks.find((block) => block.id);
+
+    if (!selectedBlock) {
+        return `<div class="mt-3 rounded border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-500">
+            No timeline blocks for this day.
+        </div>`;
+    }
+
+    const label = getItemLabel(selectedBlock);
+    const timeRange = `${formatTime(selectedBlock.startDateTime)} - ${formatTime(selectedBlock.endDateTime)}`;
+
+    return `<div data-selected-timeline-block
+        class="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-900/70 bg-cyan-950/20 px-3 py-2 text-sm text-cyan-100">
+        <span class="text-slate-400">Selected block:</span>
+        <span class="font-semibold text-white">${escapeHtml(label)}</span>
+        <span>${escapeHtml(timeRange)}</span>
+        <span>${escapeHtml(calculateHoursAndMinutes(selectedBlock.duration))}</span>
     </div>`;
 }
 
@@ -121,9 +207,26 @@ function renderTimeline(model) {
         return;
     }
 
-    timelineContainer.innerHTML = `<div class="space-y-3">
-        ${renderTimelineRow('Planned', 'planned', model.plannedBlocks)}
-        ${renderTimelineRow('Actual', 'actual', model.actualBlocks)}
+    const allBlocks = [...model.plannedBlocks, ...model.actualBlocks];
+    const viewport = getTimelineViewport(allBlocks);
+
+    timelineContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/80 p-4">
+        <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h3 class="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-300">Plan vs Actual</h3>
+                <div data-timeline-range class="mt-1 text-xs text-slate-400">
+                    Focused range: ${escapeHtml(formatMinutesAsTime(viewport.startMinutes))} -
+                    ${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}
+                </div>
+            </div>
+            <div class="text-xs text-slate-500">Tap any block for details</div>
+        </div>
+        ${renderTimelineTicks(viewport)}
+        <div class="space-y-3">
+            ${renderTimelineRow('Planned', 'planned', model.plannedBlocks, viewport)}
+            ${renderTimelineRow('Actual', 'actual', model.actualBlocks, viewport)}
+        </div>
+        ${renderSelectedTimelineBlockDetail(allBlocks)}
     </div>`;
 }
 
@@ -228,7 +331,16 @@ export function setInsightsTrendDateRange(dateRange) {
  */
 export function setInsightsSelectedDate(date) {
     storedSelectedInsightsDate = date || null;
+    selectedTimelineBlockId = null;
     activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
+}
+
+/**
+ * Stores the selected timeline block used by subsequent renders.
+ * @param {string|null} blockId
+ */
+export function setSelectedTimelineBlock(blockId) {
+    selectedTimelineBlockId = blockId || null;
 }
 
 /**
