@@ -618,14 +618,31 @@ describe('activity insights renderer', () => {
 
         expect(trends.textContent).toContain('Trends');
         expect(trends.querySelector('details')).toBeNull();
-        expect(trends.querySelector('[data-trend-start-date]')).not.toBeNull();
-        expect(trends.querySelector('[data-trend-end-date]')).not.toBeNull();
+        expect(trends.querySelector('[data-trend-start-date]')).toBeNull();
+        expect(trends.querySelector('[data-trend-end-date]')).toBeNull();
+        expect(trends.querySelector('[data-trend-range-days="7"]')).not.toBeNull();
+        expect(trends.querySelector('[data-trend-range-days="14"]').dataset.selected).toBe('true');
+        expect(trends.querySelector('[data-trend-range-days="30"]')).not.toBeNull();
         expect(trends.querySelector('[data-category-trend-chart]')).not.toBeNull();
         expect(trends.querySelectorAll('[data-category-trend-segment]').length).toBeGreaterThan(0);
         expect(trends.querySelectorAll('[data-trend-day]')).toHaveLength(14);
         expect(trends.querySelectorAll('[data-daily-trend-segment]').length).toBeGreaterThan(0);
         expect(trends.querySelector('[data-trend-day-strip]')).not.toBeNull();
         expect(trends.textContent).toContain('Work');
+    });
+
+    test('trends render before selected-day detail sections', () => {
+        setupDOM();
+
+        const insightsView = document.getElementById('insights-view');
+        const children = [...insightsView.children].map((child) => child.id);
+
+        expect(children.indexOf('insights-trends')).toBeLessThan(
+            children.indexOf('insights-summary')
+        );
+        expect(children.indexOf('insights-trends')).toBeLessThan(
+            children.indexOf('insights-activity-log')
+        );
     });
 
     test('trend day strip supports horizontal scrolling on small screens', () => {

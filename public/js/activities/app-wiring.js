@@ -77,33 +77,24 @@ function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderIns
     trendsElement.addEventListener(
         'click',
         (event) => {
+            const rangeButton = event.target.closest(
+                '[data-trend-range-start][data-trend-range-end]'
+            );
+            if (rangeButton) {
+                setInsightsTrendDateRange({
+                    startDate: rangeButton.dataset.trendRangeStart,
+                    endDate: rangeButton.dataset.trendRangeEnd
+                });
+                renderInsights();
+                return;
+            }
+
             const dayButton = event.target.closest('[data-trend-day]');
             if (!dayButton) {
                 return;
             }
 
             setInsightsSelectedDate(dayButton.dataset.trendDay);
-            renderInsights();
-        },
-        { signal }
-    );
-
-    trendsElement.addEventListener(
-        'change',
-        (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement)) {
-                return;
-            }
-
-            if (!target.matches('[data-trend-start-date], [data-trend-end-date]')) {
-                return;
-            }
-
-            const startDate = trendsElement.querySelector('[data-trend-start-date]')?.value || '';
-            const endDate = trendsElement.querySelector('[data-trend-end-date]')?.value || '';
-
-            setInsightsTrendDateRange({ startDate, endDate });
             renderInsights();
         },
         { signal }

@@ -15,6 +15,7 @@ const FALLBACK_TIMELINE_COLOR = '#64748b';
 const MINUTES_PER_DAY = 24 * 60;
 const TIMELINE_VIEWPORT_PADDING_MINUTES = 30;
 const COMPACT_TIMELINE_BLOCK_PERCENT = 9;
+const TREND_RANGE_PRESETS = [7, 14, 30];
 
 let activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 let storedTrendDateRange = null;
@@ -393,7 +394,7 @@ export function renderInsightsView({
     renderSummary(model);
     renderTimeline(model);
     renderActivityLog(model, activityRenderOptions);
-    renderTrends(trendModel, { selectedDate: effectiveSelectedDate });
+    renderTrends(trendModel, { selectedDate: effectiveSelectedDate, now });
 }
 
 function getTotalMinutes(items = []) {
@@ -517,11 +518,40 @@ function renderTrendDayCard(day, selectedDate) {
     </button>`;
 }
 
+function isSameDateRange(left, right) {
+    return left?.startDate === right?.startDate && left?.endDate === right?.endDate;
+}
+
+function renderTrendRangeControls(activeDateRange, now) {
+    const buttons = TREND_RANGE_PRESETS.map((days) => {
+        const presetRange = getDefaultTrendDateRange(now, days);
+        const selected = isSameDateRange(activeDateRange, presetRange);
+
+        return `<button type="button"
+            data-trend-range-days="${days}"
+            data-trend-range-start="${escapeHtml(presetRange.startDate)}"
+            data-trend-range-end="${escapeHtml(presetRange.endDate)}"
+            data-selected="${selected ? 'true' : 'false'}"
+            class="rounded-md px-3 py-2 text-sm ${
+                selected
+                    ? 'bg-slate-800 text-slate-100'
+                    : 'text-sky-200 hover:bg-slate-900 hover:text-slate-100'
+            }">
+            ${days} days
+        </button>`;
+    }).join('');
+
+    return `<div data-trend-range-controls
+        class="inline-flex rounded-lg border border-slate-700 bg-slate-950/80 p-1">
+        ${buttons}
+    </div>`;
+}
+
 /**
  * Renders the lightweight Trends panel for activity insights.
  * @param {Object} trendModel
  */
-export function renderTrends(trendModel = {}, { selectedDate = null } = {}) {
+export function renderTrends(trendModel = {}, { selectedDate = null, now = new Date() } = {}) {
     const trendsContainer = document.getElementById('insights-trends');
     if (!trendsContainer) {
         return;
@@ -541,17 +571,9 @@ export function renderTrends(trendModel = {}, { selectedDate = null } = {}) {
             </div>
         </div>
         <div class="mt-4 space-y-4">
-            <div class="grid grid-cols-2 gap-3">
-                <label class="text-xs font-medium uppercase text-slate-400">
-                    Start
-                    <input data-trend-start-date type="date" value="${escapeHtml(dateRange.startDate)}"
-                        class="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm normal-case text-slate-100">
-                </label>
-                <label class="text-xs font-medium uppercase text-slate-400">
-                    End
-                    <input data-trend-end-date type="date" value="${escapeHtml(dateRange.endDate)}"
-                        class="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm normal-case text-slate-100">
-                </label>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                ${renderTrendRangeControls(dateRange, now)}
+                <div class="text-xs text-slate-400">Range summary stays broad; selected day drives details.</div>
             </div>
             ${renderCategoryTrendChart(trendModel.categoryTotals || [])}
             <div data-trend-day-strip

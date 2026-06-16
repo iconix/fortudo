@@ -55,10 +55,7 @@ describe('activity app wiring', () => {
         document.body.innerHTML = `
             <form id="task-form"></form>
             <div id="activity-list"></div>
-            <div id="insights-trends">
-                <input data-trend-start-date value="2026-04-24">
-                <input data-trend-end-date value="2026-05-07">
-            </div>
+            <div id="insights-trends"></div>
             <div id="insights-activity-list"></div>
             <div id="insights-timeline"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
@@ -158,7 +155,7 @@ describe('activity app wiring', () => {
         expect(handleActivityListInput).toHaveBeenCalled();
     });
 
-    test('changing trend date filters stores the range and renders insights', () => {
+    test('clicking a trend range preset stores the range and renders insights', () => {
         const refreshUI = jest.fn();
         const refreshTaskDisplays = jest.fn();
         const renderInsights = jest.fn();
@@ -172,9 +169,12 @@ describe('activity app wiring', () => {
             renderInsights
         });
 
-        const startDate = document.querySelector('[data-trend-start-date]');
-        startDate.value = '2026-05-01';
-        startDate.dispatchEvent(new Event('change', { bubbles: true }));
+        const trends = document.getElementById('insights-trends');
+        trends.innerHTML =
+            '<button type="button" data-trend-range-days="7" data-trend-range-start="2026-05-01" data-trend-range-end="2026-05-07">7 days</button>';
+        trends
+            .querySelector('[data-trend-range-days="7"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
         expect(setInsightsTrendDateRange).toHaveBeenCalledWith({
             startDate: '2026-05-01',

@@ -105,13 +105,13 @@ function setupDOM() {
       </div>
       </div>
       <div id="insights-view" class="hidden">
+        <div id="insights-trends"></div>
         <div id="insights-summary"></div>
         <div id="insights-timeline"></div>
         <div id="insights-activity-log">
           <h3>Activity Log</h3>
           <div id="insights-activity-list"></div>
         </div>
-        <div id="insights-trends"></div>
       </div>
       <div id="info-panel">
         <button id="clear-schedule-button" class="btn-clear-schedule">Clear Schedule</button>
