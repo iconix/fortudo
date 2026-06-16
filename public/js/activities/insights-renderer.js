@@ -1,6 +1,7 @@
 import {
     calculateHoursAndMinutes,
     convertTo12HourTime,
+    extractDateFromDateTime,
     extractTimeFromDateTime
 } from '../utils.js';
 import { getActivityState, getRunningActivity } from './manager.js';
@@ -14,6 +15,7 @@ const FALLBACK_TIMELINE_COLOR = '#64748b';
 
 let activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 let storedTrendDateRange = null;
+let storedSelectedInsightsDate = null;
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -172,6 +174,31 @@ function resolveDateRange({ dateRange = null, activityLogDateRange = null, now =
     );
 }
 
+function isDateWithinRange(date, dateRange) {
+    return Boolean(
+        date &&
+        dateRange?.startDate &&
+        dateRange?.endDate &&
+        date >= dateRange.startDate &&
+        date <= dateRange.endDate
+    );
+}
+
+function resolveSelectedDate({ selectedDate = null, dateRange, now = new Date() }) {
+    const today = extractDateFromDateTime(now);
+    const candidate = selectedDate || storedSelectedInsightsDate;
+
+    if (isDateWithinRange(candidate, dateRange)) {
+        return candidate;
+    }
+
+    if (isDateWithinRange(today, dateRange)) {
+        return today;
+    }
+
+    return dateRange?.endDate || today;
+}
+
 /**
  * Expands the visible Insights Activity Log item limit.
  * @param {number} increment
@@ -191,6 +218,16 @@ export function expandInsightsActivityLogLimit(increment = DEFAULT_ACTIVITY_LOG_
  */
 export function setInsightsTrendDateRange(dateRange) {
     storedTrendDateRange = dateRange || null;
+    storedSelectedInsightsDate = null;
+    activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
+}
+
+/**
+ * Stores the selected Insights detail date used by subsequent renders.
+ * @param {string|null} date
+ */
+export function setInsightsSelectedDate(date) {
+    storedSelectedInsightsDate = date || null;
     activityLogVisibleLimit = DEFAULT_ACTIVITY_LOG_LIMIT;
 }
 
@@ -205,15 +242,21 @@ export function renderInsightsView({
     activityRenderOptions = {},
     dateRange = null,
     activityLogDateRange = null,
+    selectedDate = null,
     now = new Date()
 } = {}) {
     const effectiveDateRange = resolveDateRange({ dateRange, activityLogDateRange, now });
+    const effectiveSelectedDate = resolveSelectedDate({
+        selectedDate,
+        dateRange: effectiveDateRange,
+        now
+    });
     const model = buildInsightsModel({
         tasks,
         activities,
         runningActivity,
         now,
-        activityLogDateRange: effectiveDateRange
+        selectedDate: effectiveSelectedDate
     });
     const trendModel = buildTrendModel({
         activities,
@@ -224,7 +267,7 @@ export function renderInsightsView({
     renderSummary(model);
     renderTimeline(model);
     renderActivityLog(model, activityRenderOptions);
-    renderTrends(trendModel);
+    renderTrends(trendModel, { selectedDate: effectiveSelectedDate });
 }
 
 function getTotalMinutes(items = []) {
@@ -285,63 +328,83 @@ function renderCategoryTrendChart(categoryTotals = []) {
     </div>`;
 }
 
-function renderDailyTrendBars(dailyHours = []) {
-    const maxMinutes = Math.max(1, ...dailyHours.map((day) => Number(day.minutes) || 0));
+function formatShortDate(date) {
+    const parsed = new Date(`${date}T00:00:00`);
+    return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
-    const bars = dailyHours
-        .map((day) => {
-            const dayMinutes = Number(day.minutes) || 0;
-            const barHeight = Math.max(3, (dayMinutes / maxMinutes) * 100);
-            const segments = (day.categorySegments || [])
-                .map((segment) => {
-                    const minutes = Number(segment.minutes) || 0;
-                    if (minutes <= 0 || dayMinutes <= 0) {
-                        return '';
-                    }
+function formatWeekday(date) {
+    const parsed = new Date(`${date}T00:00:00`);
+    return parsed.toLocaleDateString(undefined, { weekday: 'short' });
+}
 
-                    const height = Math.max(3, (minutes / dayMinutes) * barHeight);
+function renderTrendDayCard(day, selectedDate) {
+    const minutes = Number(day.minutes) || 0;
+    const segments = (day.categorySegments || [])
+        .map((segment) => {
+            const segmentMinutes = Number(segment.minutes) || 0;
+            if (segmentMinutes <= 0 || minutes <= 0) {
+                return '';
+            }
 
-                    return `<span data-daily-trend-segment class="block w-full"
-                        title="${escapeHtml(segment.label)} ${escapeHtml(calculateHoursAndMinutes(minutes))}"
-                        style="height: ${height}%; background-color: ${normalizeTimelineColor(
-                            segment.color
-                        )};"></span>`;
-                })
-                .join('');
+            const width = Math.max(3, (segmentMinutes / minutes) * 100);
 
-            return `<div class="flex min-w-0 flex-col items-center gap-2">
-                <div data-daily-trend-bar
-                    class="flex h-24 w-full max-w-8 items-end overflow-hidden rounded bg-slate-800/80">
-                    <div class="flex h-full w-full flex-col-reverse">${segments}</div>
-                </div>
-                <div class="truncate text-[10px] text-slate-500">${escapeHtml(day.date.slice(5))}</div>
-            </div>`;
+            return `<span data-daily-trend-segment class="block h-full"
+                title="${escapeHtml(segment.label)} ${escapeHtml(calculateHoursAndMinutes(segmentMinutes))}"
+                style="width: ${width}%; background-color: ${normalizeTimelineColor(
+                    segment.color
+                )};"></span>`;
         })
         .join('');
+    const selected = day.date === selectedDate;
 
-    return `<div class="relative">
-        <div data-daily-trend-grid
-            class="pointer-events-none absolute inset-x-0 top-0 h-24 rounded border-y border-slate-700/60 bg-[linear-gradient(to_top,rgba(148,163,184,0.16)_1px,transparent_1px)] bg-[length:100%_33.333%]">
+    return `<button type="button" data-trend-day="${escapeHtml(day.date)}"
+        data-selected="${selected ? 'true' : 'false'}"
+        class="min-h-[7rem] rounded-lg border p-2 text-left ${
+            selected
+                ? 'border-cyan-400 bg-cyan-950/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45)]'
+                : 'border-slate-700 bg-slate-950/80 hover:bg-slate-900'
+        }">
+        <div class="flex items-center justify-between text-[11px] font-semibold uppercase text-sky-300">
+            <span>${escapeHtml(formatWeekday(day.date))}</span>
+            <span>${escapeHtml(day.activityCount || 0)}</span>
         </div>
-        <div class="relative grid grid-cols-7 gap-2 md:grid-cols-14">${bars}</div>
-    </div>`;
+        <div class="mt-1 text-sm font-semibold text-slate-100">${escapeHtml(formatShortDate(day.date))}</div>
+        <div class="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-800">
+            ${segments || '<span class="block h-full w-full bg-slate-700"></span>'}
+        </div>
+        <div class="mt-2 text-sm font-semibold text-slate-100">
+            ${escapeHtml(calculateHoursAndMinutes(minutes))}
+        </div>
+        <div class="text-[11px] text-slate-500">
+            ${escapeHtml((day.categorySegments || []).length)} categories
+        </div>
+    </button>`;
 }
 
 /**
  * Renders the lightweight Trends panel for activity insights.
  * @param {Object} trendModel
  */
-export function renderTrends(trendModel = {}) {
+export function renderTrends(trendModel = {}, { selectedDate = null } = {}) {
     const trendsContainer = document.getElementById('insights-trends');
     if (!trendsContainer) {
         return;
     }
 
     const dateRange = trendModel.dateRange || {};
-    const wasOpen = Boolean(trendsContainer.querySelector('details')?.open);
+    const dailyHours = trendModel.dailyHours || [];
 
-    trendsContainer.innerHTML = `<details${wasOpen ? ' open' : ''} class="rounded-lg border border-slate-700 bg-slate-950/80 p-4 shadow-sm">
-        <summary class="cursor-pointer text-sm font-semibold text-slate-100">Trends</summary>
+    trendsContainer.innerHTML = `<section class="rounded-lg border border-slate-700 bg-slate-950/80 p-4 shadow-sm">
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-100">Trends</h2>
+                <p class="mt-1 text-xs text-slate-400">Click a day to inspect its timeline and activity log.</p>
+            </div>
+            <div class="text-xs text-slate-500">
+                ${escapeHtml(dateRange.startDate)} - ${escapeHtml(dateRange.endDate)}
+            </div>
+        </div>
         <div class="mt-4 space-y-4">
             <div class="grid grid-cols-2 gap-3">
                 <label class="text-xs font-medium uppercase text-slate-400">
@@ -356,7 +419,10 @@ export function renderTrends(trendModel = {}) {
                 </label>
             </div>
             ${renderCategoryTrendChart(trendModel.categoryTotals || [])}
-            ${renderDailyTrendBars(trendModel.dailyHours || [])}
+            <div data-trend-day-strip
+                class="grid auto-cols-[8.5rem] grid-flow-col gap-2 overflow-x-auto pb-1 md:auto-cols-auto md:grid-flow-row md:grid-cols-14 md:overflow-visible md:pb-0">
+                ${dailyHours.map((day) => renderTrendDayCard(day, selectedDate)).join('')}
+            </div>
         </div>
-    </details>`;
+    </section>`;
 }

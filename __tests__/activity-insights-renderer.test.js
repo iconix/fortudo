@@ -72,13 +72,21 @@ function activity(overrides = {}) {
     };
 }
 
-function renderWith({ tasks = [], activities = [], now = new Date(isoAt('12:00')) } = {}) {
+function renderWith({
+    tasks = [],
+    activities = [],
+    now = new Date(isoAt('12:00')),
+    dateRange = null,
+    selectedDate = null
+} = {}) {
     getActivityState.mockReturnValue(activities);
     getRunningActivity.mockReturnValue(null);
 
     renderInsightsView({
         tasks,
         now,
+        dateRange,
+        selectedDate,
         activityRenderOptions: { confirmingDeleteActivityId: 'activity-3' }
     });
 }
@@ -411,11 +419,16 @@ describe('activity insights renderer', () => {
         expect(document.querySelector('[data-show-more-activities]')).not.toBeNull();
     });
 
-    test('initial Activity Log uses the default 14-day trend range', () => {
+    test('initial Activity Log defaults to today within the default 14-day trend range', () => {
         renderWith({
             activities: [
                 activity({
-                    id: 'inside-range',
+                    id: 'today-activity',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '09:30')
+                }),
+                activity({
+                    id: 'inside-range-but-not-selected-day',
                     startDateTime: isoOn('2026-04-24', '09:00'),
                     endDateTime: isoOn('2026-04-24', '09:30')
                 }),
@@ -429,11 +442,46 @@ describe('activity insights renderer', () => {
         });
 
         expect(renderActivities.mock.calls.at(-1)[0]).toEqual([
-            expect.objectContaining({ id: 'inside-range' })
+            expect.objectContaining({ id: 'today-activity' })
         ]);
     });
 
-    test('renderInsightsView renders collapsed Trends with date filters and category daily bars', () => {
+    test('renderInsightsView renders selectable trend day cards with selected day', () => {
+        renderInsightsView({
+            activities: [
+                activity({
+                    id: 'a-1',
+                    description: 'work',
+                    startDateTime: isoOn('2026-06-15', '09:00'),
+                    endDateTime: isoOn('2026-06-15', '10:00'),
+                    duration: 60,
+                    category: 'work/deep'
+                }),
+                activity({
+                    id: 'a-2',
+                    description: 'project',
+                    startDateTime: isoOn('2026-06-16', '09:00'),
+                    endDateTime: isoOn('2026-06-16', '10:30'),
+                    duration: 90,
+                    category: 'work/deep'
+                })
+            ],
+            now: new Date(isoOn('2026-06-16', '12:00')),
+            dateRange: { startDate: '2026-06-03', endDate: '2026-06-16' },
+            selectedDate: '2026-06-15'
+        });
+
+        const trends = document.getElementById('insights-trends');
+
+        expect(trends.querySelector('details')).toBeNull();
+        expect(trends.querySelectorAll('[data-trend-day]')).toHaveLength(14);
+        expect(trends.querySelector('[data-trend-day="2026-06-15"]').dataset.selected).toBe('true');
+        expect(trends.querySelector('[data-trend-day="2026-06-16"]').dataset.selected).toBe(
+            'false'
+        );
+    });
+
+    test('renderInsightsView renders visible Trends with date filters and category day cards', () => {
         renderWith({
             activities: [
                 activity({
@@ -453,30 +501,17 @@ describe('activity insights renderer', () => {
         });
 
         const trends = document.getElementById('insights-trends');
-        const details = trends.querySelector('details');
 
         expect(trends.textContent).toContain('Trends');
-        expect(details).not.toBeNull();
-        expect(details.open).toBe(false);
+        expect(trends.querySelector('details')).toBeNull();
         expect(trends.querySelector('[data-trend-start-date]')).not.toBeNull();
         expect(trends.querySelector('[data-trend-end-date]')).not.toBeNull();
         expect(trends.querySelector('[data-category-trend-chart]')).not.toBeNull();
         expect(trends.querySelectorAll('[data-category-trend-segment]').length).toBeGreaterThan(0);
-        expect(trends.querySelectorAll('[data-daily-trend-bar]')).toHaveLength(14);
+        expect(trends.querySelectorAll('[data-trend-day]')).toHaveLength(14);
         expect(trends.querySelectorAll('[data-daily-trend-segment]').length).toBeGreaterThan(0);
-        expect(trends.querySelector('[data-daily-trend-grid]')).not.toBeNull();
+        expect(trends.querySelector('[data-trend-day-strip]')).not.toBeNull();
         expect(trends.textContent).toContain('Work');
-    });
-
-    test('renderInsightsView preserves open Trends details across re-renders', () => {
-        renderWith();
-
-        const details = document.querySelector('#insights-trends details');
-        details.open = true;
-
-        renderWith();
-
-        expect(document.querySelector('#insights-trends details').open).toBe(true);
     });
 
     test('daily trend stacked segment container fills the fixed-height bar', () => {
@@ -495,7 +530,7 @@ describe('activity insights renderer', () => {
         const segment = document.querySelector('[data-daily-trend-segment]');
         const stackContainer = segment.parentElement;
 
-        expect(stackContainer.classList.contains('h-full')).toBe(true);
+        expect(stackContainer.classList.contains('h-3')).toBe(true);
     });
 
     test('category trend segments normalize percentage dash lengths to path length 100', () => {
@@ -562,7 +597,7 @@ describe('activity insights renderer', () => {
 
         expect(buildInsightsModel).toHaveBeenCalledWith(
             expect.objectContaining({
-                activityLogDateRange: { startDate: '2026-04-24', endDate: '2026-05-07' }
+                selectedDate: '2026-05-07'
             })
         );
         expect(buildTrendModel).toHaveBeenCalledWith(

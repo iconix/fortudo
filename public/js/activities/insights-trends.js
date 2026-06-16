@@ -54,6 +54,7 @@ export function buildTrendModel({
             addCategoryMinutes(dailyBucket.categorySegments, categoryMeta, duration);
             addCategoryMinutes(categoryTotals, categoryMeta, duration);
             dailyBucket.minutes += duration;
+            dailyBucket.activityCount += 1;
         }
     }
 
@@ -87,6 +88,7 @@ function buildDailyBuckets(dateRange) {
         buckets.set(date, {
             date,
             minutes: 0,
+            activityCount: 0,
             categorySegments: new Map()
         });
         cursor.setDate(cursor.getDate() + 1);

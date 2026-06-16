@@ -89,7 +89,10 @@ describe('activity insights trends', () => {
             expect.objectContaining({
                 date: '2026-05-07',
                 minutes: 60,
-                categorySegments: [expect.objectContaining({ key: 'work', minutes: 60 })]
+                activityCount: 1,
+                categorySegments: expect.arrayContaining([
+                    expect.objectContaining({ key: 'work', minutes: 60 })
+                ])
             })
         );
         expect(model.categoryTotals).toEqual([
@@ -118,12 +121,18 @@ describe('activity insights trends', () => {
             expect.objectContaining({
                 date: '2026-05-06',
                 minutes: 30,
-                categorySegments: [expect.objectContaining({ key: 'work', minutes: 30 })]
+                activityCount: 1,
+                categorySegments: expect.arrayContaining([
+                    expect.objectContaining({ key: 'work', minutes: 30 })
+                ])
             }),
             expect.objectContaining({
                 date: '2026-05-07',
                 minutes: 30,
-                categorySegments: [expect.objectContaining({ key: 'work', minutes: 30 })]
+                activityCount: 1,
+                categorySegments: expect.arrayContaining([
+                    expect.objectContaining({ key: 'work', minutes: 30 })
+                ])
             })
         ]);
         expect(model.categoryTotals).toEqual([
