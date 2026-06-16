@@ -10,14 +10,14 @@ import {
     parseLocalDate
 } from './insights-intervals.js';
 
-const DEFAULT_TREND_DAYS = 14;
+const DEFAULT_TREND_DAYS = 7;
 
 /**
  * Builds daily activity trend buckets and parent-group category totals.
  * @param {Object} options - Selector inputs.
  * @param {Array<Object>} [options.activities=[]] - Activity records.
  * @param {Date} [options.now=new Date()] - Current date/time.
- * @param {number} [options.days=14] - Number of local days to include.
+ * @param {number} [options.days=7] - Number of local days to include.
  * @param {{startDate: string, endDate: string}} [options.dateRange] - Optional range override.
  * @returns {Object} Trend model.
  */
@@ -71,7 +71,7 @@ export function buildTrendModel({
 /**
  * Gets the default trend range for the last N local days ending at now.
  * @param {Date} [today=new Date()] - Current date/time.
- * @param {number} [days=14] - Number of local days to include.
+ * @param {number} [days=7] - Number of local days to include.
  * @returns {{startDate: string, endDate: string}} Date range.
  */
 export function getDefaultTrendDateRange(today = new Date(), days = DEFAULT_TREND_DAYS) {

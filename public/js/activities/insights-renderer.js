@@ -149,7 +149,7 @@ function renderTimelineBlock(block, type, viewport) {
 
     return `<div data-timeline-block="${type}" data-timeline-block-id="${escapeHtml(block.id)}"
         data-compact="${compact ? 'true' : 'false'}"
-        role="img" class="absolute top-2 h-9 overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm"
+        role="img" class="absolute top-2 h-9 cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm"
         style="${style}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">

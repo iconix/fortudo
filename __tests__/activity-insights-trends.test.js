@@ -60,7 +60,7 @@ describe('activity insights trends', () => {
             endDate: '2026-05-07'
         });
         expect(getDefaultTrendDateRange(new Date(isoOn('2026-05-07', '12:00')))).toEqual({
-            startDate: '2026-04-24',
+            startDate: '2026-05-01',
             endDate: '2026-05-07'
         });
     });
@@ -84,7 +84,7 @@ describe('activity insights trends', () => {
             now: new Date(isoOn('2026-05-07', '12:00'))
         });
 
-        expect(model.dailyHours).toHaveLength(14);
+        expect(model.dailyHours).toHaveLength(7);
         expect(model.dailyHours.at(-1)).toEqual(
             expect.objectContaining({
                 date: '2026-05-07',

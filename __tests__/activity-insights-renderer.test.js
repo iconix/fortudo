@@ -160,6 +160,8 @@ describe('activity insights renderer', () => {
         expect(summary.textContent).toContain('1');
         expect(plannedBlock).not.toBeNull();
         expect(actualBlock).not.toBeNull();
+        expect(plannedBlock.className).toContain('cursor-pointer');
+        expect(actualBlock.className).toContain('cursor-pointer');
         expect(plannedBlock.getAttribute('style')).toContain('#0ea5e9');
         expect(plannedBlock.getAttribute('title')).toContain('Plan focus');
         expect(actualBlock.textContent).toContain('Actual focus');
@@ -533,7 +535,7 @@ describe('activity insights renderer', () => {
         expect(document.querySelector('[data-show-more-activities]')).not.toBeNull();
     });
 
-    test('initial Activity Log defaults to today within the default 14-day trend range', () => {
+    test('initial Activity Log defaults to today within the default 7-day trend range', () => {
         renderWith({
             activities: [
                 activity({
@@ -621,11 +623,11 @@ describe('activity insights renderer', () => {
         expect(trends.querySelector('[data-trend-start-date]')).toBeNull();
         expect(trends.querySelector('[data-trend-end-date]')).toBeNull();
         expect(trends.querySelector('[data-trend-range-days="7"]')).not.toBeNull();
-        expect(trends.querySelector('[data-trend-range-days="14"]').dataset.selected).toBe('true');
+        expect(trends.querySelector('[data-trend-range-days="7"]').dataset.selected).toBe('true');
         expect(trends.querySelector('[data-trend-range-days="30"]')).not.toBeNull();
         expect(trends.querySelector('[data-category-trend-chart]')).not.toBeNull();
         expect(trends.querySelectorAll('[data-category-trend-segment]').length).toBeGreaterThan(0);
-        expect(trends.querySelectorAll('[data-trend-day]')).toHaveLength(14);
+        expect(trends.querySelectorAll('[data-trend-day]')).toHaveLength(7);
         expect(trends.querySelectorAll('[data-daily-trend-segment]').length).toBeGreaterThan(0);
         expect(trends.querySelector('[data-trend-day-strip]')).not.toBeNull();
         expect(trends.textContent).toContain('Work');
