@@ -341,6 +341,48 @@ describe('activity insights renderer', () => {
         );
     });
 
+    test('activity log title and rows are scoped to selected day', () => {
+        renderInsightsView({
+            activities: [
+                activity({
+                    id: 'selected-day',
+                    description: 'selected day activity',
+                    startDateTime: isoOn('2026-05-06', '10:00'),
+                    endDateTime: isoOn('2026-05-06', '10:30'),
+                    duration: 30
+                }),
+                activity({
+                    id: 'other-day',
+                    description: 'other day activity',
+                    startDateTime: isoAt('10:00'),
+                    endDateTime: isoAt('10:30'),
+                    duration: 30
+                })
+            ],
+            now: new Date(isoAt('12:00')),
+            selectedDate: '2026-05-06'
+        });
+
+        expect(document.getElementById('insights-activity-log').textContent).toContain('May 6');
+        expect(renderActivities.mock.calls.at(-1)[0]).toEqual([
+            expect.objectContaining({ id: 'selected-day' })
+        ]);
+    });
+
+    test('activity log renders selected-day empty state', () => {
+        renderInsightsView({
+            activities: [],
+            now: new Date(isoAt('12:00')),
+            selectedDate: '2026-05-06'
+        });
+
+        expect(document.getElementById('insights-activity-list').textContent).toContain(
+            'No activities logged for'
+        );
+        expect(document.getElementById('insights-activity-list').textContent).toContain('May 6');
+        expect(renderActivities).not.toHaveBeenCalled();
+    });
+
     test('renderInsightsView groups overlapping activity issues by affected and related activity ids', () => {
         renderWith({
             activities: [

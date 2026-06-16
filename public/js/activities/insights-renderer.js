@@ -259,6 +259,20 @@ function renderActivityLog(model, activityRenderOptions = {}) {
 
     const visibleActivities = model.activityLog.slice(0, activityLogVisibleLimit);
     const hiddenCount = Math.max(0, model.activityLog.length - visibleActivities.length);
+    const formattedDate = formatLongDate(model.date);
+    const heading = document.querySelector('#insights-activity-log h2, #insights-activity-log h3');
+
+    if (heading) {
+        heading.textContent = `Activity Log · ${formattedDate}`;
+    }
+
+    if (model.activityLog.length === 0) {
+        listContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-4 text-sm text-slate-400">
+            No activities logged for ${escapeHtml(formattedDate)}.
+        </div>`;
+        renderShowMoreButton(0);
+        return;
+    }
 
     renderActivities(visibleActivities, listContainer, {
         ...activityRenderOptions,
@@ -448,6 +462,15 @@ function formatShortDate(date) {
 function formatWeekday(date) {
     const parsed = new Date(`${date}T00:00:00`);
     return parsed.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
+function formatLongDate(date) {
+    const parsed = new Date(`${date}T00:00:00`);
+    return parsed.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+    });
 }
 
 function renderTrendDayCard(day, selectedDate) {
