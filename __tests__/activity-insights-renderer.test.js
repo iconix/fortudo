@@ -645,7 +645,7 @@ describe('activity insights renderer', () => {
         );
     });
 
-    test('trend day strip supports horizontal scrolling on small screens', () => {
+    test('trend day strip stays horizontally scrollable for long ranges', () => {
         renderInsightsView({
             activities: [],
             now: new Date(isoAt('12:00')),
@@ -655,6 +655,9 @@ describe('activity insights renderer', () => {
         const strip = document.querySelector('[data-trend-day-strip]');
         expect(strip.className).toContain('overflow-x-auto');
         expect(strip.className).toContain('auto-cols');
+        expect(strip.className).toContain('snap-x');
+        expect(strip.className).not.toContain('md:grid-flow-row');
+        expect(strip.className).not.toContain('md:overflow-visible');
     });
 
     test('daily trend stacked segment container fills the fixed-height bar', () => {

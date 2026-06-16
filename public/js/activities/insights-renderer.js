@@ -496,7 +496,7 @@ function renderTrendDayCard(day, selectedDate) {
 
     return `<button type="button" data-trend-day="${escapeHtml(day.date)}"
         data-selected="${selected ? 'true' : 'false'}"
-        class="min-h-[7rem] rounded-lg border p-2 text-left ${
+        class="min-h-[7rem] snap-start rounded-lg border p-2 text-left ${
             selected
                 ? 'border-cyan-400 bg-cyan-950/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45)]'
                 : 'border-slate-700 bg-slate-950/80 hover:bg-slate-900'
@@ -577,7 +577,7 @@ export function renderTrends(trendModel = {}, { selectedDate = null, now = new D
             </div>
             ${renderCategoryTrendChart(trendModel.categoryTotals || [])}
             <div data-trend-day-strip
-                class="grid auto-cols-[8.5rem] grid-flow-col gap-2 overflow-x-auto pb-1 md:auto-cols-auto md:grid-flow-row md:grid-cols-14 md:overflow-visible md:pb-0">
+                class="grid snap-x auto-cols-[10.25rem] grid-flow-col gap-2 overflow-x-auto pb-2">
                 ${dailyHours.map((day) => renderTrendDayCard(day, selectedDate)).join('')}
             </div>
         </div>
