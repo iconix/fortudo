@@ -106,6 +106,7 @@ function setupDOM() {
       </div>
       <div id="insights-view" class="hidden">
         <div id="insights-trends"></div>
+        <div id="insights-selected-day"></div>
         <div id="insights-summary"></div>
         <div id="insights-timeline"></div>
         <div id="insights-activity-log">

@@ -264,7 +264,7 @@ function renderActivityLog(model, activityRenderOptions = {}) {
     const heading = document.querySelector('#insights-activity-log h2, #insights-activity-log h3');
 
     if (heading) {
-        heading.textContent = `Activity Log · ${formattedDate}`;
+        heading.textContent = 'Activity Log';
     }
 
     if (model.activityLog.length === 0) {
@@ -391,6 +391,7 @@ export function renderInsightsView({
         dateRange: effectiveDateRange
     });
 
+    renderSelectedDayContext(effectiveSelectedDate);
     renderSummary(model);
     renderTimeline(model);
     renderActivityLog(model, activityRenderOptions);
@@ -472,6 +473,25 @@ function formatLongDate(date) {
         month: 'short',
         day: 'numeric'
     });
+}
+
+function renderSelectedDayContext(selectedDate) {
+    const contextContainer = document.getElementById('insights-selected-day');
+    if (!contextContainer) {
+        return;
+    }
+
+    contextContainer.innerHTML = `<section class="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-3">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
+            Selected day
+        </div>
+        <div class="mt-1 text-lg font-semibold text-slate-100">
+            ${escapeHtml(formatLongDate(selectedDate))}
+        </div>
+        <div class="mt-1 text-xs text-slate-400">
+            Summary, timeline, and activity log are scoped to this day.
+        </div>
+    </section>`;
 }
 
 function renderTrendDayCard(day, selectedDate) {

@@ -365,10 +365,38 @@ describe('activity insights renderer', () => {
             selectedDate: '2026-05-06'
         });
 
-        expect(document.getElementById('insights-activity-log').textContent).toContain('May 6');
+        expect(document.getElementById('insights-selected-day').textContent).toContain(
+            'Wed, May 6'
+        );
+        expect(document.getElementById('insights-selected-day').textContent).toContain(
+            'Summary, timeline, and activity log are scoped to this day.'
+        );
+        expect(
+            document.getElementById('insights-activity-log').querySelector('h3').textContent
+        ).toBe('Activity Log');
         expect(renderActivities.mock.calls.at(-1)[0]).toEqual([
             expect.objectContaining({ id: 'selected-day' })
         ]);
+    });
+
+    test('selected-day context renders between Trends and day detail sections', () => {
+        setupDOM();
+
+        const insightsView = document.getElementById('insights-view');
+        const children = [...insightsView.children].map((child) => child.id);
+
+        expect(children.indexOf('insights-selected-day')).toBeGreaterThan(
+            children.indexOf('insights-trends')
+        );
+        expect(children.indexOf('insights-selected-day')).toBeLessThan(
+            children.indexOf('insights-summary')
+        );
+        expect(children.indexOf('insights-selected-day')).toBeLessThan(
+            children.indexOf('insights-timeline')
+        );
+        expect(children.indexOf('insights-selected-day')).toBeLessThan(
+            children.indexOf('insights-activity-log')
+        );
     });
 
     test('activity log renders selected-day empty state', () => {
