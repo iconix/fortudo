@@ -625,6 +625,31 @@ describe('activity insights renderer', () => {
         );
     });
 
+    test('renderInsightsView scrolls the selected trend day into view', () => {
+        const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+        const scrollIntoView = jest.fn();
+        window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+        try {
+            renderInsightsView({
+                activities: [],
+                now: new Date(isoOn('2026-06-16', '12:00')),
+                dateRange: { startDate: '2026-06-03', endDate: '2026-06-16' },
+                selectedDate: '2026-06-15'
+            });
+
+            const selectedDay = document.querySelector('[data-trend-day="2026-06-15"]');
+
+            expect(scrollIntoView).toHaveBeenCalledWith({
+                block: 'nearest',
+                inline: 'center'
+            });
+            expect(scrollIntoView.mock.contexts[0]).toBe(selectedDay);
+        } finally {
+            window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+        }
+    });
+
     test('renderInsightsView renders visible Trends with date filters and category day cards', () => {
         renderWith({
             activities: [

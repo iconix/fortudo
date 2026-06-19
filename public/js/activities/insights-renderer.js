@@ -567,6 +567,18 @@ function renderTrendRangeControls(activeDateRange, now) {
     </div>`;
 }
 
+function scrollSelectedTrendDayIntoView(trendsContainer) {
+    const selectedDay = trendsContainer.querySelector('[data-trend-day][data-selected="true"]');
+    if (typeof selectedDay?.scrollIntoView !== 'function') {
+        return;
+    }
+
+    selectedDay.scrollIntoView({
+        block: 'nearest',
+        inline: 'center'
+    });
+}
+
 /**
  * Renders the lightweight Trends panel for activity insights.
  * @param {Object} trendModel
@@ -602,4 +614,5 @@ export function renderTrends(trendModel = {}, { selectedDate = null, now = new D
             </div>
         </div>
     </section>`;
+    scrollSelectedTrendDayIntoView(trendsContainer);
 }
