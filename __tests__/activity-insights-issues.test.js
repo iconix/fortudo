@@ -75,6 +75,35 @@ describe('activity insights issues', () => {
         );
     });
 
+    test('detectActivityDataIssues ignores sub-minute overlaps that display as adjacent', () => {
+        const issues = detectActivityDataIssues([
+            activity({
+                id: 'timer-activity',
+                startDateTime: '2026-05-07T21:37:30.000Z',
+                endDateTime: '2026-05-07T22:10:30.000Z',
+                source: 'timer',
+                sourceTaskId: null
+            }),
+            activity({
+                id: 'edited-activity',
+                startDateTime: '2026-05-07T22:10:00.000Z',
+                endDateTime: '2026-05-07T22:40:00.000Z',
+                source: 'manual',
+                sourceTaskId: null
+            })
+        ]);
+
+        expect(issues).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'overlap',
+                    activityId: 'edited-activity',
+                    overlappingActivityId: 'timer-activity'
+                })
+            ])
+        );
+    });
+
     test('getActivityIdsForIssue returns primary and related activity ids', () => {
         expect(
             getActivityIdsForIssue({

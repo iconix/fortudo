@@ -21,7 +21,10 @@ export function detectActivityDataIssues(activities = []) {
                 activityId: activityItem.id
             });
         } else {
-            if (previousValidActivity && startDate < new Date(previousValidActivity.endDateTime)) {
+            if (
+                previousValidActivity &&
+                hasDisplayedMinuteOverlap(startDate, new Date(previousValidActivity.endDateTime))
+            ) {
                 issues.push({
                     type: 'overlap',
                     activityId: activityItem.id,
@@ -117,4 +120,18 @@ export function mergeActivityIssuesById(existingIssuesById, modelIssues = []) {
 
 function compareOldestFirst(left, right) {
     return new Date(left.startDateTime) - new Date(right.startDateTime);
+}
+
+function getDisplayedMinuteTime(date) {
+    return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes()
+    ).getTime();
+}
+
+function hasDisplayedMinuteOverlap(startDate, previousEndDate) {
+    return getDisplayedMinuteTime(startDate) < getDisplayedMinuteTime(previousEndDate);
 }
