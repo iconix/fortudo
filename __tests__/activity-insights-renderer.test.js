@@ -815,6 +815,7 @@ describe('activity insights renderer', () => {
 
         const strip = document.querySelector('[data-trend-day-strip]');
         expect(strip.className).toContain('overflow-x-auto');
+        expect(strip.className).toContain('scrollbar-hidden');
         expect(strip.className).toContain('auto-cols');
         expect(strip.className).toContain('snap-x');
         expect(strip.className).not.toContain('md:grid-flow-row');

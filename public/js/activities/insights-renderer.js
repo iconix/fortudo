@@ -622,7 +622,7 @@ export function renderTrends(trendModel = {}, { selectedDate = null, now = new D
             </div>
             ${renderCategoryTrendChart(trendModel.categoryTotals || [])}
             <div data-trend-day-strip
-                class="grid snap-x auto-cols-[10.25rem] grid-flow-col gap-2 overflow-x-auto pb-2">
+                class="scrollbar-hidden grid snap-x auto-cols-[10.25rem] grid-flow-col gap-2 overflow-x-auto pb-2">
                 ${dailyHours.map((day) => renderTrendDayCard(day, selectedDate)).join('')}
             </div>
         </div>

@@ -70,6 +70,15 @@
     background: linear-gradient(180deg, rgba(94, 234, 212, 0.95), rgba(45, 212, 191, 0.8));
 }
 
+.scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+}
+
 #activity-action-group {
     display: contents;
 }
