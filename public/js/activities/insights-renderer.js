@@ -568,15 +568,28 @@ function renderTrendRangeControls(activeDateRange, now) {
 }
 
 function scrollSelectedTrendDayIntoView(trendsContainer) {
+    const trendDayStrip = trendsContainer.querySelector('[data-trend-day-strip]');
     const selectedDay = trendsContainer.querySelector('[data-trend-day][data-selected="true"]');
-    if (typeof selectedDay?.scrollIntoView !== 'function') {
+    if (!(trendDayStrip instanceof HTMLElement) || !(selectedDay instanceof HTMLElement)) {
         return;
     }
 
-    selectedDay.scrollIntoView({
-        block: 'nearest',
-        inline: 'center'
-    });
+    const scrollSelectedDay = () => {
+        if (!trendDayStrip.isConnected || !selectedDay.isConnected) {
+            return;
+        }
+
+        const centeredScrollLeft =
+            selectedDay.offsetLeft - (trendDayStrip.clientWidth - selectedDay.offsetWidth) / 2;
+
+        trendDayStrip.scrollLeft = Math.max(0, centeredScrollLeft);
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(scrollSelectedDay);
+    } else {
+        window.setTimeout(scrollSelectedDay, 0);
+    }
 }
 
 /**

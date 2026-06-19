@@ -36,6 +36,14 @@ function addMinutes(startDateTime, duration) {
     return calculateEndDateTime(startDateTime, duration);
 }
 
+function restorePrototypeDescriptor(property, descriptor) {
+    if (descriptor) {
+        Object.defineProperty(window.HTMLElement.prototype, property, descriptor);
+    } else {
+        delete window.HTMLElement.prototype[property];
+    }
+}
+
 function scheduledTask(overrides = {}) {
     const startDateTime = overrides.startDateTime || isoAt('09:00');
     const duration = overrides.duration || 30;
@@ -625,10 +633,45 @@ describe('activity insights renderer', () => {
         );
     });
 
-    test('renderInsightsView scrolls the selected trend day into view', () => {
+    test('renderInsightsView scrolls only the horizontal trend strip to the selected day', () => {
         const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+        const originalRequestAnimationFrame = window.requestAnimationFrame;
+        const originalClientWidth = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'clientWidth'
+        );
+        const originalOffsetWidth = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'offsetWidth'
+        );
+        const originalOffsetLeft = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'offsetLeft'
+        );
         const scrollIntoView = jest.fn();
+        window.requestAnimationFrame = (callback) => {
+            callback();
+            return 1;
+        };
         window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+        Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', {
+            configurable: true,
+            get() {
+                return this.matches?.('[data-trend-day-strip]') ? 200 : 0;
+            }
+        });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
+            configurable: true,
+            get() {
+                return this.matches?.('[data-trend-day]') ? 100 : 0;
+            }
+        });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetLeft', {
+            configurable: true,
+            get() {
+                return this.getAttribute?.('data-trend-day') === '2026-06-15' ? 500 : 0;
+            }
+        });
 
         try {
             renderInsightsView({
@@ -638,15 +681,78 @@ describe('activity insights renderer', () => {
                 selectedDate: '2026-06-15'
             });
 
-            const selectedDay = document.querySelector('[data-trend-day="2026-06-15"]');
+            const strip = document.querySelector('[data-trend-day-strip]');
 
-            expect(scrollIntoView).toHaveBeenCalledWith({
-                block: 'nearest',
-                inline: 'center'
-            });
-            expect(scrollIntoView.mock.contexts[0]).toBe(selectedDay);
+            expect(scrollIntoView).not.toHaveBeenCalled();
+            expect(strip.scrollLeft).toBe(450);
         } finally {
+            window.requestAnimationFrame = originalRequestAnimationFrame;
             window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+            restorePrototypeDescriptor('clientWidth', originalClientWidth);
+            restorePrototypeDescriptor('offsetWidth', originalOffsetWidth);
+            restorePrototypeDescriptor('offsetLeft', originalOffsetLeft);
+        }
+    });
+
+    test('renderInsightsView defers selected trend day alignment until after initial render', () => {
+        const originalRequestAnimationFrame = window.requestAnimationFrame;
+        const originalClientWidth = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'clientWidth'
+        );
+        const originalOffsetWidth = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'offsetWidth'
+        );
+        const originalOffsetLeft = Object.getOwnPropertyDescriptor(
+            window.HTMLElement.prototype,
+            'offsetLeft'
+        );
+        const frameCallbacks = [];
+        window.requestAnimationFrame = (callback) => {
+            frameCallbacks.push(callback);
+            return frameCallbacks.length;
+        };
+        Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', {
+            configurable: true,
+            get() {
+                return this.matches?.('[data-trend-day-strip]') ? 180 : 0;
+            }
+        });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
+            configurable: true,
+            get() {
+                return this.matches?.('[data-trend-day]') ? 80 : 0;
+            }
+        });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetLeft', {
+            configurable: true,
+            get() {
+                return this.getAttribute?.('data-trend-day') === '2026-06-15' ? 420 : 0;
+            }
+        });
+
+        try {
+            renderInsightsView({
+                activities: [],
+                now: new Date(isoOn('2026-06-16', '12:00')),
+                dateRange: { startDate: '2026-06-03', endDate: '2026-06-16' },
+                selectedDate: '2026-06-15'
+            });
+
+            const strip = document.querySelector('[data-trend-day-strip]');
+
+            expect(frameCallbacks).toHaveLength(1);
+            expect(strip.scrollLeft).toBe(0);
+
+            frameCallbacks[0]();
+
+            expect(strip.scrollLeft).toBe(370);
+        } finally {
+            window.requestAnimationFrame = originalRequestAnimationFrame;
+            restorePrototypeDescriptor('clientWidth', originalClientWidth);
+            restorePrototypeDescriptor('offsetWidth', originalOffsetWidth);
+            restorePrototypeDescriptor('offsetLeft', originalOffsetLeft);
         }
     });
 
