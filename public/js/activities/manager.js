@@ -13,6 +13,7 @@ import {
 /** @type {Array<Object>} */
 let activities = [];
 let runningActivity = null;
+let timerStopInFlight = false;
 
 function cloneActivity(activity) {
     return activity ? { ...activity } : activity;
@@ -94,6 +95,7 @@ function replaceState(nextActivities = []) {
 export function resetActivityState() {
     activities = [];
     runningActivity = null;
+    timerStopInFlight = false;
 }
 
 export function updateActivityState(nextActivities = []) {
@@ -303,6 +305,7 @@ export async function startTimer({
     }
 
     const timerState = {
+        id: generateActivityId(),
         description: trimmedDescription,
         category: category || null,
         startDateTime: new Date().toISOString(),
@@ -346,32 +349,44 @@ export async function stopTimer() {
 }
 
 export async function stopTimerAt(endDateTime) {
+    if (timerStopInFlight) {
+        return { success: false, reason: 'Timer stop is already in progress.' };
+    }
+
     if (!runningActivity) {
         return { success: false, reason: 'No timer is currently running.' };
     }
 
+    timerStopInFlight = true;
+    const timerToStop = runningActivity;
     const safeEndDateTime = clampTimerEndDateTime(
-        runningActivity.startDateTime,
+        timerToStop.startDateTime,
         toSafeIsoDateTime(endDateTime)
     );
-    const activityResult = await addActivity({
-        description: runningActivity.description,
-        category: runningActivity.category || null,
-        startDateTime: runningActivity.startDateTime,
-        endDateTime: safeEndDateTime,
-        duration: calculateDurationMinutes(runningActivity.startDateTime, safeEndDateTime),
-        source: runningActivity.source || 'timer',
-        sourceTaskId: runningActivity.sourceTaskId || null
-    });
 
-    if (!activityResult?.success) {
-        return activityResult;
+    try {
+        const activityResult = await addActivity({
+            id: timerToStop.id || generateActivityId(),
+            description: timerToStop.description,
+            category: timerToStop.category || null,
+            startDateTime: timerToStop.startDateTime,
+            endDateTime: safeEndDateTime,
+            duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
+            source: timerToStop.source || 'timer',
+            sourceTaskId: timerToStop.sourceTaskId || null
+        });
+
+        if (!activityResult?.success) {
+            return activityResult;
+        }
+
+        await deleteRunningActivityConfig();
+        runningActivity = null;
+
+        return { success: true, activity: cloneActivity(activityResult.activity) };
+    } finally {
+        timerStopInFlight = false;
     }
-
-    await deleteRunningActivityConfig();
-    runningActivity = null;
-
-    return { success: true, activity: cloneActivity(activityResult.activity) };
 }
 
 export async function updateRunningActivity(updates = {}) {
@@ -390,6 +405,7 @@ export async function updateRunningActivity(updates = {}) {
     }
 
     const nextRunningActivity = {
+        id: runningActivity.id || null,
         description: nextDescription,
         category: Object.prototype.hasOwnProperty.call(updates, 'category')
             ? updates.category || null

@@ -8,6 +8,7 @@ function normalizeRunningActivityConfig(config) {
     }
 
     return {
+        ...(config.activityId ? { id: config.activityId } : {}),
         description: config.description,
         category: config.category || null,
         startDateTime: config.startDateTime,
@@ -24,6 +25,7 @@ export async function loadRunningActivityConfig() {
 export async function saveRunningActivityConfig(runningActivity) {
     await putConfig({
         id: RUNNING_ACTIVITY_CONFIG_ID,
+        ...(runningActivity.id ? { activityId: runningActivity.id } : {}),
         description: runningActivity.description,
         category: runningActivity.category || null,
         startDateTime: runningActivity.startDateTime,
