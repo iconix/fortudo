@@ -265,7 +265,7 @@ describe('Scheduled Task Renderer Tests', () => {
             refreshCurrentGapHighlight(new Date('2025-01-15T11:10:00.000'));
 
             const gapEl = document.querySelector('.schedule-gap');
-            expect(gapEl.textContent).toContain('20m free');
+            expect(gapEl.textContent).toContain('20m until next');
             expect(gapEl.getAttribute('title')).toContain('20m available until next task');
         });
 

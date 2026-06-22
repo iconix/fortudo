@@ -218,7 +218,7 @@ function updateGapLabel(el, now, isCurrent) {
 
     const end = new Date(el.dataset.gapEnd);
     const remainingText = formatRemainingMinutes(now, end);
-    label.innerHTML = `<span class="gap-plus-icon">+ </span>${remainingText} free`;
+    label.innerHTML = `<span class="gap-plus-icon">+ </span>${remainingText} until next`;
     el.title = `${remainingText} available until next task`;
 }
 
