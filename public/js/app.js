@@ -53,7 +53,11 @@ import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
-import { initializeSettingsModalListeners, renderSettingsContent } from './settings-renderer.js';
+import {
+    initializeSettingsModalListeners,
+    openSettingsAfterActivitiesReloadIfNeeded,
+    renderSettingsContent
+} from './settings-renderer.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
@@ -62,7 +66,7 @@ import { handleAddTaskProcess } from './tasks/add-handler.js';
 import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
-import { onSyncStatusChange, triggerSync } from './sync-manager.js';
+import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 
 /** @type {AbortController|null} */
@@ -302,6 +306,16 @@ async function initAndBootApp(roomCode) {
     updateStartTimeField(suggested, true);
 
     focusTaskDescriptionInput();
+
+    await openSettingsAfterActivitiesReloadIfNeeded({
+        waitForIdleSync,
+        renderContent: () =>
+            renderSettingsContent({
+                onTaxonomyChanged: () => {
+                    refreshTaxonomyUI();
+                }
+            })
+    });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

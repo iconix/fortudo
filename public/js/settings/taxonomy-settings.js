@@ -109,7 +109,7 @@ function renderGroupsList() {
             }
 
             return `
-                <div data-group-key="${escapeHtml(group.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40">
+                <div data-group-key="${escapeHtml(group.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${group.color}"></span>
                         <div class="min-w-0">
@@ -232,7 +232,7 @@ function renderCategoryRow(category, group) {
         : 'text-amber-300 border-amber-500/30 bg-amber-500/10';
 
     return `
-        <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40">
+        <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
             <div class="flex items-center gap-3 min-w-0">
                 <span class="category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${category.color}"></span>
                 <div class="min-w-0">
@@ -328,9 +328,18 @@ function renderColorFamilyOptions(selectedFamily) {
     return Object.keys(COLOR_FAMILIES)
         .map((familyName) => {
             const selected = familyName === selectedFamily ? 'selected' : '';
-            return `<option value="${familyName}" ${selected}>${titleCase(familyName)}</option>`;
+            return `<option value="${familyName}" ${selected}>${getColorFamilyLabel(familyName)}</option>`;
         })
         .join('');
+}
+
+function getColorFamilyLabel(familyName) {
+    const labels = {
+        amber: 'Orange',
+        rose: 'Red',
+        violet: 'Purple'
+    };
+    return labels[familyName] || titleCase(familyName);
 }
 
 function bindGroupEvents(options) {
