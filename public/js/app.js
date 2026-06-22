@@ -3,7 +3,8 @@ import {
     updateTaskState,
     getTaskState,
     resetAllConfirmingDeleteFlags,
-    getSortedUnscheduledTasks
+    getSortedUnscheduledTasks,
+    getTodaysScheduledTasks
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -149,14 +150,11 @@ async function initAndBootApp(roomCode) {
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
     const unscheduledTaskEventCallbacks = createUnscheduledTaskCallbacks();
     refreshTaskDisplays = () => {
-        const allTasks = getTaskState();
-        renderTasks(
-            allTasks.filter((task) => task.type === 'scheduled'),
-            scheduledTaskEventCallbacks
-        );
+        const todaysScheduledTasks = getTodaysScheduledTasks();
+        renderTasks(todaysScheduledTasks, scheduledTaskEventCallbacks);
         renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
         renderTodayActivities(isActivitiesEnabled());
-        refreshActiveTaskColor(allTasks);
+        refreshActiveTaskColor(todaysScheduledTasks);
         refreshCurrentGapHighlight();
         renderActiveInsightsView();
     };

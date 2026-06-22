@@ -20,7 +20,7 @@ import { resetEventDelegation } from '../public/js/dom-renderer.js';
 import { refreshActiveTaskColor } from '../public/js/tasks/scheduled-renderer.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
 
-import { extractTimeFromDateTime } from '../public/js/utils.js';
+import { extractDateFromDateTime, extractTimeFromDateTime } from '../public/js/utils.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 
 // Mock storage.js to spy on saveTasks
@@ -962,7 +962,7 @@ describe('User Confirmation Flows', () => {
         };
 
         test('Active task color changes from green to yellow when it becomes late', async () => {
-            const date = '2023-01-01';
+            const date = extractDateFromDateTime(new Date());
             const activeTask = createTaskWithDateTime({
                 description: 'Active Task',
                 startTime: '13:30',
@@ -985,12 +985,9 @@ describe('User Confirmation Flows', () => {
 
             await setupInitialStateAndApp([completedTask, activeTask]);
 
-            // Get the active task element (should be the first incomplete task)
-            // The active task should be at index 1 (after the completed task)
-            // Use data-task-index attribute to find the task element since IDs are now generated UUIDs
-            const activeTaskElement = document.querySelector(
-                '#scheduled-task-list [data-task-index="1"]'
-            );
+            const activeTaskElement = Array.from(
+                document.querySelectorAll('#scheduled-task-list [data-task-id]')
+            ).find((element) => element.textContent.includes('Active Task'));
             expect(activeTaskElement).toBeTruthy();
             if (!activeTaskElement) return; // Type guard
 

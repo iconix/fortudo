@@ -16,6 +16,7 @@ import {
     editTask,
     cancelEdit,
     deleteAllTasks,
+    deleteAllScheduledTasks,
     performReschedule,
     confirmAddTaskAndReschedule,
     confirmScheduleUnscheduledTask,
@@ -26,6 +27,7 @@ import {
     getSuggestedStartTime,
     getTaskById,
     getTaskIndex,
+    getTodaysScheduledTasks,
     setTaskInlineEditing,
     resetAllInlineEditingFlags,
     consumeUnscheduledTask
@@ -1678,6 +1680,28 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // getCurrentTimeRounded() returns 14:35
         });
 
+        test('ignores scheduled tasks from prior days', () => {
+            const today = extractDateFromDateTime(new Date());
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const staleTask = createTaskWithDateTime({
+                description: 'Yesterday task',
+                startTime: '16:00',
+                duration: 60,
+                date: extractDateFromDateTime(yesterday)
+            });
+            const todaysTask = createTaskWithDateTime({
+                description: 'Today task',
+                startTime: '15:00',
+                duration: 60,
+                date: today
+            });
+
+            updateTaskState([staleTask, todaysTask]);
+
+            expect(getSuggestedStartTime()).toBe('16:00');
+        });
+
         test('should return current time rounded up when no incomplete tasks exist (only completed)', () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
@@ -1970,6 +1994,34 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([futureTask1, futureTask2]);
             const result = getSuggestedStartTime();
             expect(result).toBe('18:00'); // No tasks before current time (14:35), so continue planning from latest
+        });
+    });
+
+    describe('getTodaysScheduledTasks', () => {
+        test('returns only scheduled tasks that start on the current local day', () => {
+            const now = new Date('2026-06-22T13:00:00.000');
+            const staleTask = createTaskWithDateTime({
+                description: 'Yesterday scheduled',
+                startTime: '10:00',
+                duration: 30,
+                date: '2026-06-21'
+            });
+            const todayTask = createTaskWithDateTime({
+                description: 'Today scheduled',
+                startTime: '11:00',
+                duration: 30,
+                date: '2026-06-22'
+            });
+            const unscheduledTask = {
+                id: 'unscheduled-1',
+                type: 'unscheduled',
+                description: 'Backlog',
+                status: 'incomplete'
+            };
+
+            updateTaskState([staleTask, todayTask, unscheduledTask]);
+
+            expect(getTodaysScheduledTasks(now)).toEqual([todayTask]);
         });
     });
 
@@ -2295,10 +2347,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Delete Functions Edge Cases', () => {
-        const {
-            deleteAllScheduledTasks,
-            deleteCompletedTasks
-        } = require('../public/js/tasks/manager.js');
+        const { deleteCompletedTasks } = require('../public/js/tasks/manager.js');
 
         test('deleteAllScheduledTasks removes only scheduled tasks', () => {
             const scheduledTask = createTaskWithDateTime({
@@ -2326,6 +2375,30 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks).toHaveLength(1);
             expect(tasks[0].type).toBe('unscheduled');
+        });
+
+        test('deleteAllScheduledTasks removes only today scheduled tasks', () => {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const staleScheduledTask = createTaskWithDateTime({
+                description: 'Yesterday scheduled',
+                startTime: '09:00',
+                duration: 30,
+                date: extractDateFromDateTime(yesterday)
+            });
+            const todayScheduledTask = createTaskWithDateTime({
+                description: 'Today scheduled',
+                startTime: '10:00',
+                duration: 30
+            });
+
+            updateTaskState([staleScheduledTask, todayScheduledTask]);
+
+            const result = deleteAllScheduledTasks();
+
+            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(1);
+            expect(getTaskState()).toEqual([staleScheduledTask]);
         });
 
         test('deleteCompletedTasks removes completed tasks from both types', () => {
