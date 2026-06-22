@@ -15,6 +15,31 @@ import {
     setInsightsTrendDateRange
 } from './insights-renderer.js';
 
+function runWithPreservedWindowScroll(callback) {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    callback();
+
+    const restoreScroll = () => {
+        window.scrollTo(scrollX, scrollY);
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(restoreScroll);
+    } else {
+        window.setTimeout(restoreScroll, 0);
+    }
+}
+
+function getRefreshUiForClickTarget(target, refreshUI) {
+    if (target?.closest?.('#insights-view')) {
+        return () => runWithPreservedWindowScroll(refreshUI);
+    }
+
+    return refreshUI;
+}
+
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
     refreshUI,
@@ -36,7 +61,7 @@ export function createActivityAppCallbacks({
         },
         onGlobalClick: (event) => {
             handleActivityListClick(event.target, {
-                refreshUI,
+                refreshUI: getRefreshUiForClickTarget(event.target, refreshUI),
                 resetAllConfirmingDeleteFlags
             });
         }

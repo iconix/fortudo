@@ -100,6 +100,38 @@ describe('activity app wiring', () => {
         });
     });
 
+    test('preserves vertical scroll when global activity clicks refresh insights', () => {
+        document.body.insertAdjacentHTML(
+            'beforeend',
+            '<div id="insights-view"><button class="btn-delete-activity">Delete</button></div>'
+        );
+        Object.defineProperty(window, 'scrollX', { value: 0, configurable: true });
+        Object.defineProperty(window, 'scrollY', { value: 640, configurable: true });
+        window.requestAnimationFrame = (callback) => callback();
+        window.scrollTo = jest.fn();
+        handleActivityListClick.mockImplementationOnce((_target, { refreshUI }) => {
+            refreshUI();
+            return true;
+        });
+        const refreshUI = jest.fn();
+        const callbacks = createActivityAppCallbacks({
+            getActivitiesEnabled: () => true,
+            refreshUI,
+            resetAllConfirmingDeleteFlags: jest.fn(),
+            handleTaskSubmit: jest.fn(),
+            focusTaskDescriptionInput: jest.fn(),
+            resetTaskFormPreviewState: jest.fn(),
+            initializeTaskTypeToggle: jest.fn()
+        });
+
+        callbacks.onGlobalClick({
+            target: document.querySelector('#insights-view .btn-delete-activity')
+        });
+
+        expect(refreshUI).toHaveBeenCalled();
+        expect(window.scrollTo).toHaveBeenCalledWith(0, 640);
+    });
+
     test('initializes timer ui and delegates activity list events', () => {
         const refreshUI = jest.fn();
         const refreshTaskDisplays = jest.fn();
