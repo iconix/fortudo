@@ -8,6 +8,37 @@ import {
 } from './ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './timer-ui.js';
 import { getRunningActivity } from './manager.js';
+import {
+    expandInsightsActivityLogLimit,
+    setInsightsSelectedDate,
+    setSelectedTimelineBlock,
+    setInsightsTrendDateRange
+} from './insights-renderer.js';
+
+function runWithPreservedWindowScroll(callback) {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    callback();
+
+    const restoreScroll = () => {
+        window.scrollTo(scrollX, scrollY);
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(restoreScroll);
+    } else {
+        window.setTimeout(restoreScroll, 0);
+    }
+}
+
+function getRefreshUiForClickTarget(target, refreshUI) {
+    if (target?.closest?.('#insights-view')) {
+        return () => runWithPreservedWindowScroll(refreshUI);
+    }
+
+    return refreshUI;
+}
 
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
@@ -30,25 +61,14 @@ export function createActivityAppCallbacks({
         },
         onGlobalClick: (event) => {
             handleActivityListClick(event.target, {
-                refreshUI,
+                refreshUI: getRefreshUiForClickTarget(event.target, refreshUI),
                 resetAllConfirmingDeleteFlags
             });
         }
     };
 }
 
-export function initializeActivityUi({
-    signal,
-    refreshUI,
-    refreshTaskDisplays,
-    getActivitiesEnabled
-}) {
-    initializeTimerUI({
-        refreshUI: refreshTaskDisplays,
-        refreshActivitySummary: () => refreshTodayActivitySummary(getActivitiesEnabled())
-    });
-
-    const activityListElement = document.getElementById('activity-list');
+function initializeActivityListEventHandlers(activityListElement, { signal, refreshUI }) {
     if (!activityListElement) {
         return;
     }
@@ -72,6 +92,112 @@ export function initializeActivityUi({
         { signal }
     );
     activityListElement.addEventListener('input', handleActivityListInput, { signal });
+}
+
+function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderInsights }) {
+    if (!trendsElement) {
+        return;
+    }
+
+    trendsElement.addEventListener(
+        'click',
+        (event) => {
+            const rangeButton = event.target.closest(
+                '[data-trend-range-start][data-trend-range-end]'
+            );
+            if (rangeButton) {
+                setInsightsTrendDateRange({
+                    startDate: rangeButton.dataset.trendRangeStart,
+                    endDate: rangeButton.dataset.trendRangeEnd
+                });
+                renderInsights();
+                return;
+            }
+
+            const dayButton = event.target.closest('[data-trend-day]');
+            if (!dayButton) {
+                return;
+            }
+
+            setInsightsSelectedDate(dayButton.dataset.trendDay);
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
+function initializeInsightsActivityListEventHandlers(listElement, { signal, renderInsights }) {
+    if (!listElement) {
+        return;
+    }
+
+    listElement.addEventListener(
+        'click',
+        (event) => {
+            const showMoreButton = event.target.closest('[data-show-more-activities]');
+            if (!showMoreButton) {
+                return;
+            }
+
+            expandInsightsActivityLogLimit(50);
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
+function initializeInsightsTimelineEventHandlers(timelineElement, { signal, renderInsights }) {
+    if (!timelineElement) {
+        return;
+    }
+
+    timelineElement.addEventListener(
+        'click',
+        (event) => {
+            const block = event.target.closest('[data-timeline-block-id]');
+            if (!block) {
+                return;
+            }
+
+            setSelectedTimelineBlock(block.dataset.timelineBlockId);
+            renderInsights();
+        },
+        { signal }
+    );
+}
+
+export function initializeActivityUi({
+    signal,
+    refreshUI,
+    refreshTaskDisplays,
+    getActivitiesEnabled,
+    renderInsights = () => {}
+}) {
+    initializeTimerUI({
+        refreshUI: refreshTaskDisplays,
+        refreshActivitySummary: () => refreshTodayActivitySummary(getActivitiesEnabled())
+    });
+
+    initializeActivityListEventHandlers(document.getElementById('activity-list'), {
+        signal,
+        refreshUI
+    });
+    initializeActivityListEventHandlers(document.getElementById('insights-activity-list'), {
+        signal,
+        refreshUI
+    });
+    initializeInsightsTrendEventHandlers(document.getElementById('insights-trends'), {
+        signal,
+        renderInsights
+    });
+    initializeInsightsTimelineEventHandlers(document.getElementById('insights-timeline'), {
+        signal,
+        renderInsights
+    });
+    initializeInsightsActivityListEventHandlers(document.getElementById('insights-activity-list'), {
+        signal,
+        renderInsights
+    });
 }
 
 export function syncRestoredRunningTimer(activitiesEnabled) {

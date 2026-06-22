@@ -19,7 +19,7 @@ import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/sche
 import {
     renderTasks,
     renderUnscheduledTasks,
-    refreshUI,
+    refreshUI as refreshDomUI,
     getSuggestedFormStartTime,
     updateStartTimeField,
     initializePageEventListeners,
@@ -34,12 +34,21 @@ import {
     getRunningActivity,
     stopTimerAt
 } from './activities/manager.js';
-import { syncActivitiesUI, renderTodayActivities } from './activities/ui-handlers.js';
+import {
+    syncActivitiesUI,
+    renderTodayActivities,
+    getActivityRenderOptions
+} from './activities/ui-handlers.js';
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
     syncRestoredRunningTimer
 } from './activities/app-wiring.js';
+import {
+    initializeActivitiesViewToggle,
+    renderActiveInsightsView
+} from './activities/view-toggle.js';
+import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
@@ -59,7 +68,7 @@ import { COUCHDB_URL } from './config.js';
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
 
-/** @type {{ refreshFromStorage: () => Promise<void>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
+/** @type {{ refreshFromStorage: () => Promise<void>, stopStaleRunningTimerIfNeeded: () => Promise<Object|null>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
 let roomSessionLifecycle = null;
 
 /** @type {() => void} */
@@ -145,11 +154,21 @@ async function initAndBootApp(roomCode) {
         renderTodayActivities(isActivitiesEnabled());
         refreshActiveTaskColor(allTasks);
         refreshCurrentGapHighlight();
+        renderActiveInsightsView();
     };
+    const refreshAppUI = () => {
+        refreshDomUI();
+    };
+    const renderInsights = () =>
+        renderInsightsView({
+            tasks: getTaskState(),
+            activityRenderOptions: getActivityRenderOptions(),
+            now: new Date()
+        });
 
     const appCallbacks = createActivityAppCallbacks({
         getActivitiesEnabled: () => isActivitiesEnabled(),
-        refreshUI,
+        refreshUI: refreshAppUI,
         resetAllConfirmingDeleteFlags,
         focusTaskDescriptionInput,
         resetTaskFormPreviewState,
@@ -170,7 +189,7 @@ async function initAndBootApp(roomCode) {
 
     roomSessionLifecycle = createRoomSessionLifecycle({
         loadAppState,
-        refreshUI,
+        refreshUI: refreshAppUI,
         getActivitiesEnabled: () => isActivitiesEnabled(),
         syncRestoredRunningTimer,
         getTaskState,
@@ -247,15 +266,21 @@ async function initAndBootApp(roomCode) {
     initializeTaskTypeToggle();
     initializeActivityUi({
         signal,
-        refreshUI,
+        refreshUI: refreshAppUI,
         refreshTaskDisplays,
-        getActivitiesEnabled: () => isActivitiesEnabled()
+        getActivitiesEnabled: () => isActivitiesEnabled(),
+        renderInsights
+    });
+    initializeActivitiesViewToggle({
+        isActivitiesEnabled: () => isActivitiesEnabled(),
+        renderInsights
     });
     startRealTimeClock();
     initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
     initializeModalEventListeners(unscheduledTaskEventCallbacks);
     initializeClearTasksHandlers();
     roomSessionLifecycle.start({ signal });
+    await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
 
     // Initial render
     refreshTaskDisplays();

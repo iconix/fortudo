@@ -264,6 +264,74 @@ describe('activity renderer', () => {
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
     });
 
+    test('renders inline activity data issue text and amber styling on affected rows', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-overlapped',
+                    description: 'Original focus',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                },
+                {
+                    id: 'activity-clean',
+                    description: 'Clean focus',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T10:30:00.000Z',
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            {
+                activityIssuesById: {
+                    'activity-overlapped': [
+                        {
+                            type: 'overlap',
+                            activityId: 'activity-overlapping',
+                            overlappingActivityId: 'activity-overlapped'
+                        },
+                        {
+                            type: 'invalid-range',
+                            activityId: 'activity-overlapped'
+                        },
+                        {
+                            type: 'duplicate-auto',
+                            activityId: 'activity-overlapped'
+                        },
+                        {
+                            type: 'unknown',
+                            activityId: 'activity-overlapped'
+                        }
+                    ]
+                }
+            }
+        );
+
+        const affectedRow = container.querySelector('[data-activity-id="activity-overlapped"]');
+        const cleanRow = container.querySelector('[data-activity-id="activity-clean"]');
+        const issueText = affectedRow.querySelector('[data-activity-data-issue]');
+
+        expect(affectedRow.className).toContain('border-amber');
+        expect(affectedRow.className).toContain('bg-amber');
+        expect(issueText).not.toBeNull();
+        expect(issueText.textContent).toContain('Data issue');
+        expect(issueText.textContent).toContain('Overlapping activity');
+        expect(issueText.textContent).toContain('Activity ends before it starts');
+        expect(issueText.textContent).toContain('Duplicate auto-logged task activity');
+        expect(issueText.textContent).toContain('Activity data issue');
+        expect(cleanRow.className).not.toContain('border-amber');
+        expect(cleanRow.querySelector('[data-activity-data-issue]')).toBeNull();
+    });
+
     test('renders a confirming delete affordance for the selected activity row', () => {
         const container = document.getElementById('activity-list');
 

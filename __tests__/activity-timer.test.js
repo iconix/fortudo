@@ -122,6 +122,7 @@ describe('startTimer', () => {
         await startTimer({ description: 'Test', category: null });
 
         expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            id: expect.stringMatching(/^activity-/),
             description: 'Test',
             category: null,
             startDateTime: '2026-04-09T14:00:00.000Z',
@@ -139,12 +140,25 @@ describe('startTimer', () => {
         });
 
         expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            id: expect.stringMatching(/^activity-/),
             description: 'Inbox zero',
             category: 'break/admin',
             startDateTime: '2026-04-09T14:00:00.000Z',
             source: 'auto',
             sourceTaskId: 'unsched-42'
         });
+    });
+
+    test('persists an activity id with the running timer config', async () => {
+        const result = await startTimer({ description: 'Stable timer' });
+
+        expect(result.runningActivity.id).toEqual(expect.stringMatching(/^activity-/));
+        expect(saveRunningActivityConfig).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: result.runningActivity.id,
+                description: 'Stable timer'
+            })
+        );
     });
 
     test('updates in-memory cache', async () => {
@@ -354,6 +368,63 @@ describe('stopTimerAt', () => {
         expect(result.success).toBe(false);
         expect(result.reason).toMatch(/no timer/i);
     });
+
+    test('uses the running timer id for the completed activity', async () => {
+        loadRunningActivityConfig.mockResolvedValueOnce({
+            id: 'activity-existing-running',
+            description: 'Loaded timer',
+            category: 'work/deep',
+            startDateTime: '2026-04-09T10:00:00.000Z',
+            source: 'timer',
+            sourceTaskId: null
+        });
+        await loadRunningActivity();
+
+        const result = await stopTimerAt('2026-04-09T10:45:00.000Z');
+
+        expect(result.success).toBe(true);
+        expect(result.activity.id).toBe('activity-existing-running');
+        expect(putActivity).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'activity-existing-running',
+                description: 'Loaded timer'
+            })
+        );
+    });
+
+    test('does not duplicate the completed activity when stop requests overlap', async () => {
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        await startTimer({ description: 'Working' });
+        jest.clearAllMocks();
+
+        let resolveFirstPersist;
+        putActivity.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirstPersist = resolve;
+                })
+        );
+
+        const firstStop = stopTimerAt('2026-04-09T10:30:00.000Z');
+        const secondStop = stopTimerAt('2026-04-09T10:30:00.000Z');
+
+        await Promise.resolve();
+        resolveFirstPersist();
+
+        const results = await Promise.all([firstStop, secondStop]);
+
+        expect(results.filter((result) => result.success)).toHaveLength(1);
+        expect(results.filter((result) => !result.success)).toHaveLength(1);
+        expect(putActivity).toHaveBeenCalledTimes(1);
+        expect(getActivityState()).toEqual([
+            expect.objectContaining({
+                description: 'Working',
+                startDateTime: '2026-04-09T10:00:00.000Z',
+                endDateTime: '2026-04-09T10:30:00.000Z',
+                duration: 30
+            })
+        ]);
+    });
 });
 
 describe('updateRunningActivity', () => {
@@ -378,6 +449,7 @@ describe('updateRunningActivity', () => {
         expect(result.runningActivity.description).toBe('Updated');
         expect(getRunningActivity().description).toBe('Updated');
         expect(saveRunningActivityConfig).toHaveBeenCalledWith({
+            id: expect.stringMatching(/^activity-/),
             description: 'Updated',
             category: null,
             startDateTime: '2026-04-09T10:00:00.000Z',
@@ -449,6 +521,7 @@ describe('startTimerReplacingCurrent', () => {
         expect(result).toEqual({
             success: true,
             runningActivity: {
+                id: expect.stringMatching(/^activity-/),
                 description: 'First timer',
                 category: null,
                 startDateTime: '2026-04-09T10:00:00.000Z',
@@ -475,6 +548,7 @@ describe('startTimerReplacingCurrent', () => {
             })
         );
         expect(result.runningActivity).toEqual({
+            id: expect.stringMatching(/^activity-/),
             description: 'Next timer',
             category: null,
             startDateTime: '2026-04-09T10:00:00.000Z',

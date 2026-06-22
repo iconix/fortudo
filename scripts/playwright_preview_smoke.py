@@ -316,6 +316,32 @@ def build_launch_options(*, headless: bool, channel: str, slow_mo_ms: int = 0) -
     return launch_options
 
 
+def install_local_pouchdb_route(
+    context: Any,
+    *,
+    repo_root: Path | None = None,
+) -> bool:
+    root = repo_root or Path(__file__).resolve().parents[1]
+    pouchdb_path = root / "node_modules" / "pouchdb" / "dist" / "pouchdb.min.js"
+    if not pouchdb_path.exists():
+        return False
+
+    body = pouchdb_path.read_text(encoding="utf-8")
+
+    def fulfill_pouchdb(route: Any) -> None:
+        route.fulfill(
+            status=200,
+            content_type="application/javascript",
+            body=body,
+        )
+
+    context.route(
+        "https://cdn.jsdelivr.net/npm/pouchdb@9.0.0/dist/pouchdb.min.js",
+        fulfill_pouchdb,
+    )
+    return True
+
+
 def storage_eval_arg(page: Any, room_code: str, payload: Any | None = None) -> dict[str, Any]:
     return {
         "hostname": page.url.split("/")[2] if "://" in page.url else "",
@@ -593,6 +619,66 @@ def get_relative_browser_time(page: Any, minutes_delta: int) -> str:
     if not value:
         raise ValueError("Could not derive a browser-relative time value.")
     return value
+
+
+def build_relative_day_activity_doc(
+    page: Any,
+    *,
+    doc_id: str,
+    description: str,
+    day_offset: int,
+    start_hour: int,
+    start_minute: int,
+    duration_minutes: int,
+    category: str | None = "work/project",
+) -> dict[str, Any]:
+    doc = page.evaluate(
+        """
+        ({ id, description, dayOffset, startHour, startMinute, durationMinutes, category }) => {
+            const start = new Date();
+            start.setDate(start.getDate() + Number(dayOffset || 0));
+            start.setHours(Number(startHour || 0), Number(startMinute || 0), 0, 0);
+            const end = new Date(start.getTime() + Number(durationMinutes || 0) * 60000);
+            const localDate = [
+                start.getFullYear(),
+                String(start.getMonth() + 1).padStart(2, '0'),
+                String(start.getDate()).padStart(2, '0'),
+            ].join('-');
+            const dateText = start.toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+            });
+
+            return {
+                _id: id,
+                id,
+                docType: 'activity',
+                description,
+                category,
+                source: 'manual',
+                sourceTaskId: null,
+                startDateTime: start.toISOString(),
+                endDateTime: end.toISOString(),
+                duration: Number(durationMinutes || 0),
+                localDate,
+                dateText,
+            };
+        }
+        """,
+        {
+            "id": doc_id,
+            "description": description,
+            "dayOffset": day_offset,
+            "startHour": start_hour,
+            "startMinute": start_minute,
+            "durationMinutes": duration_minutes,
+            "category": category,
+        },
+    )
+    if not doc:
+        raise ValueError(f"Could not build relative activity doc for {description!r}.")
+    return doc
 
 
 def stop_activity_timer(
@@ -943,6 +1029,344 @@ def wait_for_activity_row_text(
         timeout_s=timeout_s,
         interval_s=interval_s,
     )
+
+
+def assert_selected_trend_day_visible(page: Any) -> None:
+    result = page.evaluate(
+        """
+        () => {
+            const strip = document.querySelector('[data-trend-day-strip]');
+            const selected = document.querySelector('[data-trend-day][data-selected="true"]');
+            if (!(strip instanceof HTMLElement) || !(selected instanceof HTMLElement)) {
+                return { ok: false, reason: 'selected trend day or strip missing' };
+            }
+
+            const stripRect = strip.getBoundingClientRect();
+            const selectedRect = selected.getBoundingClientRect();
+            const tolerance = 1;
+            const ok =
+                selectedRect.left >= stripRect.left - tolerance &&
+                selectedRect.right <= stripRect.right + tolerance;
+
+            return {
+                ok,
+                reason: ok ? '' : 'selected trend day is outside strip',
+                stripLeft: stripRect.left,
+                stripRight: stripRect.right,
+                selectedLeft: selectedRect.left,
+                selectedRight: selectedRect.right,
+            };
+        }
+        """
+    )
+    if not result or not result.get("ok"):
+        raise ValueError(f"Selected trend day is not visible: {json.dumps(result, indent=2)}")
+
+
+def assert_trend_strip_scrollbar_hidden_and_scrollable(page: Any) -> None:
+    result = page.evaluate(
+        """
+        () => {
+            const strip = document.querySelector('[data-trend-day-strip]');
+            if (!(strip instanceof HTMLElement)) {
+                return { ok: false, reason: 'trend day strip missing' };
+            }
+
+            const className = strip.getAttribute('class') || '';
+            const maxScrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth);
+            strip.scrollLeft = 0;
+            strip.scrollLeft = Math.min(maxScrollLeft, 96);
+
+            const hidden = className.includes('scrollbar-hidden');
+            const scrollable = maxScrollLeft > 0 && strip.scrollLeft > 0;
+
+            return {
+                ok: hidden && scrollable,
+                hidden,
+                scrollable,
+                className,
+                maxScrollLeft,
+                scrollLeft: strip.scrollLeft,
+            };
+        }
+        """
+    )
+    if not result or not result.get("ok"):
+        raise ValueError(
+            f"Trend strip scrollbar/scrollability check failed: {json.dumps(result, indent=2)}"
+        )
+
+
+def assert_insights_rerender_preserves_vertical_scroll(
+    page: Any,
+    activity_id: str,
+    *,
+    tolerance_px: int = 24,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    starting_scroll_y = page.evaluate(
+        """
+        () => {
+            let spacer = document.querySelector('[data-preview-smoke-scroll-spacer]');
+            if (!(spacer instanceof HTMLElement)) {
+                spacer = document.createElement('div');
+                spacer.dataset.previewSmokeScrollSpacer = 'true';
+                spacer.style.height = '960px';
+                spacer.style.pointerEvents = 'none';
+                document.body.append(spacer);
+            }
+            window.scrollTo(0, Math.max(0, document.body.scrollHeight - window.innerHeight - 40));
+            return window.scrollY;
+        }
+        """
+    )
+    delete_button = page.locator(
+        f'#insights-activity-list div.activity-item[data-activity-id="{activity_id}"] '
+        ".btn-delete-activity"
+    )
+    delete_button.scroll_into_view_if_needed()
+    starting_scroll_y = page.evaluate("() => window.scrollY")
+    delete_button.click()
+
+    ending_scroll_y = wait_until(
+        lambda: (
+            current
+            if abs((current := page.evaluate("() => window.scrollY")) - starting_scroll_y)
+            <= tolerance_px
+            else False
+        ),
+        "Insights vertical scroll preserved after activity delete-confirm render",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    if abs(ending_scroll_y - starting_scroll_y) > tolerance_px:
+        raise ValueError(
+            "Insights vertical scroll moved after delete-confirm render: "
+            f"before={starting_scroll_y}, after={ending_scroll_y}"
+        )
+
+
+def assert_trend_day_selection_scopes_details(
+    page: Any,
+    *,
+    selected_date: str,
+    expected_date_text: str,
+    expected_activity_description: str,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    day = page.locator(f'[data-trend-day="{selected_date}"]')
+    day.click()
+    wait_until(
+        lambda: page.locator(f'[data-trend-day="{selected_date}"]').get_attribute(
+            "data-selected"
+        )
+        == "true",
+        f"selected trend day {selected_date}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-selected-day",
+        expected_date_text,
+        description=f"selected day context for {selected_date}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-activity-list",
+        expected_activity_description,
+        description=f"activity log scoped to {selected_date}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def assert_activity_data_issue_badge(
+    page: Any,
+    *,
+    expected_activity_description: str,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.2,
+) -> None:
+    def badge_text() -> str | bool:
+        text = page.locator("#insights-activity-list").text_content() or ""
+        return text if expected_activity_description in text and "Data issue" in text else False
+
+    wait_until(
+        badge_text,
+        f"activity data issue badge for {expected_activity_description!r}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def assert_running_timer_id_reused_by_stopped_activity(
+    running_config: dict[str, Any],
+    stopped_activity_doc: dict[str, Any],
+) -> None:
+    running_activity_id = running_config.get("activityId")
+    stopped_activity_id = normalize_doc(stopped_activity_doc).get("id")
+    if not running_activity_id:
+        raise ValueError(
+            "Running timer config did not include an activityId.\n"
+            f"{json.dumps(running_config, indent=2)}"
+        )
+    if stopped_activity_id != running_activity_id:
+        raise ValueError(
+            "Stopped timer activity did not reuse running timer activityId.\n"
+            f"running={json.dumps(running_config, indent=2)}\n"
+            f"stopped={json.dumps(stopped_activity_doc, indent=2)}"
+        )
+
+
+def assert_phase5_insights_view(
+    page: Any,
+    *,
+    activity_description: str,
+    running_timer_description: str,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.2,
+) -> None:
+    page.locator("#insights-view").wait_for(state="visible", timeout=10000)
+    wait_for_text_in_locator(
+        page,
+        "#insights-summary",
+        "Planned",
+        description="insights planned summary",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-summary",
+        "Actual",
+        description="insights actual summary",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_until(
+        lambda: page.locator('#insights-timeline [data-timeline-block="planned"]').count() > 0,
+        "insights planned timeline row",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_until(
+        lambda: page.locator('#insights-timeline [data-timeline-block="actual"]').count() > 0,
+        "insights actual timeline row",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-timeline",
+        activity_description,
+        description="insights completed activity timeline block",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-timeline",
+        running_timer_description,
+        description="insights running timer timeline block",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+    wait_for_text_in_locator(
+        page,
+        "#insights-activity-list",
+        activity_description,
+        description="insights activity log entry",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
+
+
+def run_phase5_insights_smoke(page: Any, room_code: str) -> None:
+    auto_log_description = "Playwright insights auto-log"
+    live_timer_description = "Playwright insights live timer"
+    prior_day_description = "Playwright prior-day insights"
+    overlap_issue_description = "Playwright overlap issue second"
+
+    set_activities_enabled(page, True)
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+
+    prior_day_doc = build_relative_day_activity_doc(
+        page,
+        doc_id="activity-playwright-prior-day-insights",
+        description=prior_day_description,
+        day_offset=-1,
+        start_hour=9,
+        start_minute=0,
+        duration_minutes=30,
+    )
+    overlap_first_doc = build_relative_day_activity_doc(
+        page,
+        doc_id="activity-playwright-overlap-issue-first",
+        description="Playwright overlap issue first",
+        day_offset=0,
+        start_hour=8,
+        start_minute=0,
+        duration_minutes=60,
+    )
+    overlap_second_doc = build_relative_day_activity_doc(
+        page,
+        doc_id="activity-playwright-overlap-issue-second",
+        description=overlap_issue_description,
+        day_offset=0,
+        start_hour=8,
+        start_minute=30,
+        duration_minutes=30,
+    )
+    seed_docs(page, room_code, [prior_day_doc, overlap_first_doc, overlap_second_doc])
+    page.reload(wait_until="load")
+    wait_for_main_app(page)
+
+    add_active_scheduled_task(page, auto_log_description, 20)
+    task_doc = wait_for_task_doc(page, room_code, auto_log_description)
+    complete_scheduled_task_via_ui(page, task_doc["id"])
+    auto_log_activity_doc = wait_for_activity_doc(page, room_code, auto_log_description)
+
+    start_activity_timer(
+        page,
+        live_timer_description,
+        room_code=room_code,
+    )
+    running_timer_config = wait_for_running_activity_config(
+        page,
+        room_code,
+        expected_description=live_timer_description,
+    )
+
+    page.locator("#view-toggle-insights").click()
+    assert_phase5_insights_view(
+        page,
+        activity_description=auto_log_description,
+        running_timer_description=live_timer_description,
+    )
+    assert_selected_trend_day_visible(page)
+    assert_trend_strip_scrollbar_hidden_and_scrollable(page)
+    assert_activity_data_issue_badge(
+        page,
+        expected_activity_description=overlap_issue_description,
+    )
+    assert_insights_rerender_preserves_vertical_scroll(page, auto_log_activity_doc["id"])
+    assert_trend_day_selection_scopes_details(
+        page,
+        selected_date=prior_day_doc["localDate"],
+        expected_date_text=prior_day_doc["dateText"],
+        expected_activity_description=prior_day_description,
+    )
+
+    page.locator("#view-toggle-tasks").click()
+    stop_activity_timer(page)
+    stopped_timer_doc = wait_for_activity_doc(page, room_code, live_timer_description)
+    assert_running_timer_id_reused_by_stopped_activity(running_timer_config, stopped_timer_doc)
 
 
 def add_scheduled_task(page: Any, description: str, start_time: str, duration_minutes: int) -> None:
@@ -1981,6 +2405,10 @@ def run_activities_room_scenario(
     demo_note("activities: boundary non-overlap preserved the running timer until manual stop")
     assert_no_page_errors_yet("boundary non-overlap")
 
+    run_phase5_insights_smoke(page, rooms["activities"])
+    demo_note("activities: phase 5 insights summary, timeline, and log verified")
+    assert_no_page_errors_yet("phase 5 insights smoke")
+
 def run_smoke(
     preview_url: str,
     *,
@@ -2014,6 +2442,7 @@ def run_smoke(
         )
         browser = playwright.chromium.launch(**launch_options)
         context = browser.new_context(viewport={"width": 1440, "height": 960})
+        install_local_pouchdb_route(context)
         context.add_init_script(
             """
             window.__fortudoSmokeBrowserErrors = [];

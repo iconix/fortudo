@@ -41,6 +41,7 @@ describe('running activity repository', () => {
     test('loads optional provenance fields for task-linked timers', async () => {
         loadConfig.mockResolvedValueOnce({
             id: 'config-running-activity',
+            activityId: 'activity-running-42',
             description: 'Inbox zero',
             category: 'break/admin',
             startDateTime: '2026-04-09T10:00:00.000Z',
@@ -49,6 +50,7 @@ describe('running activity repository', () => {
         });
 
         await expect(loadRunningActivityConfig()).resolves.toEqual({
+            id: 'activity-running-42',
             description: 'Inbox zero',
             category: 'break/admin',
             startDateTime: '2026-04-09T10:00:00.000Z',
@@ -82,6 +84,7 @@ describe('running activity repository', () => {
 
     test('saves linked source task provenance for promoted unscheduled timers', async () => {
         await saveRunningActivityConfig({
+            id: 'activity-running-42',
             description: 'Email triage',
             category: 'break/admin',
             startDateTime: '2026-04-09T10:00:00.000Z',
@@ -91,6 +94,7 @@ describe('running activity repository', () => {
 
         expect(putConfig).toHaveBeenCalledWith({
             id: 'config-running-activity',
+            activityId: 'activity-running-42',
             description: 'Email triage',
             category: 'break/admin',
             startDateTime: '2026-04-09T10:00:00.000Z',

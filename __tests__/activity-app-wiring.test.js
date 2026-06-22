@@ -20,6 +20,13 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getRunningActivity: jest.fn(() => null)
 }));
 
+jest.mock('../public/js/activities/insights-renderer.js', () => ({
+    expandInsightsActivityLogLimit: jest.fn(),
+    setInsightsSelectedDate: jest.fn(),
+    setSelectedTimelineBlock: jest.fn(),
+    setInsightsTrendDateRange: jest.fn()
+}));
+
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
@@ -35,6 +42,12 @@ import {
 } from '../public/js/activities/ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from '../public/js/activities/timer-ui.js';
 import { getRunningActivity } from '../public/js/activities/manager.js';
+import {
+    expandInsightsActivityLogLimit,
+    setInsightsSelectedDate,
+    setSelectedTimelineBlock,
+    setInsightsTrendDateRange
+} from '../public/js/activities/insights-renderer.js';
 
 describe('activity app wiring', () => {
     beforeEach(() => {
@@ -42,6 +55,9 @@ describe('activity app wiring', () => {
         document.body.innerHTML = `
             <form id="task-form"></form>
             <div id="activity-list"></div>
+            <div id="insights-trends"></div>
+            <div id="insights-activity-list"></div>
+            <div id="insights-timeline"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
         `;
     });
@@ -84,6 +100,38 @@ describe('activity app wiring', () => {
         });
     });
 
+    test('preserves vertical scroll when global activity clicks refresh insights', () => {
+        document.body.insertAdjacentHTML(
+            'beforeend',
+            '<div id="insights-view"><button class="btn-delete-activity">Delete</button></div>'
+        );
+        Object.defineProperty(window, 'scrollX', { value: 0, configurable: true });
+        Object.defineProperty(window, 'scrollY', { value: 640, configurable: true });
+        window.requestAnimationFrame = (callback) => callback();
+        window.scrollTo = jest.fn();
+        handleActivityListClick.mockImplementationOnce((_target, { refreshUI }) => {
+            refreshUI();
+            return true;
+        });
+        const refreshUI = jest.fn();
+        const callbacks = createActivityAppCallbacks({
+            getActivitiesEnabled: () => true,
+            refreshUI,
+            resetAllConfirmingDeleteFlags: jest.fn(),
+            handleTaskSubmit: jest.fn(),
+            focusTaskDescriptionInput: jest.fn(),
+            resetTaskFormPreviewState: jest.fn(),
+            initializeTaskTypeToggle: jest.fn()
+        });
+
+        callbacks.onGlobalClick({
+            target: document.querySelector('#insights-view .btn-delete-activity')
+        });
+
+        expect(refreshUI).toHaveBeenCalled();
+        expect(window.scrollTo).toHaveBeenCalledWith(0, 640);
+    });
+
     test('initializes timer ui and delegates activity list events', () => {
         const refreshUI = jest.fn();
         const refreshTaskDisplays = jest.fn();
@@ -113,6 +161,134 @@ describe('activity app wiring', () => {
         const refreshSummary = initializeTimerUI.mock.calls[0][0].refreshActivitySummary;
         refreshSummary();
         expect(refreshTodayActivitySummary).toHaveBeenCalledWith(true);
+    });
+
+    test('delegates insights activity list edit events', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true
+        });
+
+        const insightsActivityList = document.getElementById('insights-activity-list');
+        insightsActivityList.dispatchEvent(new Event('submit', { bubbles: true }));
+        insightsActivityList.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+        );
+        insightsActivityList.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(handleActivityListSubmit).toHaveBeenCalled();
+        expect(handleActivityListKeydown).toHaveBeenCalled();
+        expect(handleActivityListInput).toHaveBeenCalled();
+    });
+
+    test('clicking a trend range preset stores the range and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const trends = document.getElementById('insights-trends');
+        trends.innerHTML =
+            '<button type="button" data-trend-range-days="7" data-trend-range-start="2026-05-01" data-trend-range-end="2026-05-07">7 days</button>';
+        trends
+            .querySelector('[data-trend-range-days="7"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(setInsightsTrendDateRange).toHaveBeenCalledWith({
+            startDate: '2026-05-01',
+            endDate: '2026-05-07'
+        });
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking a trend day stores the selected date and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const trends = document.getElementById('insights-trends');
+        trends.insertAdjacentHTML(
+            'beforeend',
+            '<button type="button" data-trend-day="2026-05-06">May 6</button>'
+        );
+        trends
+            .querySelector('[data-trend-day="2026-05-06"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(setInsightsSelectedDate).toHaveBeenCalledWith('2026-05-06');
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking a timeline block stores the selected block and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const timeline = document.getElementById('insights-timeline');
+        timeline.innerHTML =
+            '<button type="button" data-timeline-block-id="activity-1">Block</button>';
+        timeline
+            .querySelector('[data-timeline-block-id="activity-1"]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(setSelectedTimelineBlock).toHaveBeenCalledWith('activity-1');
+        expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking show more expands the insights activity log and renders insights', () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const insightsActivityList = document.getElementById('insights-activity-list');
+        insightsActivityList.innerHTML = '<button data-show-more-activities>Show 50 more</button>';
+        insightsActivityList
+            .querySelector('[data-show-more-activities]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(expandInsightsActivityLogLimit).toHaveBeenCalledWith(50);
+        expect(renderInsights).toHaveBeenCalled();
     });
 
     test('restores activity mode before syncing timer ui when a running timer exists', () => {

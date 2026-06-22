@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.playwright_preview_smoke import (
@@ -6,12 +8,20 @@ from scripts.playwright_preview_smoke import (
     add_active_scheduled_task,
     add_category_via_settings,
     arm_unscheduled_delete_confirm,
+    assert_activity_data_issue_badge,
+    assert_phase5_insights_view,
+    assert_insights_rerender_preserves_vertical_scroll,
     assert_migrated_task_docs,
     assert_non_task_docs_remain,
+    assert_running_timer_id_reused_by_stopped_activity,
+    assert_selected_trend_day_visible,
+    assert_trend_day_selection_scopes_details,
+    assert_trend_strip_scrollbar_hidden_and_scrollable,
     build_phase3_taxonomy_config_doc,
     build_launch_options,
     build_couchdb_request_parts,
     build_remote_db_name,
+    build_relative_day_activity_doc,
     clear_all_tasks_via_ui,
     complete_scheduled_task_via_ui,
     configure_demo_logging,
@@ -30,6 +40,7 @@ from scripts.playwright_preview_smoke import (
     get_running_activity_config,
     get_relative_browser_time,
     get_hostname_from_url,
+    install_local_pouchdb_route,
     get_unscheduled_delete_state,
     is_expected_sync_response_error,
     is_preview_host,
@@ -37,6 +48,7 @@ from scripts.playwright_preview_smoke import (
     parse_cli_args,
     queue_activity_smoke_failure,
     request_manual_sync,
+    run_phase5_insights_smoke,
     start_activity_timer,
     start_timer_from_unscheduled_task,
     stop_activity_timer,
@@ -394,6 +406,27 @@ class CliHelpersTests(unittest.TestCase):
 
         self.assertEqual(launch_options, {"headless": True})
 
+    def test_install_local_pouchdb_route_fulfills_cdn_from_node_modules(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            pouchdb_path = repo_root / "node_modules" / "pouchdb" / "dist" / "pouchdb.min.js"
+            pouchdb_path.parent.mkdir(parents=True)
+            pouchdb_path.write_text("window.PouchDB = function PouchDB() {};", encoding="utf-8")
+            context = FakeBrowserContext()
+
+            installed = install_local_pouchdb_route(context, repo_root=repo_root)
+
+            self.assertTrue(installed)
+            self.assertEqual(
+                context.routes[0][0],
+                "https://cdn.jsdelivr.net/npm/pouchdb@9.0.0/dist/pouchdb.min.js",
+            )
+            route = FakeRoute()
+            context.routes[0][1](route)
+            self.assertEqual(route.fulfill_kwargs["status"], 200)
+            self.assertEqual(route.fulfill_kwargs["content_type"], "application/javascript")
+            self.assertIn("window.PouchDB", route.fulfill_kwargs["body"])
+
     def test_wait_for_demo_start_prompts_in_visible_demo_mode(self):
         prompts = []
         messages = []
@@ -486,11 +519,13 @@ class FakeLocator:
         visible: bool = True,
         count: int = 1,
         classes: str | None = None,
+        attributes: dict[str, str] | None = None,
         text_values: list[str] | None = None,
     ):
         self.visible = visible
         self._count = count
         self.classes = classes or ""
+        self.attributes = dict(attributes or {})
         self.text_values = list(text_values or [])
         self.wait_failures_before_visible = 0
         self.wait_failures_before_hidden = 0
@@ -534,7 +569,7 @@ class FakeLocator:
             raise RuntimeError("Element is not attached to the DOM")
         self.scrolls += 1
 
-    def click(self):
+    def click(self, **_kwargs):
         self.clicks += 1
 
     def evaluate(self, _script):
@@ -555,9 +590,9 @@ class FakeLocator:
         return self.value
 
     def get_attribute(self, name):
-        if name != "class":
-            raise AssertionError(f"unexpected attribute {name}")
-        return self.classes
+        if name == "class":
+            return self.classes
+        return self.attributes.get(name)
 
     def text_content(self):
         if self.text_values:
@@ -565,6 +600,22 @@ class FakeLocator:
                 return self.text_values.pop(0)
             return self.text_values[0]
         return ""
+
+
+class FakeRoute:
+    def __init__(self):
+        self.fulfill_kwargs = None
+
+    def fulfill(self, **kwargs):
+        self.fulfill_kwargs = kwargs
+
+
+class FakeBrowserContext:
+    def __init__(self):
+        self.routes = []
+
+    def route(self, pattern, handler):
+        self.routes.append((pattern, handler))
 
 
 class FakePage:
@@ -582,6 +633,9 @@ class FakePage:
 
     def wait_for_timeout(self, timeout_ms):
         self.waits.append(timeout_ms)
+
+    def reload(self, *, wait_until):
+        self.evaluations.append(("reload", wait_until))
 
     def evaluate(self, script, payload=None):
         self.evaluations.append((script, payload))
@@ -1040,6 +1094,280 @@ class PreviewWaitHelperTests(unittest.TestCase):
             timeout_s=0.05,
             interval_s=0,
         )
+
+    def test_assert_phase5_insights_view_requires_summary_timeline_and_log(self):
+        page = FakePage(
+            {
+                "#insights-view": FakeLocator(visible=True),
+                "#insights-summary": FakeLocator(text_values=["Planned Actual Completed"]),
+                "#insights-timeline [data-timeline-block=\"planned\"]": FakeLocator(count=1),
+                "#insights-timeline [data-timeline-block=\"actual\"]": FakeLocator(count=1),
+                "#insights-timeline": FakeLocator(
+                    text_values=[
+                        "Planned Playwright insights auto-log Actual Playwright insights auto-log "
+                        "Playwright insights live timer"
+                    ]
+                ),
+                "#insights-activity-list": FakeLocator(
+                    text_values=["Playwright insights auto-log"]
+                ),
+            }
+        )
+
+        assert_phase5_insights_view(
+            page,
+            activity_description="Playwright insights auto-log",
+            running_timer_description="Playwright insights live timer",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+    def test_assert_selected_trend_day_visible_uses_browser_layout(self):
+        page = FakePage({})
+        evaluations = []
+
+        def evaluate(script, payload=None):
+            evaluations.append((script, payload))
+            return {"ok": True}
+
+        page.evaluate = evaluate
+
+        assert_selected_trend_day_visible(page)
+
+        self.assertEqual(len(evaluations), 1)
+
+    def test_assert_selected_trend_day_visible_reports_hidden_selection(self):
+        page = FakePage({})
+        page.evaluate = lambda _script, _payload=None: {
+            "ok": False,
+            "reason": "outside strip",
+            "stripLeft": 10,
+            "stripRight": 110,
+            "selectedLeft": 140,
+            "selectedRight": 220,
+        }
+
+        with self.assertRaisesRegex(ValueError, "outside strip"):
+            assert_selected_trend_day_visible(page)
+
+    def test_assert_trend_strip_scrollbar_hidden_and_scrollable_checks_real_scroll(self):
+        page = FakePage({})
+        page.evaluate = lambda _script, _payload=None: {"ok": True}
+
+        assert_trend_strip_scrollbar_hidden_and_scrollable(page)
+
+    def test_assert_insights_rerender_preserves_vertical_scroll_clicks_delete_once(self):
+        delete_button = FakeLocator()
+        page = FakePage(
+            {
+                '#insights-activity-list div.activity-item[data-activity-id="activity-1"] '
+                ".btn-delete-activity": delete_button
+            }
+        )
+        scroll_values = iter([900, 904, 906])
+        page.evaluate = lambda _script, _payload=None: next(scroll_values)
+
+        assert_insights_rerender_preserves_vertical_scroll(
+            page,
+            "activity-1",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(delete_button.scrolls, 1)
+        self.assertEqual(delete_button.clicks, 1)
+
+    def test_assert_trend_day_selection_scopes_details_clicks_day_and_checks_log(self):
+        day = FakeLocator(attributes={"data-selected": "true"})
+        activity_list = FakeLocator(text_values=["Prior day smoke activity"])
+        selected_day = FakeLocator(text_values=["Sun, Jun 14"])
+        page = FakePage(
+            {
+                '[data-trend-day="2026-06-14"]': day,
+                "#insights-activity-list": activity_list,
+                "#insights-selected-day": selected_day,
+            }
+        )
+
+        assert_trend_day_selection_scopes_details(
+            page,
+            selected_date="2026-06-14",
+            expected_date_text="Sun, Jun 14",
+            expected_activity_description="Prior day smoke activity",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+        self.assertEqual(day.clicks, 1)
+
+    def test_assert_activity_data_issue_badge_requires_badge_and_activity_text(self):
+        page = FakePage(
+            {
+                "#insights-activity-list": FakeLocator(
+                    text_values=["Overlap smoke Data issue Overlapping activity"]
+                )
+            }
+        )
+
+        assert_activity_data_issue_badge(
+            page,
+            expected_activity_description="Overlap smoke",
+            timeout_s=0.05,
+            interval_s=0,
+        )
+
+    def test_assert_running_timer_id_reused_by_stopped_activity_compares_activity_id(self):
+        assert_running_timer_id_reused_by_stopped_activity(
+            {"activityId": "activity-running-1"},
+            {"id": "activity-running-1"},
+        )
+
+        with self.assertRaisesRegex(ValueError, "did not reuse"):
+            assert_running_timer_id_reused_by_stopped_activity(
+                {"activityId": "activity-running-1"},
+                {"id": "activity-other"},
+            )
+
+    def test_build_relative_day_activity_doc_uses_browser_local_date(self):
+        page = FakePage({})
+        page.evaluate = lambda _script, payload=None: {
+            "id": payload["id"],
+            "_id": payload["id"],
+            "docType": "activity",
+            "description": payload["description"],
+            "startDateTime": "2026-06-14T13:00:00.000Z",
+            "endDateTime": "2026-06-14T13:30:00.000Z",
+            "duration": payload["durationMinutes"],
+            "dateText": "Sun, Jun 14",
+            "localDate": "2026-06-14",
+        }
+
+        doc = build_relative_day_activity_doc(
+            page,
+            doc_id="activity-prior-day",
+            description="Prior day",
+            day_offset=-1,
+            start_hour=9,
+            start_minute=0,
+            duration_minutes=30,
+        )
+
+        self.assertEqual(doc["id"], "activity-prior-day")
+        self.assertEqual(doc["dateText"], "Sun, Jun 14")
+        self.assertEqual(doc["localDate"], "2026-06-14")
+
+    @patch("scripts.playwright_preview_smoke.assert_running_timer_id_reused_by_stopped_activity")
+    @patch("scripts.playwright_preview_smoke.assert_activity_data_issue_badge")
+    @patch("scripts.playwright_preview_smoke.assert_trend_day_selection_scopes_details")
+    @patch("scripts.playwright_preview_smoke.assert_insights_rerender_preserves_vertical_scroll")
+    @patch("scripts.playwright_preview_smoke.assert_trend_strip_scrollbar_hidden_and_scrollable")
+    @patch("scripts.playwright_preview_smoke.assert_selected_trend_day_visible")
+    @patch("scripts.playwright_preview_smoke.assert_phase5_insights_view")
+    @patch("scripts.playwright_preview_smoke.stop_activity_timer")
+    @patch("scripts.playwright_preview_smoke.wait_for_running_activity_config")
+    @patch("scripts.playwright_preview_smoke.start_activity_timer")
+    @patch("scripts.playwright_preview_smoke.wait_for_activity_doc")
+    @patch("scripts.playwright_preview_smoke.complete_scheduled_task_via_ui")
+    @patch("scripts.playwright_preview_smoke.wait_for_task_doc")
+    @patch("scripts.playwright_preview_smoke.add_active_scheduled_task")
+    @patch("scripts.playwright_preview_smoke.seed_docs")
+    @patch("scripts.playwright_preview_smoke.build_relative_day_activity_doc")
+    @patch("scripts.playwright_preview_smoke.wait_for_main_app")
+    @patch("scripts.playwright_preview_smoke.set_activities_enabled")
+    def test_run_phase5_insights_smoke_seeds_activity_and_opens_insights(
+        self,
+        mock_set_activities_enabled,
+        mock_wait_for_main_app,
+        mock_build_relative_day_activity_doc,
+        mock_seed_docs,
+        mock_add_active_scheduled_task,
+        mock_wait_for_task_doc,
+        mock_complete_scheduled_task_via_ui,
+        mock_wait_for_activity_doc,
+        mock_start_activity_timer,
+        mock_wait_for_running_activity_config,
+        mock_stop_activity_timer,
+        mock_assert_phase5_insights_view,
+        mock_assert_selected_trend_day_visible,
+        mock_assert_trend_strip_scrollbar_hidden_and_scrollable,
+        mock_assert_insights_rerender_preserves_vertical_scroll,
+        mock_assert_trend_day_selection_scopes_details,
+        mock_assert_activity_data_issue_badge,
+        mock_assert_running_timer_id_reused_by_stopped_activity,
+    ):
+        insights_button = FakeLocator()
+        tasks_button = FakeLocator()
+        page = FakePage(
+            {"#view-toggle-insights": insights_button, "#view-toggle-tasks": tasks_button}
+        )
+        mock_wait_for_task_doc.return_value = {"id": "task-insights"}
+        mock_wait_for_activity_doc.side_effect = [
+            {"id": "activity-insights"},
+            {"id": "activity-running"},
+        ]
+        mock_wait_for_running_activity_config.return_value = {"activityId": "activity-running"}
+        mock_start_activity_timer.side_effect = lambda page, description, room_code: None
+        mock_build_relative_day_activity_doc.side_effect = [
+            {
+                "id": "activity-prior-day",
+                "_id": "activity-prior-day",
+                "description": "Playwright prior-day insights",
+                "localDate": "2026-06-14",
+                "dateText": "Sun, Jun 14",
+            },
+            {"id": "activity-overlap-a", "_id": "activity-overlap-a"},
+            {"id": "activity-overlap-b", "_id": "activity-overlap-b"},
+        ]
+
+        run_phase5_insights_smoke(page, "room-a")
+
+        mock_set_activities_enabled.assert_called_once_with(page, True)
+        self.assertIn(("reload", "load"), page.evaluations)
+        self.assertEqual(mock_wait_for_main_app.call_args_list, [unittest.mock.call(page)] * 2)
+        mock_seed_docs.assert_called_once()
+        mock_add_active_scheduled_task.assert_called_once_with(
+            page,
+            "Playwright insights auto-log",
+            20,
+        )
+        mock_complete_scheduled_task_via_ui.assert_called_once_with(page, "task-insights")
+        self.assertEqual(
+            mock_wait_for_activity_doc.call_args_list,
+            [
+                unittest.mock.call(page, "room-a", "Playwright insights auto-log"),
+                unittest.mock.call(page, "room-a", "Playwright insights live timer"),
+            ],
+        )
+        mock_start_activity_timer.assert_called_once_with(
+            page,
+            "Playwright insights live timer",
+            room_code="room-a",
+        )
+        self.assertEqual(insights_button.clicks, 1)
+        self.assertEqual(tasks_button.clicks, 1)
+        mock_stop_activity_timer.assert_called_once_with(page)
+        mock_assert_phase5_insights_view.assert_called_once_with(
+            page,
+            activity_description="Playwright insights auto-log",
+            running_timer_description="Playwright insights live timer",
+        )
+        mock_assert_selected_trend_day_visible.assert_called_once_with(page)
+        mock_assert_trend_strip_scrollbar_hidden_and_scrollable.assert_called_once_with(page)
+        mock_assert_insights_rerender_preserves_vertical_scroll.assert_called_once_with(
+            page,
+            "activity-insights",
+        )
+        mock_assert_trend_day_selection_scopes_details.assert_called_once_with(
+            page,
+            selected_date="2026-06-14",
+            expected_date_text="Sun, Jun 14",
+            expected_activity_description="Playwright prior-day insights",
+        )
+        mock_assert_activity_data_issue_badge.assert_called_once_with(
+            page,
+            expected_activity_description="Playwright overlap issue second",
+        )
+        mock_assert_running_timer_id_reused_by_stopped_activity.assert_called_once()
 
     def test_complete_scheduled_task_via_ui_clicks_task_checkbox(self):
         checkbox = FakeLocator()

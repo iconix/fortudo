@@ -310,7 +310,7 @@ describe('activity manager', () => {
 
             expect(summary).toEqual(
                 expect.objectContaining({
-                    id: 'running-activity-summary',
+                    id: expect.stringMatching(/^activity-/),
                     description: 'Running',
                     category: 'work/deep',
                     duration: 17,

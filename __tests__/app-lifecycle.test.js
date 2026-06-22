@@ -68,6 +68,23 @@ describe('app room/session lifecycle', () => {
         expect(deps.refreshCurrentGapHighlight).toHaveBeenCalledTimes(1);
     });
 
+    test('stops a stale restored timer at the midnight after it started', async () => {
+        jest.setSystemTime(new Date('2026-04-23T09:00:00'));
+        const startDateTime = '2026-04-21T23:30:00.000Z';
+        const expectedBoundary = new Date(startDateTime);
+        expectedBoundary.setHours(24, 0, 0, 0);
+        const { deps, lifecycle } = createLifecycle({
+            getRunningActivity: jest.fn(() => ({
+                description: 'Stale restored timer',
+                startDateTime
+            }))
+        });
+
+        await lifecycle.stopStaleRunningTimerIfNeeded();
+
+        expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
+    });
+
     test('wires sync status updates and refreshes after sync completion', async () => {
         let syncStatusCallback;
         const unsubscribe = jest.fn();
@@ -135,6 +152,7 @@ describe('app room/session lifecycle', () => {
         deps.refreshTaskDisplays.mockClear();
 
         jest.advanceTimersByTime(1000);
+        await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
 

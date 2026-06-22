@@ -22,6 +22,58 @@ export function createRoomSessionLifecycle({
     let midnightTimerStopInFlight = false;
     let lastObservedDate = extractDateFromDateTime(new Date());
 
+    function getNextLocalMidnight(dateTime) {
+        const boundary = new Date(dateTime);
+        if (Number.isNaN(boundary.getTime())) {
+            return null;
+        }
+
+        boundary.setHours(24, 0, 0, 0);
+        return boundary;
+    }
+
+    function getStaleRunningTimerBoundary(now = new Date()) {
+        const runningActivity = getRunningActivity();
+        if (!getActivitiesEnabled() || !runningActivity?.startDateTime) {
+            return null;
+        }
+
+        const startDate = extractDateFromDateTime(new Date(runningActivity.startDateTime));
+        const currentDate = extractDateFromDateTime(now);
+
+        if (startDate === currentDate) {
+            return null;
+        }
+
+        return getNextLocalMidnight(runningActivity.startDateTime);
+    }
+
+    async function stopStaleRunningTimerIfNeeded(now = new Date()) {
+        if (midnightTimerStopInFlight) {
+            return null;
+        }
+
+        const staleTimerBoundary = getStaleRunningTimerBoundary(now);
+        if (!staleTimerBoundary) {
+            return null;
+        }
+
+        midnightTimerStopInFlight = true;
+
+        try {
+            const result = await stopTimerAt(staleTimerBoundary.toISOString());
+            if (!result?.success) {
+                logger.error('Failed to stop stale running timer at midnight:', result?.reason);
+            }
+            return result;
+        } catch (error) {
+            logger.error('Failed to stop stale running timer at midnight:', error);
+            return null;
+        } finally {
+            midnightTimerStopInFlight = false;
+        }
+    }
+
     async function refreshFromStorage() {
         if (refreshFromStoragePromise) {
             return refreshFromStoragePromise;
@@ -29,6 +81,7 @@ export function createRoomSessionLifecycle({
 
         refreshFromStoragePromise = (async () => {
             await loadAppState();
+            await stopStaleRunningTimerIfNeeded();
             refreshUI();
             syncRestoredRunningTimer(getActivitiesEnabled());
             refreshActiveTaskColor(getTaskState());
@@ -139,6 +192,7 @@ export function createRoomSessionLifecycle({
 
     return {
         refreshFromStorage,
+        stopStaleRunningTimerIfNeeded,
         start,
         stop
     };

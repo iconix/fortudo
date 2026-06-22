@@ -4,6 +4,7 @@ import { isScheduledTask } from './tasks/validators.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
 import { getSuggestedActivityStartTime } from './activities/manager.js';
+import { renderActiveInsightsView } from './activities/view-toggle.js';
 import {
     getTaskFormElement,
     computeEndTimePreview,
@@ -607,6 +608,7 @@ export function refreshUI() {
     renderUnscheduledTasks(getSortedUnscheduledTasks());
     if (isActivitiesEnabled()) {
         renderTodayActivities(true);
+        renderActiveInsightsView();
     }
     updateStartTimeField(getSuggestedFormStartTime(), true);
 }

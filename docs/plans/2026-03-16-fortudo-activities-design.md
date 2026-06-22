@@ -211,7 +211,11 @@ public/js/
 |   |-- summary.js                # activity category summary selectors/model
 |   |-- timer-ui.js               # live timer display, elapsed counter, and timer form synchronization
 |   |-- smoke-hooks.js            # testability hooks for forcing activity failures in preview/smoke
-|   `-- insights-renderer.js      # (Phase 5) insights dashboard, timeline, charts
+|   |-- insights-renderer.js      # insights dashboard rendering
+|   |-- insights-model.js         # selected-day insights selector model
+|   |-- insights-trends.js        # trend range/day aggregation model
+|   |-- insights-intervals.js     # interval helpers for planned/actual blocks
+|   `-- insights-issues.js        # activity data issue detection
 |-- app.js                        # boot sequence, DOM setup, storage + room wiring
 |-- app-lifecycle.js              # room/session lifecycle, midnight checks, and session-scoped refresh
 |-- app-coordinator.js            # runtime post-mutation orchestration
@@ -230,6 +234,7 @@ public/js/
 |-- settings/
 |   `-- taxonomy-settings.js     # taxonomy management UI inside settings modal
 |-- category-colors.js            # color family palettes and helpers
+|-- category-form-utils.js        # shared category select rendering, validation, and color-dot sync
 |-- settings-manager.js           # Activities toggle (PouchDB config doc + in-memory cache)
 |-- settings-renderer.js          # settings modal shell, toggle wiring, delegates to taxonomy-settings
 |-- utils.js                      # shared utilities
@@ -286,7 +291,7 @@ Bridges the gap between Fortudo's retrospective logging and the real-time start/
 
 **Early task completion adjustment:** When `createActivityFromTask` runs and the task's planned `startDateTime` is in the future, the auto-log times are adjusted: `endDateTime` = now, `startDateTime` = now minus the task's `duration`. This ensures auto-logged activities reflect when the work actually happened rather than when it was planned.
 
-**Unscheduled tasks and the timer:** Completing an unscheduled task does not affect a running timer (unscheduled completions are lightweight and often happen mid-flow). Users who want to track unscheduled work can: start a timer for it, schedule it first then complete for auto-logging, or manually log it after the fact.
+**Unscheduled tasks and the timer:** Completing an unscheduled task does not affect a running timer (unscheduled completions are lightweight and often happen mid-flow). Users who want to track unscheduled work can: start a timer for it directly from the unscheduled task card, schedule it first then complete for auto-logging, or manually log it after the fact. Starting from the card promotes the task into a running timer using the task's description and category, keeps `sourceTaskId` provenance, and marks the task as in progress while the linked timer runs.
 
 **Timer state management** in `activities/manager.js`:
 
@@ -304,29 +309,30 @@ Bridges the gap between Fortudo's retrospective logging and the real-time start/
 
 ### UI: Insights View
 
-Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switches visibility of main content sections while the info panel stays visible in both views. The daily plan-vs-actual review is the primary focus; longer-term trends are secondary and collapsed by default.
+Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switches visibility of main content sections while the info panel stays visible in both views. The daily plan-vs-actual review is the primary focus; Trends selects which day drives the detail sections below it.
 
 **Sections:**
 
-1. **Today's Summary**
+1. **Trends**
+   - Date range selector for 7 / 14 / 30 days, defaulting to 7 days
+   - Range-level category summary and horizontally scrollable day cards
+   - Clicking a day scopes the selected-day summary, timeline, and Activity Log
+   - The selected day scrolls into view on initial render and after refresh
+
+2. **Selected-Day Summary**
    - Two-row plan-vs-actual timeline: top row shows planned task blocks, bottom row shows actual activities (auto + manual). Blocks are proportionally sized by duration and colored by category.
    - Summary stats: total planned time, total actual time, tasks completed, late count
    - Category breakdown bars
 
-2. **Activity Log**
-   - Newest-first list of today's activities
+3. **Activity Log**
+   - Newest-first list of activities scoped to the selected day
    - Each entry shows description, category badge, time range, and duration
    - All entries (manual and auto-logged) are editable and deletable via inline editing
    - Auto entries show a source task link with provenance metadata; editing creates a modified copy retaining `sourceTaskId`
+   - Data issues are embedded on affected activity rows instead of shown in a separate pane
 
-3. **Data Issues**
-   - Highlights overlapping activities, end-before-start, and duplicate auto-logged entries
-   - Shown as a warning section, collapsed when there are no issues
-
-4. **Trends** (collapsed by default)
-   - Time-by-category doughnut chart, filterable by date range
-   - Daily-hours bar chart over the last 14 days
-   - Hand-rolled HTML/CSS/SVG for v1. Re-evaluate Chart.js only if the result feels too plain
+4. **Data Issues**
+   - Highlights overlapping activities, end-before-start, and duplicate auto-logged entries inline in the Activity Log
 
 ### UI Patterns
 
@@ -368,7 +374,7 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **E2E tests:** Add activity tracking E2E coverage once the UI exists.
 
-**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, reload persistence, and referenced-delete safety. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
+**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, category edit persistence, timer start/edit/stop/replacement, unscheduled task timer promotion, reload persistence, overlap auto-stop, referenced-delete safety, Phase 5 Insights rendering, selected trend-day visibility, hidden-but-scrollable trend strips, selected-day detail scoping, embedded activity data issue badges, preserved vertical scroll during Insights re-renders, and timer stop ID reuse. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
 
 ### Sync Considerations
 
@@ -491,31 +497,35 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Added category summary bars for today's activities, including parent-group aggregation, expandable child breakdowns, count badges, and live running-timer inclusion
 - Added newest-first activity log ordering, delete confirmation for activities, duplicate edit-save guards, and category dots on activity forms
 
-### Next Planned Work
+### Completed Category Editing Work
 
 **Phase 4.7: Category editing parity**
 
-- Keep scheduled, unscheduled, and activity edit forms owned by their current feature modules; do not introduce a generic edit-form abstraction.
-- Add narrow shared category form helpers for the stable seams only: option HTML/population, category validation, and color-dot synchronization for a specific select/dot pair.
-- Add category editing to scheduled task inline edit forms, preserving existing start-time, duration, end-time hint, overlap warning, and reschedule-confirmation behavior.
-- Add category editing to unscheduled task inline edit forms, preserving existing priority, estimated-duration, completed-task, and in-progress timer behavior.
-- Continue supporting full-field inline editing on activities, including category changes; migrate activity inline category rendering to the shared helper only if it stays mechanical and low-risk.
-- Update scheduled and unscheduled task save paths so category changes persist through `updateTask` and `updateUnscheduledTask`.
-- Reject stale or deleted category keys on save with the existing themed alert behavior and without mutating the task.
-- Add renderer, form-utils, manager/handler, app, and smoke coverage for task category edit flows.
-- Acceptance coverage: scheduled category render/save/reject paths, scheduled overlap behavior with category edits, unscheduled category render/save/reject paths, edited unscheduled category flowing into "start timer from task," and unchanged activity category edit behavior.
+- Kept scheduled, unscheduled, and activity edit forms owned by their current feature modules; no generic edit-form abstraction was introduced.
+- Added `category-form-utils.js` for the stable shared seams only: option HTML/population, category validation, and color-dot synchronization for a specific select/dot pair.
+- Added category editing to scheduled task inline edit forms while preserving existing start-time, duration, end-time hint, overlap warning, and reschedule-confirmation behavior.
+- Added category editing to unscheduled task inline edit forms while preserving existing priority, estimated-duration, completed-task, and in-progress timer behavior.
+- Continued supporting full-field inline editing on activities, including category changes, with shared helper usage limited to mechanical category rendering/validation seams.
+- Updated scheduled and unscheduled task save paths so category changes persist through `updateTask` and `updateUnscheduledTask`, including explicit category clears.
+- Rejected stale or deleted category keys on save with the existing themed alert behavior and without mutating the task.
+- Added renderer, form-utils, manager/handler, app, and smoke coverage for task category edit flows, including scheduled and unscheduled persistence plus unscheduled timer category inheritance.
+
+### Completed Phase 5 Work
 
 **Phase 5: Insights view**
 
-- Add header tab toggle for Tasks / Insights
-- Add two-row plan-vs-actual timeline
-- Promote the existing newest-first Activity Log into the Insights view rather than rebuilding it from scratch
-- Reuse and refine the existing parent-group activity summary bars, including expandable child breakdowns and count badges
-- Ensure today's actual totals and summary bars include the live running-timer snapshot when a timer is active
-- Make the plan-vs-actual timeline handle in-progress activity ranges, midnight-clamped timer stops, and restored timer state
-- Add trends section
-- Add keyboard shortcut for tab toggle if it still feels worthwhile
-- Treat restored timers, stop-on-start, unscheduled task timer promotion, and overlap auto-stop as Phase 5 acceptance coverage rather than deferring all activity E2E coverage to polish
+- Added header tab toggle for Tasks / Insights, with task clear controls hidden while Insights is active
+- Added day-focused Trends with 7 / 14 / 30 day ranges, horizontal day cards, selected-day auto-scroll, and range-level category summary
+- Added selected-day context below Trends; summary, timeline, and Activity Log are scoped to that selected day
+- Added two-row plan-vs-actual timeline with clickable blocks and selected-block details
+- Promoted the existing newest-first Activity Log into Insights, including inline editing/deletion and embedded data issue badges
+- Reused and refined parent-group activity summary bars, including expandable child breakdowns and count badges
+- Included live running-timer snapshots in actual totals and summary bars while a timer is active
+- Added data issue detection for overlapping activities, invalid ranges, and duplicate auto-logged task activities
+- Added UI behavior for preserved vertical scroll during Insights re-renders
+- Expanded preview smoke coverage for the Phase 5 surfaces and timer stop ID reuse
+
+### Next Planned Work
 
 **Phase 6: Polish and E2E**
 
