@@ -1011,10 +1011,15 @@ describe('DOM Handler Interaction Tests', () => {
                             <i class="fa-regular ${isCompleted ? 'fa-check-square' : 'fa-square'}"></i>
                         </label>
                         <span>Test Task</span>
-                        <button class="btn-start-unscheduled-timer" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Start Timer</button>
-                        <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
-                        <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
-                        <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
+                        <div class="unscheduled-task-actions">
+                            <button class="btn-unscheduled-task-actions-menu" aria-expanded="false">Actions</button>
+                            <div class="unscheduled-task-actions-menu" hidden>
+                                <button class="btn-start-unscheduled-timer" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Start Timer</button>
+                                <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
+                                <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
+                                <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="inline-edit-unscheduled-form hidden">
                         <form>
@@ -1045,9 +1050,52 @@ describe('DOM Handler Interaction Tests', () => {
             initializeUnscheduledTaskListEventListeners(mockUnscheduledTaskCallbacks);
         }
 
+        test('actions trigger opens and closes the unscheduled task actions menu', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+            const menu = document.querySelector('.unscheduled-task-actions-menu');
+
+            expect(menu.hidden).toBe(true);
+
+            trigger.click();
+
+            expect(trigger.getAttribute('aria-expanded')).toBe('true');
+            expect(menu.hidden).toBe(false);
+
+            trigger.click();
+
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
+        });
+
+        test('outside click and Escape close an open unscheduled task actions menu', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+            const menu = document.querySelector('.unscheduled-task-actions-menu');
+
+            trigger.click();
+            expect(menu.hidden).toBe(false);
+
+            document.body.click();
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
+
+            trigger.click();
+            expect(menu.hidden).toBe(false);
+
+            document
+                .getElementById('unscheduled-task-list')
+                .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
+        });
+
         test('schedule button calls onScheduleUnscheduledTask', () => {
             setupUnscheduledTask('unsched-1');
 
+            document.querySelector('.btn-unscheduled-task-actions-menu').click();
             const scheduleBtn = document.querySelector('.btn-schedule-task');
             scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
 
@@ -1061,17 +1109,20 @@ describe('DOM Handler Interaction Tests', () => {
         test('start timer button calls onStartTimerFromUnscheduledTask', () => {
             setupUnscheduledTask('unsched-1');
 
+            document.querySelector('.btn-unscheduled-task-actions-menu').click();
             const startTimerBtn = document.querySelector('.btn-start-unscheduled-timer');
             startTimerBtn.dispatchEvent(new Event('click', { bubbles: true }));
 
             expect(
                 mockUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask
             ).toHaveBeenCalledWith('unsched-1');
+            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
         });
 
         test('schedule button does not call callback for completed task', () => {
             setupUnscheduledTask('unsched-1', true);
 
+            document.querySelector('.btn-unscheduled-task-actions-menu').click();
             const scheduleBtn = document.querySelector('.btn-schedule-task');
             scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
 
@@ -1081,23 +1132,27 @@ describe('DOM Handler Interaction Tests', () => {
         test('edit button calls onEditUnscheduledTask', () => {
             setupUnscheduledTask('unsched-1');
 
+            document.querySelector('.btn-unscheduled-task-actions-menu').click();
             const editBtn = document.querySelector('.btn-edit-unscheduled');
             editBtn.dispatchEvent(new Event('click', { bubbles: true }));
 
             expect(mockUnscheduledTaskCallbacks.onEditUnscheduledTask).toHaveBeenCalledWith(
                 'unsched-1'
             );
+            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
         });
 
         test('delete button calls onDeleteUnscheduledTask', () => {
             setupUnscheduledTask('unsched-1');
 
+            document.querySelector('.btn-unscheduled-task-actions-menu').click();
             const deleteBtn = document.querySelector('.btn-delete-unscheduled');
             deleteBtn.dispatchEvent(new Event('click', { bubbles: true }));
 
             expect(mockUnscheduledTaskCallbacks.onDeleteUnscheduledTask).toHaveBeenCalledWith(
                 'unsched-1'
             );
+            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
         });
 
         test('checkbox calls onToggleCompleteUnscheduledTask', () => {

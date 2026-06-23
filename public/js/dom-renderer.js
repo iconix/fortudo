@@ -285,6 +285,33 @@ function toggleScheduledTaskActionMenu(trigger) {
     }
 }
 
+function closeUnscheduledTaskActionMenus(exceptMenu = null) {
+    const taskListElement = getUnscheduledTaskListElement();
+    if (!taskListElement) return;
+
+    taskListElement.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
+        if (menu === exceptMenu) return;
+        menu.hidden = true;
+        const trigger = menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+function toggleUnscheduledTaskActionMenu(trigger) {
+    const menu = trigger.parentElement?.querySelector('.unscheduled-task-actions-menu');
+    if (!(menu instanceof HTMLElement)) return;
+
+    const shouldOpen = menu.hidden;
+    closeUnscheduledTaskActionMenus(shouldOpen ? menu : null);
+    menu.hidden = !shouldOpen;
+    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if (shouldOpen) {
+        menu.querySelector('[role="menuitem"]')?.focus();
+    }
+}
+
 function handleScheduledTaskListKeydown(event) {
     if (event.key === 'Escape') {
         closeScheduledTaskActionMenus();
@@ -531,11 +558,21 @@ function handleUnscheduledTaskListClick(event) {
 
     const taskId = taskCard.dataset.taskId;
 
+    const actionsTrigger = target.closest('.btn-unscheduled-task-actions-menu');
+    if (actionsTrigger instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleUnscheduledTaskActionMenu(actionsTrigger);
+        return;
+    }
+
     if (target.closest('.btn-start-unscheduled-timer')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask && taskId) {
             globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask(taskId);
         }
     } else if (target.closest('.btn-schedule-task')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
             const taskName = taskCard.dataset.taskName || 'Task';
             const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
@@ -550,11 +587,13 @@ function handleUnscheduledTaskListClick(event) {
             }
         }
     } else if (target.closest('.btn-edit-unscheduled')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask && taskId) {
             logger.debug(`Edit button clicked for unscheduled task: ${taskId}`);
             globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
         }
     } else if (target.closest('.btn-delete-unscheduled')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask && taskId) {
             globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
         }
@@ -582,6 +621,11 @@ function handleUnscheduledTaskListClick(event) {
 }
 
 function handleUnscheduledTaskListKeydown(event) {
+    if (event.key === 'Escape') {
+        closeUnscheduledTaskActionMenus();
+        return;
+    }
+
     if (event.key !== 'Enter') return;
     if (!(event.target instanceof HTMLInputElement)) return;
     const form = event.target.closest('form');
@@ -821,6 +865,9 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
             const target = /** @type {HTMLElement|null} */ (event.target);
             if (!target?.closest?.('.task-actions')) {
                 closeScheduledTaskActionMenus();
+            }
+            if (!target?.closest?.('.unscheduled-task-actions')) {
+                closeUnscheduledTaskActionMenus();
             }
             if (appCallbacks && appCallbacks.onGlobalClick) {
                 appCallbacks.onGlobalClick(event);
