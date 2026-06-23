@@ -219,7 +219,7 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(badge.textContent).toBe('work/deep');
         });
 
-        test('renders make-next button only for incomplete non-active scheduled tasks', () => {
+        test('renders actions menu with make-next only for incomplete non-active scheduled tasks', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
             const tasks = [
@@ -233,9 +233,21 @@ describe('Scheduled Task Renderer Tests', () => {
 
             renderTasks(tasks, mockCallbacks, mockInitListeners, null);
 
-            expect(document.querySelector('[data-task-id="active"] .btn-make-next')).toBeNull();
-            expect(document.querySelector('[data-task-id="future"] .btn-make-next')).not.toBeNull();
-            expect(document.querySelector('[data-task-id="completed"] .btn-make-next')).toBeNull();
+            const activeTask = document.querySelector('[data-task-id="active"]');
+            const futureTask = document.querySelector('[data-task-id="future"]');
+            const completedTask = document.querySelector('[data-task-id="completed"]');
+
+            expect(activeTask.querySelector('.btn-task-actions-menu')).not.toBeNull();
+            expect(activeTask.querySelector('.btn-make-next')).toBeNull();
+            expect(futureTask.querySelector('.task-actions-menu')).not.toBeNull();
+            expect(futureTask.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(
+                true
+            );
+            expect(futureTask.querySelector('.btn-make-next')).not.toBeNull();
+            expect(futureTask.querySelector('.btn-make-next').textContent).toContain(
+                'Make this next'
+            );
+            expect(completedTask.querySelector('.btn-make-next')).toBeNull();
             jest.useRealTimers();
         });
 

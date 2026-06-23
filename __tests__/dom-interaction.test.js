@@ -180,7 +180,7 @@ describe('DOM Handler Interaction Tests', () => {
     });
 
     describe('scheduled task action delegation', () => {
-        test('clicking make-next invokes the scheduled make-next callback', () => {
+        function renderFutureScheduledTask() {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-06-22T09:00:00.000'));
             const futureTask = {
@@ -197,10 +197,58 @@ describe('DOM Handler Interaction Tests', () => {
             };
 
             renderTasks([futureTask], mockTaskEventCallbacks);
+            return futureTask;
+        }
+
+        test('clicking the actions trigger opens and closes the task actions menu', () => {
+            renderFutureScheduledTask();
+
+            const trigger = document.querySelector('.btn-task-actions-menu');
+            const menu = document.querySelector('.task-actions-menu');
+
+            expect(menu.hidden).toBe(true);
+
+            trigger.click();
+
+            expect(trigger.getAttribute('aria-expanded')).toBe('true');
+            expect(menu.hidden).toBe(false);
+
+            trigger.click();
+
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
+        });
+
+        test('clicking make-next menu item invokes the scheduled make-next callback', () => {
+            renderFutureScheduledTask();
+            document.querySelector('.btn-task-actions-menu').click();
 
             document.querySelector('.btn-make-next').click();
 
             expect(mockTaskEventCallbacks.onMakeNextTask).toHaveBeenCalledWith('future-task', 0);
+            expect(document.querySelector('.task-actions-menu').hidden).toBe(true);
+        });
+
+        test('outside click and Escape close an open task actions menu', () => {
+            renderFutureScheduledTask();
+            const trigger = document.querySelector('.btn-task-actions-menu');
+            const menu = document.querySelector('.task-actions-menu');
+
+            trigger.click();
+            expect(menu.hidden).toBe(false);
+
+            document.body.click();
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
+
+            trigger.click();
+            expect(menu.hidden).toBe(false);
+
+            document
+                .getElementById('scheduled-task-list')
+                .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+            expect(menu.hidden).toBe(true);
         });
     });
 

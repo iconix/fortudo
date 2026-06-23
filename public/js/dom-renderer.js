@@ -258,6 +258,39 @@ export function initializeTaskTypeToggle() {
 
 // --- Event Handlers ---
 
+function closeScheduledTaskActionMenus(exceptMenu = null) {
+    const taskListElement = getScheduledTaskListElement();
+    if (!taskListElement) return;
+
+    taskListElement.querySelectorAll('.task-actions-menu').forEach((menu) => {
+        if (menu === exceptMenu) return;
+        menu.hidden = true;
+        const trigger = menu.parentElement?.querySelector('.btn-task-actions-menu');
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+function toggleScheduledTaskActionMenu(trigger) {
+    const menu = trigger.parentElement?.querySelector('.task-actions-menu');
+    if (!(menu instanceof HTMLElement)) return;
+
+    const shouldOpen = menu.hidden;
+    closeScheduledTaskActionMenus(shouldOpen ? menu : null);
+    menu.hidden = !shouldOpen;
+    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if (shouldOpen) {
+        menu.querySelector('[role="menuitem"]')?.focus();
+    }
+}
+
+function handleScheduledTaskListKeydown(event) {
+    if (event.key === 'Escape') {
+        closeScheduledTaskActionMenus();
+    }
+}
+
 function handleScheduledTaskListClick(event) {
     if (!globalScheduledTaskCallbacks) {
         logger.warn('handleScheduledTaskListClick: globalScheduledTaskCallbacks not initialized');
@@ -333,6 +366,14 @@ function handleScheduledTaskListClick(event) {
 
     const taskIndex = parseInt(taskIndexStr, 10);
 
+    const actionsTrigger = target.closest('.btn-task-actions-menu');
+    if (actionsTrigger instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleScheduledTaskActionMenu(actionsTrigger);
+        return;
+    }
+
     if (target.closest('.checkbox')) {
         event.preventDefault();
         const visibleTaskIds = new Set(
@@ -356,6 +397,7 @@ function handleScheduledTaskListClick(event) {
     if (target.closest('.btn-edit')) {
         // "pencil" icon on view task
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onEditTask) {
             globalScheduledTaskCallbacks.onEditTask(taskId, taskIndex);
         }
@@ -364,6 +406,7 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.btn-lock')) {
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onLockTask) {
             globalScheduledTaskCallbacks.onLockTask(taskId, taskIndex);
         }
@@ -372,6 +415,7 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.btn-unschedule')) {
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onUnscheduleTask) {
             globalScheduledTaskCallbacks.onUnscheduleTask(taskId, taskIndex);
         }
@@ -380,6 +424,7 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.btn-make-next')) {
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onMakeNextTask) {
             globalScheduledTaskCallbacks.onMakeNextTask(taskId, taskIndex);
         }
@@ -389,6 +434,7 @@ function handleScheduledTaskListClick(event) {
     if (target.closest('.btn-delete')) {
         event.preventDefault();
         event.stopPropagation();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onDeleteTask) {
             globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
         }
@@ -575,10 +621,12 @@ export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     taskListElement.removeEventListener('click', handleScheduledTaskListClick);
     taskListElement.removeEventListener('submit', handleScheduledTaskListSubmit);
     taskListElement.removeEventListener('input', handleScheduledTaskListInput);
+    taskListElement.removeEventListener('keydown', handleScheduledTaskListKeydown);
     globalScheduledTaskCallbacks = eventCallbacks;
     taskListElement.addEventListener('click', handleScheduledTaskListClick);
     taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
     taskListElement.addEventListener('input', handleScheduledTaskListInput);
+    taskListElement.addEventListener('keydown', handleScheduledTaskListKeydown);
 }
 
 export function initializeUnscheduledTaskListEventListeners(callbacks) {
@@ -770,6 +818,10 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
     document.addEventListener(
         'click',
         (event) => {
+            const target = /** @type {HTMLElement|null} */ (event.target);
+            if (!target?.closest?.('.task-actions')) {
+                closeScheduledTaskActionMenus();
+            }
             if (appCallbacks && appCallbacks.onGlobalClick) {
                 appCallbacks.onGlobalClick(event);
             }
