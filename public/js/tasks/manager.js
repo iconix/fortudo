@@ -213,6 +213,19 @@ const getSortedScheduledTasks = () => {
     return sortedScheduledTasksCache;
 };
 
+function isTaskScheduledForLocalDate(task, dateString) {
+    if (task.type !== 'scheduled' || !task.startDateTime) {
+        return false;
+    }
+
+    return extractDateFromDateTime(new Date(task.startDateTime)) === dateString;
+}
+
+export function getTodaysScheduledTasks(now = new Date()) {
+    const today = extractDateFromDateTime(now instanceof Date ? now : new Date(now));
+    return getSortedScheduledTasks().filter((task) => isTaskScheduledForLocalDate(task, today));
+}
+
 const createTaskObject = (taskData) => {
     logger.debug('createTaskObject called with taskData:', taskData);
     const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`; // Generic ID prefix initially
@@ -362,8 +375,8 @@ export function getSuggestedStartTime() {
     let hasTasksBeforeCurrentTime = false;
     let incompleteTaskCount = 0;
 
-    // Consider only scheduled tasks
-    const scheduledTasks = tasks.filter((task) => task.type === 'scheduled');
+    // Consider only today's scheduled tasks for the main schedule form.
+    const scheduledTasks = getTodaysScheduledTasks();
 
     for (const task of scheduledTasks) {
         // Ensure task has startDateTime and endDateTime, skip if not (should not happen for scheduled tasks)
@@ -1231,15 +1244,16 @@ export function deleteAllTasks() {
 
 export function deleteAllScheduledTasks() {
     const currentTasks = getTaskState();
-    const unscheduledTasks = currentTasks.filter((task) => task.type === 'unscheduled');
-    const scheduledTasksCount = currentTasks.length - unscheduledTasks.length;
+    const today = extractDateFromDateTime(new Date());
+    const remainingTasks = currentTasks.filter((task) => !isTaskScheduledForLocalDate(task, today));
+    const scheduledTasksCount = currentTasks.length - remainingTasks.length;
 
     if (scheduledTasksCount === 0) {
         logger.info('deleteAllScheduledTasks: No scheduled tasks to delete.');
         return { success: true, message: 'No scheduled tasks to delete.', tasksDeleted: 0 };
     }
 
-    updateTaskState(unscheduledTasks);
+    updateTaskState(remainingTasks);
     logger.info(
         `deleteAllScheduledTasks: All ${scheduledTasksCount} scheduled tasks have been deleted.`
     );

@@ -21,6 +21,7 @@ export function createRoomSessionLifecycle({
     let activeTaskColorInterval = null;
     let midnightTimerStopInFlight = false;
     let lastObservedDate = extractDateFromDateTime(new Date());
+    let shouldRestoreRunningTimerAfterInitialSync = true;
 
     function getNextLocalMidnight(dateTime) {
         const boundary = new Date(dateTime);
@@ -74,7 +75,7 @@ export function createRoomSessionLifecycle({
         }
     }
 
-    async function refreshFromStorage() {
+    async function refreshFromStorage({ restoreRunningTimer = false } = {}) {
         if (refreshFromStoragePromise) {
             return refreshFromStoragePromise;
         }
@@ -83,7 +84,9 @@ export function createRoomSessionLifecycle({
             await loadAppState();
             await stopStaleRunningTimerIfNeeded();
             refreshUI();
-            syncRestoredRunningTimer(getActivitiesEnabled());
+            if (restoreRunningTimer) {
+                syncRestoredRunningTimer(getActivitiesEnabled());
+            }
             refreshActiveTaskColor(getTaskState());
             refreshCurrentGapHighlight();
         })();
@@ -150,7 +153,9 @@ export function createRoomSessionLifecycle({
         unsubscribeSyncStatus = onSyncStatusChange((status) => {
             updateSyncStatusUI(status);
             if (status === 'synced') {
-                refreshFromStorage().catch((err) => {
+                const restoreRunningTimer = shouldRestoreRunningTimerAfterInitialSync;
+                shouldRestoreRunningTimerAfterInitialSync = false;
+                refreshFromStorage({ restoreRunningTimer }).catch((err) => {
                     logger.error('Failed to refresh tasks after sync:', err);
                 });
             }

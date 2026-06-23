@@ -34,7 +34,8 @@ import {
     closeSettingsModal,
     renderSettingsContent,
     getSettingsModalElement,
-    initializeSettingsModalListeners
+    initializeSettingsModalListeners,
+    openSettingsAfterActivitiesReloadIfNeeded
 } from '../public/js/settings-renderer.js';
 import {
     renderTaxonomyManagementContent,
@@ -132,6 +133,7 @@ beforeEach(() => {
     setupSettingsDOM();
     resetTaxonomySettingsViewState();
     localStorage.clear();
+    sessionStorage.clear();
     jest.clearAllMocks();
 });
 
@@ -300,6 +302,62 @@ describe('settings-renderer', () => {
             expect(message.textContent).toContain('Activities disabled');
         });
 
+        test('reload after enabling Activities records a one-time return to settings', async () => {
+            const reloadWindow = jest.fn();
+            await renderDisabledSettings({ reloadWindow });
+
+            const toggle = document.getElementById('activities-toggle');
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change'));
+            await waitForCondition(() => {
+                const reloadPrompt = document.getElementById('reload-prompt');
+                return reloadPrompt && !reloadPrompt.classList.contains('hidden');
+            });
+
+            document.getElementById('reload-apply-btn').click();
+
+            expect(sessionStorage.getItem('fortudo-open-settings-after-activities-reload')).toBe(
+                'true'
+            );
+            expect(reloadWindow).toHaveBeenCalledTimes(1);
+        });
+
+        test('does not record settings return when reloading after disabling Activities', async () => {
+            const reloadWindow = jest.fn();
+            await renderEnabledSettings({ reloadWindow });
+
+            const toggle = document.getElementById('activities-toggle');
+            toggle.checked = false;
+            toggle.dispatchEvent(new Event('change'));
+            await waitForCondition(() => {
+                const reloadPrompt = document.getElementById('reload-prompt');
+                return reloadPrompt && !reloadPrompt.classList.contains('hidden');
+            });
+
+            document.getElementById('reload-apply-btn').click();
+
+            expect(sessionStorage.getItem('fortudo-open-settings-after-activities-reload')).toBe(
+                null
+            );
+            expect(reloadWindow).toHaveBeenCalledTimes(1);
+        });
+
+        test('opens settings once after an Activities enable reload settles', async () => {
+            const waitForIdleSync = jest.fn(() => Promise.resolve());
+            const renderContent = jest.fn(() => renderSettingsContent());
+            sessionStorage.setItem('fortudo-open-settings-after-activities-reload', 'true');
+            await renderEnabledSettings();
+
+            await openSettingsAfterActivitiesReloadIfNeeded({ waitForIdleSync, renderContent });
+
+            expect(waitForIdleSync).toHaveBeenCalledTimes(1);
+            expect(renderContent).toHaveBeenCalledTimes(1);
+            expect(getSettingsModalElement().classList.contains('hidden')).toBe(false);
+            expect(sessionStorage.getItem('fortudo-open-settings-after-activities-reload')).toBe(
+                null
+            );
+        });
+
         test('toggle failure restores previous state and shows toast', async () => {
             await renderDisabledSettings();
 
@@ -380,6 +438,33 @@ describe('settings-renderer', () => {
 
             expect(getGroupByKey('work').colorFamily).toBe('amber');
             expect(getCategoryByKey('work/meetings').color).toBe(COLOR_FAMILIES.amber[1]);
+        });
+
+        test('group color family options use common color names', async () => {
+            await renderEnabledSettings();
+            await clickAndWait(document.getElementById('add-group-btn'));
+
+            const options = Array.from(document.querySelector('[name="group-family"]').options).map(
+                (option) => option.textContent
+            );
+
+            expect(options).toEqual(
+                expect.arrayContaining(['Blue', 'Green', 'Orange', 'Red', 'Gray', 'Purple'])
+            );
+            expect(options).not.toContain('Amber');
+            expect(options).not.toContain('Rose');
+            expect(options).not.toContain('Violet');
+        });
+
+        test('taxonomy group and category rows keep names left aligned', async () => {
+            await renderEnabledSettings();
+
+            expect(document.querySelector('[data-group-key="work"]').className).toContain(
+                'text-left'
+            );
+            expect(document.querySelector('[data-category-key="work/deep"]').className).toContain(
+                'text-left'
+            );
         });
 
         test('saving a group edit preserves an open category add draft', async () => {

@@ -1,6 +1,10 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
-import { getTaskState, getSortedUnscheduledTasks, getSuggestedStartTime } from './tasks/manager.js';
-import { isScheduledTask } from './tasks/validators.js';
+import {
+    getTaskState,
+    getSortedUnscheduledTasks,
+    getSuggestedStartTime,
+    getTodaysScheduledTasks
+} from './tasks/manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
 import { getSuggestedActivityStartTime } from './activities/manager.js';
@@ -15,7 +19,8 @@ import {
 // Import from new modules
 import {
     renderTasks as renderScheduledTasks,
-    getScheduledTaskListElement
+    getScheduledTaskListElement,
+    refreshActiveTaskColor
 } from './tasks/scheduled-renderer.js';
 
 import {
@@ -330,9 +335,14 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.checkbox')) {
         event.preventDefault();
-        // Get all tasks and find the first uncompleted one (active task)
-        const allTasks = getTaskState().filter((t) => t.type === 'scheduled');
-        const activeTask = allTasks.find((t) => t.status !== 'completed');
+        const visibleTaskIds = new Set(
+            Array.from(getScheduledTaskListElement()?.querySelectorAll('[data-task-id]') || []).map(
+                (element) => element.dataset.taskId
+            )
+        );
+        const activeTask = getTaskState().find(
+            (t) => t.type === 'scheduled' && visibleTaskIds.has(t.id) && t.status !== 'completed'
+        );
 
         // Only allow completion if this is the active task
         if (activeTask && activeTask.id === taskId && globalScheduledTaskCallbacks.onCompleteTask) {
@@ -445,7 +455,7 @@ function handleScheduledTaskListInput(event) {
     const saveBtn = editForm.querySelector('.btn-save-edit');
     if (warningEl && saveBtn) {
         const excludeTaskId = editForm.dataset.taskId;
-        const scheduledTasks = getTaskState().filter((t) => t.type === 'scheduled');
+        const scheduledTasks = getTodaysScheduledTasks();
         const overlapResult = computeOverlapPreview(
             startInput.value,
             hoursInput.value,
@@ -611,13 +621,14 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
  * Convenience function that replaces repeated 3-line render boilerplate.
  */
 export function refreshUI() {
-    const tasks = getTaskState();
-    renderTasks(tasks.filter(isScheduledTask));
+    const todaysScheduledTasks = getTodaysScheduledTasks();
+    renderTasks(todaysScheduledTasks);
     renderUnscheduledTasks(getSortedUnscheduledTasks());
     if (isActivitiesEnabled()) {
         renderTodayActivities(true);
         renderActiveInsightsView();
     }
+    refreshActiveTaskColor(todaysScheduledTasks);
     updateStartTimeField(getSuggestedFormStartTime(), true);
 }
 

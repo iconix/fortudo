@@ -44,7 +44,7 @@ describe('app room/session lifecycle', () => {
         };
     }
 
-    test('dedupes overlapping storage refreshes and re-syncs restored timer state', async () => {
+    test('dedupes overlapping storage refreshes without restoring the activity form', async () => {
         let resolveLoadAppState;
         const pendingLoadAppState = new Promise((resolve) => {
             resolveLoadAppState = resolve;
@@ -63,9 +63,33 @@ describe('app room/session lifecycle', () => {
         await secondRefresh;
 
         expect(deps.refreshUI).toHaveBeenCalledTimes(1);
-        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
         expect(deps.refreshActiveTaskColor).toHaveBeenCalledWith([]);
         expect(deps.refreshCurrentGapHighlight).toHaveBeenCalledTimes(1);
+    });
+
+    test('restores running timer form state on the first synced event only', async () => {
+        let syncStatusCallback;
+        const { deps, lifecycle } = createLifecycle({
+            onSyncStatusChange: jest.fn((callback) => {
+                syncStatusCallback = callback;
+                return jest.fn();
+            })
+        });
+
+        const abortController = new AbortController();
+        lifecycle.start({ signal: abortController.signal });
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledTimes(1);
+        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
     });
 
     test('stops a stale restored timer at the midnight after it started', async () => {
@@ -159,7 +183,7 @@ describe('app room/session lifecycle', () => {
         expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
         expect(deps.refreshUI).toHaveBeenCalledTimes(1);
-        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
         expect(deps.syncTimerFormState).not.toHaveBeenCalled();
         expect(deps.refreshTaskDisplays).not.toHaveBeenCalled();
         expect(deps.refreshStartTimeField).toHaveBeenCalledTimes(1);
