@@ -1,5 +1,6 @@
 import {
     getTaskState,
+    getTodaysScheduledTasks,
     deleteAllTasks,
     deleteAllScheduledTasks,
     deleteCompletedTasks
@@ -30,7 +31,7 @@ export function initializeClearTasksHandlers() {
     if (clearScheduleButton) {
         clearScheduleButton.addEventListener('click', async (event) => {
             event.stopPropagation();
-            const scheduledTasksExist = getTaskState().some((task) => task.type === 'scheduled');
+            const scheduledTasksExist = getTodaysScheduledTasks().length > 0;
             if (!scheduledTasksExist) {
                 showToast('There are no scheduled tasks to clear.', { theme: 'teal' });
                 return;

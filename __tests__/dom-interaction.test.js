@@ -1387,6 +1387,51 @@ describe('DOM Handler Interaction Tests', () => {
             expect(() => refreshUI()).not.toThrow();
         });
 
+        test('renders only today scheduled tasks from state', () => {
+            const scheduledCallbacks = { onCompleteTask: jest.fn() };
+            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
+            const today = extractDateFromDateTime(new Date());
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayDate = extractDateFromDateTime(yesterday);
+
+            renderTasks([], scheduledCallbacks);
+            renderUnscheduledTasks([], unscheduledCallbacks);
+
+            updateTaskState([
+                {
+                    id: 'stale-scheduled',
+                    type: 'scheduled',
+                    description: 'Stale scheduled',
+                    startDateTime: timeToDateTime('10:00', yesterdayDate),
+                    endDateTime: calculateEndDateTime(timeToDateTime('10:00', yesterdayDate), 30),
+                    duration: 30,
+                    status: 'completed',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                },
+                {
+                    id: 'today-scheduled',
+                    type: 'scheduled',
+                    description: 'Today scheduled',
+                    startDateTime: timeToDateTime('11:00', today),
+                    endDateTime: calculateEndDateTime(timeToDateTime('11:00', today), 30),
+                    duration: 30,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false,
+                    locked: false
+                }
+            ]);
+
+            refreshUI();
+
+            const scheduledList = document.getElementById('scheduled-task-list');
+            expect(scheduledList.textContent).toContain('Today scheduled');
+            expect(scheduledList.textContent).not.toContain('Stale scheduled');
+        });
+
         test('uses the latest activity end time when refreshing in activity mode', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));

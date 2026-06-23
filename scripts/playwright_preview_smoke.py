@@ -681,6 +681,54 @@ def build_relative_day_activity_doc(
     return doc
 
 
+def build_relative_day_scheduled_task_doc(
+    page: Any,
+    *,
+    doc_id: str,
+    description: str,
+    day_offset: int,
+    start_hour: int,
+    start_minute: int,
+    duration_minutes: int,
+) -> dict[str, Any]:
+    doc = page.evaluate(
+        """
+        ({ id, description, dayOffset, startHour, startMinute, durationMinutes }) => {
+            const start = new Date();
+            start.setDate(start.getDate() + Number(dayOffset || 0));
+            start.setHours(Number(startHour || 0), Number(startMinute || 0), 0, 0);
+            const end = new Date(start.getTime() + Number(durationMinutes || 0) * 60000);
+
+            return {
+                _id: id,
+                id,
+                docType: 'task',
+                type: 'scheduled',
+                description,
+                startDateTime: start.toISOString(),
+                endDateTime: end.toISOString(),
+                duration: Number(durationMinutes || 0),
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false,
+            };
+        }
+        """,
+        {
+            "id": doc_id,
+            "description": description,
+            "dayOffset": day_offset,
+            "startHour": start_hour,
+            "startMinute": start_minute,
+            "durationMinutes": duration_minutes,
+        },
+    )
+    if not doc:
+        raise ValueError(f"Could not build relative scheduled task doc for {description!r}.")
+    return doc
+
+
 def stop_activity_timer(
     page: Any, *, timeout_s: float = 10.0, interval_s: float = 0.2
 ) -> None:
@@ -2541,8 +2589,36 @@ def run_smoke(
                 demo_step(page, "opening alpha room", step_pause_ms)
                 enter_room(page, rooms["alpha"])
                 clear_room_storage(page, rooms["alpha"])
+                stale_schedule_description = "Playwright stale scheduled task"
+                seed_docs(
+                    page,
+                    rooms["alpha"],
+                    [
+                        build_relative_day_scheduled_task_doc(
+                            page,
+                            doc_id="task-playwright-stale-scheduled",
+                            description=stale_schedule_description,
+                            day_offset=-1,
+                            start_hour=10,
+                            start_minute=0,
+                            duration_minutes=30,
+                        )
+                    ],
+                )
                 page.reload(wait_until="load")
                 wait_for_main_app(page)
+                wait_until(
+                    lambda: any(
+                        doc.get("description") == stale_schedule_description
+                        for doc in list(map(normalize_doc, read_docs(page, rooms["alpha"])))
+                    ),
+                    "prior-day scheduled task remains in storage",
+                )
+                wait_until(
+                    lambda: stale_schedule_description
+                    not in (page.locator("#scheduled-task-list").text_content() or ""),
+                    "prior-day scheduled task hidden from today's schedule",
+                )
 
                 demo_step(page, "adding fresh-room tasks", step_pause_ms)
                 add_scheduled_task(page, "Playwright scheduled task", "09:00", 30)
@@ -2555,6 +2631,7 @@ def run_smoke(
                 scheduled_doc = ensure_task_doc_present(
                     rooms["alpha"], "Playwright scheduled task", alpha_docs
                 )
+                ensure_task_doc_present(rooms["alpha"], stale_schedule_description, alpha_docs)
                 unscheduled_doc = ensure_task_doc_present(
                     rooms["alpha"], "Playwright unscheduled task", alpha_docs
                 )

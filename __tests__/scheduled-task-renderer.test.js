@@ -258,6 +258,28 @@ describe('Scheduled Task Renderer Tests', () => {
             });
         });
 
+        test('current gap label counts down from now', () => {
+            const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            refreshCurrentGapHighlight(new Date('2025-01-15T11:10:00.000'));
+
+            const gapEl = document.querySelector('.schedule-gap');
+            expect(gapEl.textContent).toContain('20m until next');
+            expect(gapEl.getAttribute('title')).toContain('20m available until next task');
+        });
+
+        test('gap label returns to total duration when it is no longer current', () => {
+            const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            refreshCurrentGapHighlight(new Date('2025-01-15T11:10:00.000'));
+            refreshCurrentGapHighlight(new Date('2025-01-15T12:00:00.000'));
+
+            const gapEl = document.querySelector('.schedule-gap');
+            expect(gapEl.textContent).toContain('30m free');
+        });
+
         test('gap NOT matching current time keeps default slate classes', () => {
             const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
             renderTasks(tasks, mockCallbacks, mockInitListeners, null);
@@ -303,6 +325,8 @@ describe('Scheduled Task Renderer Tests', () => {
                 '.schedule-boundary[data-boundary="after"]'
             );
             expect(afterBoundary.classList.contains('hidden')).toBe(true);
+            expect(beforeBoundary.textContent).toContain('now');
+            expect(beforeBoundary.textContent).toContain('next in 2h');
         });
 
         test('"after" boundary shown when now >= last task end', () => {
@@ -317,6 +341,8 @@ describe('Scheduled Task Renderer Tests', () => {
                 '.schedule-boundary[data-boundary="after"]'
             );
             expect(afterBoundary.classList.contains('hidden')).toBe(false);
+            expect(afterBoundary.textContent).toContain('now');
+            expect(afterBoundary.textContent).toContain('all done');
 
             const beforeBoundary = document.querySelector(
                 '.schedule-boundary[data-boundary="before"]'

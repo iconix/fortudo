@@ -11,11 +11,15 @@ import {
 } from '../public/js/category-colors.js';
 
 describe('category-colors', () => {
-    test('exposes gray as a supported family', () => {
+    test('exposes gray and violet as supported families', () => {
         expect(COLOR_FAMILIES.gray).toEqual(
             expect.arrayContaining([expect.stringMatching(/^#/), expect.stringMatching(/^#/)])
         );
+        expect(COLOR_FAMILIES.violet).toEqual(
+            expect.arrayContaining([expect.stringMatching(/^#/), expect.stringMatching(/^#/)])
+        );
         expect(normalizeFamilyName('gray')).toBe('gray');
+        expect(normalizeFamilyName('violet')).toBe('violet');
     });
 
     test('normalizeFamilyName accepts known families and falls back to blue', () => {
@@ -29,7 +33,7 @@ describe('category-colors', () => {
     });
 
     test('COLOR_FAMILIES family arrays are frozen', () => {
-        for (const familyName of ['blue', 'green', 'amber', 'rose', 'gray']) {
+        for (const familyName of ['blue', 'green', 'amber', 'rose', 'gray', 'violet']) {
             expect(Object.isFrozen(COLOR_FAMILIES[familyName])).toBe(true);
         }
     });

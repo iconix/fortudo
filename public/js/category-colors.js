@@ -3,6 +3,7 @@ const COLOR_FAMILIES_RAW = {
     green: ['#15803d', '#16a34a', '#22c55e', '#4ade80'],
     amber: ['#b45309', '#d97706', '#f59e0b', '#fbbf24'],
     rose: ['#be123c', '#e11d48', '#f43f5e', '#fb7185'],
+    violet: ['#6d28d9', '#7c3aed', '#8b5cf6', '#a78bfa'],
     gray: ['#374151', '#4b5563', '#6b7280', '#9ca3af']
 };
 

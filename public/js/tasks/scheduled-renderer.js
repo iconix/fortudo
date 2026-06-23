@@ -178,7 +178,7 @@ export function renderGapHTML(gap) {
     const durationText = calculateHoursAndMinutes(gap.durationMinutes);
     return `<div class="schedule-gap flex items-center justify-center py-1 text-xs text-slate-500 cursor-pointer hover:text-teal-300 transition-colors group" role="button" tabindex="0" data-gap-start="${gap.startISO}" data-gap-end="${gap.endISO}" data-gap-duration="${gap.durationMinutes}" title="Click to schedule a task in this gap">
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
-        <span class="px-2 whitespace-nowrap"><span class="gap-plus-icon">+ </span>${durationText} free</span>
+        <span class="schedule-gap-label px-2 whitespace-nowrap"><span class="gap-plus-icon">+ </span>${durationText} free</span>
         <span class="border-t border-dashed border-slate-600 flex-1"></span>
     </div>`;
 }
@@ -193,9 +193,46 @@ export function renderBoundaryMarkerHTML(boundaryTime, position) {
     return `<div class="schedule-boundary hidden flex items-center justify-center py-1 text-xs text-teal-400"
         aria-hidden="true" data-boundary="${position}" data-boundary-time="${boundaryTime}">
         <span class="border-t border-solid border-teal-400 flex-1"></span>
-        <span class="px-2 whitespace-nowrap">now</span>
+        <span class="schedule-boundary-label px-2 whitespace-nowrap">now</span>
         <span class="border-t border-solid border-teal-400 flex-1"></span>
     </div>`;
+}
+
+function formatRemainingMinutes(from, to) {
+    const minutes = Math.max(0, Math.ceil((to.getTime() - from.getTime()) / 60000));
+    return calculateHoursAndMinutes(minutes);
+}
+
+function updateGapLabel(el, now, isCurrent) {
+    const label = el.querySelector('.schedule-gap-label');
+    if (!label) {
+        return;
+    }
+
+    const totalText = calculateHoursAndMinutes(Number(el.dataset.gapDuration || 0));
+    if (!isCurrent) {
+        label.innerHTML = `<span class="gap-plus-icon">+ </span>${totalText} free`;
+        el.title = 'Click to schedule a task in this gap';
+        return;
+    }
+
+    const end = new Date(el.dataset.gapEnd);
+    const remainingText = formatRemainingMinutes(now, end);
+    label.innerHTML = `<span class="gap-plus-icon">+ </span>${remainingText} until next`;
+    el.title = `${remainingText} available until next task`;
+}
+
+function updateBoundaryLabel(el, now, isCurrent) {
+    const label = el.querySelector('.schedule-boundary-label');
+    if (!label || !isCurrent) {
+        return;
+    }
+
+    const boundaryTime = new Date(el.dataset.boundaryTime);
+    label.textContent =
+        el.dataset.boundary === 'before'
+            ? `now - next in ${formatRemainingMinutes(now, boundaryTime)}`
+            : 'now - all done';
 }
 
 function ensureScheduleBoundaryElement(taskListElement, position) {
@@ -461,6 +498,7 @@ export function refreshCurrentGapHighlight(now = new Date()) {
         const isCurrent = now >= start && now < end;
 
         const borderSpans = el.querySelectorAll('.border-t');
+        updateGapLabel(el, now, isCurrent);
         if (isCurrent) {
             el.classList.replace('text-slate-500', 'text-teal-400');
             borderSpans.forEach((s) => {
@@ -483,6 +521,7 @@ export function refreshCurrentGapHighlight(now = new Date()) {
         const isCurrent =
             (position === 'before' && now < boundaryTime) ||
             (position === 'after' && now >= boundaryTime);
+        updateBoundaryLabel(el, now, isCurrent);
         if (isCurrent) {
             el.classList.remove('hidden');
         } else {
