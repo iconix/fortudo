@@ -8,6 +8,7 @@ import {
     handleEditTask,
     handleDeleteTask,
     handleUnscheduleTask,
+    handleMakeNextTask,
     handleSaveTaskEdit,
     handleCancelEdit,
     handleGapClick,
@@ -15,6 +16,7 @@ import {
 } from '../public/js/tasks/scheduled-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
 import * as taskManager from '../public/js/tasks/manager.js';
+import { extractTimeFromDateTime } from '../public/js/utils.js';
 import { createTaskWithDateTime } from './test-utils.js';
 
 // Mock storage
@@ -80,8 +82,13 @@ jest.mock('../public/js/tasks/form-utils.js', () => ({
     getUnscheduledTaskInlineFormData: jest.fn()
 }));
 
-import { refreshUI } from '../public/js/dom-renderer.js';
-import { showAlert, showGapTaskPicker, showScheduleModal } from '../public/js/modal-manager.js';
+import { refreshUI, getCurrentTimeElement } from '../public/js/dom-renderer.js';
+import {
+    showAlert,
+    askConfirmation,
+    showGapTaskPicker,
+    showScheduleModal
+} from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { extractTaskFormData } from '../public/js/tasks/form-utils.js';
 import {
@@ -114,6 +121,7 @@ describe('Scheduled Task Handlers', () => {
             expect(callbacks).toHaveProperty('onEditTask');
             expect(callbacks).toHaveProperty('onDeleteTask');
             expect(callbacks).toHaveProperty('onUnscheduleTask');
+            expect(callbacks).toHaveProperty('onMakeNextTask');
             expect(callbacks).toHaveProperty('onSaveTaskEdit');
             expect(callbacks).toHaveProperty('onCancelEdit');
         });
@@ -127,6 +135,61 @@ describe('Scheduled Task Handlers', () => {
             expect(callbacks.onUnscheduleTask).toBe(handleUnscheduleTask);
             expect(callbacks.onSaveTaskEdit).toBe(handleSaveTaskEdit);
             expect(callbacks.onCancelEdit).toBe(handleCancelEdit);
+        });
+    });
+
+    describe('handleMakeNextTask', () => {
+        test('moves a task immediately when the current slot is free', async () => {
+            getCurrentTimeElement.mockReturnValue({ textContent: '10:00 AM' });
+            const currentTask = createTaskWithDateTime({
+                description: 'Current Task',
+                startTime: '09:00',
+                duration: 60,
+                status: 'completed'
+            });
+            const futureTask = createTaskWithDateTime({
+                description: 'Future Task',
+                startTime: '11:00',
+                duration: 30
+            });
+            updateTaskState([currentTask, futureTask]);
+
+            await handleMakeNextTask(futureTask.id);
+
+            expect(askConfirmation).not.toHaveBeenCalled();
+            expect(
+                extractTimeFromDateTime(
+                    new Date(taskManager.getTaskById(futureTask.id).startDateTime)
+                )
+            ).toBe('10:00');
+            expect(onTaskEdited).toHaveBeenCalledWith({
+                task: expect.objectContaining({ id: futureTask.id })
+            });
+        });
+
+        test('leaves schedule unchanged when user declines reschedule confirmation', async () => {
+            getCurrentTimeElement.mockReturnValue({ textContent: '9:30 AM' });
+            const currentTask = createTaskWithDateTime({
+                description: 'Current Task',
+                startTime: '09:00',
+                duration: 60
+            });
+            const futureTask = createTaskWithDateTime({
+                description: 'Future Task',
+                startTime: '11:00',
+                duration: 30
+            });
+            updateTaskState([currentTask, futureTask]);
+            askConfirmation.mockResolvedValueOnce(false);
+
+            await handleMakeNextTask(futureTask.id);
+
+            expect(askConfirmation).toHaveBeenCalled();
+            expect(showToast).toHaveBeenCalledWith('Schedule unchanged.', { theme: 'teal' });
+            expect(taskManager.getTaskById(futureTask.id).startDateTime).toBe(
+                futureTask.startDateTime
+            );
+            expect(onTaskEdited).not.toHaveBeenCalled();
         });
     });
 

@@ -368,6 +368,14 @@ function handleScheduledTaskListClick(event) {
         return;
     }
 
+    if (target.closest('.btn-make-next')) {
+        event.preventDefault();
+        if (globalScheduledTaskCallbacks.onMakeNextTask) {
+            globalScheduledTaskCallbacks.onMakeNextTask(taskId, taskIndex);
+        }
+        return;
+    }
+
     if (target.closest('.btn-delete')) {
         event.preventDefault();
         event.stopPropagation();

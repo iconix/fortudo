@@ -116,6 +116,7 @@ describe('DOM Handler Interaction Tests', () => {
             onCompleteTask: jest.fn(),
             onEditTask: jest.fn(),
             onDeleteTask: jest.fn(),
+            onMakeNextTask: jest.fn(),
             onSaveTaskEdit: jest.fn(),
             onCancelEdit: jest.fn()
         };
@@ -141,6 +142,7 @@ describe('DOM Handler Interaction Tests', () => {
     });
 
     afterEach(() => {
+        jest.useRealTimers();
         jest.clearAllMocks();
         resetEventDelegation();
         resetActivityState();
@@ -174,6 +176,31 @@ describe('DOM Handler Interaction Tests', () => {
             );
 
             jest.useRealTimers();
+        });
+    });
+
+    describe('scheduled task action delegation', () => {
+        test('clicking make-next invokes the scheduled make-next callback', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-06-22T09:00:00.000'));
+            const futureTask = {
+                id: 'future-task',
+                type: 'scheduled',
+                description: 'Future Task',
+                startDateTime: timeToDateTime('11:00', '2026-06-22'),
+                endDateTime: calculateEndDateTime(timeToDateTime('11:00', '2026-06-22'), 30),
+                duration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                locked: false
+            };
+
+            renderTasks([futureTask], mockTaskEventCallbacks);
+
+            document.querySelector('.btn-make-next').click();
+
+            expect(mockTaskEventCallbacks.onMakeNextTask).toHaveBeenCalledWith('future-task', 0);
         });
     });
 

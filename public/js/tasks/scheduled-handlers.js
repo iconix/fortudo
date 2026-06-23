@@ -7,6 +7,7 @@ import {
     editTask,
     deleteTask,
     unscheduleTask,
+    makeScheduledTaskNext,
     updateTask,
     confirmUpdateTaskAndReschedule,
     cancelEdit,
@@ -25,6 +26,7 @@ import {
     convertTo24HourTime,
     convertTo12HourTime,
     calculateHoursAndMinutes,
+    getCurrentTimeRounded,
     logger,
     getThemeForTask
 } from '../utils.js';
@@ -147,6 +149,58 @@ export function handleUnscheduleTask(taskId, _taskIndex) {
     }
 }
 
+export async function handleMakeNextTask(taskId, _taskIndex) {
+    const taskToMove = getTaskById(taskId);
+    if (!taskToMove || taskToMove.type !== 'scheduled') {
+        logger.warn('handleMakeNextTask for non-scheduled', taskId);
+        return;
+    }
+
+    const currentTimeDisplayElement = getCurrentTimeElement();
+    const startTime =
+        currentTimeDisplayElement && currentTimeDisplayElement.textContent
+            ? convertTo24HourTime(currentTimeDisplayElement.textContent)
+            : getCurrentTimeRounded();
+    const result = makeScheduledTaskNext(taskId, startTime);
+
+    if (
+        result.requiresConfirmation &&
+        result.confirmationType === 'RESCHEDULE_UPDATE' &&
+        result.taskIndex !== undefined &&
+        result.updatedTaskObject
+    ) {
+        const userConfirmed = await askConfirmation(
+            result.reason,
+            { ok: 'Yes, reschedule', cancel: 'No, cancel' },
+            getThemeForTask(taskToMove)
+        );
+        if (!userConfirmed) {
+            showToast('Schedule unchanged.', { theme: 'teal' });
+            refreshUI();
+            return;
+        }
+
+        const confirmedResult = confirmUpdateTaskAndReschedule({
+            taskIndex: result.taskIndex,
+            updatedTaskObject: result.updatedTaskObject
+        });
+        if (confirmedResult.success) {
+            onTaskEdited({ task: confirmedResult.task });
+        } else if (confirmedResult.reason) {
+            showAlert(confirmedResult.reason, getThemeForTask(taskToMove));
+            refreshUI();
+        }
+        return;
+    }
+
+    if (result.success) {
+        onTaskEdited({ task: result.task });
+    } else if (result.reason) {
+        showAlert(result.reason, getThemeForTask(taskToMove));
+        refreshUI();
+    }
+}
+
 export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     const taskData = extractTaskFormData(formElement);
     if (!taskData) {
@@ -242,6 +296,7 @@ export function createScheduledTaskCallbacks() {
         onEditTask: handleEditTask,
         onDeleteTask: handleDeleteTask,
         onUnscheduleTask: handleUnscheduleTask,
+        onMakeNextTask: handleMakeNextTask,
         onSaveTaskEdit: handleSaveTaskEdit,
         onCancelEdit: handleCancelEdit,
         onGapClick: handleGapClick

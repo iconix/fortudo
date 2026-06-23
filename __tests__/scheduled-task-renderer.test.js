@@ -56,6 +56,7 @@ describe('Scheduled Task Renderer Tests', () => {
     });
 
     afterEach(() => {
+        jest.useRealTimers();
         document.body.innerHTML = '';
     });
 
@@ -216,6 +217,26 @@ describe('Scheduled Task Renderer Tests', () => {
             const badge = document.querySelector('.category-badge');
             expect(badge).not.toBeNull();
             expect(badge.textContent).toBe('work/deep');
+        });
+
+        test('renders make-next button only for incomplete non-active scheduled tasks', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const tasks = [
+                createTask('active', '10:00', 60, { description: 'Active Task' }),
+                createTask('future', '11:30', 30, { description: 'Future Task' }),
+                createTask('completed', '12:30', 30, {
+                    description: 'Completed Task',
+                    status: 'completed'
+                })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            expect(document.querySelector('[data-task-id="active"] .btn-make-next')).toBeNull();
+            expect(document.querySelector('[data-task-id="future"] .btn-make-next')).not.toBeNull();
+            expect(document.querySelector('[data-task-id="completed"] .btn-make-next')).toBeNull();
+            jest.useRealTimers();
         });
 
         test('gap elements do not have data-task-id attribute', () => {

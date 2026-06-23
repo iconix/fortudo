@@ -114,9 +114,10 @@ export function renderEditTaskHTML(task, index) {
  * @param {Object} task - The task object
  * @param {number} index - The task index
  * @param {boolean} isActiveTask - Whether this is the active task
+ * @param {boolean} canMakeNext - Whether to show the make-next action
  * @returns {string} HTML string for the task view
  */
-export function renderViewTaskHTML(task, index, isActiveTask) {
+export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = false) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted || !isActiveTask;
     let activeTaskColorClass = 'text-slate-200';
@@ -153,6 +154,13 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
             </div>
         </div>
         <div class="flex space-x-1 ml-auto">
+            ${
+                canMakeNext
+                    ? `<button class="text-slate-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-make-next" title="Make next" data-task-id="${task.id}" data-task-index="${index}">
+                <i class="fa-solid fa-forward-step text-sm sm:text-base"></i>
+            </button>`
+                    : ''
+            }
             <button class="text-slate-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-lock" title="${task.locked ? 'Unlock task' : 'Lock task'}" data-task-id="${task.id}" data-task-index="${index}">
                 <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open'} text-sm sm:text-base"></i>
             </button>
@@ -290,7 +298,12 @@ export function renderTasks(
         }
         html += task.editing
             ? renderEditTaskHTML(task, originalIndex)
-            : renderViewTaskHTML(task, originalIndex, isActiveTask);
+            : renderViewTaskHTML(
+                  task,
+                  originalIndex,
+                  isActiveTask,
+                  task.status !== 'completed' && !isActiveTask
+              );
 
         const gap = gapAfterTask.get(task.id);
         if (gap) {
