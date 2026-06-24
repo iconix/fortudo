@@ -107,6 +107,37 @@ describe('unscheduled task renderer', () => {
         );
     });
 
+    test('keeps the actions menu open when delete is waiting for confirmation', () => {
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-confirm-delete',
+                    type: 'unscheduled',
+                    description: 'Inbox zero',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'incomplete',
+                    confirmingDelete: true
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const taskCard = document.querySelector('[data-task-id="unsched-confirm-delete"]');
+        expect(
+            taskCard
+                .querySelector('.btn-unscheduled-task-actions-menu')
+                .getAttribute('aria-expanded')
+        ).toBe('true');
+        expect(
+            taskCard.querySelector('.unscheduled-task-actions-menu').hasAttribute('hidden')
+        ).toBe(false);
+        expect(taskCard.querySelector('.btn-delete-unscheduled').textContent).toContain(
+            'Confirm delete'
+        );
+    });
+
     test('renders category select and color dot for inline editing task', () => {
         renderUnscheduledTasks(
             [

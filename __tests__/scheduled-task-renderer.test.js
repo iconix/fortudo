@@ -251,6 +251,27 @@ describe('Scheduled Task Renderer Tests', () => {
             jest.useRealTimers();
         });
 
+        test('keeps the actions menu open when delete is waiting for confirmation', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const tasks = [
+                {
+                    ...createTask('confirm-delete', '10:30', 30),
+                    confirmingDelete: true
+                }
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const task = document.querySelector('[data-task-id="confirm-delete"]');
+            expect(task.querySelector('.btn-task-actions-menu').getAttribute('aria-expanded')).toBe(
+                'true'
+            );
+            expect(task.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(false);
+            expect(task.querySelector('.btn-delete').textContent).toContain('Confirm delete');
+            jest.useRealTimers();
+        });
+
         test('gap elements do not have data-task-id attribute', () => {
             const tasks = [createTask('1', '10:00', 60), createTask('2', '11:30', 60)];
 

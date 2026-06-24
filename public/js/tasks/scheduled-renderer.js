@@ -132,6 +132,8 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
         ? extractTimeFromDateTime(new Date(task.endDateTime))
         : '';
     const durationText = calculateHoursAndMinutes(task.duration);
+    const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
+    const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
 
     const makeNextMenuItem = canMakeNext
         ? `<div class="task-actions-menu-group">
@@ -163,10 +165,10 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
             </div>
         </div>
         <div class="task-actions relative ml-auto -mt-1 -mr-1">
-            <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="false">
+            <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}">
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
-            <div class="task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions" hidden>
+            <div class="task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
                 ${makeNextMenuItem}
                 <div class="task-actions-menu-group ${canMakeNext ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}">
                     <button class="task-actions-menu-item btn-lock grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
