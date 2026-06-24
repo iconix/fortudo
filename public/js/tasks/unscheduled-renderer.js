@@ -65,9 +65,10 @@ function getDurationText(estDuration) {
 function renderUnscheduledTaskActionsMenu(task, disabledAttr, disabledButtonClasses) {
     const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
+    const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
 
     return `
-        <div class="unscheduled-task-actions relative ml-auto -mt-1 -mr-1">
+        <div class="unscheduled-task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
             <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors${disabledButtonClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${disabledAttr}>
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
@@ -247,7 +248,7 @@ function createUnscheduledTaskCard(task) {
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
-    taskCard.className = `task-card bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
+    taskCard.className = `task-card relative bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${task.confirmingDelete ? 'z-40 ' : ''}${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
     taskCard.dataset.taskId = task.id;
     taskCard.dataset.taskName = task.description;
     taskCard.dataset.taskEstDuration = durationText;

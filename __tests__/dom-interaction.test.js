@@ -212,11 +212,15 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('true');
             expect(menu.hidden).toBe(false);
+            expect(trigger.closest('[data-task-id]').className).toContain('z-40');
+            expect(trigger.closest('.task-actions').className).toContain('z-50');
 
             trigger.click();
 
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
+            expect(trigger.closest('.task-actions').className).not.toContain('z-50');
         });
 
         test('clicking make-next menu item invokes the scheduled make-next callback', () => {
@@ -1062,11 +1066,15 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('true');
             expect(menu.hidden).toBe(false);
+            expect(trigger.closest('[data-task-id]').className).toContain('z-40');
+            expect(trigger.closest('.unscheduled-task-actions').className).toContain('z-50');
 
             trigger.click();
 
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
+            expect(trigger.closest('.unscheduled-task-actions').className).not.toContain('z-50');
         });
 
         test('outside click and Escape close an open unscheduled task actions menu', () => {

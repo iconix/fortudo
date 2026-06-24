@@ -125,11 +125,13 @@ describe('unscheduled task renderer', () => {
         );
 
         const taskCard = document.querySelector('[data-task-id="unsched-confirm-delete"]');
+        expect(taskCard.className).toContain('z-40');
         expect(
             taskCard
                 .querySelector('.btn-unscheduled-task-actions-menu')
                 .getAttribute('aria-expanded')
         ).toBe('true');
+        expect(taskCard.querySelector('.unscheduled-task-actions').className).toContain('z-50');
         expect(
             taskCard.querySelector('.unscheduled-task-actions-menu').hasAttribute('hidden')
         ).toBe(false);

@@ -264,9 +264,11 @@ describe('Scheduled Task Renderer Tests', () => {
             renderTasks(tasks, mockCallbacks, mockInitListeners, null);
 
             const task = document.querySelector('[data-task-id="confirm-delete"]');
+            expect(task.className).toContain('z-40');
             expect(task.querySelector('.btn-task-actions-menu').getAttribute('aria-expanded')).toBe(
                 'true'
             );
+            expect(task.querySelector('.task-actions').className).toContain('z-50');
             expect(task.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(false);
             expect(task.querySelector('.btn-delete').textContent).toContain('Confirm delete');
             jest.useRealTimers();

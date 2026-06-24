@@ -134,6 +134,8 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
     const durationText = calculateHoursAndMinutes(task.duration);
     const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
+    const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
+    const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
 
     const makeNextMenuItem = canMakeNext
         ? `<div class="task-actions-menu-group">
@@ -144,7 +146,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
             </div>`
         : '';
 
-    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0" data-task-index="${index}" data-task-id="${task.id}">
+    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${task.id}">
         <div class="celebration-container hidden">
             <span class="celebration-emoji">🎉</span>
             <span class="celebration-emoji">🌟</span>
@@ -164,7 +166,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>
-        <div class="task-actions relative ml-auto -mt-1 -mr-1">
+        <div class="task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
             <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}">
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>

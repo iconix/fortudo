@@ -258,6 +258,12 @@ export function initializeTaskTypeToggle() {
 
 // --- Event Handlers ---
 
+function setTaskActionMenuElevation(menu, isElevated) {
+    const actions = menu.parentElement;
+    actions?.classList.toggle('z-50', isElevated);
+    actions?.closest('[data-task-id]')?.classList.toggle('z-40', isElevated);
+}
+
 function closeScheduledTaskActionMenus(exceptMenu = null) {
     const taskListElement = getScheduledTaskListElement();
     if (!taskListElement) return;
@@ -265,6 +271,7 @@ function closeScheduledTaskActionMenus(exceptMenu = null) {
     taskListElement.querySelectorAll('.task-actions-menu').forEach((menu) => {
         if (menu === exceptMenu) return;
         menu.hidden = true;
+        setTaskActionMenuElevation(menu, false);
         const trigger = menu.parentElement?.querySelector('.btn-task-actions-menu');
         if (trigger instanceof HTMLElement) {
             trigger.setAttribute('aria-expanded', 'false');
@@ -279,6 +286,7 @@ function toggleScheduledTaskActionMenu(trigger) {
     const shouldOpen = menu.hidden;
     closeScheduledTaskActionMenus(shouldOpen ? menu : null);
     menu.hidden = !shouldOpen;
+    setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
     if (shouldOpen) {
         menu.querySelector('[role="menuitem"]')?.focus();
@@ -292,6 +300,7 @@ function closeUnscheduledTaskActionMenus(exceptMenu = null) {
     taskListElement.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
         if (menu === exceptMenu) return;
         menu.hidden = true;
+        setTaskActionMenuElevation(menu, false);
         const trigger = menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
         if (trigger instanceof HTMLElement) {
             trigger.setAttribute('aria-expanded', 'false');
@@ -306,6 +315,7 @@ function toggleUnscheduledTaskActionMenu(trigger) {
     const shouldOpen = menu.hidden;
     closeUnscheduledTaskActionMenus(shouldOpen ? menu : null);
     menu.hidden = !shouldOpen;
+    setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
     if (shouldOpen) {
         menu.querySelector('[role="menuitem"]')?.focus();
