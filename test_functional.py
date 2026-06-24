@@ -57,6 +57,44 @@ def dismiss_modals(page):
             page.locator("#ok-custom-alert-modal").click()
             page.wait_for_timeout(300)
 
+def open_scheduled_action_menu(page, index=0):
+    """Open the action menu for a scheduled task by visual order."""
+    task = page.locator("#scheduled-task-list > [data-task-id]").nth(index)
+    menu = task.locator(".task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_scheduled_action(page, index, selector):
+    task = open_scheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu(page, index=0):
+    """Open the action menu for an unscheduled task by visual order."""
+    task = page.locator("#unscheduled-task-list .task-card").nth(index)
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_unscheduled_action(page, index, selector):
+    task = open_unscheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu_for_text(page, text):
+    """Open the action menu for the unscheduled task matching visible text."""
+    task = page.locator("#unscheduled-task-list .task-card").filter(has_text=text).first
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -182,13 +220,13 @@ with sync_playwright() as p:
     delete_buttons = page.locator("#scheduled-task-list .btn-delete")
     del_count = delete_buttons.count()
     if del_count >= 2:
-        delete_buttons.nth(1).click()
+        click_scheduled_action(page, 1, ".btn-delete")
         page.wait_for_timeout(300)
         screenshot(page, "05a_delete_confirm_state")
 
         delete_buttons_after = page.locator("#scheduled-task-list .btn-delete")
         if delete_buttons_after.count() >= 2:
-            delete_buttons_after.nth(1).click()
+            click_scheduled_action(page, 1, ".btn-delete")
             page.wait_for_timeout(500)
 
         scheduled_tasks_after = page.locator("#scheduled-task-list > [data-task-id]")
@@ -206,12 +244,21 @@ with sync_playwright() as p:
     initial_unsched_count = page.locator("#unscheduled-task-list .task-card").count()
 
     if unsched_delete_buttons.count() >= 1:
-        unsched_delete_buttons.nth(0).click()
-        page.wait_for_timeout(300)
-        unsched_delete_buttons_after = page.locator("#unscheduled-task-list .btn-delete-unscheduled")
-        if unsched_delete_buttons_after.count() >= 1:
-            unsched_delete_buttons_after.nth(0).click()
-            page.wait_for_timeout(500)
+        open_unscheduled_action_menu_for_text(page, "Fix login bug").locator(
+            ".btn-delete-unscheduled"
+        ).evaluate("el => el.click()")
+        confirm_delete = page.get_by_text("Confirm delete").first
+        try:
+            confirm_delete.wait_for(state="visible", timeout=5000)
+        except Exception:
+            page.wait_for_timeout(300)
+        confirming_task = open_unscheduled_action_menu_for_text(page, "Fix login bug")
+        if "Confirm delete" in (confirming_task.text_content() or ""):
+            confirming_task.locator(".btn-delete-unscheduled").evaluate("el => el.click()")
+            page.wait_for_function(
+                f"document.querySelectorAll('#unscheduled-task-list .task-card').length < {initial_unsched_count}",
+                timeout=5000,
+            )
             dismiss_modals(page)
 
         final_unsched_count = page.locator("#unscheduled-task-list .task-card").count()
