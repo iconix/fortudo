@@ -742,6 +742,7 @@ def stop_activity_timer(
 
 
 def start_timer_from_unscheduled_task(page: Any, task_id: str, expected_description: str) -> None:
+    open_unscheduled_task_actions_menu(page, task_id)
     page.locator(f'.task-card[data-task-id="{task_id}"] .btn-start-unscheduled-timer').click()
     wait_for_running_timer_ui(page, expected_description)
 
@@ -967,6 +968,19 @@ def dismiss_open_modals(page: Any) -> None:
         if locator.count() and locator.first.is_visible():
             locator.first.click(force=True)
             page.wait_for_timeout(100)
+
+
+def cancel_open_confirm_modal(page: Any, *, timeout_ms: int = 1500) -> None:
+    confirm_modal = page.locator("#custom-confirm-modal")
+    cancel_button = page.locator("#cancel-custom-confirm-modal")
+    if confirm_modal.count():
+        try:
+            confirm_modal.first.wait_for(state="visible", timeout=timeout_ms)
+        except Exception:
+            return
+    if confirm_modal.count() and confirm_modal.first.is_visible() and cancel_button.count():
+        cancel_button.first.click(force=True)
+        page.wait_for_timeout(100)
 
 
 def request_manual_sync(page: Any) -> None:
@@ -1453,6 +1467,7 @@ def add_unscheduled_task(
     priority: str = "medium",
     category: str | None = None,
 ) -> None:
+    cancel_open_confirm_modal(page)
     page.locator("#unscheduled").check()
     fill_locator_value(
         page,
@@ -1527,6 +1542,7 @@ def open_scheduled_edit_form(
 
         button_locator = page.locator(button_selector)
         try:
+            open_scheduled_task_actions_menu(page, task_id)
             button_locator.scroll_into_view_if_needed()
             button_locator.click()
             form_locator.wait_for(state="visible", timeout=form_timeout_ms)
@@ -1537,6 +1553,28 @@ def open_scheduled_edit_form(
                 page.wait_for_timeout(retry_delay_ms)
 
     raise TimeoutError(f"Timed out opening scheduled edit form for {task_id}: {last_error}")
+
+
+def open_scheduled_task_actions_menu(page: Any, task_id: str) -> None:
+    task_selector = f'[data-task-id="{task_id}"]'
+    menu = page.locator(f"{task_selector} .task-actions-menu").first
+    if menu.is_visible():
+        return
+    trigger = page.locator(f"{task_selector} .btn-task-actions-menu").first
+    trigger.scroll_into_view_if_needed()
+    trigger.click()
+    menu.wait_for(state="visible", timeout=5000)
+
+
+def open_unscheduled_task_actions_menu(page: Any, task_id: str) -> None:
+    task_selector = f'.task-card[data-task-id="{task_id}"]'
+    menu = page.locator(f"{task_selector} .unscheduled-task-actions-menu").first
+    if menu.is_visible():
+        return
+    trigger = page.locator(f"{task_selector} .btn-unscheduled-task-actions-menu").first
+    trigger.scroll_into_view_if_needed()
+    trigger.click()
+    menu.wait_for(state="visible", timeout=5000)
 
 
 def get_unscheduled_delete_state(page: Any, task_id: str) -> str:
@@ -1561,6 +1599,7 @@ def delete_unscheduled_task_via_ui(
 ) -> None:
     button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
     deadline = time.time() + timeout_s
+    open_unscheduled_task_actions_menu(page, task_id)
     page.locator(button_selector).click()
 
     state_after_first_click = wait_until(
@@ -1575,8 +1614,12 @@ def delete_unscheduled_task_via_ui(
     )
     if state_after_first_click == "deleted":
         return
+    page.locator(
+        f'.task-card[data-task-id="{task_id}"] .unscheduled-task-actions-menu'
+    ).wait_for(state="visible", timeout=5000)
 
     while time.time() < deadline:
+        open_unscheduled_task_actions_menu(page, task_id)
         page.locator(button_selector).click()
         state = wait_until(
             lambda: (
@@ -1600,6 +1643,7 @@ def arm_unscheduled_delete_confirm(
     page: Any, task_id: str, *, timeout_s: float = 10.0, interval_s: float = 0.2
 ) -> None:
     button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
+    open_unscheduled_task_actions_menu(page, task_id)
     page.locator(button_selector).click()
     state = wait_until(
         lambda: (
@@ -1613,6 +1657,9 @@ def arm_unscheduled_delete_confirm(
     )
     if state != "confirming":
         raise TimeoutError(f"Timed out arming unscheduled delete confirmation for {task_id}")
+    page.locator(
+        f'.task-card[data-task-id="{task_id}"] .unscheduled-task-actions-menu'
+    ).wait_for(state="visible", timeout=5000)
 
 
 def complete_scheduled_task_via_ui(page: Any, task_id: str) -> None:
@@ -2641,6 +2688,7 @@ def run_smoke(
                     "Playwright scheduled task edited"
                 )
                 page.locator(edit_form_selector).evaluate("(form) => form.requestSubmit()")
+                cancel_open_confirm_modal(page)
                 wait_until(
                     lambda: any(
                         doc.get("id") == scheduled_doc["id"]
@@ -2993,6 +3041,7 @@ def run_smoke(
                 page.locator(scheduled_edit_form_selector).evaluate(
                     "(form) => form.requestSubmit()"
                 )
+                cancel_open_confirm_modal(page)
                 page.locator(scheduled_edit_form_selector).wait_for(
                     state="hidden", timeout=10000
                 )
@@ -3005,6 +3054,7 @@ def run_smoke(
                 unscheduled_card_selector = (
                     f'.task-card[data-task-id="{unscheduled_taxonomy_doc["id"]}"]'
                 )
+                open_unscheduled_task_actions_menu(page, unscheduled_taxonomy_doc["id"])
                 page.locator(f"{unscheduled_card_selector} .btn-edit-unscheduled").click()
                 page.locator(
                     f'{unscheduled_card_selector} select[name="inline-edit-category"]'

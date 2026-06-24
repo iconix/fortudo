@@ -114,9 +114,10 @@ export function renderEditTaskHTML(task, index) {
  * @param {Object} task - The task object
  * @param {number} index - The task index
  * @param {boolean} isActiveTask - Whether this is the active task
+ * @param {boolean} canDoNow - Whether to show the do-now action
  * @returns {string} HTML string for the task view
  */
-export function renderViewTaskHTML(task, index, isActiveTask) {
+export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted || !isActiveTask;
     let activeTaskColorClass = 'text-slate-200';
@@ -131,8 +132,26 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
         ? extractTimeFromDateTime(new Date(task.endDateTime))
         : '';
     const durationText = calculateHoursAndMinutes(task.duration);
+    const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
+    const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
+    const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
+    const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
+    const lockedBadge = task.locked
+        ? `<span class="scheduled-lock-badge inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-rose-300/90 align-middle" title="Time is locked to prevent auto-rescheduling." aria-label="Time is locked to prevent auto-rescheduling.">
+                <i class="fa-solid fa-lock text-[11px]" aria-hidden="true"></i>
+            </span>`
+        : '';
 
-    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0" data-task-index="${index}" data-task-id="${task.id}">
+    const doNowMenuItem = canDoNow
+        ? `<div class="task-actions-menu-group">
+                <button class="task-actions-menu-item task-actions-menu-item-primary btn-do-now grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-teal-400/10 hover:bg-teal-400/20 text-teal-300 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
+                    <i class="fa-solid fa-bolt text-teal-400 text-center" aria-hidden="true"></i>
+                    <span>Do now</span>
+                </button>
+            </div>`
+        : '';
+
+    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${task.id}">
         <div class="celebration-container hidden">
             <span class="celebration-emoji">🎉</span>
             <span class="celebration-emoji">🌟</span>
@@ -148,23 +167,37 @@ export function renderViewTaskHTML(task, index, isActiveTask) {
             </label>
             <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
-                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)}</div>
+                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)} ${lockedBadge}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>
-        <div class="flex space-x-1 ml-auto">
-            <button class="text-slate-400 hover:text-teal-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-lock" title="${task.locked ? 'Unlock task' : 'Lock task'}" data-task-id="${task.id}" data-task-index="${index}">
-                <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open'} text-sm sm:text-base"></i>
+        <div class="task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
+            <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}">
+                <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
-            <button class="text-slate-400 hover:text-indigo-400 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-unschedule" title="Unschedule task" data-task-id="${task.id}" data-task-index="${index}">
-                <i class="fa-regular fa-calendar-xmark text-sm sm:text-base"></i>
-            </button>
-            <button class="text-slate-400 hover:text-amber-300 p-1.5 sm:p-2 hover:bg-slate-700 rounded-lg transition-colors btn-edit" title="Edit task">
-                <i class="fa-solid fa-pen text-sm sm:text-base"></i>
-            </button>
-            <button class="${task.confirmingDelete ? 'text-rose-400' : 'text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition-colors'} btn-delete p-1.5 sm:p-2" title="Delete task">
-                <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-sm sm:text-base"></i>
-            </button>
+            <div class="task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
+                ${doNowMenuItem}
+                <div class="task-actions-menu-group ${canDoNow ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}">
+                    <button class="task-actions-menu-item btn-lock grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
+                        <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open text-slate-400'} text-center" aria-hidden="true"></i>
+                        <span>${task.locked ? 'Allow reschedule' : 'Lock time'}</span>
+                    </button>
+                    <button class="task-actions-menu-item btn-unschedule grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
+                        <i class="fa-regular fa-calendar-xmark text-slate-400 text-center" aria-hidden="true"></i>
+                        <span>Unschedule</span>
+                    </button>
+                    <button class="task-actions-menu-item btn-edit grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
+                        <i class="fa-solid fa-pen text-slate-400 text-center" aria-hidden="true"></i>
+                        <span>Edit task</span>
+                    </button>
+                </div>
+                <div class="task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
+                    <button class="task-actions-menu-item task-actions-menu-item-danger btn-delete grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400" type="button" role="menuitem">
+                        <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-rose-400 text-center" aria-hidden="true"></i>
+                        <span>${task.confirmingDelete ? 'Confirm delete' : 'Delete task'}</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>`;
 }
@@ -327,7 +360,12 @@ export function renderTasks(
         }
         html += task.editing
             ? renderEditTaskHTML(task, originalIndex)
-            : renderViewTaskHTML(task, originalIndex, isActiveTask);
+            : renderViewTaskHTML(
+                  task,
+                  originalIndex,
+                  isActiveTask,
+                  task.status !== 'completed' && !isActiveTask
+              );
 
         const gap = gapAfterTask.get(task.id);
         if (gap) {

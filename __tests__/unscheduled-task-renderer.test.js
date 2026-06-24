@@ -30,7 +30,7 @@ describe('unscheduled task renderer', () => {
         document.body.innerHTML = '<div id="unscheduled-task-list"></div>';
     });
 
-    test('renders a start timer action for incomplete unscheduled tasks', () => {
+    test('renders an actions menu with start timer for incomplete unscheduled tasks', () => {
         renderUnscheduledTasks(
             [
                 {
@@ -46,11 +46,23 @@ describe('unscheduled task renderer', () => {
             jest.fn()
         );
 
+        const actionsTrigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+        const actionsMenu = document.querySelector('.unscheduled-task-actions-menu');
         const startTimerButton = document.querySelector('.btn-start-unscheduled-timer');
+        expect(actionsTrigger).not.toBeNull();
+        expect(actionsTrigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(actionsTrigger.getAttribute('aria-expanded')).toBe('false');
+        expect(actionsMenu).not.toBeNull();
+        expect(actionsMenu.hasAttribute('hidden')).toBe(true);
         expect(startTimerButton).not.toBeNull();
-        expect(startTimerButton.getAttribute('title')).toBe('Start timer from task');
+        expect(startTimerButton.textContent).toContain('Start timer');
         expect(startTimerButton.querySelector('.fa-stopwatch')).not.toBeNull();
         expect(startTimerButton.hasAttribute('disabled')).toBe(false);
+        expect(document.querySelector('.btn-schedule-task').textContent).toContain('Schedule');
+        expect(document.querySelector('.btn-edit-unscheduled').textContent).toContain('Edit task');
+        expect(document.querySelector('.btn-delete-unscheduled').textContent).toContain(
+            'Delete task'
+        );
     });
 
     test('renders the linked source task with a subdued in-progress badge and fully disabled while its timer runs', () => {
@@ -92,6 +104,39 @@ describe('unscheduled task renderer', () => {
         expect(document.querySelector('.btn-edit-unscheduled').hasAttribute('disabled')).toBe(true);
         expect(document.querySelector('.btn-delete-unscheduled').hasAttribute('disabled')).toBe(
             true
+        );
+    });
+
+    test('keeps the actions menu open when delete is waiting for confirmation', () => {
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-confirm-delete',
+                    type: 'unscheduled',
+                    description: 'Inbox zero',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'incomplete',
+                    confirmingDelete: true
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const taskCard = document.querySelector('[data-task-id="unsched-confirm-delete"]');
+        expect(taskCard.className).toContain('z-40');
+        expect(
+            taskCard
+                .querySelector('.btn-unscheduled-task-actions-menu')
+                .getAttribute('aria-expanded')
+        ).toBe('true');
+        expect(taskCard.querySelector('.unscheduled-task-actions').className).toContain('z-50');
+        expect(
+            taskCard.querySelector('.unscheduled-task-actions-menu').hasAttribute('hidden')
+        ).toBe(false);
+        expect(taskCard.querySelector('.btn-delete-unscheduled').textContent).toContain(
+            'Confirm delete'
         );
     });
 

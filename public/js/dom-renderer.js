@@ -258,6 +258,76 @@ export function initializeTaskTypeToggle() {
 
 // --- Event Handlers ---
 
+function setTaskActionMenuElevation(menu, isElevated) {
+    const actions = menu.parentElement;
+    actions?.classList.toggle('z-50', isElevated);
+    actions?.closest('[data-task-id]')?.classList.toggle('z-40', isElevated);
+}
+
+function closeScheduledTaskActionMenus(exceptMenu = null) {
+    const taskListElement = getScheduledTaskListElement();
+    if (!taskListElement) return;
+
+    taskListElement.querySelectorAll('.task-actions-menu').forEach((menu) => {
+        if (menu === exceptMenu) return;
+        menu.hidden = true;
+        setTaskActionMenuElevation(menu, false);
+        const trigger = menu.parentElement?.querySelector('.btn-task-actions-menu');
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+function toggleScheduledTaskActionMenu(trigger) {
+    const menu = trigger.parentElement?.querySelector('.task-actions-menu');
+    if (!(menu instanceof HTMLElement)) return;
+
+    const shouldOpen = menu.hidden;
+    closeScheduledTaskActionMenus(shouldOpen ? menu : null);
+    menu.hidden = !shouldOpen;
+    setTaskActionMenuElevation(menu, shouldOpen);
+    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if (shouldOpen) {
+        menu.querySelector('[role="menuitem"]')?.focus();
+    }
+}
+
+function closeUnscheduledTaskActionMenus(exceptMenu = null) {
+    const taskListElement = getUnscheduledTaskListElement();
+    if (!taskListElement) return;
+
+    taskListElement.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
+        if (menu === exceptMenu) return;
+        menu.hidden = true;
+        setTaskActionMenuElevation(menu, false);
+        const trigger = menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+function toggleUnscheduledTaskActionMenu(trigger) {
+    const menu = trigger.parentElement?.querySelector('.unscheduled-task-actions-menu');
+    if (!(menu instanceof HTMLElement)) return;
+
+    const shouldOpen = menu.hidden;
+    closeUnscheduledTaskActionMenus(shouldOpen ? menu : null);
+    menu.hidden = !shouldOpen;
+    setTaskActionMenuElevation(menu, shouldOpen);
+    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if (shouldOpen) {
+        menu.querySelector('[role="menuitem"]')?.focus();
+    }
+}
+
+function handleScheduledTaskListKeydown(event) {
+    if (event.key === 'Escape') {
+        closeScheduledTaskActionMenus();
+    }
+}
+
 function handleScheduledTaskListClick(event) {
     if (!globalScheduledTaskCallbacks) {
         logger.warn('handleScheduledTaskListClick: globalScheduledTaskCallbacks not initialized');
@@ -333,6 +403,14 @@ function handleScheduledTaskListClick(event) {
 
     const taskIndex = parseInt(taskIndexStr, 10);
 
+    const actionsTrigger = target.closest('.btn-task-actions-menu');
+    if (actionsTrigger instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleScheduledTaskActionMenu(actionsTrigger);
+        return;
+    }
+
     if (target.closest('.checkbox')) {
         event.preventDefault();
         const visibleTaskIds = new Set(
@@ -356,6 +434,7 @@ function handleScheduledTaskListClick(event) {
     if (target.closest('.btn-edit')) {
         // "pencil" icon on view task
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onEditTask) {
             globalScheduledTaskCallbacks.onEditTask(taskId, taskIndex);
         }
@@ -364,6 +443,7 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.btn-lock')) {
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onLockTask) {
             globalScheduledTaskCallbacks.onLockTask(taskId, taskIndex);
         }
@@ -372,8 +452,18 @@ function handleScheduledTaskListClick(event) {
 
     if (target.closest('.btn-unschedule')) {
         event.preventDefault();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onUnscheduleTask) {
             globalScheduledTaskCallbacks.onUnscheduleTask(taskId, taskIndex);
+        }
+        return;
+    }
+
+    if (target.closest('.btn-do-now')) {
+        event.preventDefault();
+        closeScheduledTaskActionMenus();
+        if (globalScheduledTaskCallbacks.onDoNowTask) {
+            globalScheduledTaskCallbacks.onDoNowTask(taskId, taskIndex);
         }
         return;
     }
@@ -381,6 +471,7 @@ function handleScheduledTaskListClick(event) {
     if (target.closest('.btn-delete')) {
         event.preventDefault();
         event.stopPropagation();
+        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onDeleteTask) {
             globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
         }
@@ -477,11 +568,21 @@ function handleUnscheduledTaskListClick(event) {
 
     const taskId = taskCard.dataset.taskId;
 
+    const actionsTrigger = target.closest('.btn-unscheduled-task-actions-menu');
+    if (actionsTrigger instanceof HTMLElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleUnscheduledTaskActionMenu(actionsTrigger);
+        return;
+    }
+
     if (target.closest('.btn-start-unscheduled-timer')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask && taskId) {
             globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask(taskId);
         }
     } else if (target.closest('.btn-schedule-task')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
             const taskName = taskCard.dataset.taskName || 'Task';
             const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
@@ -496,11 +597,13 @@ function handleUnscheduledTaskListClick(event) {
             }
         }
     } else if (target.closest('.btn-edit-unscheduled')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask && taskId) {
             logger.debug(`Edit button clicked for unscheduled task: ${taskId}`);
             globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
         }
     } else if (target.closest('.btn-delete-unscheduled')) {
+        closeUnscheduledTaskActionMenus();
         if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask && taskId) {
             globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
         }
@@ -528,6 +631,11 @@ function handleUnscheduledTaskListClick(event) {
 }
 
 function handleUnscheduledTaskListKeydown(event) {
+    if (event.key === 'Escape') {
+        closeUnscheduledTaskActionMenus();
+        return;
+    }
+
     if (event.key !== 'Enter') return;
     if (!(event.target instanceof HTMLInputElement)) return;
     const form = event.target.closest('form');
@@ -567,10 +675,12 @@ export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     taskListElement.removeEventListener('click', handleScheduledTaskListClick);
     taskListElement.removeEventListener('submit', handleScheduledTaskListSubmit);
     taskListElement.removeEventListener('input', handleScheduledTaskListInput);
+    taskListElement.removeEventListener('keydown', handleScheduledTaskListKeydown);
     globalScheduledTaskCallbacks = eventCallbacks;
     taskListElement.addEventListener('click', handleScheduledTaskListClick);
     taskListElement.addEventListener('submit', handleScheduledTaskListSubmit);
     taskListElement.addEventListener('input', handleScheduledTaskListInput);
+    taskListElement.addEventListener('keydown', handleScheduledTaskListKeydown);
 }
 
 export function initializeUnscheduledTaskListEventListeners(callbacks) {
@@ -762,6 +872,13 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
     document.addEventListener(
         'click',
         (event) => {
+            const target = /** @type {HTMLElement|null} */ (event.target);
+            if (!target?.closest?.('.task-actions')) {
+                closeScheduledTaskActionMenus();
+            }
+            if (!target?.closest?.('.unscheduled-task-actions')) {
+                closeUnscheduledTaskActionMenus();
+            }
             if (appCallbacks && appCallbacks.onGlobalClick) {
                 appCallbacks.onGlobalClick(event);
             }

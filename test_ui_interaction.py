@@ -107,6 +107,44 @@ def dismiss_modals(page):
             page.locator("#ok-custom-alert-modal").click()
             page.wait_for_timeout(300)
 
+def open_scheduled_action_menu(page, index=0):
+    """Open the action menu for a scheduled task by visual order."""
+    task = page.locator("#scheduled-task-list > [data-task-id]").nth(index)
+    menu = task.locator(".task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_scheduled_action(page, index, selector):
+    task = open_scheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu(page, index=0):
+    """Open the action menu for an unscheduled task by visual order."""
+    task = page.locator("#unscheduled-task-list .task-card").nth(index)
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_unscheduled_action(page, index, selector):
+    task = open_unscheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu_for_text(page, text):
+    """Open the action menu for the unscheduled task matching visible text."""
+    task = page.locator("#unscheduled-task-list .task-card").filter(has_text=text).first
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -222,7 +260,7 @@ with sync_playwright() as p:
 
     edit_buttons = page.locator("#scheduled-task-list .btn-edit")
     if edit_buttons.count() >= 1:
-        edit_buttons.nth(0).click()
+        click_scheduled_action(page, 0, ".btn-edit")
         page.wait_for_timeout(500)
 
         edit_form = page.locator("#scheduled-task-list form[id^='edit-task-']")
@@ -255,7 +293,7 @@ with sync_playwright() as p:
     print("\nTEST 5: Cancel edit", flush=True)
     edit_buttons = page.locator("#scheduled-task-list .btn-edit")
     if edit_buttons.count() >= 1:
-        edit_buttons.nth(0).click()
+        click_scheduled_action(page, 0, ".btn-edit")
         page.wait_for_timeout(500)
 
         cancel_btn = page.locator("#scheduled-task-list .btn-edit-cancel")
@@ -279,7 +317,7 @@ with sync_playwright() as p:
     print("\nTEST 6: Lock/unlock task", flush=True)
     lock_buttons = page.locator("#scheduled-task-list .btn-lock")
     if lock_buttons.count() >= 1:
-        lock_buttons.nth(0).click()
+        click_scheduled_action(page, 0, ".btn-lock")
         page.wait_for_timeout(500)
 
         task_html = page.locator("#scheduled-task-list > [data-task-id]").nth(0).inner_html()
@@ -290,7 +328,7 @@ with sync_playwright() as p:
 
         lock_buttons_after = page.locator("#scheduled-task-list .btn-lock")
         if lock_buttons_after.count() >= 1:
-            lock_buttons_after.nth(0).click()
+            click_scheduled_action(page, 0, ".btn-lock")
             page.wait_for_timeout(500)
         screenshot(page, "06b_task_unlocked")
     else:
@@ -305,7 +343,7 @@ with sync_playwright() as p:
     unsched_before = page.locator("#unscheduled-task-list .task-card").count()
 
     if unsched_btns.count() >= 1:
-        unsched_btns.nth(0).click()
+        click_scheduled_action(page, 0, ".btn-unschedule")
         page.wait_for_timeout(500)
 
         sched_after = page.locator("#scheduled-task-list > [data-task-id]").count()
@@ -326,10 +364,13 @@ with sync_playwright() as p:
     print("\nTEST 8: Schedule an unscheduled task via modal", flush=True)
     schedule_btns = page.locator("#unscheduled-task-list .btn-schedule-task")
     if schedule_btns.count() >= 1:
-        schedule_btns.nth(0).click()
-        page.wait_for_timeout(500)
+        click_unscheduled_action(page, 0, ".btn-schedule-task")
 
         schedule_modal = page.locator("#schedule-modal")
+        try:
+            schedule_modal.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
         test("Schedule modal appears", schedule_modal.is_visible(),
              "Modal did not appear")
 
@@ -367,10 +408,15 @@ with sync_playwright() as p:
 
     schedule_btns = page.locator("#unscheduled-task-list .btn-schedule-task")
     if schedule_btns.count() >= 1:
-        schedule_btns.last.click()
-        page.wait_for_timeout(500)
+        open_unscheduled_action_menu_for_text(page, "Modal test task").locator(
+            ".btn-schedule-task"
+        ).evaluate("el => el.click()")
 
         schedule_modal = page.locator("#schedule-modal")
+        try:
+            schedule_modal.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
         if schedule_modal.is_visible():
             page.locator("#close-schedule-modal").click()
             page.wait_for_timeout(300)
@@ -416,7 +462,7 @@ with sync_playwright() as p:
     print("\nTEST 11: Edit unscheduled task inline", flush=True)
     unsched_edit_btns = page.locator("#unscheduled-task-list .btn-edit-unscheduled")
     if unsched_edit_btns.count() >= 1:
-        unsched_edit_btns.nth(0).click()
+        click_unscheduled_action(page, 0, ".btn-edit-unscheduled")
         page.wait_for_timeout(500)
 
         inline_form = page.locator("#unscheduled-task-list .inline-edit-form, #unscheduled-task-list form")
@@ -433,7 +479,7 @@ with sync_playwright() as p:
         else:
             unsched_edit_btns_after = page.locator("#unscheduled-task-list .btn-edit-unscheduled")
             if unsched_edit_btns_after.count() >= 1:
-                unsched_edit_btns_after.nth(0).click()
+                click_unscheduled_action(page, 0, ".btn-edit-unscheduled")
                 page.wait_for_timeout(300)
                 test("Inline edit toggled off", True)
     else:

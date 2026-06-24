@@ -867,6 +867,27 @@ export function updateTask(index, taskData) {
     return { success: true, task: tasks[index], autoRescheduledMessage: autoMessage };
 }
 
+export function doScheduledTaskNow(taskId, startTime) {
+    const taskIndex = tasks.findIndex((task) => task.id === taskId && task.type === 'scheduled');
+    if (taskIndex === -1) {
+        return { success: false, reason: 'Scheduled task not found.' };
+    }
+
+    const task = tasks[taskIndex];
+    if (task.status === 'completed') {
+        return { success: false, reason: 'Completed tasks cannot be done now.' };
+    }
+
+    return updateTask(taskIndex, {
+        description: task.description,
+        taskType: 'scheduled',
+        startTime,
+        duration: task.duration,
+        locked: task.locked,
+        category: task.category || null
+    });
+}
+
 export function updateUnscheduledTask(taskId, newData) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {

@@ -143,6 +143,44 @@ def add_unscheduled_task(page, description, hours, minutes, priority="medium"):
     page.wait_for_timeout(500)
     dismiss_modals(page)
 
+def open_scheduled_action_menu(page, index=0):
+    """Open the action menu for a scheduled task by visual order."""
+    task = page.locator("#scheduled-task-list > [data-task-id]").nth(index)
+    menu = task.locator(".task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_scheduled_action(page, index, selector):
+    task = open_scheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu(page, index=0):
+    """Open the action menu for an unscheduled task by visual order."""
+    task = page.locator("#unscheduled-task-list .task-card").nth(index)
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
+def click_unscheduled_action(page, index, selector):
+    task = open_unscheduled_action_menu(page, index)
+    task.locator(selector).evaluate("el => el.click()")
+
+def open_unscheduled_action_menu_for_text(page, text):
+    """Open the action menu for the unscheduled task matching visible text."""
+    task = page.locator("#unscheduled-task-list .task-card").filter(has_text=text).first
+    menu = task.locator(".unscheduled-task-actions-menu")
+    if menu.is_visible():
+        return task
+    task.locator(".btn-unscheduled-task-actions-menu").click()
+    menu.wait_for(state="visible", timeout=5000)
+    return task
+
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -449,7 +487,7 @@ with sync_playwright() as p:
     print("\nTEST 11: Edit form shows end-time hint", flush=True)
     edit_buttons = page.locator("#scheduled-task-list .btn-edit")
     if edit_buttons.count() >= 1:
-        edit_buttons.nth(0).click()
+        click_scheduled_action(page, 0, ".btn-edit")
         page.wait_for_timeout(500)
 
         edit_hint = page.locator("#scheduled-task-list .edit-end-time-hint")
@@ -477,7 +515,7 @@ with sync_playwright() as p:
     edit_buttons = page.locator("#scheduled-task-list .btn-edit")
     if edit_buttons.count() >= 2:
         # Edit the second task and change its time to overlap the first
-        edit_buttons.nth(1).click()
+        click_scheduled_action(page, 1, ".btn-edit")
         page.wait_for_timeout(500)
 
         edit_form = page.locator("#scheduled-task-list form[id^='edit-task-']")
@@ -542,10 +580,15 @@ with sync_playwright() as p:
 
     schedule_btns = page.locator("#unscheduled-task-list .btn-schedule-task")
     if schedule_btns.count() >= 1:
-        schedule_btns.nth(0).click()
-        page.wait_for_timeout(500)
+        open_unscheduled_action_menu_for_text(page, "Modal overlap test").locator(
+            ".btn-schedule-task"
+        ).evaluate("el => el.click()")
 
         schedule_modal = page.locator("#schedule-modal")
+        try:
+            schedule_modal.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
         if schedule_modal.is_visible():
             # Fill in overlapping time
             page.fill('input[name="modal-start-time"]', OVERLAP_TIME)
@@ -600,10 +643,15 @@ with sync_playwright() as p:
     print("\nTEST 14: Schedule modal warning clears for non-conflicting time", flush=True)
     schedule_btns = page.locator("#unscheduled-task-list .btn-schedule-task")
     if schedule_btns.count() >= 1:
-        schedule_btns.nth(0).click()
-        page.wait_for_timeout(500)
+        open_unscheduled_action_menu_for_text(page, "Modal overlap test").locator(
+            ".btn-schedule-task"
+        ).evaluate("el => el.click()")
 
         schedule_modal = page.locator("#schedule-modal")
+        try:
+            schedule_modal.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
         if schedule_modal.is_visible():
             # Use a time far in the future with no overlap
             no_conflict_time = fmt_time(T3_OFF + D3 + 30)

@@ -11,6 +11,7 @@ import {
     addTask,
     scheduleUnscheduledTask,
     updateTask,
+    doScheduledTaskNow,
     completeTask,
     deleteTask,
     editTask,
@@ -993,6 +994,83 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = updateTask(5, { description: 'Valid Desc', duration: 30 });
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Invalid task index.');
+        });
+    });
+
+    describe('doScheduledTaskNow', () => {
+        beforeEach(() => {
+            const currentTask = createTaskWithDateTime({
+                description: 'Current Task',
+                startTime: '09:00',
+                duration: 60,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            const futureTask = {
+                ...createTaskWithDateTime({
+                    description: 'Future Task',
+                    startTime: '10:30',
+                    duration: 30,
+                    status: 'incomplete',
+                    editing: false,
+                    confirmingDelete: false
+                }),
+                category: 'work/deep'
+            };
+            updateTaskState([currentTask, futureTask]);
+            mockSaveTasks.mockClear();
+            mockPutTask.mockClear();
+        });
+
+        test('moves a selected scheduled task to the requested start time', () => {
+            const futureTask = getTaskState().find((task) => task.description === 'Future Task');
+
+            const result = doScheduledTaskNow(futureTask.id, '10:00');
+
+            expect(result.success).toBe(true);
+            const movedTask = getTaskById(futureTask.id);
+            expect(extractTimeFromDateTime(new Date(movedTask.startDateTime))).toBe('10:00');
+            expect(extractTimeFromDateTime(new Date(movedTask.endDateTime))).toBe('10:30');
+            expect(movedTask.category).toBe('work/deep');
+            expect(mockPutTask).toHaveBeenCalledWith(
+                expect.objectContaining({ id: futureTask.id })
+            );
+        });
+
+        test('requires confirmation and leaves state unchanged when moving into an occupied slot', () => {
+            const futureTask = getTaskState().find((task) => task.description === 'Future Task');
+
+            const result = doScheduledTaskNow(futureTask.id, '09:30');
+
+            expect(result.success).toBe(false);
+            expect(result.requiresConfirmation).toBe(true);
+            expect(result.confirmationType).toBe('RESCHEDULE_UPDATE');
+            expect(result.updatedTaskObject).toEqual(
+                expect.objectContaining({
+                    id: futureTask.id,
+                    description: 'Future Task',
+                    duration: 30,
+                    category: 'work/deep'
+                })
+            );
+            const unchangedTask = getTaskById(futureTask.id);
+            expect(extractTimeFromDateTime(new Date(unchangedTask.startDateTime))).toBe('10:30');
+            expect(mockPutTask).not.toHaveBeenCalled();
+        });
+
+        test('rejects completed and missing scheduled tasks', () => {
+            const [currentTask, futureTask] = getTaskState();
+            updateTaskState([{ ...currentTask }, { ...futureTask, status: 'completed' }]);
+
+            expect(doScheduledTaskNow(futureTask.id, '09:30')).toEqual({
+                success: false,
+                reason: 'Completed tasks cannot be done now.'
+            });
+            expect(doScheduledTaskNow('missing-task', '09:30')).toEqual({
+                success: false,
+                reason: 'Scheduled task not found.'
+            });
         });
     });
 

@@ -56,6 +56,7 @@ describe('Scheduled Task Renderer Tests', () => {
     });
 
     afterEach(() => {
+        jest.useRealTimers();
         document.body.innerHTML = '';
     });
 
@@ -216,6 +217,112 @@ describe('Scheduled Task Renderer Tests', () => {
             const badge = document.querySelector('.category-badge');
             expect(badge).not.toBeNull();
             expect(badge.textContent).toBe('work/deep');
+        });
+
+        test('renders actions menu with do-now only for incomplete non-active scheduled tasks', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const tasks = [
+                createTask('active', '10:00', 60, { description: 'Active Task' }),
+                createTask('future', '11:30', 30, { description: 'Future Task' }),
+                createTask('completed', '12:30', 30, {
+                    description: 'Completed Task',
+                    status: 'completed'
+                })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const activeTask = document.querySelector('[data-task-id="active"]');
+            const futureTask = document.querySelector('[data-task-id="future"]');
+            const completedTask = document.querySelector('[data-task-id="completed"]');
+
+            expect(activeTask.querySelector('.btn-task-actions-menu')).not.toBeNull();
+            expect(activeTask.querySelector('.btn-do-now')).toBeNull();
+            expect(futureTask.querySelector('.task-actions-menu')).not.toBeNull();
+            expect(futureTask.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(
+                true
+            );
+            expect(futureTask.querySelector('.btn-do-now')).not.toBeNull();
+            expect(futureTask.querySelector('.btn-do-now').textContent).toContain('Do now');
+            expect(futureTask.querySelector('.btn-do-now .fa-bolt')).not.toBeNull();
+            expect(completedTask.querySelector('.btn-do-now')).toBeNull();
+            jest.useRealTimers();
+        });
+
+        test('renders lock action copy based on lock state', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const unlockedTask = createTask('unlocked', '11:30', 30, {
+                description: 'Unlocked Task'
+            });
+            const lockedTask = createTask('locked', '12:30', 30, {
+                description: 'Locked Task',
+                locked: true
+            });
+
+            renderTasks([unlockedTask, lockedTask], mockCallbacks, mockInitListeners, null);
+
+            const unlockedTaskElement = document.querySelector('[data-task-id="unlocked"]');
+            const lockedTaskElement = document.querySelector('[data-task-id="locked"]');
+
+            expect(unlockedTaskElement.querySelector('.btn-lock').textContent).toContain(
+                'Lock time'
+            );
+            expect(lockedTaskElement.querySelector('.btn-lock').textContent).toContain(
+                'Allow reschedule'
+            );
+            jest.useRealTimers();
+        });
+
+        test('shows a passive icon-only fixed-time indicator on locked scheduled tasks', () => {
+            const unlockedTask = createTask('unlocked', '11:30', 30, {
+                description: 'Unlocked Task'
+            });
+            const lockedTask = createTask('locked', '12:30', 30, {
+                description: 'Locked Task',
+                locked: true
+            });
+
+            renderTasks([unlockedTask, lockedTask], mockCallbacks, mockInitListeners, null);
+
+            const unlockedTaskElement = document.querySelector('[data-task-id="unlocked"]');
+            const lockedTaskElement = document.querySelector('[data-task-id="locked"]');
+            const badge = lockedTaskElement.querySelector('.scheduled-lock-badge');
+
+            expect(unlockedTaskElement.querySelector('.scheduled-lock-badge')).toBeNull();
+            expect(badge).not.toBeNull();
+            expect(badge.textContent.trim()).toBe('');
+            expect(badge.getAttribute('aria-label')).toBe(
+                'Time is locked to prevent auto-rescheduling.'
+            );
+            expect(badge.getAttribute('title')).toBe(
+                'Time is locked to prevent auto-rescheduling.'
+            );
+            expect(badge.querySelector('.fa-lock')).not.toBeNull();
+        });
+
+        test('keeps the actions menu open when delete is waiting for confirmation', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const tasks = [
+                {
+                    ...createTask('confirm-delete', '10:30', 30),
+                    confirmingDelete: true
+                }
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const task = document.querySelector('[data-task-id="confirm-delete"]');
+            expect(task.className).toContain('z-40');
+            expect(task.querySelector('.btn-task-actions-menu').getAttribute('aria-expanded')).toBe(
+                'true'
+            );
+            expect(task.querySelector('.task-actions').className).toContain('z-50');
+            expect(task.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(false);
+            expect(task.querySelector('.btn-delete').textContent).toContain('Confirm delete');
+            jest.useRealTimers();
         });
 
         test('gap elements do not have data-task-id attribute', () => {
