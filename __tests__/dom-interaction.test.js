@@ -146,6 +146,7 @@ describe('DOM Handler Interaction Tests', () => {
         jest.clearAllMocks();
         resetEventDelegation();
         resetActivityState();
+        disableStartTimeAutoUpdate();
         document.body.innerHTML = '';
     });
 

@@ -137,9 +137,8 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
     const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
     const lockedBadge = task.locked
-        ? `<span class="scheduled-lock-badge inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-400/10 px-2 py-0.5 text-[11px] font-medium tracking-normal text-rose-200" title="Time locked">
-                <i class="fa-solid fa-lock text-[10px] text-rose-300" aria-hidden="true"></i>
-                <span>Fixed time</span>
+        ? `<span class="scheduled-lock-badge inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-rose-300/90 align-middle" title="Fixed time" aria-label="Fixed time">
+                <i class="fa-solid fa-lock text-[11px]" aria-hidden="true"></i>
             </span>`
         : '';
 

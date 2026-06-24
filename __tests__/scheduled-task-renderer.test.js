@@ -275,7 +275,7 @@ describe('Scheduled Task Renderer Tests', () => {
             jest.useRealTimers();
         });
 
-        test('shows a passive fixed-time badge on locked scheduled tasks', () => {
+        test('shows a passive icon-only fixed-time indicator on locked scheduled tasks', () => {
             const unlockedTask = createTask('unlocked', '11:30', 30, {
                 description: 'Unlocked Task'
             });
@@ -292,7 +292,8 @@ describe('Scheduled Task Renderer Tests', () => {
 
             expect(unlockedTaskElement.querySelector('.scheduled-lock-badge')).toBeNull();
             expect(badge).not.toBeNull();
-            expect(badge.textContent).toContain('Fixed time');
+            expect(badge.textContent.trim()).toBe('');
+            expect(badge.getAttribute('aria-label')).toBe('Fixed time');
             expect(badge.querySelector('.fa-lock')).not.toBeNull();
         });
 
