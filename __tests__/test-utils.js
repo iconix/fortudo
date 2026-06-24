@@ -298,6 +298,7 @@ function getRenderedTasksDOM() {
 
         if (descriptionElement) {
             description = descriptionElement.textContent?.trim() || '';
+            description = description.replace(/\s*Fixed time\s*/g, '').trim();
 
             // Remove "locked" badge text if present
             description = description.replace(/\s*🔒\s*Locked\s*/g, '').trim();

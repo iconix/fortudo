@@ -136,6 +136,12 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
     const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
+    const lockedBadge = task.locked
+        ? `<span class="scheduled-lock-badge inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-400/10 px-2 py-0.5 text-[11px] font-medium tracking-normal text-rose-200" title="Time locked">
+                <i class="fa-solid fa-lock text-[10px] text-rose-300" aria-hidden="true"></i>
+                <span>Fixed time</span>
+            </span>`
+        : '';
 
     const doNowMenuItem = canDoNow
         ? `<div class="task-actions-menu-group">
@@ -162,7 +168,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             </label>
             <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
-                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)}</div>
+                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)} ${lockedBadge}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>

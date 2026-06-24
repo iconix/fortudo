@@ -275,6 +275,27 @@ describe('Scheduled Task Renderer Tests', () => {
             jest.useRealTimers();
         });
 
+        test('shows a passive fixed-time badge on locked scheduled tasks', () => {
+            const unlockedTask = createTask('unlocked', '11:30', 30, {
+                description: 'Unlocked Task'
+            });
+            const lockedTask = createTask('locked', '12:30', 30, {
+                description: 'Locked Task',
+                locked: true
+            });
+
+            renderTasks([unlockedTask, lockedTask], mockCallbacks, mockInitListeners, null);
+
+            const unlockedTaskElement = document.querySelector('[data-task-id="unlocked"]');
+            const lockedTaskElement = document.querySelector('[data-task-id="locked"]');
+            const badge = lockedTaskElement.querySelector('.scheduled-lock-badge');
+
+            expect(unlockedTaskElement.querySelector('.scheduled-lock-badge')).toBeNull();
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Fixed time');
+            expect(badge.querySelector('.fa-lock')).not.toBeNull();
+        });
+
         test('keeps the actions menu open when delete is waiting for confirmation', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
