@@ -293,7 +293,12 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(unlockedTaskElement.querySelector('.scheduled-lock-badge')).toBeNull();
             expect(badge).not.toBeNull();
             expect(badge.textContent.trim()).toBe('');
-            expect(badge.getAttribute('aria-label')).toBe('Fixed time');
+            expect(badge.getAttribute('aria-label')).toBe(
+                'Time is locked to prevent auto-rescheduling.'
+            );
+            expect(badge.getAttribute('title')).toBe(
+                'Time is locked to prevent auto-rescheduling.'
+            );
             expect(badge.querySelector('.fa-lock')).not.toBeNull();
         });
 

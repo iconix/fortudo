@@ -137,7 +137,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
     const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
     const lockedBadge = task.locked
-        ? `<span class="scheduled-lock-badge inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-rose-300/90 align-middle" title="Fixed time" aria-label="Fixed time">
+        ? `<span class="scheduled-lock-badge inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-rose-300/90 align-middle" title="Time is locked to prevent auto-rescheduling." aria-label="Time is locked to prevent auto-rescheduling.">
                 <i class="fa-solid fa-lock text-[11px]" aria-hidden="true"></i>
             </span>`
         : '';
