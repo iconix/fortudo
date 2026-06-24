@@ -11,7 +11,7 @@ import {
     addTask,
     scheduleUnscheduledTask,
     updateTask,
-    makeScheduledTaskNext,
+    doScheduledTaskNow,
     completeTask,
     deleteTask,
     editTask,
@@ -997,7 +997,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
     });
 
-    describe('makeScheduledTaskNext', () => {
+    describe('doScheduledTaskNow', () => {
         beforeEach(() => {
             const currentTask = createTaskWithDateTime({
                 description: 'Current Task',
@@ -1026,7 +1026,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('moves a selected scheduled task to the requested start time', () => {
             const futureTask = getTaskState().find((task) => task.description === 'Future Task');
 
-            const result = makeScheduledTaskNext(futureTask.id, '10:00');
+            const result = doScheduledTaskNow(futureTask.id, '10:00');
 
             expect(result.success).toBe(true);
             const movedTask = getTaskById(futureTask.id);
@@ -1041,7 +1041,7 @@ describe('Task Management Functions (task-manager.js)', () => {
         test('requires confirmation and leaves state unchanged when moving into an occupied slot', () => {
             const futureTask = getTaskState().find((task) => task.description === 'Future Task');
 
-            const result = makeScheduledTaskNext(futureTask.id, '09:30');
+            const result = doScheduledTaskNow(futureTask.id, '09:30');
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
@@ -1063,11 +1063,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             const [currentTask, futureTask] = getTaskState();
             updateTaskState([{ ...currentTask }, { ...futureTask, status: 'completed' }]);
 
-            expect(makeScheduledTaskNext(futureTask.id, '09:30')).toEqual({
+            expect(doScheduledTaskNow(futureTask.id, '09:30')).toEqual({
                 success: false,
-                reason: 'Completed tasks cannot be made next.'
+                reason: 'Completed tasks cannot be done now.'
             });
-            expect(makeScheduledTaskNext('missing-task', '09:30')).toEqual({
+            expect(doScheduledTaskNow('missing-task', '09:30')).toEqual({
                 success: false,
                 reason: 'Scheduled task not found.'
             });

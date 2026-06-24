@@ -7,7 +7,7 @@ import {
     editTask,
     deleteTask,
     unscheduleTask,
-    makeScheduledTaskNext,
+    doScheduledTaskNow,
     updateTask,
     confirmUpdateTaskAndReschedule,
     cancelEdit,
@@ -149,10 +149,10 @@ export function handleUnscheduleTask(taskId, _taskIndex) {
     }
 }
 
-export async function handleMakeNextTask(taskId, _taskIndex) {
+export async function handleDoNowTask(taskId, _taskIndex) {
     const taskToMove = getTaskById(taskId);
     if (!taskToMove || taskToMove.type !== 'scheduled') {
-        logger.warn('handleMakeNextTask for non-scheduled', taskId);
+        logger.warn('handleDoNowTask for non-scheduled', taskId);
         return;
     }
 
@@ -161,7 +161,7 @@ export async function handleMakeNextTask(taskId, _taskIndex) {
         currentTimeDisplayElement && currentTimeDisplayElement.textContent
             ? convertTo24HourTime(currentTimeDisplayElement.textContent)
             : getCurrentTimeRounded();
-    const result = makeScheduledTaskNext(taskId, startTime);
+    const result = doScheduledTaskNow(taskId, startTime);
 
     if (
         result.requiresConfirmation &&
@@ -296,7 +296,7 @@ export function createScheduledTaskCallbacks() {
         onEditTask: handleEditTask,
         onDeleteTask: handleDeleteTask,
         onUnscheduleTask: handleUnscheduleTask,
-        onMakeNextTask: handleMakeNextTask,
+        onDoNowTask: handleDoNowTask,
         onSaveTaskEdit: handleSaveTaskEdit,
         onCancelEdit: handleCancelEdit,
         onGapClick: handleGapClick

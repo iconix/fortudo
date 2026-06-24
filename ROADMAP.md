@@ -53,4 +53,5 @@ Historical and planned repo tasks for Fortudo.
   - convert all remaining incomplete scheduled tasks from prior days into unscheduled tasks, copying `duration` into `estDuration` and defaulting `priority` to `medium`
   - show a summary toast after rollover so the user can see what changed
 - [ ] (vNext) add checkbox to "make a habit" so we can have a second list that gets injected daily
+- [ ] (vNext) support configurable task quick actions so frequently used menu actions can be promoted back onto the task card
 - [ ] (vNext) support pomodoro alarms on running timers (?)

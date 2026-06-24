@@ -459,11 +459,11 @@ function handleScheduledTaskListClick(event) {
         return;
     }
 
-    if (target.closest('.btn-make-next')) {
+    if (target.closest('.btn-do-now')) {
         event.preventDefault();
         closeScheduledTaskActionMenus();
-        if (globalScheduledTaskCallbacks.onMakeNextTask) {
-            globalScheduledTaskCallbacks.onMakeNextTask(taskId, taskIndex);
+        if (globalScheduledTaskCallbacks.onDoNowTask) {
+            globalScheduledTaskCallbacks.onDoNowTask(taskId, taskIndex);
         }
         return;
     }

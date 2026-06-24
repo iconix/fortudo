@@ -867,7 +867,7 @@ export function updateTask(index, taskData) {
     return { success: true, task: tasks[index], autoRescheduledMessage: autoMessage };
 }
 
-export function makeScheduledTaskNext(taskId, startTime) {
+export function doScheduledTaskNow(taskId, startTime) {
     const taskIndex = tasks.findIndex((task) => task.id === taskId && task.type === 'scheduled');
     if (taskIndex === -1) {
         return { success: false, reason: 'Scheduled task not found.' };
@@ -875,7 +875,7 @@ export function makeScheduledTaskNext(taskId, startTime) {
 
     const task = tasks[taskIndex];
     if (task.status === 'completed') {
-        return { success: false, reason: 'Completed tasks cannot be made next.' };
+        return { success: false, reason: 'Completed tasks cannot be done now.' };
     }
 
     return updateTask(taskIndex, {

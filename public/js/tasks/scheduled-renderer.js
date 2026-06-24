@@ -114,10 +114,10 @@ export function renderEditTaskHTML(task, index) {
  * @param {Object} task - The task object
  * @param {number} index - The task index
  * @param {boolean} isActiveTask - Whether this is the active task
- * @param {boolean} canMakeNext - Whether to show the make-next action
+ * @param {boolean} canDoNow - Whether to show the do-now action
  * @returns {string} HTML string for the task view
  */
-export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = false) {
+export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) {
     const isCompleted = task.status === 'completed';
     const checkboxDisabled = isCompleted || !isActiveTask;
     let activeTaskColorClass = 'text-slate-200';
@@ -137,11 +137,11 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
     const openMenuTaskClass = task.confirmingDelete ? ' z-40' : '';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
 
-    const makeNextMenuItem = canMakeNext
+    const doNowMenuItem = canDoNow
         ? `<div class="task-actions-menu-group">
-                <button class="task-actions-menu-item task-actions-menu-item-primary btn-make-next grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-teal-400/10 hover:bg-teal-400/20 text-teal-300 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
-                    <i class="fa-solid fa-forward-step text-teal-400 text-center" aria-hidden="true"></i>
-                    <span>Make this next</span>
+                <button class="task-actions-menu-item task-actions-menu-item-primary btn-do-now grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-teal-400/10 hover:bg-teal-400/20 text-teal-300 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
+                    <i class="fa-solid fa-bolt text-teal-400 text-center" aria-hidden="true"></i>
+                    <span>Do now</span>
                 </button>
             </div>`
         : '';
@@ -171,8 +171,8 @@ export function renderViewTaskHTML(task, index, isActiveTask, canMakeNext = fals
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
             <div class="task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
-                ${makeNextMenuItem}
-                <div class="task-actions-menu-group ${canMakeNext ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}">
+                ${doNowMenuItem}
+                <div class="task-actions-menu-group ${canDoNow ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}">
                     <button class="task-actions-menu-item btn-lock grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
                         <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open text-slate-400'} text-center" aria-hidden="true"></i>
                         <span>${task.locked ? 'Unlock task' : 'Lock task'}</span>

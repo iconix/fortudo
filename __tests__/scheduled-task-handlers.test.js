@@ -8,7 +8,7 @@ import {
     handleEditTask,
     handleDeleteTask,
     handleUnscheduleTask,
-    handleMakeNextTask,
+    handleDoNowTask,
     handleSaveTaskEdit,
     handleCancelEdit,
     handleGapClick,
@@ -121,7 +121,7 @@ describe('Scheduled Task Handlers', () => {
             expect(callbacks).toHaveProperty('onEditTask');
             expect(callbacks).toHaveProperty('onDeleteTask');
             expect(callbacks).toHaveProperty('onUnscheduleTask');
-            expect(callbacks).toHaveProperty('onMakeNextTask');
+            expect(callbacks).toHaveProperty('onDoNowTask');
             expect(callbacks).toHaveProperty('onSaveTaskEdit');
             expect(callbacks).toHaveProperty('onCancelEdit');
         });
@@ -138,7 +138,7 @@ describe('Scheduled Task Handlers', () => {
         });
     });
 
-    describe('handleMakeNextTask', () => {
+    describe('handleDoNowTask', () => {
         test('moves a task immediately when the current slot is free', async () => {
             getCurrentTimeElement.mockReturnValue({ textContent: '10:00 AM' });
             const currentTask = createTaskWithDateTime({
@@ -154,7 +154,7 @@ describe('Scheduled Task Handlers', () => {
             });
             updateTaskState([currentTask, futureTask]);
 
-            await handleMakeNextTask(futureTask.id);
+            await handleDoNowTask(futureTask.id);
 
             expect(askConfirmation).not.toHaveBeenCalled();
             expect(
@@ -182,7 +182,7 @@ describe('Scheduled Task Handlers', () => {
             updateTaskState([currentTask, futureTask]);
             askConfirmation.mockResolvedValueOnce(false);
 
-            await handleMakeNextTask(futureTask.id);
+            await handleDoNowTask(futureTask.id);
 
             expect(askConfirmation).toHaveBeenCalled();
             expect(showToast).toHaveBeenCalledWith('Schedule unchanged.', { theme: 'teal' });

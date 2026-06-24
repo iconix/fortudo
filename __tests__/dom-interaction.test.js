@@ -116,7 +116,7 @@ describe('DOM Handler Interaction Tests', () => {
             onCompleteTask: jest.fn(),
             onEditTask: jest.fn(),
             onDeleteTask: jest.fn(),
-            onMakeNextTask: jest.fn(),
+            onDoNowTask: jest.fn(),
             onSaveTaskEdit: jest.fn(),
             onCancelEdit: jest.fn()
         };
@@ -223,13 +223,13 @@ describe('DOM Handler Interaction Tests', () => {
             expect(trigger.closest('.task-actions').className).not.toContain('z-50');
         });
 
-        test('clicking make-next menu item invokes the scheduled make-next callback', () => {
+        test('clicking do-now menu item invokes the scheduled do-now callback', () => {
             renderFutureScheduledTask();
             document.querySelector('.btn-task-actions-menu').click();
 
-            document.querySelector('.btn-make-next').click();
+            document.querySelector('.btn-do-now').click();
 
-            expect(mockTaskEventCallbacks.onMakeNextTask).toHaveBeenCalledWith('future-task', 0);
+            expect(mockTaskEventCallbacks.onDoNowTask).toHaveBeenCalledWith('future-task', 0);
             expect(document.querySelector('.task-actions-menu').hidden).toBe(true);
         });
 
