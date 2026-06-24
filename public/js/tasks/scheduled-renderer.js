@@ -175,7 +175,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
                 <div class="task-actions-menu-group ${canDoNow ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}">
                     <button class="task-actions-menu-item btn-lock grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
                         <i class="fa-solid ${task.locked ? 'fa-lock text-rose-400' : 'fa-lock-open text-slate-400'} text-center" aria-hidden="true"></i>
-                        <span>${task.locked ? 'Unlock task' : 'Lock task'}</span>
+                        <span>${task.locked ? 'Allow reschedule' : 'Lock time'}</span>
                     </button>
                     <button class="task-actions-menu-item btn-unschedule grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-teal-400" type="button" role="menuitem">
                         <i class="fa-regular fa-calendar-xmark text-slate-400 text-center" aria-hidden="true"></i>

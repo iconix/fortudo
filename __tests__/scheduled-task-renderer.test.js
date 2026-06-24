@@ -250,6 +250,31 @@ describe('Scheduled Task Renderer Tests', () => {
             jest.useRealTimers();
         });
 
+        test('renders lock action copy based on lock state', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const unlockedTask = createTask('unlocked', '11:30', 30, {
+                description: 'Unlocked Task'
+            });
+            const lockedTask = createTask('locked', '12:30', 30, {
+                description: 'Locked Task',
+                locked: true
+            });
+
+            renderTasks([unlockedTask, lockedTask], mockCallbacks, mockInitListeners, null);
+
+            const unlockedTaskElement = document.querySelector('[data-task-id="unlocked"]');
+            const lockedTaskElement = document.querySelector('[data-task-id="locked"]');
+
+            expect(unlockedTaskElement.querySelector('.btn-lock').textContent).toContain(
+                'Lock time'
+            );
+            expect(lockedTaskElement.querySelector('.btn-lock').textContent).toContain(
+                'Allow reschedule'
+            );
+            jest.useRealTimers();
+        });
+
         test('keeps the actions menu open when delete is waiting for confirmation', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
