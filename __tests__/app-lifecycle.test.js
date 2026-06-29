@@ -21,6 +21,7 @@ describe('app room/session lifecycle', () => {
             refreshUI: jest.fn(),
             getActivitiesEnabled: jest.fn(() => true),
             syncRestoredRunningTimer: jest.fn(),
+            syncRunningTimerDisplay: jest.fn(),
             getTaskState: jest.fn(() => []),
             refreshActiveTaskColor: jest.fn(),
             refreshCurrentGapHighlight: jest.fn(),
@@ -90,6 +91,38 @@ describe('app room/session lifecycle', () => {
 
         expect(deps.syncRestoredRunningTimer).toHaveBeenCalledTimes(1);
         expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
+    });
+
+    test('refreshes running timer display after every synced storage refresh', async () => {
+        let syncStatusCallback;
+        const { deps, lifecycle } = createLifecycle({
+            onSyncStatusChange: jest.fn((callback) => {
+                syncStatusCallback = callback;
+                return jest.fn();
+            })
+        });
+
+        const abortController = new AbortController();
+        lifecycle.start({ signal: abortController.signal });
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        deps.syncRestoredRunningTimer.mockClear();
+        deps.syncRunningTimerDisplay.mockClear();
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
+        expect(deps.syncRunningTimerDisplay).toHaveBeenCalledTimes(1);
+        expect(deps.syncRunningTimerDisplay).toHaveBeenCalledWith(true);
     });
 
     test('stops a stale restored timer at the midnight after it started', async () => {

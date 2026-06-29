@@ -5,6 +5,7 @@ export function createRoomSessionLifecycle({
     refreshUI,
     getActivitiesEnabled,
     syncRestoredRunningTimer,
+    syncRunningTimerDisplay,
     getTaskState,
     refreshActiveTaskColor,
     refreshCurrentGapHighlight,
@@ -86,6 +87,8 @@ export function createRoomSessionLifecycle({
             refreshUI();
             if (restoreRunningTimer) {
                 syncRestoredRunningTimer(getActivitiesEnabled());
+            } else if (typeof syncRunningTimerDisplay === 'function') {
+                syncRunningTimerDisplay(getActivitiesEnabled());
             }
             refreshActiveTaskColor(getTaskState());
             refreshCurrentGapHighlight();

@@ -30,7 +30,8 @@ jest.mock('../public/js/activities/insights-renderer.js', () => ({
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
-    syncRestoredRunningTimer
+    syncRestoredRunningTimer,
+    syncRunningTimerDisplay
 } from '../public/js/activities/app-wiring.js';
 import {
     handleActivityAwareFormSubmit,
@@ -312,10 +313,27 @@ describe('activity app wiring', () => {
         expect(syncTimerFormState).toHaveBeenCalled();
     });
 
+    test('syncs running timer display without changing task type selection', () => {
+        const activityRadio = document.getElementById('activity');
+        const dispatchSpy = jest.spyOn(activityRadio, 'dispatchEvent');
+
+        syncRunningTimerDisplay(true);
+
+        expect(activityRadio.checked).toBe(false);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+        expect(syncTimerFormState).toHaveBeenCalled();
+    });
+
     test('does nothing when activities are disabled', () => {
         syncRestoredRunningTimer(false);
 
         expect(syncTimerFormState).not.toHaveBeenCalled();
         expect(getRunningActivity).not.toHaveBeenCalled();
+    });
+
+    test('does not sync running timer display when activities are disabled', () => {
+        syncRunningTimerDisplay(false);
+
+        expect(syncTimerFormState).not.toHaveBeenCalled();
     });
 });
