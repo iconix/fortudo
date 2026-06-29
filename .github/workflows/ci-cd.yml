@@ -159,14 +159,45 @@ jobs:
                   name: build-files
                   path: public/
 
+            - name: Configure Firebase service account
+              shell: bash
+              env:
+                  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
+              run: |
+                  printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+                  echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
             - name: Deploy to Firebase Hosting (Preview)
-              uses: FirebaseExtended/action-hosting-deploy@v0
-              with:
-                  repoToken: ${{ secrets.GITHUB_TOKEN }}
-                  firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
-                  projectId: fortudo
-                  expires: 30d
-                  firebaseToolsVersion: 15.22.1
+              shell: bash
+              run: |
+                  set +e
+
+                  branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+                  slug="$(
+                    printf '%s' "$branch" |
+                    tr '[:upper:]' '[:lower:]' |
+                    sed -E 's/[^a-z0-9-]+/-/g; s/^-+|-+$//g' |
+                    cut -c1-20
+                  )"
+                  channel="pr${{ github.event.pull_request.number }}-${slug}"
+                  log_file="$RUNNER_TEMP/firebase-preview-deploy.log"
+
+                  npx firebase-tools@latest hosting:channel:deploy "$channel" \
+                    --expires 30d \
+                    --project fortudo \
+                    --json 2>&1 | tee "$log_file"
+                  deploy_status=${PIPESTATUS[0]}
+
+                  if [ "$deploy_status" -eq 0 ]; then
+                    exit 0
+                  fi
+
+                  if grep -q 'is the current active version' "$log_file"; then
+                    echo "Firebase Hosting preview version is already active; treating retry as successful."
+                    exit 0
+                  fi
+
+                  exit "$deploy_status"
               env:
                   FIREBASE_CLI_EXPERIMENTS: webframeworks
 
@@ -193,6 +224,5 @@ jobs:
                   firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
                   channelId: live
                   projectId: fortudo
-                  firebaseToolsVersion: 15.22.1
               env:
                   FIREBASE_CLI_EXPERIMENTS: webframeworks
