@@ -216,3 +216,11 @@ export function syncRestoredRunningTimer(activitiesEnabled) {
 
     syncTimerFormState();
 }
+
+export function syncRunningTimerDisplay(activitiesEnabled) {
+    if (!activitiesEnabled) {
+        return;
+    }
+
+    syncTimerFormState();
+}

@@ -224,6 +224,19 @@ describe('DOM Handler Interaction Tests', () => {
             expect(trigger.closest('.task-actions').className).not.toContain('z-50');
         });
 
+        test('opening the scheduled actions menu does not auto-focus the first action', () => {
+            renderFutureScheduledTask();
+
+            const trigger = document.querySelector('.btn-task-actions-menu');
+            const firstMenuItem = document.querySelector('.task-actions-menu [role="menuitem"]');
+            trigger.focus();
+
+            trigger.click();
+
+            expect(document.activeElement).toBe(trigger);
+            expect(document.activeElement).not.toBe(firstMenuItem);
+        });
+
         test('clicking do-now menu item invokes the scheduled do-now callback', () => {
             renderFutureScheduledTask();
             document.querySelector('.btn-task-actions-menu').click();
@@ -1076,6 +1089,21 @@ describe('DOM Handler Interaction Tests', () => {
             expect(menu.hidden).toBe(true);
             expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
             expect(trigger.closest('.unscheduled-task-actions').className).not.toContain('z-50');
+        });
+
+        test('opening the unscheduled actions menu does not auto-focus the first action', () => {
+            setupUnscheduledTask('unsched-1');
+
+            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+            const firstMenuItem = document.querySelector(
+                '.unscheduled-task-actions-menu [role="menuitem"]'
+            );
+            trigger.focus();
+
+            trigger.click();
+
+            expect(document.activeElement).toBe(trigger);
+            expect(document.activeElement).not.toBe(firstMenuItem);
         });
 
         test('outside click and Escape close an open unscheduled task actions menu', () => {

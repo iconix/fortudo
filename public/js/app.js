@@ -43,7 +43,8 @@ import {
 import {
     createActivityAppCallbacks,
     initializeActivityUi,
-    syncRestoredRunningTimer
+    syncRestoredRunningTimer,
+    syncRunningTimerDisplay
 } from './activities/app-wiring.js';
 import {
     initializeActivitiesViewToggle,
@@ -194,6 +195,7 @@ async function initAndBootApp(roomCode) {
         refreshUI: refreshAppUI,
         getActivitiesEnabled: () => isActivitiesEnabled(),
         syncRestoredRunningTimer,
+        syncRunningTimerDisplay,
         getTaskState,
         refreshActiveTaskColor,
         refreshCurrentGapHighlight,
