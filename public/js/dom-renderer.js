@@ -288,9 +288,6 @@ function toggleScheduledTaskActionMenu(trigger) {
     menu.hidden = !shouldOpen;
     setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-    if (shouldOpen) {
-        menu.querySelector('[role="menuitem"]')?.focus();
-    }
 }
 
 function closeUnscheduledTaskActionMenus(exceptMenu = null) {
@@ -317,9 +314,6 @@ function toggleUnscheduledTaskActionMenu(trigger) {
     menu.hidden = !shouldOpen;
     setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-    if (shouldOpen) {
-        menu.querySelector('[role="menuitem"]')?.focus();
-    }
 }
 
 function handleScheduledTaskListKeydown(event) {
