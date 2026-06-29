@@ -52,10 +52,16 @@ import {
 import { showAlert } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
+import { logger } from '../public/js/utils.js';
 
 describe('activity handlers', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        jest.spyOn(logger, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
     });
 
     test('handleAddActivity routes success through coordinator and toast', async () => {
@@ -348,6 +354,20 @@ describe('activity handlers', () => {
         });
         expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-9');
         expect(showAlert).toHaveBeenCalledWith('Description is required to start a timer.', 'sky');
+    });
+
+    test('handleStartTimer logs caught errors before showing the generic alert', async () => {
+        const error = new Error('storage write failed');
+        startTimerReplacingCurrent.mockRejectedValueOnce(error);
+
+        const result = await handleStartTimer({ description: 'Next timer' });
+
+        expect(result).toEqual({
+            success: false,
+            reason: 'Could not start timer.'
+        });
+        expect(logger.error).toHaveBeenCalledWith('Failed to start timer:', error);
+        expect(showAlert).toHaveBeenCalledWith('Could not start timer.', 'sky');
     });
 
     test('handleStopTimer emits coordinator + toast on success', async () => {

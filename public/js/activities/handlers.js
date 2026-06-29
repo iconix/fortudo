@@ -11,6 +11,7 @@ import {
 import { consumeUnscheduledTask } from '../tasks/manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
+import { logger } from '../utils.js';
 
 function consumeSourceTaskIfPresent(activity) {
     if (activity?.sourceTaskId) {
@@ -129,7 +130,8 @@ export async function handleStartTimer(timerData) {
 
         showToast('Timer started.', { theme: 'sky' });
         return result;
-    } catch {
+    } catch (error) {
+        logger.error('Failed to start timer:', error);
         showAlert('Could not start timer.', 'sky');
         return { success: false, reason: 'Could not start timer.' };
     }
