@@ -166,6 +166,7 @@ jobs:
                   firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
                   projectId: fortudo
                   expires: 30d
+                  firebaseToolsVersion: 15.22.1
               env:
                   FIREBASE_CLI_EXPERIMENTS: webframeworks
 
@@ -192,5 +193,6 @@ jobs:
                   firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
                   channelId: live
                   projectId: fortudo
+                  firebaseToolsVersion: 15.22.1
               env:
                   FIREBASE_CLI_EXPERIMENTS: webframeworks
