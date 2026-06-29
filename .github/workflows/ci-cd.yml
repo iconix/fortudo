@@ -217,12 +217,36 @@ jobs:
                   name: build-files
                   path: public/
 
+            - name: Configure Firebase service account
+              shell: bash
+              env:
+                  FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
+              run: |
+                  printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+                  echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
             - name: Deploy to Firebase Hosting (Production)
-              uses: FirebaseExtended/action-hosting-deploy@v0
-              with:
-                  repoToken: ${{ secrets.GITHUB_TOKEN }}
-                  firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FORTUDO }}
-                  channelId: live
-                  projectId: fortudo
+              shell: bash
+              run: |
+                  set +e
+
+                  log_file="$RUNNER_TEMP/firebase-production-deploy.log"
+
+                  npx firebase-tools@latest deploy \
+                    --only hosting \
+                    --project fortudo \
+                    --json 2>&1 | tee "$log_file"
+                  deploy_status=${PIPESTATUS[0]}
+
+                  if [ "$deploy_status" -eq 0 ]; then
+                    exit 0
+                  fi
+
+                  if grep -q 'is the current active version' "$log_file"; then
+                    echo "Firebase Hosting live version is already active; treating retry as successful."
+                    exit 0
+                  fi
+
+                  exit "$deploy_status"
               env:
                   FIREBASE_CLI_EXPERIMENTS: webframeworks
