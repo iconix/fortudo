@@ -42,6 +42,8 @@ const saveActivityEditButton = document.getElementById('save-activity-edit-modal
 const activityEditForm = document.getElementById('activity-edit-form');
 const activityEditDescriptionInput = document.getElementById('activity-edit-description');
 
+let cleanupCustomAlertEscape = null;
+
 // --- Helper Functions ---
 function setModalTheme(modal, title, button, theme = 'indigo') {
     const titleClasses = {
@@ -66,6 +68,8 @@ function setModalTheme(modal, title, button, theme = 'indigo') {
 
 // --- Custom Alert Modal ---
 export function hideCustomAlert() {
+    cleanupCustomAlertEscape?.();
+    cleanupCustomAlertEscape = null;
     if (customAlertModal) customAlertModal.classList.add('hidden');
 }
 
@@ -75,6 +79,16 @@ export function showCustomAlert(title, message, theme = 'indigo') {
         customAlertMessage.textContent = message;
         setModalTheme(customAlertModal, customAlertTitle, okCustomAlertButton, theme);
         customAlertModal.classList.remove('hidden');
+        cleanupCustomAlertEscape?.();
+        const handleEscape = (event) => {
+            if (event.key === 'Escape') {
+                hideCustomAlert();
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+        cleanupCustomAlertEscape = () => {
+            document.removeEventListener('keydown', handleEscape);
+        };
     } else {
         logger.error('Custom alert modal elements not found. Falling back to window.alert.');
         window.alert(`${title}: ${message}`);
@@ -146,6 +160,33 @@ export function showCustomConfirm(
 
             setModalTheme(customConfirmModal, customConfirmTitle, newOkBtn, theme);
             customConfirmModal.classList.remove('hidden');
+
+            let settled = false;
+            const settle = (value) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                document.removeEventListener('keydown', handleEscape);
+                hideCustomConfirm();
+                resolve(value);
+            };
+            const handleEscape = (event) => {
+                if (event.key === 'Escape') {
+                    settle(false);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+
+            if (newOkBtn instanceof HTMLElement) {
+                newOkBtn.onclick = () => settle(true);
+            }
+            if (newCancelBtn instanceof HTMLElement) {
+                newCancelBtn.onclick = () => settle(false);
+            }
+            if (newCloseBtn instanceof HTMLElement) {
+                newCloseBtn.onclick = () => settle(false);
+            }
         });
     } else {
         logger.error('Custom confirm modal elements not found or not HTMLElements.');
