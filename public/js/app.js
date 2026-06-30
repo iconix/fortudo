@@ -60,6 +60,7 @@ import {
     openSettingsAfterActivitiesReloadIfNeeded,
     renderSettingsContent
 } from './settings-renderer.js';
+import { maybeShowWhatsNew } from './whats-new.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
@@ -142,6 +143,7 @@ async function initAndBootApp(roomCode) {
     // Load settings before any UI checks that depend on cached flags.
     await loadSettings();
     syncActivitiesUI(isActivitiesEnabled());
+    void maybeShowWhatsNew({ activitiesEnabled: isActivitiesEnabled() });
 
     // Load and initialize state
     await loadAppState();
