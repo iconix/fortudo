@@ -1,4 +1,4 @@
-"""Phase 6 E2E checks for mobile Insights behavior."""
+"""Phase 6 E2E checks for mobile and persistence polish."""
 
 from __future__ import annotations
 
@@ -10,15 +10,21 @@ from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).parent / "scripts"))
 from playwright_preview_smoke import (  # noqa: E402
+    assert_trend_day_selection_scopes_details,
     build_relative_day_activity_doc,
     build_relative_day_scheduled_task_doc,
     clear_room_storage,
     dismiss_open_modals,
     enter_room,
+    force_activity_mode,
+    open_settings_modal,
     install_local_pouchdb_route,
     open_scheduled_edit_form,
     read_docs,
     seed_docs,
+    start_activity_timer,
+    wait_for_running_activity_config,
+    wait_for_running_timer_ui,
     wait_until,
     wait_for_main_app,
 )
@@ -133,6 +139,46 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
 # onboarding sequence that follows Activities enablement.
 
 
+def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = None):
+    browser = playwright.chromium.launch(headless=True, channel="chrome")
+    context = browser.new_context(viewport={"width": 1280, "height": 900})
+    install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+    page = context.new_page()
+
+    page.goto(BASE_URL, wait_until="load")
+    page.evaluate("localStorage.clear()")
+    clear_room_storage(page, room_code)
+    seed_docs(page, room_code, docs or [])
+    enter_room(page, room_code)
+    wait_for_main_app(page)
+    dismiss_open_modals(page)
+
+    return browser, context, page
+
+
+def activities_config(*, enabled: bool = True, onboarding_dismissed: bool = True) -> dict:
+    return {
+        "_id": "config-settings",
+        "id": "config-settings",
+        "docType": "config",
+        "activitiesEnabled": enabled,
+        "onboardingDismissed": onboarding_dismissed,
+    }
+
+
+def format_browser_long_date(page, date_value: str) -> str:
+    return page.evaluate(
+        """
+        (dateValue) => new Date(`${dateValue}T00:00:00`).toLocaleDateString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+        })
+        """,
+        date_value,
+    )
+
+
 @pytest.mark.parametrize("viewport_width", [375, 768])
 def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
     with sync_playwright() as playwright:
@@ -150,11 +196,7 @@ def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
                 ROOM_CODE,
                 [
                     {
-                        "_id": "config-settings",
-                        "id": "config-settings",
-                        "docType": "config",
-                        "activitiesEnabled": True,
-                        "onboardingDismissed": True,
+                        **activities_config(),
                     },
                     build_relative_day_scheduled_task_doc(
                         page,
@@ -241,6 +283,140 @@ def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
             page.wait_for_timeout(500)
 
             assert duration_minutes.input_value() == "45"
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_running_timer_restores_after_reload():
+    room_code = "phase6-timer-restore"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_seeded_page(
+            playwright,
+            room_code,
+            [activities_config()],
+        )
+
+        try:
+            start_activity_timer(page, "Phase 6 reload timer", room_code=room_code)
+            running_config = wait_for_running_activity_config(
+                page,
+                room_code,
+                expected_description="Phase 6 reload timer",
+            )
+            assert running_config.get("activityId")
+
+            page.reload(wait_until="load")
+            wait_for_main_app(page)
+            dismiss_open_modals(page)
+
+            wait_for_running_timer_ui(page, "Phase 6 reload timer")
+            restored_config = wait_for_running_activity_config(
+                page,
+                room_code,
+                expected_description="Phase 6 reload timer",
+            )
+            assert restored_config.get("activityId") == running_config.get("activityId")
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_settings_activities_toggle_persists_across_reload():
+    room_code = "phase6-settings-persist"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_seeded_page(
+            playwright,
+            room_code,
+            [activities_config(enabled=False)],
+        )
+
+        try:
+            assert page.locator("#activity-toggle-option").is_hidden()
+
+            open_settings_modal(page)
+            page.locator("label:has(#activities-toggle)").click()
+            page.locator("#reload-apply-btn").click()
+
+            wait_for_main_app(page)
+            dismiss_open_modals(page)
+
+            page.locator("#activity-toggle-option").wait_for(state="visible", timeout=10000)
+            force_activity_mode(page)
+            page.locator("#start-timer-btn").wait_for(state="visible", timeout=10000)
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_insights_selected_day_scopes_details():
+    room_code = "phase6-insights-scope"
+    with sync_playwright() as playwright:
+        page_for_dates_browser, page_for_dates_context, page_for_dates = launch_seeded_page(
+            playwright,
+            f"{room_code}-dates",
+            [activities_config()],
+        )
+        try:
+            today_activity = build_relative_day_activity_doc(
+                page_for_dates,
+                doc_id="phase6-today-activity",
+                description="Phase 6 today actual",
+                day_offset=0,
+                start_hour=9,
+                start_minute=0,
+                duration_minutes=30,
+            )
+            prior_activity = build_relative_day_activity_doc(
+                page_for_dates,
+                doc_id="phase6-prior-activity",
+                description="Phase 6 prior actual",
+                day_offset=-1,
+                start_hour=10,
+                start_minute=0,
+                duration_minutes=45,
+            )
+            today_task = build_relative_day_scheduled_task_doc(
+                page_for_dates,
+                doc_id="phase6-today-task",
+                description="Phase 6 today plan",
+                day_offset=0,
+                start_hour=8,
+                start_minute=30,
+                duration_minutes=30,
+            )
+            prior_task = build_relative_day_scheduled_task_doc(
+                page_for_dates,
+                doc_id="phase6-prior-task",
+                description="Phase 6 prior plan",
+                day_offset=-1,
+                start_hour=9,
+                start_minute=30,
+                duration_minutes=30,
+            )
+        finally:
+            page_for_dates_context.close()
+            page_for_dates_browser.close()
+
+        browser, context, page = launch_seeded_page(
+            playwright,
+            room_code,
+            [activities_config(), today_task, prior_task, today_activity, prior_activity],
+        )
+
+        try:
+            page.locator("#view-toggle-insights").click()
+            page.locator("#insights-view").wait_for(state="visible", timeout=10000)
+
+            assert_trend_day_selection_scopes_details(
+                page,
+                selected_date=prior_activity["localDate"],
+                expected_date_text=format_browser_long_date(page, prior_activity["localDate"]),
+                expected_activity_description="Phase 6 prior actual",
+            )
+            assert "Phase 6 today actual" not in (
+                page.locator("#insights-activity-list").text_content() or ""
+            )
         finally:
             context.close()
             browser.close()
