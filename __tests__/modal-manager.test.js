@@ -225,6 +225,23 @@ describe('Modal Manager Tests', () => {
                 const title = document.getElementById('custom-alert-title');
                 expect(title.className).toContain('text-teal-400');
             });
+
+            test('Escape key closes visible alert modal', () => {
+                showCustomAlert('Title', 'Message');
+
+                const modal = document.getElementById('custom-alert-modal');
+                expect(modal.classList.contains('hidden')).toBe(false);
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('Escape key does not error when no alert modal is visible', () => {
+                expect(() => {
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                }).not.toThrow();
+            });
         });
 
         describe('Custom Confirm Modal', () => {
@@ -282,6 +299,38 @@ describe('Modal Manager Tests', () => {
 
                 const okBtn = document.getElementById('ok-custom-confirm-modal');
                 okBtn.click();
+            });
+
+            test('Escape key closes visible confirm modal and resolves false', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const modal = document.getElementById('custom-confirm-modal');
+
+                expect(modal.classList.contains('hidden')).toBe(false);
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                expect(modal.classList.contains('hidden')).toBe(true);
+                await expect(resultPromise).resolves.toBe(false);
+            });
+
+            test('confirm Escape listener is cleaned up after OK resolves', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const okBtn = document.getElementById('ok-custom-confirm-modal');
+
+                okBtn.click();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBe(true);
+            });
+
+            test('confirm Escape listener is cleaned up after cancel resolves', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const cancelBtn = document.getElementById('cancel-custom-confirm-modal');
+
+                cancelBtn.click();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBe(false);
             });
         });
 
