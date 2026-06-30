@@ -14,15 +14,25 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 @keyframes pulse-green {
-    0%, 100% { color: rgb(13, 148, 136); }  /* teal-600 */
-    50% { color: rgb(20, 184, 166); }       /* teal-500 */
+    0%,
+    100% {
+        color: rgb(13, 148, 136);
+    } /* teal-600 */
+    50% {
+        color: rgb(20, 184, 166);
+    } /* teal-500 */
 }
 .pulse-animation {
     animation: pulse-green 2s infinite;
 }
 @keyframes pulse-indigo {
-    0%, 100% { color: rgb(165, 180, 252); }  /* indigo-300 */
-    50% { color: rgb(129, 140, 248); }       /* indigo-400 */
+    0%,
+    100% {
+        color: rgb(165, 180, 252);
+    } /* indigo-300 */
+    50% {
+        color: rgb(129, 140, 248);
+    } /* indigo-400 */
 }
 .pulse-animation-indigo {
     animation: pulse-indigo 2s infinite;
@@ -38,7 +48,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2));
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.2));
     transform: translateX(-100%);
     transition: transform 0.5s ease;
 }
@@ -323,6 +333,12 @@
         box-shadow 100ms ease;
 }
 
+.activity-onboarding-target {
+    outline: 2px solid rgb(56 189 248 / 0.9);
+    outline-offset: 3px;
+    border-radius: 0.5rem;
+}
+
 .settings-reload-prompt {
     opacity: 0;
     transition: opacity 150ms ease;
@@ -364,6 +380,7 @@
     .view-panel,
     .action-menu-content,
     [data-timeline-block-id],
+    .activity-onboarding-target,
     .settings-reload-prompt {
         transition: none;
     }

@@ -22,8 +22,10 @@ import * as storage from '../public/js/storage.js';
 import { initStorage, destroyStorage, loadConfig, putConfig } from '../public/js/storage.js';
 import {
     loadSettings,
+    isOnboardingDismissed,
     isActivitiesEnabled,
     setActivitiesEnabled,
+    setOnboardingDismissed,
     SETTINGS_CONFIG_ID
 } from '../public/js/settings-manager.js';
 
@@ -55,6 +57,14 @@ describe('settings-manager', () => {
         await loadSettings();
 
         expect(isActivitiesEnabled()).toBe(true);
+    });
+
+    test('loadSettings reads onboardingDismissed from PouchDB config doc', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({ id: SETTINGS_CONFIG_ID, onboardingDismissed: true });
+        await loadSettings();
+
+        expect(isOnboardingDismissed()).toBe(true);
     });
 
     test('loadSettings migrates from localStorage when no PouchDB config exists', async () => {
@@ -119,6 +129,18 @@ describe('settings-manager', () => {
         expect(config.activitiesEnabled).toBe(true);
     });
 
+    test('setActivitiesEnabled preserves onboardingDismissed in PouchDB', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({ id: SETTINGS_CONFIG_ID, onboardingDismissed: true });
+        await loadSettings();
+
+        await setActivitiesEnabled(true);
+
+        const config = await loadConfig(SETTINGS_CONFIG_ID);
+        expect(config.activitiesEnabled).toBe(true);
+        expect(config.onboardingDismissed).toBe(true);
+    });
+
     test('setActivitiesEnabled(false) after true updates both cache and PouchDB', async () => {
         await initAndLoadSettings();
 
@@ -127,6 +149,17 @@ describe('settings-manager', () => {
         expect(isActivitiesEnabled()).toBe(false);
 
         const config = await loadConfig(SETTINGS_CONFIG_ID);
+        expect(config.activitiesEnabled).toBe(false);
+    });
+
+    test('setOnboardingDismissed updates cache and persists to PouchDB', async () => {
+        await initAndLoadSettings();
+
+        await setOnboardingDismissed(true);
+
+        expect(isOnboardingDismissed()).toBe(true);
+        const config = await loadConfig(SETTINGS_CONFIG_ID);
+        expect(config.onboardingDismissed).toBe(true);
         expect(config.activitiesEnabled).toBe(false);
     });
 

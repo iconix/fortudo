@@ -50,6 +50,7 @@ import {
     initializeActivitiesViewToggle,
     renderActiveInsightsView
 } from './activities/view-toggle.js';
+import { maybeShowOnboarding } from './activities/onboarding.js';
 import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
@@ -143,7 +144,11 @@ async function initAndBootApp(roomCode) {
     // Load settings before any UI checks that depend on cached flags.
     await loadSettings();
     syncActivitiesUI(isActivitiesEnabled());
-    void maybeShowWhatsNew({ activitiesEnabled: isActivitiesEnabled() });
+    void (async () => {
+        const activitiesEnabled = isActivitiesEnabled();
+        await maybeShowWhatsNew({ activitiesEnabled });
+        await maybeShowOnboarding({ activitiesEnabled, signal });
+    })();
 
     // Load and initialize state
     await loadAppState();
