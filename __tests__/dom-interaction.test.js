@@ -213,6 +213,9 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('true');
             expect(menu.hidden).toBe(false);
+            expect(menu.classList.contains('action-menu-content')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--open')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(false);
             expect(trigger.closest('[data-task-id]').className).toContain('z-40');
             expect(trigger.closest('.task-actions').className).toContain('z-50');
 
@@ -220,6 +223,9 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--open')).toBe(false);
             expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
             expect(trigger.closest('.task-actions').className).not.toContain('z-50');
         });
@@ -258,6 +264,7 @@ describe('DOM Handler Interaction Tests', () => {
             document.body.click();
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
 
             trigger.click();
             expect(menu.hidden).toBe(false);
@@ -267,6 +274,7 @@ describe('DOM Handler Interaction Tests', () => {
                 .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
         });
     });
 
@@ -1080,6 +1088,9 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('true');
             expect(menu.hidden).toBe(false);
+            expect(menu.classList.contains('action-menu-content')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--open')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(false);
             expect(trigger.closest('[data-task-id]').className).toContain('z-40');
             expect(trigger.closest('.unscheduled-task-actions').className).toContain('z-50');
 
@@ -1087,6 +1098,9 @@ describe('DOM Handler Interaction Tests', () => {
 
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
+            expect(menu.classList.contains('action-menu-content--open')).toBe(false);
             expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
             expect(trigger.closest('.unscheduled-task-actions').className).not.toContain('z-50');
         });
@@ -1118,6 +1132,7 @@ describe('DOM Handler Interaction Tests', () => {
             document.body.click();
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
 
             trigger.click();
             expect(menu.hidden).toBe(false);
@@ -1127,6 +1142,7 @@ describe('DOM Handler Interaction Tests', () => {
                 .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             expect(trigger.getAttribute('aria-expanded')).toBe('false');
             expect(menu.hidden).toBe(true);
+            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
         });
 
         test('schedule button calls onScheduleUnscheduledTask', () => {

@@ -146,10 +146,15 @@ function renderTimelineBlock(block, type, viewport) {
     const title = `${label}, ${timeRange}, ${duration}`;
     const { style, widthPercent } = getViewportBlockStyle(block, viewport);
     const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
+    const selected = block.id === selectedTimelineBlockId;
+    const selectedClasses = selected
+        ? ' outline outline-2 outline-offset-2 outline-cyan-300 shadow-cyan-300/40'
+        : '';
 
     return `<div data-timeline-block="${type}" data-timeline-block-id="${escapeHtml(block.id)}"
         data-compact="${compact ? 'true' : 'false'}"
-        role="img" class="absolute top-2 h-9 cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm"
+        data-selected="${selected ? 'true' : 'false'}"
+        role="img" class="absolute top-2 h-9 cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm${selectedClasses}"
         style="${style}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">

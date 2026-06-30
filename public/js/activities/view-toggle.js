@@ -42,8 +42,21 @@ export function syncActivitiesViewToggle(activitiesEnabled) {
     }
 
     viewToggle?.classList.toggle('hidden', !activitiesEnabled);
-    tasksView?.classList.toggle('hidden', activeView !== 'tasks');
-    insightsView?.classList.toggle('hidden', !activitiesEnabled || activeView !== 'insights');
+
+    const showTasks = activeView === 'tasks';
+    const showInsights = activitiesEnabled && activeView === 'insights';
+
+    if (tasksView) {
+        tasksView.classList.toggle('view-panel--visible', showTasks);
+        tasksView.classList.toggle('view-panel--hidden', !showTasks);
+        tasksView.classList.remove('hidden');
+    }
+    if (insightsView) {
+        insightsView.classList.toggle('view-panel--visible', showInsights);
+        insightsView.classList.toggle('view-panel--hidden', !showInsights);
+        insightsView.classList.remove('hidden');
+    }
+
     setButtonState(tasksButton, activeView === 'tasks');
     setButtonState(insightsButton, activeView === 'insights');
 

@@ -279,3 +279,100 @@
         filter: blur(10px);
     }
 }
+
+.view-panel {
+    transition: opacity 150ms ease;
+}
+
+.view-panel--hidden {
+    opacity: 0;
+    visibility: hidden;
+    position: absolute;
+    pointer-events: none;
+}
+
+.view-panel--visible {
+    opacity: 1;
+    visibility: visible;
+    position: static;
+    pointer-events: auto;
+}
+
+.action-menu-content {
+    transition:
+        opacity 100ms ease,
+        transform 100ms ease;
+    transform-origin: top right;
+}
+
+.action-menu-content--closed {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
+}
+
+.action-menu-content--open {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+[data-timeline-block-id] {
+    transition:
+        outline-offset 100ms ease,
+        box-shadow 100ms ease;
+}
+
+.settings-reload-prompt {
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.settings-reload-prompt--visible {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .task-card {
+        transition: none;
+    }
+
+    .task-card:hover {
+        transform: none;
+    }
+
+    .priority-badge::before {
+        transition: none;
+    }
+
+    .pulse-animation,
+    .pulse-animation-indigo {
+        animation: none;
+    }
+
+    .celebration-emoji,
+    .celebration-emoji:nth-child(1),
+    .celebration-emoji:nth-child(2),
+    .celebration-emoji:nth-child(3),
+    .celebration-emoji:nth-child(4),
+    .celebration-emoji:nth-child(5),
+    .celebration-emoji:nth-child(6),
+    .celebration-emoji:nth-child(7) {
+        animation: none;
+    }
+
+    .view-panel,
+    .action-menu-content,
+    [data-timeline-block-id],
+    .settings-reload-prompt {
+        transition: none;
+    }
+
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

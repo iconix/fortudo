@@ -63,9 +63,16 @@ describe('activity view shell', () => {
 
         syncActivitiesViewToggle(false);
 
+        const tasksView = document.getElementById('tasks-view');
+        const insightsView = document.getElementById('insights-view');
+
         expect(document.getElementById('view-toggle').classList.contains('hidden')).toBe(true);
-        expect(document.getElementById('tasks-view').classList.contains('hidden')).toBe(false);
-        expect(document.getElementById('insights-view').classList.contains('hidden')).toBe(true);
+        expect(tasksView.classList.contains('hidden')).toBe(false);
+        expect(tasksView.classList.contains('view-panel--visible')).toBe(true);
+        expect(tasksView.classList.contains('view-panel--hidden')).toBe(false);
+        expect(insightsView.classList.contains('hidden')).toBe(false);
+        expect(insightsView.classList.contains('view-panel--hidden')).toBe(true);
+        expect(insightsView.classList.contains('view-panel--visible')).toBe(false);
         expect(getActiveActivitiesView()).toBe('tasks');
     });
 
@@ -80,9 +87,16 @@ describe('activity view shell', () => {
         syncActivitiesViewToggle(true);
         document.getElementById('view-toggle-insights').click();
 
+        const tasksView = document.getElementById('tasks-view');
+        const insightsView = document.getElementById('insights-view');
+
         expect(renderInsights).toHaveBeenCalledTimes(1);
-        expect(document.getElementById('tasks-view').classList.contains('hidden')).toBe(true);
-        expect(document.getElementById('insights-view').classList.contains('hidden')).toBe(false);
+        expect(tasksView.classList.contains('hidden')).toBe(false);
+        expect(tasksView.classList.contains('view-panel--hidden')).toBe(true);
+        expect(tasksView.classList.contains('view-panel--visible')).toBe(false);
+        expect(insightsView.classList.contains('hidden')).toBe(false);
+        expect(insightsView.classList.contains('view-panel--visible')).toBe(true);
+        expect(insightsView.classList.contains('view-panel--hidden')).toBe(false);
         expect(getActiveActivitiesView()).toBe('insights');
     });
 

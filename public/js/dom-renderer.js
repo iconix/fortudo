@@ -264,6 +264,12 @@ function setTaskActionMenuElevation(menu, isElevated) {
     actions?.closest('[data-task-id]')?.classList.toggle('z-40', isElevated);
 }
 
+function setActionMenuTransitionState(menu, isOpen) {
+    menu.classList.add('action-menu-content');
+    menu.classList.toggle('action-menu-content--open', isOpen);
+    menu.classList.toggle('action-menu-content--closed', !isOpen);
+}
+
 function closeScheduledTaskActionMenus(exceptMenu = null) {
     const taskListElement = getScheduledTaskListElement();
     if (!taskListElement) return;
@@ -271,6 +277,7 @@ function closeScheduledTaskActionMenus(exceptMenu = null) {
     taskListElement.querySelectorAll('.task-actions-menu').forEach((menu) => {
         if (menu === exceptMenu) return;
         menu.hidden = true;
+        setActionMenuTransitionState(menu, false);
         setTaskActionMenuElevation(menu, false);
         const trigger = menu.parentElement?.querySelector('.btn-task-actions-menu');
         if (trigger instanceof HTMLElement) {
@@ -286,6 +293,7 @@ function toggleScheduledTaskActionMenu(trigger) {
     const shouldOpen = menu.hidden;
     closeScheduledTaskActionMenus(shouldOpen ? menu : null);
     menu.hidden = !shouldOpen;
+    setActionMenuTransitionState(menu, shouldOpen);
     setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 }
@@ -297,6 +305,7 @@ function closeUnscheduledTaskActionMenus(exceptMenu = null) {
     taskListElement.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
         if (menu === exceptMenu) return;
         menu.hidden = true;
+        setActionMenuTransitionState(menu, false);
         setTaskActionMenuElevation(menu, false);
         const trigger = menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
         if (trigger instanceof HTMLElement) {
@@ -312,6 +321,7 @@ function toggleUnscheduledTaskActionMenu(trigger) {
     const shouldOpen = menu.hidden;
     closeUnscheduledTaskActionMenus(shouldOpen ? menu : null);
     menu.hidden = !shouldOpen;
+    setActionMenuTransitionState(menu, shouldOpen);
     setTaskActionMenuElevation(menu, shouldOpen);
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 }
