@@ -150,15 +150,19 @@ function renderTimelineBlock(block, type, viewport) {
     const selectedClasses = selected
         ? ' outline outline-2 outline-offset-2 outline-cyan-300 shadow-cyan-300/40'
         : '';
+    const visibleLabelClass = 'block truncate whitespace-nowrap';
+    const visibleLabelHtml = compact
+        ? ''
+        : `<span data-timeline-visible-label class="${visibleLabelClass}">${escapeHtml(label)}</span>`;
 
     return `<div data-timeline-block="${type}" data-timeline-block-id="${escapeHtml(block.id)}"
         data-compact="${compact ? 'true' : 'false'}"
         data-selected="${selected ? 'true' : 'false'}"
-        role="img" class="absolute top-1 min-h-[44px] cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-[44px] text-white shadow-sm${selectedClasses}"
+        role="img" class="absolute top-1 h-[44px] min-h-[44px] cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-[44px] text-white shadow-sm${selectedClasses}"
         style="${style}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">
-        ${compact ? '' : `<span data-timeline-visible-label>${escapeHtml(label)}</span>`}
+        ${visibleLabelHtml}
         <span class="sr-only">${escapeHtml(title)}</span>
     </div>`;
 }
