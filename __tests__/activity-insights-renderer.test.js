@@ -309,6 +309,27 @@ describe('activity insights renderer', () => {
         expect(block.className).toContain('leading-[44px]');
     });
 
+    test('timeline visible labels stay single-line within fixed-height blocks', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'activity-1',
+                    description: 'Preview personal activity',
+                    startDateTime: isoAt('08:45'),
+                    endDateTime: isoAt('09:00'),
+                    duration: 15
+                })
+            ]
+        });
+
+        const block = document.querySelector('[data-timeline-block-id="activity-1"]');
+        const visibleLabel = block.querySelector('[data-timeline-visible-label]');
+
+        expect(block.className).toContain('h-[44px]');
+        expect(visibleLabel.className).toContain('truncate');
+        expect(visibleLabel.className).toContain('whitespace-nowrap');
+    });
+
     test('timeline row containers allow taller mobile touch targets', () => {
         renderWith({ tasks: [scheduledTask()] });
 
