@@ -63,7 +63,7 @@ export function renderSettingsContent(options = {}) {
                 </label>
             </div>
 
-            <div id="reload-prompt" class="hidden bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm">
+            <div id="reload-prompt" class="settings-reload-prompt hidden bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm">
                 <p class="text-slate-300 mb-2" id="reload-prompt-message"></p>
                 <button id="reload-apply-btn" type="button" class="bg-teal-500 hover:bg-teal-400 text-white px-4 py-1.5 rounded-lg text-sm transition-colors">
                     Reload to Apply
@@ -120,6 +120,7 @@ function wireSettingsEvents(options) {
 
             if (reloadPrompt) {
                 reloadPrompt.classList.remove('hidden');
+                reloadPrompt.classList.add('settings-reload-prompt--visible');
             }
             if (message) {
                 message.textContent = newValue

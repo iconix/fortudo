@@ -310,6 +310,54 @@ function replaceScheduledTaskContent(taskListElement, html) {
     taskListElement.insertBefore(fragment, afterBoundary);
 }
 
+function captureScheduledEditDrafts(taskListElement) {
+    const drafts = new Map();
+
+    taskListElement.querySelectorAll('form[id^="edit-task-"][data-task-id]').forEach((form) => {
+        const taskId = form.getAttribute('data-task-id');
+        if (!taskId) {
+            return;
+        }
+
+        drafts.set(taskId, {
+            description: form.querySelector('input[name="description"]')?.value,
+            startTime: form.querySelector('input[name="start-time"]')?.value,
+            durationHours: form.querySelector('input[name="duration-hours"]')?.value,
+            durationMinutes: form.querySelector('input[name="duration-minutes"]')?.value,
+            category: form.querySelector('select[name="category"]')?.value
+        });
+    });
+
+    return drafts;
+}
+
+function applyScheduledEditDrafts(taskListElement, drafts) {
+    taskListElement.querySelectorAll('form[id^="edit-task-"][data-task-id]').forEach((form) => {
+        const draft = drafts.get(form.getAttribute('data-task-id'));
+        if (!draft) {
+            return;
+        }
+
+        const fields = [
+            ['input[name="description"]', draft.description],
+            ['input[name="start-time"]', draft.startTime],
+            ['input[name="duration-hours"]', draft.durationHours],
+            ['input[name="duration-minutes"]', draft.durationMinutes],
+            ['select[name="category"]', draft.category]
+        ];
+
+        fields.forEach(([selector, value]) => {
+            const field = form.querySelector(selector);
+            if (
+                value !== undefined &&
+                (field instanceof HTMLInputElement || field instanceof HTMLSelectElement)
+            ) {
+                field.value = value;
+            }
+        });
+    });
+}
+
 /**
  * Renders all scheduled tasks
  * @param {Array} tasksToRender - All tasks
@@ -349,6 +397,7 @@ export function renderTasks(
 
     const gaps = findScheduleGaps(tasksToRender);
     const gapAfterTask = new Map(gaps.map((g) => [g.afterTaskId, g]));
+    const editDrafts = captureScheduledEditDrafts(taskListElement);
 
     let html = '';
     scheduledTasks.forEach((task) => {
@@ -376,6 +425,7 @@ export function renderTasks(
     beforeBoundary.dataset.boundaryTime = scheduledTasks[0].startDateTime;
     afterBoundary.dataset.boundaryTime = scheduledTasks[scheduledTasks.length - 1].endDateTime;
     replaceScheduledTaskContent(taskListElement, html);
+    applyScheduledEditDrafts(taskListElement, editDrafts);
 
     // Populate end time hints and overlap warnings for any edit forms
     taskListElement.querySelectorAll('form[id^="edit-task-"]').forEach((form) => {

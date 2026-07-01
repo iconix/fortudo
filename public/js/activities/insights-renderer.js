@@ -146,10 +146,15 @@ function renderTimelineBlock(block, type, viewport) {
     const title = `${label}, ${timeRange}, ${duration}`;
     const { style, widthPercent } = getViewportBlockStyle(block, viewport);
     const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
+    const selected = block.id === selectedTimelineBlockId;
+    const selectedClasses = selected
+        ? ' outline outline-2 outline-offset-2 outline-cyan-300 shadow-cyan-300/40'
+        : '';
 
     return `<div data-timeline-block="${type}" data-timeline-block-id="${escapeHtml(block.id)}"
         data-compact="${compact ? 'true' : 'false'}"
-        role="img" class="absolute top-2 h-9 cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-9 text-white shadow-sm"
+        data-selected="${selected ? 'true' : 'false'}"
+        role="img" class="absolute top-1 min-h-[44px] cursor-pointer overflow-hidden rounded border border-white/20 px-2 text-[11px] font-medium leading-[44px] text-white shadow-sm${selectedClasses}"
         style="${style}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}">
@@ -163,8 +168,8 @@ function renderTimelineTicks(viewport) {
 
     return `<div class="grid grid-cols-3 pl-[5.25rem] pr-1 pb-2 text-[10px] text-slate-500">
         <span>${escapeHtml(formatMinutesAsTime(viewport.startMinutes))}</span>
-        <span class="text-center">${escapeHtml(formatMinutesAsTime(midpoint))}</span>
-        <span class="text-right">${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}</span>
+        <span class="hidden text-center sm:block">${escapeHtml(formatMinutesAsTime(midpoint))}</span>
+        <span class="col-start-3 text-right">${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}</span>
     </div>`;
 }
 
@@ -173,7 +178,7 @@ function renderTimelineRow(label, type, blocks, viewport) {
 
     return `<div class="grid grid-cols-[4.5rem_1fr] items-center gap-3">
         <div class="text-xs font-medium uppercase text-slate-400">${escapeHtml(label)}</div>
-        <div class="relative h-12 rounded-lg border border-slate-700/70 bg-slate-950/60">
+        <div class="relative min-h-[3.5rem] rounded-lg border border-slate-700/70 bg-slate-950/60">
             ${blocksHtml}
         </div>
     </div>`;

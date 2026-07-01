@@ -638,5 +638,29 @@ describe('Scheduled Task Renderer Tests', () => {
 
             expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
         });
+
+        test('preserves scheduled edit form drafts across incidental re-renders', () => {
+            const tasks = [createTask('1', '10:00', 30, { editing: true, date: today })];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const form = document.querySelector('form[id^="edit-task-"]');
+            form.querySelector('input[name="description"]').value = 'Edited draft';
+            form.querySelector('input[name="start-time"]').value = '11:15';
+            form.querySelector('input[name="duration-hours"]').value = '1';
+            form.querySelector('input[name="duration-minutes"]').value = '45';
+            form.querySelector('select[name="category"]').value = 'work/deep';
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, mockCallbacks);
+
+            const rerenderedForm = document.querySelector('form[id^="edit-task-"]');
+            expect(rerenderedForm.querySelector('input[name="description"]').value).toBe(
+                'Edited draft'
+            );
+            expect(rerenderedForm.querySelector('input[name="start-time"]').value).toBe('11:15');
+            expect(rerenderedForm.querySelector('input[name="duration-hours"]').value).toBe('1');
+            expect(rerenderedForm.querySelector('input[name="duration-minutes"]').value).toBe('45');
+            expect(rerenderedForm.querySelector('select[name="category"]').value).toBe('work/deep');
+        });
     });
 });

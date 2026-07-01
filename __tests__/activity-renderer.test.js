@@ -736,7 +736,7 @@ describe('activity renderer', () => {
         expect(expandedRail.textContent).toContain('Work');
         expect(expandedRail.textContent).toContain('Deep Work 45m');
         expect(expandedRail.textContent).toContain('Admin 20m');
-        expect(expandedRail.textContent).toContain('Unspecified 15m');
+        expect(expandedRail.textContent).toContain('Work 15m');
         expect(expandedRail.textContent).not.toContain('Zero Child');
         expect(container.querySelectorAll('[data-summary-child-segment]')).toHaveLength(3);
     });

@@ -278,6 +278,8 @@ describe('settings-renderer', () => {
             const reloadPrompt = document.getElementById('reload-prompt');
             expect(reloadPrompt).not.toBeNull();
             expect(reloadPrompt.classList.contains('hidden')).toBe(false);
+            expect(reloadPrompt.classList.contains('settings-reload-prompt')).toBe(true);
+            expect(reloadPrompt.classList.contains('settings-reload-prompt--visible')).toBe(true);
             expect(message.textContent).toContain('Activities enabled');
             expect(message.textContent).toContain('taxonomy controls will be available');
             expect(taxonomySection.classList.contains('hidden')).toBe(true);

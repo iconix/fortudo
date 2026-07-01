@@ -191,7 +191,7 @@ describe('activity summary selectors', () => {
         ]);
     });
 
-    test('builds expanded child detail for the selected group with unspecified fallback', () => {
+    test('builds expanded child detail for the selected group with parent label fallback', () => {
         const model = buildActivitySummaryModel(
             [
                 {
@@ -230,7 +230,7 @@ describe('activity summary selectors', () => {
             expect.objectContaining({ key: 'work/admin', label: 'Admin', duration: 20 }),
             expect.objectContaining({
                 key: 'work::__unspecified',
-                label: 'Unspecified',
+                label: 'Work',
                 duration: 15
             })
         ]);

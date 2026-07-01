@@ -299,6 +299,41 @@ describe('activity insights renderer', () => {
         expect(narrow.querySelector('.sr-only').textContent).toContain('tiny review');
     });
 
+    test('timeline blocks meet minimum mobile touch target height', () => {
+        renderWith({ tasks: [scheduledTask()] });
+
+        const block = document.querySelector('[data-timeline-block-id="task-1"]');
+
+        expect(block).not.toBeNull();
+        expect(block.className).toContain('min-h-[44px]');
+        expect(block.className).toContain('leading-[44px]');
+    });
+
+    test('timeline row containers allow taller mobile touch targets', () => {
+        renderWith({ tasks: [scheduledTask()] });
+
+        const rowContainer = document
+            .querySelector('[data-timeline-block="planned"]')
+            ?.closest('.relative');
+
+        expect(rowContainer).not.toBeNull();
+        expect(rowContainer.className).toContain('min-h-[3.5rem]');
+    });
+
+    test('timeline midpoint tick is hidden on narrow screens', () => {
+        renderWith({ tasks: [scheduledTask()] });
+
+        const ticks = document
+            .getElementById('insights-timeline')
+            .querySelector('.grid.grid-cols-3');
+        const midpointTick = ticks.querySelectorAll('span')[1];
+        const endTick = ticks.querySelectorAll('span')[2];
+
+        expect(midpointTick.className).toContain('hidden');
+        expect(midpointTick.className).toContain('sm:block');
+        expect(endTick.className).toContain('col-start-3');
+    });
+
     test('timeline selected block detail follows selected timeline block state', () => {
         setSelectedTimelineBlock('actual-2');
 
@@ -324,9 +359,12 @@ describe('activity insights renderer', () => {
         });
 
         const detail = document.querySelector('[data-selected-timeline-block]');
+        const selectedBlock = document.querySelector('[data-timeline-block-id="actual-2"]');
         expect(detail.textContent).toContain('tiny review');
         expect(detail.textContent).toContain('10:39 AM - 10:48 AM');
         expect(detail.textContent).toContain('9m');
+        expect(selectedBlock.dataset.selected).toBe('true');
+        expect(selectedBlock.className).toContain('shadow-cyan');
     });
 
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {

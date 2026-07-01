@@ -68,4 +68,27 @@ describe('activity render options', () => {
             activityIssuesById: new Map([['activity-1', [{ severity: 'warning' }]]])
         });
     });
+
+    test('does not refresh and overwrite drafts while clicking inside a scheduled task edit form', () => {
+        document.body.innerHTML = `
+            <form id="edit-task-task-1" data-task-id="task-1">
+                <input name="duration-minutes" value="45">
+            </form>
+        `;
+        const durationInput = document.querySelector('input[name="duration-minutes"]');
+        const refreshUI = jest.fn(() => {
+            durationInput.value = '30';
+        });
+        const resetAllConfirmingDeleteFlags = jest.fn(() => true);
+
+        const handled = handleActivityListClick(durationInput, {
+            refreshUI,
+            resetAllConfirmingDeleteFlags
+        });
+
+        expect(handled).toBe(false);
+        expect(resetAllConfirmingDeleteFlags).not.toHaveBeenCalled();
+        expect(refreshUI).not.toHaveBeenCalled();
+        expect(durationInput.value).toBe('45');
+    });
 });
