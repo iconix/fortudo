@@ -212,7 +212,24 @@ jobs:
                     exit 0
                   fi
 
-                  if grep -Eq 'is the current active version|already exists' "$log_file"; then
+                  if grep -q 'already exists' "$log_file"; then
+                    echo "Firebase Hosting preview channel exists without a usable release; recreating it."
+                    npx firebase-tools@latest hosting:channel:delete "$channel" \
+                      --force \
+                      --project fortudo
+                    npx firebase-tools@latest hosting:channel:deploy "$channel" \
+                      --expires 30d \
+                      --project fortudo \
+                      --json 2>&1 | tee "$log_file"
+                    deploy_status=${PIPESTATUS[0]}
+
+                    if [ "$deploy_status" -eq 0 ]; then
+                      print_preview_urls "$log_file"
+                      exit 0
+                    fi
+                  fi
+
+                  if grep -q 'is the current active version' "$log_file"; then
                     echo "Firebase Hosting preview channel exists; listing channels for its URL."
                     channel_list_file="$RUNNER_TEMP/firebase-preview-channels.log"
                     npx firebase-tools@latest hosting:channel:list \
