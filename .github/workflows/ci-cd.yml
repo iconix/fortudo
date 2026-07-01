@@ -212,8 +212,8 @@ jobs:
                     exit 0
                   fi
 
-                  if grep -q 'is the current active version' "$log_file"; then
-                    echo "Firebase Hosting preview version is already active; treating retry as successful."
+                  if grep -Eq 'is the current active version|already exists' "$log_file"; then
+                    echo "Firebase Hosting preview channel exists; listing channels for its URL."
                     channel_list_file="$RUNNER_TEMP/firebase-preview-channels.log"
                     npx firebase-tools@latest hosting:channel:list \
                       --project fortudo \
