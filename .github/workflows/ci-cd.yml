@@ -182,6 +182,24 @@ jobs:
                   channel="pr${{ github.event.pull_request.number }}-${slug}"
                   log_file="$RUNNER_TEMP/firebase-preview-deploy.log"
 
+                  print_preview_urls() {
+                    local source_file="$1"
+                    local urls
+                    urls="$(
+                      grep -Eo 'https://[^"[:space:]]+' "$source_file" |
+                      grep -E 'web\.app|firebaseapp\.com' |
+                      sort -u
+                      true
+                    )"
+
+                    if [ -n "$urls" ]; then
+                      echo "Firebase Hosting preview URL(s):"
+                      printf '%s\n' "$urls"
+                    else
+                      echo "Firebase Hosting preview URL was not present in $source_file."
+                    fi
+                  }
+
                   npx firebase-tools@latest hosting:channel:deploy "$channel" \
                     --expires 30d \
                     --project fortudo \
@@ -189,11 +207,17 @@ jobs:
                   deploy_status=${PIPESTATUS[0]}
 
                   if [ "$deploy_status" -eq 0 ]; then
+                    print_preview_urls "$log_file"
                     exit 0
                   fi
 
                   if grep -q 'is the current active version' "$log_file"; then
                     echo "Firebase Hosting preview version is already active; treating retry as successful."
+                    channel_list_file="$RUNNER_TEMP/firebase-preview-channels.log"
+                    npx firebase-tools@latest hosting:channel:list \
+                      --project fortudo \
+                      --json 2>&1 | tee "$channel_list_file"
+                    print_preview_urls "$channel_list_file"
                     exit 0
                   fi
 
