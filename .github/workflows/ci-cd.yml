@@ -179,7 +179,8 @@ jobs:
                     sed -E 's/[^a-z0-9-]+/-/g; s/^-+|-+$//g' |
                     cut -c1-20
                   )"
-                  channel="pr${{ github.event.pull_request.number }}-${slug}"
+                  short_sha="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+                  channel="pr${{ github.event.pull_request.number }}-${slug}-${short_sha}"
                   log_file="$RUNNER_TEMP/firebase-preview-deploy.log"
 
                   print_preview_urls() {
