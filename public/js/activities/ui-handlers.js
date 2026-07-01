@@ -228,7 +228,7 @@ export function handleActivityListClick(target, deps) {
         return true;
     }
 
-    const taskElement = target.closest('.task-item, .task-card');
+    const taskElement = target.closest('.task-item, .task-card, form[id^="edit-task-"]');
     const deleteButton = target.closest('.btn-delete, .btn-delete-unscheduled');
 
     if (!taskElement && !deleteButton) {
