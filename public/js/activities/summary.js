@@ -1,8 +1,7 @@
 import {
     resolveCategoryKey,
     getGroupByKey,
-    getCategoryByKey,
-    getTaxonomySnapshot
+    getCategoryByKey
 } from '../taxonomy/taxonomy-selectors.js';
 
 function titleCaseKey(value) {
@@ -99,9 +98,6 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
         return null;
     }
 
-    const parentHasChildren = getTaxonomySnapshot().categories.some(
-        (category) => category.groupKey === expandedParentGroupKey
-    );
     const summaryMap = new Map();
 
     for (const activity of activities) {
@@ -128,7 +124,7 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
 
             summaryMap.set(syntheticKey, {
                 key: syntheticKey,
-                label: parentHasChildren ? 'Unspecified' : parentGroup.label,
+                label: parentGroup.label,
                 color: parentGroup.color,
                 duration: activity.duration
             });
