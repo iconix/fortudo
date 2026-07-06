@@ -43,6 +43,7 @@ const activityEditForm = document.getElementById('activity-edit-form');
 const activityEditDescriptionInput = document.getElementById('activity-edit-description');
 
 let cleanupCustomAlertEscape = null;
+let resolveCustomAlert = null;
 
 // --- Helper Functions ---
 function setModalTheme(modal, title, button, theme = 'indigo') {
@@ -71,15 +72,17 @@ export function hideCustomAlert() {
     cleanupCustomAlertEscape?.();
     cleanupCustomAlertEscape = null;
     if (customAlertModal) customAlertModal.classList.add('hidden');
+    resolveCustomAlert?.();
+    resolveCustomAlert = null;
 }
 
 export function showCustomAlert(title, message, theme = 'indigo') {
     if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
+        hideCustomAlert();
         customAlertTitle.textContent = title;
         customAlertMessage.textContent = message;
         setModalTheme(customAlertModal, customAlertTitle, okCustomAlertButton, theme);
         customAlertModal.classList.remove('hidden');
-        cleanupCustomAlertEscape?.();
         const handleEscape = (event) => {
             if (event.key === 'Escape') {
                 hideCustomAlert();
@@ -89,9 +92,13 @@ export function showCustomAlert(title, message, theme = 'indigo') {
         cleanupCustomAlertEscape = () => {
             document.removeEventListener('keydown', handleEscape);
         };
+        return new Promise((resolve) => {
+            resolveCustomAlert = resolve;
+        });
     } else {
         logger.error('Custom alert modal elements not found. Falling back to window.alert.');
         window.alert(`${title}: ${message}`);
+        return Promise.resolve();
     }
 }
 
@@ -479,7 +486,7 @@ export function showActivityEditModal(currentDescription = '') {
 
 // --- Convenience Wrappers ---
 export function showAlert(message, theme = 'indigo') {
-    showCustomAlert('Alert', message, theme);
+    return showCustomAlert('Alert', message, theme);
 }
 
 /**

@@ -212,6 +212,30 @@ describe('Modal Manager Tests', () => {
                 expect(modal.classList.contains('hidden')).toBe(true);
             });
 
+            test('showCustomAlert resolves only after alert is dismissed', async () => {
+                const resultPromise = showCustomAlert('Title', 'Message');
+                let resolved = false;
+                resultPromise.then(() => {
+                    resolved = true;
+                });
+
+                await Promise.resolve();
+                expect(resolved).toBe(false);
+
+                document.getElementById('ok-custom-alert-modal').click();
+                await resultPromise;
+
+                expect(resolved).toBe(true);
+            });
+
+            test('showCustomAlert resolves when Escape dismisses alert', async () => {
+                const resultPromise = showCustomAlert('Title', 'Message');
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBeUndefined();
+            });
+
             test('showCustomAlert applies indigo theme by default', () => {
                 showCustomAlert('Title', 'Message');
 
