@@ -71,7 +71,8 @@ import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
-import { ACTIVITIES_ANNOUNCEMENT_ENABLED, COUCHDB_URL } from './config.js';
+import { COUCHDB_URL } from './config.js';
+import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;

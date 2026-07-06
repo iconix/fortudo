@@ -337,9 +337,10 @@ describe('App.js Callback Functions', () => {
     describe('sync config boot behavior', () => {
         test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
             const config = await import('../public/js/config.js');
+            const featureFlags = await import('../public/js/feature-flags.js');
 
             expect(config.COUCHDB_URL).toBeNull();
-            expect(config.ACTIVITIES_ANNOUNCEMENT_ENABLED).toBe(false);
+            expect(featureFlags.ACTIVITIES_ANNOUNCEMENT_ENABLED).toBe(false);
         });
 
         test('boot initializes storage without a remote URL when sync config is null', async () => {

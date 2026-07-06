@@ -9,9 +9,3 @@
  * The app will append the database name automatically (e.g., /fortudo-fox-742).
  */
 export const COUCHDB_URL = null;
-
-/**
- * Feature flag for the browser-scoped Activities availability announcement.
- * Keep false until Activities are ready to announce broadly.
- */
-export const ACTIVITIES_ANNOUNCEMENT_ENABLED = false;
