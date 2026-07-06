@@ -334,9 +334,20 @@
 }
 
 .activity-onboarding-target {
-    outline: 2px solid rgb(56 189 248 / 0.9);
+    outline: 2px solid rgb(251 191 36 / 0.95);
     outline-offset: 3px;
     border-radius: 0.5rem;
+    transition:
+        outline-color 150ms ease,
+        box-shadow 150ms ease,
+        background-color 150ms ease;
+}
+
+.activity-onboarding-highlight {
+    background-color: rgb(251 191 36 / 0.12);
+    box-shadow:
+        0 0 0 4px rgb(251 191 36 / 0.16),
+        0 0 22px rgb(251 191 36 / 0.35);
 }
 
 .settings-reload-prompt {
@@ -381,6 +392,7 @@
     .action-menu-content,
     [data-timeline-block-id],
     .activity-onboarding-target,
+    .activity-onboarding-highlight,
     .settings-reload-prompt {
         transition: none;
     }

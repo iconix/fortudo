@@ -99,6 +99,9 @@ describe('activity onboarding walkthrough', () => {
         expect(document.getElementById('activity-toggle-option').className).toContain(
             'activity-onboarding-target'
         );
+        expect(document.getElementById('activity-toggle-option').className).toContain(
+            'activity-onboarding-highlight'
+        );
         expect(document.getElementById('activity').checked).toBe(true);
     });
 
@@ -113,6 +116,12 @@ describe('activity onboarding walkthrough', () => {
         expect(document.getElementById('start-timer-btn').className).toContain(
             'activity-onboarding-target'
         );
+        expect(document.getElementById('start-timer-btn').className).toContain(
+            'activity-onboarding-highlight'
+        );
+        expect(document.getElementById('activity-toggle-option').className).not.toContain(
+            'activity-onboarding-highlight'
+        );
         expect(document.getElementById('start-timer-btn').classList.contains('hidden')).toBe(false);
 
         document.querySelector('[data-activity-onboarding-next]').click();
@@ -121,6 +130,12 @@ describe('activity onboarding walkthrough', () => {
         );
         expect(document.getElementById('view-toggle-insights').className).toContain(
             'activity-onboarding-target'
+        );
+        expect(document.getElementById('view-toggle-insights').className).toContain(
+            'activity-onboarding-highlight'
+        );
+        expect(document.getElementById('start-timer-btn').className).not.toContain(
+            'activity-onboarding-highlight'
         );
         expect(document.getElementById('view-toggle-insights').getAttribute('aria-pressed')).toBe(
             'true'
@@ -145,6 +160,9 @@ describe('activity onboarding walkthrough', () => {
         expect(document.getElementById('activity-toggle-option').className).not.toContain(
             'activity-onboarding-target'
         );
+        expect(document.getElementById('activity-toggle-option').className).not.toContain(
+            'activity-onboarding-highlight'
+        );
     });
 
     test('remind me later snoozes onboarding without dismissing it permanently', async () => {
@@ -159,6 +177,9 @@ describe('activity onboarding walkthrough', () => {
         expect(document.querySelector('[data-activity-onboarding]')).toBeNull();
         expect(document.getElementById('activity-toggle-option').className).not.toContain(
             'activity-onboarding-target'
+        );
+        expect(document.getElementById('activity-toggle-option').className).not.toContain(
+            'activity-onboarding-highlight'
         );
     });
 });

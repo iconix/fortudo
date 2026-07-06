@@ -7,6 +7,7 @@ import {
 
 const ONBOARDING_ROOT_ID = 'activity-onboarding';
 const TARGET_CLASS = 'activity-onboarding-target';
+const HIGHLIGHT_CLASS = 'activity-onboarding-highlight';
 
 const STEPS = [
     {
@@ -33,7 +34,7 @@ let currentTarget = null;
 
 function removeExistingOnboarding() {
     document.getElementById(ONBOARDING_ROOT_ID)?.remove();
-    currentTarget?.classList.remove(TARGET_CLASS);
+    currentTarget?.classList.remove(TARGET_CLASS, HIGHLIGHT_CLASS);
     currentTarget = null;
 }
 
@@ -82,7 +83,7 @@ function renderStep(stepIndex, { signal }) {
     }
 
     currentTarget = target;
-    target.classList.add(TARGET_CLASS);
+    target.classList.add(TARGET_CLASS, HIGHLIGHT_CLASS);
 
     const root = document.createElement('div');
     root.id = ONBOARDING_ROOT_ID;
