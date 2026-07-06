@@ -79,26 +79,15 @@ export function renderSettingsContent(options = {}) {
     wireSettingsEvents(options);
 }
 
-export async function openSettingsAfterActivitiesReloadIfNeeded({
-    waitForIdleSync = async () => {},
-    renderContent = () => renderSettingsContent()
-} = {}) {
+export function openSettingsAfterActivitiesReloadIfNeeded() {
     if (sessionStorage.getItem(OPEN_SETTINGS_AFTER_ACTIVITIES_RELOAD_KEY) !== 'true') {
         return;
     }
 
     sessionStorage.removeItem(OPEN_SETTINGS_AFTER_ACTIVITIES_RELOAD_KEY);
-    if (!isActivitiesEnabled()) {
-        return;
-    }
-
-    await waitForIdleSync();
-    renderContent();
-    openSettingsModal();
 }
 
 function wireSettingsEvents(options) {
-    let pendingActivitiesEnabledValue = isActivitiesEnabled();
     const toggle = document.getElementById('activities-toggle');
     if (toggle) {
         toggle.onchange = async () => {
@@ -113,7 +102,6 @@ function wireSettingsEvents(options) {
                 return;
             }
 
-            pendingActivitiesEnabledValue = newValue;
             const reloadPrompt = document.getElementById('reload-prompt');
             const message = document.getElementById('reload-prompt-message');
             const taxonomySection = document.getElementById('taxonomy-management-section');
@@ -136,11 +124,7 @@ function wireSettingsEvents(options) {
     const reloadButton = document.getElementById('reload-apply-btn');
     if (reloadButton) {
         reloadButton.onclick = () => {
-            if (pendingActivitiesEnabledValue) {
-                sessionStorage.setItem(OPEN_SETTINGS_AFTER_ACTIVITIES_RELOAD_KEY, 'true');
-            } else {
-                sessionStorage.removeItem(OPEN_SETTINGS_AFTER_ACTIVITIES_RELOAD_KEY);
-            }
+            sessionStorage.removeItem(OPEN_SETTINGS_AFTER_ACTIVITIES_RELOAD_KEY);
             (options.reloadWindow || (() => window.location.reload()))();
         };
     }

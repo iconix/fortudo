@@ -304,7 +304,7 @@ describe('settings-renderer', () => {
             expect(message.textContent).toContain('Activities disabled');
         });
 
-        test('reload after enabling Activities records a one-time return to settings', async () => {
+        test('reload after enabling Activities does not record a return to settings', async () => {
             const reloadWindow = jest.fn();
             await renderDisabledSettings({ reloadWindow });
 
@@ -319,7 +319,7 @@ describe('settings-renderer', () => {
             document.getElementById('reload-apply-btn').click();
 
             expect(sessionStorage.getItem('fortudo-open-settings-after-activities-reload')).toBe(
-                'true'
+                null
             );
             expect(reloadWindow).toHaveBeenCalledTimes(1);
         });
@@ -344,7 +344,7 @@ describe('settings-renderer', () => {
             expect(reloadWindow).toHaveBeenCalledTimes(1);
         });
 
-        test('opens settings once after an Activities enable reload settles', async () => {
+        test('clears stale Activities reload return flag without opening settings', async () => {
             const waitForIdleSync = jest.fn(() => Promise.resolve());
             const renderContent = jest.fn(() => renderSettingsContent());
             sessionStorage.setItem('fortudo-open-settings-after-activities-reload', 'true');
@@ -352,9 +352,9 @@ describe('settings-renderer', () => {
 
             await openSettingsAfterActivitiesReloadIfNeeded({ waitForIdleSync, renderContent });
 
-            expect(waitForIdleSync).toHaveBeenCalledTimes(1);
-            expect(renderContent).toHaveBeenCalledTimes(1);
-            expect(getSettingsModalElement().classList.contains('hidden')).toBe(false);
+            expect(waitForIdleSync).not.toHaveBeenCalled();
+            expect(renderContent).not.toHaveBeenCalled();
+            expect(getSettingsModalElement().classList.contains('hidden')).toBe(true);
             expect(sessionStorage.getItem('fortudo-open-settings-after-activities-reload')).toBe(
                 null
             );

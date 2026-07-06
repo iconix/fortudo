@@ -71,7 +71,7 @@ import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
-import { COUCHDB_URL } from './config.js';
+import { ACTIVITIES_ANNOUNCEMENT_ENABLED, COUCHDB_URL } from './config.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -146,7 +146,7 @@ async function initAndBootApp(roomCode) {
     syncActivitiesUI(isActivitiesEnabled());
     void (async () => {
         const activitiesEnabled = isActivitiesEnabled();
-        await maybeShowWhatsNew({ activitiesEnabled });
+        await maybeShowWhatsNew({ announcementEnabled: ACTIVITIES_ANNOUNCEMENT_ENABLED });
         await maybeShowOnboarding({ activitiesEnabled, signal });
     })();
 

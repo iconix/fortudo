@@ -8,21 +8,21 @@ describe("what's new modal", () => {
         jest.resetModules();
     });
 
-    test('does nothing when Activities are disabled', async () => {
+    test('does nothing when announcement flag is disabled', async () => {
         const { maybeShowWhatsNew, WHATS_NEW_KEY } = await import('../public/js/whats-new.js');
         const showAlert = jest.fn();
 
-        await maybeShowWhatsNew({ activitiesEnabled: false, showAlert });
+        await maybeShowWhatsNew({ announcementEnabled: false, activitiesEnabled: true, showAlert });
 
         expect(showAlert).not.toHaveBeenCalled();
         expect(localStorage.getItem(WHATS_NEW_KEY)).toBeNull();
     });
 
-    test('shows announcement when Activities are enabled and key is absent', async () => {
+    test('shows announcement before Activities are enabled when flag is enabled', async () => {
         const { maybeShowWhatsNew } = await import('../public/js/whats-new.js');
         const showAlert = jest.fn();
 
-        await maybeShowWhatsNew({ activitiesEnabled: true, showAlert });
+        await maybeShowWhatsNew({ announcementEnabled: true, activitiesEnabled: false, showAlert });
 
         expect(showAlert).toHaveBeenCalledWith(
             "What's New in Fortudo",
@@ -36,7 +36,7 @@ describe("what's new modal", () => {
         const showAlert = jest.fn();
         localStorage.setItem(WHATS_NEW_KEY, 'dismissed');
 
-        await maybeShowWhatsNew({ activitiesEnabled: true, showAlert });
+        await maybeShowWhatsNew({ announcementEnabled: true, showAlert });
 
         expect(showAlert).not.toHaveBeenCalled();
     });
@@ -51,7 +51,7 @@ describe("what's new modal", () => {
                 })
         );
 
-        const resultPromise = maybeShowWhatsNew({ activitiesEnabled: true, showAlert });
+        const resultPromise = maybeShowWhatsNew({ announcementEnabled: true, showAlert });
 
         expect(localStorage.getItem(WHATS_NEW_KEY)).toBeNull();
 

@@ -11,13 +11,13 @@ const WHATS_NEW_MESSAGE = [
 
 /**
  * Shows the one-time Activities announcement for this browser.
- * @param {{ activitiesEnabled?: boolean, showAlert?: Function }} [options]
+ * @param {{ announcementEnabled?: boolean, showAlert?: Function }} [options]
  */
 export async function maybeShowWhatsNew({
-    activitiesEnabled = false,
+    announcementEnabled = false,
     showAlert = showCustomAlert
 } = {}) {
-    if (!activitiesEnabled) {
+    if (!announcementEnabled) {
         return;
     }
 

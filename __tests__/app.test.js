@@ -339,6 +339,7 @@ describe('App.js Callback Functions', () => {
             const config = await import('../public/js/config.js');
 
             expect(config.COUCHDB_URL).toBeNull();
+            expect(config.ACTIVITIES_ANNOUNCEMENT_ENABLED).toBe(false);
         });
 
         test('boot initializes storage without a remote URL when sync config is null', async () => {
