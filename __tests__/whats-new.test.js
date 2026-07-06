@@ -24,11 +24,20 @@ describe("what's new modal", () => {
 
         await maybeShowWhatsNew({ announcementEnabled: true, activitiesEnabled: false, showAlert });
 
+        const [, message] = showAlert.mock.calls[0];
+
         expect(showAlert).toHaveBeenCalledWith(
             "What's New in Fortudo",
-            expect.stringContaining('Activity Logging'),
+            expect.any(HTMLElement),
             'sky'
         );
+        expect(message.querySelector('[data-whats-new-intro]').textContent).toContain(
+            'Activities are ready to try'
+        );
+        expect(message.querySelectorAll('[data-whats-new-feature]')).toHaveLength(3);
+        expect(message.textContent).toContain('Activity Logging');
+        expect(message.textContent).toContain('Live Timer');
+        expect(message.textContent).toContain('Insights View');
     });
 
     test('does not show announcement when already dismissed', async () => {

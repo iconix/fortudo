@@ -67,6 +67,19 @@ function setModalTheme(modal, title, button, theme = 'indigo') {
     }
 }
 
+function renderCustomAlertMessage(message) {
+    if (!customAlertMessage) {
+        return;
+    }
+
+    if (typeof Node !== 'undefined' && message instanceof Node) {
+        customAlertMessage.replaceChildren(message);
+        return;
+    }
+
+    customAlertMessage.textContent = message;
+}
+
 // --- Custom Alert Modal ---
 export function hideCustomAlert() {
     cleanupCustomAlertEscape?.();
@@ -80,7 +93,7 @@ export function showCustomAlert(title, message, theme = 'indigo') {
     if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
         hideCustomAlert();
         customAlertTitle.textContent = title;
-        customAlertMessage.textContent = message;
+        renderCustomAlertMessage(message);
         setModalTheme(customAlertModal, customAlertTitle, okCustomAlertButton, theme);
         customAlertModal.classList.remove('hidden');
         const handleEscape = (event) => {

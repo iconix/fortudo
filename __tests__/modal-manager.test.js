@@ -174,6 +174,25 @@ describe('Modal Manager Tests', () => {
                 expect(message.textContent).toBe('Test Message');
             });
 
+            test('showCustomAlert renders element messages without flattening markup', () => {
+                const content = document.createElement('div');
+                content.innerHTML = `
+                    <p data-testid="intro">A cleaner intro</p>
+                    <ul>
+                        <li data-testid="feature">Feature one</li>
+                        <li data-testid="feature">Feature two</li>
+                    </ul>
+                `;
+
+                showCustomAlert('Test Title', content);
+
+                const message = document.getElementById('custom-alert-message');
+                expect(message.querySelector('[data-testid="intro"]').textContent).toBe(
+                    'A cleaner intro'
+                );
+                expect(message.querySelectorAll('[data-testid="feature"]')).toHaveLength(2);
+            });
+
             test('hideCustomAlert hides the modal', () => {
                 showCustomAlert('Title', 'Message');
                 hideCustomAlert();
