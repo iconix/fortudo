@@ -1,4 +1,9 @@
-import { isOnboardingDismissed, setOnboardingDismissed } from '../settings-manager.js';
+import {
+    isOnboardingDismissed,
+    isOnboardingSnoozed,
+    setOnboardingDismissed,
+    snoozeOnboarding
+} from '../settings-manager.js';
 
 const ONBOARDING_ROOT_ID = 'activity-onboarding';
 const TARGET_CLASS = 'activity-onboarding-target';
@@ -39,6 +44,11 @@ async function dismissOnboarding() {
     await setOnboardingDismissed(true);
 }
 
+async function remindLater() {
+    removeExistingOnboarding();
+    await snoozeOnboarding();
+}
+
 function renderStep(stepIndex, { signal }) {
     removeExistingOnboarding();
 
@@ -62,8 +72,9 @@ function renderStep(stepIndex, { signal }) {
         <p class="text-xs font-semibold uppercase tracking-wide text-sky-300">${stepIndex + 1} of ${STEPS.length}</p>
         <h3 class="mt-1 text-base font-semibold text-slate-100">${step.title}</h3>
         <p class="mt-2 text-sm leading-6 text-slate-300">${step.body}</p>
-        <div class="mt-4 flex items-center justify-end gap-2">
+        <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
             <button type="button" data-activity-onboarding-skip class="rounded-md px-3 py-2 text-sm text-slate-400 hover:text-slate-200">Skip</button>
+            <button type="button" data-activity-onboarding-snooze class="rounded-md px-3 py-2 text-sm text-slate-400 hover:text-slate-200">Remind me later</button>
             <button type="button" data-activity-onboarding-next class="rounded-md bg-sky-500 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-400">${isLastStep ? 'Done' : 'Next'}</button>
         </div>
     `;
@@ -74,6 +85,13 @@ function renderStep(stepIndex, { signal }) {
         'click',
         () => {
             void dismissOnboarding();
+        },
+        { signal }
+    );
+    root.querySelector('[data-activity-onboarding-snooze]')?.addEventListener(
+        'click',
+        () => {
+            void remindLater();
         },
         { signal }
     );
@@ -96,7 +114,7 @@ function renderStep(stepIndex, { signal }) {
  * @param {{ activitiesEnabled?: boolean, signal?: AbortSignal }} [options]
  */
 export async function maybeShowOnboarding({ activitiesEnabled = false, signal } = {}) {
-    if (!activitiesEnabled || isOnboardingDismissed() || signal?.aborted) {
+    if (!activitiesEnabled || isOnboardingDismissed() || isOnboardingSnoozed() || signal?.aborted) {
         return;
     }
 

@@ -4,10 +4,17 @@
 
 jest.mock('../public/js/settings-manager.js', () => ({
     isOnboardingDismissed: jest.fn(() => false),
-    setOnboardingDismissed: jest.fn(() => Promise.resolve())
+    isOnboardingSnoozed: jest.fn(() => false),
+    setOnboardingDismissed: jest.fn(() => Promise.resolve()),
+    snoozeOnboarding: jest.fn(() => Promise.resolve())
 }));
 
-import { isOnboardingDismissed, setOnboardingDismissed } from '../public/js/settings-manager.js';
+import {
+    isOnboardingDismissed,
+    isOnboardingSnoozed,
+    setOnboardingDismissed,
+    snoozeOnboarding
+} from '../public/js/settings-manager.js';
 
 function renderTargets() {
     document.body.innerHTML = `
@@ -22,7 +29,9 @@ describe('activity onboarding walkthrough', () => {
         document.getElementById('activity-onboarding')?.remove();
         jest.clearAllMocks();
         isOnboardingDismissed.mockReturnValue(false);
+        isOnboardingSnoozed.mockReturnValue(false);
         setOnboardingDismissed.mockResolvedValue();
+        snoozeOnboarding.mockResolvedValue();
         renderTargets();
     });
 
@@ -43,6 +52,17 @@ describe('activity onboarding walkthrough', () => {
 
         expect(document.querySelector('[data-activity-onboarding]')).toBeNull();
         expect(setOnboardingDismissed).not.toHaveBeenCalled();
+    });
+
+    test('does nothing while onboarding is snoozed for the room', async () => {
+        isOnboardingSnoozed.mockReturnValue(true);
+        const { maybeShowOnboarding } = await import('../public/js/activities/onboarding.js');
+
+        await maybeShowOnboarding({ activitiesEnabled: true });
+
+        expect(document.querySelector('[data-activity-onboarding]')).toBeNull();
+        expect(setOnboardingDismissed).not.toHaveBeenCalled();
+        expect(snoozeOnboarding).not.toHaveBeenCalled();
     });
 
     test('renders the first tooltip and highlights its target', async () => {
@@ -94,6 +114,21 @@ describe('activity onboarding walkthrough', () => {
         await Promise.resolve();
 
         expect(setOnboardingDismissed).toHaveBeenCalledWith(true);
+        expect(document.querySelector('[data-activity-onboarding]')).toBeNull();
+        expect(document.getElementById('activity-toggle-option').className).not.toContain(
+            'activity-onboarding-target'
+        );
+    });
+
+    test('remind me later snoozes onboarding without dismissing it permanently', async () => {
+        const { maybeShowOnboarding } = await import('../public/js/activities/onboarding.js');
+        await maybeShowOnboarding({ activitiesEnabled: true });
+
+        document.querySelector('[data-activity-onboarding-snooze]').click();
+        await Promise.resolve();
+
+        expect(snoozeOnboarding).toHaveBeenCalledTimes(1);
+        expect(setOnboardingDismissed).not.toHaveBeenCalled();
         expect(document.querySelector('[data-activity-onboarding]')).toBeNull();
         expect(document.getElementById('activity-toggle-option').className).not.toContain(
             'activity-onboarding-target'
