@@ -63,8 +63,14 @@ const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 
 async function enableActivitiesAndBoot(tasks = []) {
     mockLoadTasksFromStorage.mockReturnValue(tasks);
+    mockLoadConfig.mockImplementation((configId) =>
+        Promise.resolve(
+            configId === 'config-settings'
+                ? { activitiesEnabled: true, onboardingDismissed: true }
+                : null
+        )
+    );
     await setupIntegrationTestEnvironment();
-    localStorage.setItem('fortudo-activities-enabled', 'true');
     document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 50));
 }

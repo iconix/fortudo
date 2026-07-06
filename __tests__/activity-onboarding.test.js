@@ -18,10 +18,32 @@ import {
 
 function renderTargets() {
     document.body.innerHTML = `
-        <div id="activity-toggle-option"></div>
-        <button id="start-timer-btn" type="button"></button>
-        <button id="view-toggle-insights" type="button"></button>
+        <form id="task-form">
+            <label id="scheduled-toggle-option">
+                <input id="scheduled" name="task-type" type="radio" value="scheduled" checked />
+                Scheduled
+            </label>
+            <label id="unscheduled-toggle-option">
+                <input id="unscheduled" name="task-type" type="radio" value="unscheduled" />
+                Unscheduled
+            </label>
+            <label id="activity-toggle-option">
+                <input id="activity" name="task-type" type="radio" value="activity" />
+                Activity
+            </label>
+            <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
+        </form>
+        <button id="view-toggle-tasks" type="button" aria-pressed="true">Tasks</button>
+        <button id="view-toggle-insights" type="button" aria-pressed="false">Insights</button>
     `;
+
+    document.getElementById('activity')?.addEventListener('change', () => {
+        document.getElementById('start-timer-btn')?.classList.remove('hidden');
+    });
+    document.getElementById('view-toggle-insights')?.addEventListener('click', () => {
+        document.getElementById('view-toggle-tasks')?.setAttribute('aria-pressed', 'false');
+        document.getElementById('view-toggle-insights')?.setAttribute('aria-pressed', 'true');
+    });
 }
 
 describe('activity onboarding walkthrough', () => {
@@ -77,6 +99,7 @@ describe('activity onboarding walkthrough', () => {
         expect(document.getElementById('activity-toggle-option').className).toContain(
             'activity-onboarding-target'
         );
+        expect(document.getElementById('activity').checked).toBe(true);
     });
 
     test('advances through all steps and persists dismissal on Done', async () => {
@@ -90,6 +113,7 @@ describe('activity onboarding walkthrough', () => {
         expect(document.getElementById('start-timer-btn').className).toContain(
             'activity-onboarding-target'
         );
+        expect(document.getElementById('start-timer-btn').classList.contains('hidden')).toBe(false);
 
         document.querySelector('[data-activity-onboarding-next]').click();
         expect(document.querySelector('[data-activity-onboarding]').textContent).toContain(
@@ -97,6 +121,9 @@ describe('activity onboarding walkthrough', () => {
         );
         expect(document.getElementById('view-toggle-insights').className).toContain(
             'activity-onboarding-target'
+        );
+        expect(document.getElementById('view-toggle-insights').getAttribute('aria-pressed')).toBe(
+            'true'
         );
 
         document.querySelector('[data-activity-onboarding-next]').click();

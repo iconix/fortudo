@@ -11,16 +11,19 @@ const TARGET_CLASS = 'activity-onboarding-target';
 const STEPS = [
     {
         selector: '#activity-toggle-option',
+        prepare: selectActivityMode,
         title: 'Activity mode',
         body: 'Use this form mode to log what actually happened without changing your plan.'
     },
     {
         selector: '#start-timer-btn',
+        prepare: selectActivityMode,
         title: 'Live timer',
         body: 'Start a timer from an activity or an unscheduled task when you begin focused work.'
     },
     {
         selector: '#view-toggle-insights',
+        prepare: selectInsightsView,
         title: 'Insights',
         body: 'Compare planned blocks with actual activity and review each selected day.'
     }
@@ -39,6 +42,25 @@ function getStepTarget(step) {
     return target instanceof HTMLElement ? target : null;
 }
 
+function selectActivityMode() {
+    const activityRadio = document.getElementById('activity');
+    if (!(activityRadio instanceof HTMLInputElement)) {
+        return;
+    }
+
+    activityRadio.checked = true;
+    activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function selectInsightsView() {
+    const insightsButton = document.getElementById('view-toggle-insights');
+    if (!(insightsButton instanceof HTMLElement)) {
+        return;
+    }
+
+    insightsButton.click();
+}
+
 async function dismissOnboarding() {
     removeExistingOnboarding();
     await setOnboardingDismissed(true);
@@ -53,6 +75,7 @@ function renderStep(stepIndex, { signal }) {
     removeExistingOnboarding();
 
     const step = STEPS[stepIndex];
+    step.prepare?.();
     const target = getStepTarget(step);
     if (!target) {
         return;
