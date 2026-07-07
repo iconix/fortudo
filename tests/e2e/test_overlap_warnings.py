@@ -14,70 +14,62 @@ passed = 0
 failed = 0
 results = []
 
-# ---------------------------------------------------------------------------
-# Fixed schedule time
-#
-# We freeze "now" to avoid midnight rollovers that can cause overlap warnings
-# to fail to clear in CI.
-# ---------------------------------------------------------------------------
+def build_schedule():
+    """Build fixed overlap-warning schedule at test runtime."""
+    fixed_now = datetime(2026, 3, 11, 12, 0, 0)
 
-now = datetime(2026, 3, 11, 12, 0, 0)
+    def fmt_time(minutes_from_now):
+        t = fixed_now + timedelta(minutes=minutes_from_now)
+        return f"{t.hour:02d}:{t.minute:02d}"
 
-def fmt_time(minutes_from_now):
-    """Return HH:MM string for a time N minutes from now."""
-    t = now + timedelta(minutes=minutes_from_now)
-    return f"{t.hour:02d}:{t.minute:02d}"
+    def fmt_12h(minutes_from_now):
+        t = fixed_now + timedelta(minutes=minutes_from_now)
+        hour = t.hour % 12 or 12
+        ampm = "AM" if t.hour < 12 else "PM"
+        return f"{hour}:{t.minute:02d} {ampm}"
 
-def fmt_12h(minutes_from_now):
-    """Return 12-hour time string (e.g. '2:30 PM') for a time N minutes from now."""
-    t = now + timedelta(minutes=minutes_from_now)
-    hour = t.hour % 12 or 12
-    ampm = "AM" if t.hour < 12 else "PM"
-    return f"{hour}:{t.minute:02d} {ampm}"
+    minutes_to_midnight = (23 - fixed_now.hour) * 60 + (59 - fixed_now.minute) + 1
+    if minutes_to_midnight >= 300:
+        offset = 60
+        d1, d2 = 60, 30
+        gap = 60
+        d3 = 30
+        d_unsched = 20
+    else:
+        offset = min(10, max(5, minutes_to_midnight - 60))
+        d1, d2 = 10, 5
+        gap = 15
+        d3 = 5
+        d_unsched = 5
 
-# Check how much room we have before midnight
-minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
-
-# Standard layout: 1h buffer, ~4h total span
-# Compact layout:  10m buffer, ~60m total span (near midnight)
-if minutes_to_midnight >= 300:
-    OFFSET = 60
-    D1, D2 = 60, 30        # Task 1: 1h, Task 2: 30m
-    GAP = 60                # 1h gap between task 2 end and task 3 start
-    D3 = 30                 # Task 3: 30m
-    D_UNSCHED = 20          # Unscheduled task est duration: 20m
-else:
-    OFFSET = min(10, max(5, minutes_to_midnight - 60))
-    D1, D2 = 10, 5
-    GAP = 15
-    D3 = 5
-    D_UNSCHED = 5
-
-# Task schedule layout:
-# T1 starts at OFFSET, duration D1
-# T2 starts right after T1 (back-to-back), duration D2
-# GAP of free time
-# T3 starts after the gap, duration D3
-T1_OFF = OFFSET
-T2_OFF = T1_OFF + D1
-T3_OFF = T2_OFF + D2 + GAP
-
-T1_TIME = fmt_time(T1_OFF)
-T2_TIME = fmt_time(T2_OFF)
-T3_TIME = fmt_time(T3_OFF)
-
-# Overlapping time: same as T1 start (will overlap T1)
-OVERLAP_TIME = T1_TIME
-
-# End time for T1 (for hint verification)
-T1_END_12H = fmt_12h(T1_OFF + D1)
-
-# Gap midpoint for gap task picker test
-GAP_START_OFF = T2_OFF + D2
-
-print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m), "
-      f"T3={T3_TIME} ({D3}m)", flush=True)
-print(f"Gap between T2 end and T3 start: {GAP}m", flush=True)
+    t1_off = offset
+    t2_off = t1_off + d1
+    t3_off = t2_off + d2 + gap
+    gap_start_off = t2_off + d2
+    schedule = {
+        "FIXED_NOW": fixed_now,
+        "T1_TIME": fmt_time(t1_off),
+        "T2_TIME": fmt_time(t2_off),
+        "T3_TIME": fmt_time(t3_off),
+        "OVERLAP_TIME": fmt_time(t1_off),
+        "T1_END_12H": fmt_12h(t1_off + d1),
+        "GAP_TIME": fmt_time(gap_start_off + 5),
+        "NO_CONFLICT_TIME": fmt_time(t3_off + d3 + 30),
+        "GAP_START_OFF": gap_start_off,
+        "D1": d1,
+        "D2": d2,
+        "D3": d3,
+        "D_UNSCHED": d_unsched,
+        "GAP": gap,
+    }
+    print(
+        f"Schedule: T1={schedule['T1_TIME']} ({d1}m), "
+        f"T2={schedule['T2_TIME']} ({d2}m), "
+        f"T3={schedule['T3_TIME']} ({d3}m)",
+        flush=True,
+    )
+    print(f"Gap between T2 end and T3 start: {gap}m", flush=True)
+    return schedule
 
 def check(name, condition, detail=""):
     global passed, failed
@@ -186,10 +178,24 @@ def open_unscheduled_action_menu_for_text(page, text):
 
 
 def test_overlap_warnings_flow():
+    schedule = build_schedule()
+    fixed_now = schedule["FIXED_NOW"]
+    T1_TIME = schedule["T1_TIME"]
+    T2_TIME = schedule["T2_TIME"]
+    T3_TIME = schedule["T3_TIME"]
+    OVERLAP_TIME = schedule["OVERLAP_TIME"]
+    T1_END_12H = schedule["T1_END_12H"]
+    GAP_TIME = schedule["GAP_TIME"]
+    NO_CONFLICT_TIME = schedule["NO_CONFLICT_TIME"]
+    D1 = schedule["D1"]
+    D2 = schedule["D2"]
+    D3 = schedule["D3"]
+    D_UNSCHED = schedule["D_UNSCHED"]
+
     with sync_playwright() as p:
         browser = launch_browser(p)
         page = browser.new_page(viewport={"width": 1280, "height": 900})
-        fixed_ms = int(now.timestamp() * 1000)
+        fixed_ms = int(fixed_now.timestamp() * 1000)
         page.add_init_script(f"""
     (() => {{
       const fixed = {fixed_ms};
@@ -314,8 +320,7 @@ def test_overlap_warnings_flow():
         # =========================================================================
         print("\nTEST 6: Overlap warning clears when conflict removed", flush=True)
         # Change start time to the gap (no overlap)
-        gap_time = fmt_time(GAP_START_OFF + 5)  # 5 minutes into the gap
-        page.fill('input[name="start-time"]', gap_time)
+        page.fill('input[name="start-time"]', GAP_TIME)
         page.fill('input[name="duration-hours"]', "0")
         page.fill('input[name="duration-minutes"]', "15")
         page.locator('input[name="duration-minutes"]').dispatch_event("input")
@@ -658,8 +663,7 @@ def test_overlap_warnings_flow():
                 pass
             if schedule_modal.is_visible():
                 # Use a time far in the future with no overlap
-                no_conflict_time = fmt_time(T3_OFF + D3 + 30)
-                page.fill('input[name="modal-start-time"]', no_conflict_time)
+                page.fill('input[name="modal-start-time"]', NO_CONFLICT_TIME)
                 page.fill('input[name="modal-duration-hours"]', "0")
                 page.fill('input[name="modal-duration-minutes"]', "15")
                 page.locator('input[name="modal-duration-minutes"]').dispatch_event("input")

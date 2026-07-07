@@ -36,21 +36,9 @@ passed = 0
 failed = 0
 results = []
 
-# ---------------------------------------------------------------------------
-# Dynamic future schedule
-#
-# All task times are computed relative to "now" so they are always in the
-# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
-# when a task start time is in the past, which was causing the gap between
-# tasks to be silently eliminated on the CI (UTC timezone).
-# ---------------------------------------------------------------------------
+STANDARD_SPAN = 240
+COMPACT_SPAN = 21
 
-now = datetime.now()
-
-def fmt_time(minutes_from_now):
-    """Return HH:MM string for a time N minutes from now."""
-    t = now + timedelta(minutes=minutes_from_now)
-    return f"{t.hour:02d}:{t.minute:02d}"
 
 def duration_label(minutes):
     """Return duration text matching the app's calculateHoursAndMinutes."""
@@ -62,48 +50,55 @@ def duration_label(minutes):
         parts.append(f"{m}m")
     return " ".join(parts) or "0m"
 
-# Check how much room we have before midnight
-minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
 
-# Pick a layout whose total span fits before midnight.
-# Total span = OFFSET + D1 + D2 + GAP1 + D3 + GAP2 + D4
-# Standard: 60 + 15 + 30 + 45 + 30 + 30 + 30 = 240 min
-# Compact:   5 +  2 +  2 +  5 +  2 +  3 +  2 =  21 min
-STANDARD_SPAN = 240
-COMPACT_SPAN = 21
+def build_schedule():
+    """Build future task times at test runtime."""
+    now = datetime.now()
 
-if minutes_to_midnight >= STANDARD_SPAN + 5:
-    OFFSET = 60
-    D1, D2, D3, D4 = 15, 30, 30, 30
-    GAP1 = 45   # gap between task 2 end and task 3 start
-    GAP2 = 30   # gap between task 3 end and task 4 start
-elif minutes_to_midnight >= COMPACT_SPAN + 5:
-    OFFSET = 5
-    D1, D2, D3, D4 = 2, 2, 2, 2
-    GAP1 = 5
-    GAP2 = 3
-else:
-    pytest.skip(
-        f"Only {minutes_to_midnight}m to midnight, need at least {COMPACT_SPAN + 5}m",
-        allow_module_level=True,
+    def fmt_time(minutes_from_now):
+        t = now + timedelta(minutes=minutes_from_now)
+        return f"{t.hour:02d}:{t.minute:02d}"
+
+    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+    if minutes_to_midnight >= STANDARD_SPAN + 5:
+        offset = 60
+        d1, d2, d3, d4 = 15, 30, 30, 30
+        gap1 = 45
+        gap2 = 30
+    elif minutes_to_midnight >= COMPACT_SPAN + 5:
+        offset = 5
+        d1, d2, d3, d4 = 2, 2, 2, 2
+        gap1 = 5
+        gap2 = 3
+    else:
+        pytest.skip(
+            f"Only {minutes_to_midnight}m to midnight, need at least {COMPACT_SPAN + 5}m"
+        )
+
+    t1_off = offset
+    t2_off = t1_off + d1
+    t3_off = t2_off + d2 + gap1
+    t4_off = t3_off + d3 + gap2
+    schedule = {
+        "T1_TIME": fmt_time(t1_off),
+        "T2_TIME": fmt_time(t2_off),
+        "T3_TIME": fmt_time(t3_off),
+        "T4_TIME": fmt_time(t4_off),
+        "EXPECTED_GAP_LABEL": duration_label(gap1),
+        "D1": d1,
+        "D2": d2,
+        "D3": d3,
+        "D4": d4,
+    }
+    print(
+        f"Schedule: T1={schedule['T1_TIME']} ({d1}m), "
+        f"T2={schedule['T2_TIME']} ({d2}m), "
+        f"T3={schedule['T3_TIME']} ({d3}m), "
+        f"T4={schedule['T4_TIME']} ({d4}m)",
+        flush=True,
     )
-
-# Task offsets from now (in minutes)
-T1_OFF = OFFSET
-T2_OFF = T1_OFF + D1                   # back-to-back with task 1
-T3_OFF = T2_OFF + D2 + GAP1            # after gap
-T4_OFF = T3_OFF + D3 + GAP2            # after second gap
-
-# Format times
-T1_TIME = fmt_time(T1_OFF)
-T2_TIME = fmt_time(T2_OFF)
-T3_TIME = fmt_time(T3_OFF)
-T4_TIME = fmt_time(T4_OFF)
-EXPECTED_GAP_LABEL = duration_label(GAP1)
-
-print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m), "
-      f"T3={T3_TIME} ({D3}m), T4={T4_TIME} ({D4}m)", flush=True)
-print(f"Expected first gap: {EXPECTED_GAP_LABEL} free", flush=True)
+    print(f"Expected first gap: {schedule['EXPECTED_GAP_LABEL']} free", flush=True)
+    return schedule
 
 def check(name, condition, detail=""):
     global passed, failed
@@ -144,6 +139,17 @@ def add_scheduled_task(page, description, start_time, hours, minutes):
 
 
 def test_gap_indicators_flow():
+    schedule = build_schedule()
+    T1_TIME = schedule["T1_TIME"]
+    T2_TIME = schedule["T2_TIME"]
+    T3_TIME = schedule["T3_TIME"]
+    T4_TIME = schedule["T4_TIME"]
+    EXPECTED_GAP_LABEL = schedule["EXPECTED_GAP_LABEL"]
+    D1 = schedule["D1"]
+    D2 = schedule["D2"]
+    D3 = schedule["D3"]
+    D4 = schedule["D4"]
+
     with sync_playwright() as p:
         browser = launch_browser(p)
         page = browser.new_page(viewport={"width": 1280, "height": 900})

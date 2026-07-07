@@ -30,38 +30,26 @@ def clear_and_setup(page):
     page.evaluate("localStorage.clear()")
     setup_room(page)
 
-# ---------------------------------------------------------------------------
-# Dynamic future schedule
-#
-# All task times are computed relative to "now" so they are always in the
-# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
-# when a task start time is in the past, which was causing timeouts on the
-# CI (UTC timezone).
-# ---------------------------------------------------------------------------
+def build_schedule():
+    """Build future task times at test runtime."""
+    now = datetime.now()
 
-now = datetime.now()
+    def fmt_time(minutes_from_now):
+        t = now + timedelta(minutes=minutes_from_now)
+        return f"{t.hour:02d}:{t.minute:02d}"
 
-def fmt_time(minutes_from_now):
-    """Return HH:MM string for a time N minutes from now."""
-    t = now + timedelta(minutes=minutes_from_now)
-    return f"{t.hour:02d}:{t.minute:02d}"
+    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+    if minutes_to_midnight >= 150:
+        offset = 60
+        d1, d2 = 30, 60
+    else:
+        offset = min(10, max(5, minutes_to_midnight - 20))
+        d1, d2 = 5, 10
 
-# Check how much room we have before midnight
-minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
-
-# Standard layout: 1h buffer, ~1.5h task span
-# Compact layout:  10m buffer, ~15m task span (near midnight)
-if minutes_to_midnight >= 150:
-    OFFSET = 60
-    D1, D2 = 30, 60
-else:
-    OFFSET = min(10, max(5, minutes_to_midnight - 20))
-    D1, D2 = 5, 10
-
-T1_TIME = fmt_time(OFFSET)
-T2_TIME = fmt_time(OFFSET + D1)
-
-print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m)", flush=True)
+    t1_time = fmt_time(offset)
+    t2_time = fmt_time(offset + d1)
+    print(f"Schedule: T1={t1_time} ({d1}m), T2={t2_time} ({d2}m)", flush=True)
+    return t1_time, t2_time, d1, d2
 
 def screenshot(page, name):
     path = os.path.join(SCREENSHOTS_DIR, f"{name}.png")
@@ -82,6 +70,8 @@ def dismiss_modals(page):
 
 
 def test_visual_inspection_flow():
+    T1_TIME, T2_TIME, D1, D2 = build_schedule()
+
     with sync_playwright() as p:
         browser = launch_browser(p)
         page = browser.new_page(viewport={"width": 1280, "height": 900})

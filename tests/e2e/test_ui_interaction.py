@@ -30,54 +30,54 @@ def clear_and_setup(page):
     page.evaluate("localStorage.clear()")
     setup_room(page)
 
-# ---------------------------------------------------------------------------
-# Dynamic future schedule
-#
-# All task times are computed relative to "now" so they are always in the
-# future.  This avoids the ADJUST_RUNNING_TASK confirmation flow that fires
-# when a task start time is in the past, which was causing test failures on
-# the CI (UTC timezone).
-# ---------------------------------------------------------------------------
+def build_schedule():
+    """Build future task times at test runtime."""
+    now = datetime.now()
 
-now = datetime.now()
+    def fmt_time(minutes_from_now):
+        t = now + timedelta(minutes=minutes_from_now)
+        return f"{t.hour:02d}:{t.minute:02d}"
 
-def fmt_time(minutes_from_now):
-    """Return HH:MM string for a time N minutes from now."""
-    t = now + timedelta(minutes=minutes_from_now)
-    return f"{t.hour:02d}:{t.minute:02d}"
+    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+    if minutes_to_midnight >= 300:
+        offset = 60
+        d_val = 60
+        d1, d2, d3 = 60, 30, 60
+        d_modal = 30
+        modal_gap = 30
+    else:
+        offset = min(10, max(5, minutes_to_midnight - 50))
+        d_val = 10
+        d1, d2, d3 = 10, 5, 10
+        d_modal = 5
+        modal_gap = 10
 
-# Check how much room we have before midnight
-minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
+    t_val_off = offset
+    t1_off = offset
+    t2_off = t1_off + d1
+    t3_off = t2_off + d2
+    t_modal_off = t3_off + d3 + modal_gap
 
-# Standard layout: 1h buffer, ~3.5h total span
-# Compact layout:  10m buffer, ~45m total span (near midnight)
-if minutes_to_midnight >= 300:
-    OFFSET = 60
-    D_VAL = 60                  # validation test (task won't be created)
-    D1, D2, D3 = 60, 30, 60    # three back-to-back tasks
-    D_MODAL = 30                # schedule-via-modal task
-    MODAL_GAP = 30              # gap between T3 end and modal task start
-else:
-    OFFSET = min(10, max(5, minutes_to_midnight - 50))
-    D_VAL = 10
-    D1, D2, D3 = 10, 5, 10
-    D_MODAL = 5
-    MODAL_GAP = 10
-
-T_VAL_OFF = OFFSET
-T1_OFF = OFFSET
-T2_OFF = T1_OFF + D1
-T3_OFF = T2_OFF + D2
-T_MODAL_OFF = T3_OFF + D3 + MODAL_GAP
-
-T_VAL_TIME = fmt_time(T_VAL_OFF)
-T1_TIME = fmt_time(T1_OFF)
-T2_TIME = fmt_time(T2_OFF)
-T3_TIME = fmt_time(T3_OFF)
-T_MODAL_TIME = fmt_time(T_MODAL_OFF)
-
-print(f"Schedule: T1={T1_TIME} ({D1}m), T2={T2_TIME} ({D2}m), "
-      f"T3={T3_TIME} ({D3}m), T_MODAL={T_MODAL_TIME} ({D_MODAL}m)", flush=True)
+    schedule = {
+        "T_VAL_TIME": fmt_time(t_val_off),
+        "T1_TIME": fmt_time(t1_off),
+        "T2_TIME": fmt_time(t2_off),
+        "T3_TIME": fmt_time(t3_off),
+        "T_MODAL_TIME": fmt_time(t_modal_off),
+        "D_VAL": d_val,
+        "D1": d1,
+        "D2": d2,
+        "D3": d3,
+        "D_MODAL": d_modal,
+    }
+    print(
+        f"Schedule: T1={schedule['T1_TIME']} ({d1}m), "
+        f"T2={schedule['T2_TIME']} ({d2}m), "
+        f"T3={schedule['T3_TIME']} ({d3}m), "
+        f"T_MODAL={schedule['T_MODAL_TIME']} ({d_modal}m)",
+        flush=True,
+    )
+    return schedule
 
 passed = 0
 failed = 0
@@ -150,6 +150,18 @@ def open_unscheduled_action_menu_for_text(page, text):
 
 
 def test_ui_interaction_flow():
+    schedule = build_schedule()
+    T_VAL_TIME = schedule["T_VAL_TIME"]
+    T1_TIME = schedule["T1_TIME"]
+    T2_TIME = schedule["T2_TIME"]
+    T3_TIME = schedule["T3_TIME"]
+    T_MODAL_TIME = schedule["T_MODAL_TIME"]
+    D_VAL = schedule["D_VAL"]
+    D1 = schedule["D1"]
+    D2 = schedule["D2"]
+    D3 = schedule["D3"]
+    D_MODAL = schedule["D_MODAL"]
+
     with sync_playwright() as p:
         browser = launch_browser(p)
         page = browser.new_page(viewport={"width": 1280, "height": 900})
