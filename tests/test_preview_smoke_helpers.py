@@ -1649,7 +1649,5 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(group_select.value, "break")
         self.assertEqual(category_input.value, "Walk")
 
-
 if __name__ == "__main__":
     unittest.main()
-
