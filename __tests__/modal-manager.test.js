@@ -174,6 +174,25 @@ describe('Modal Manager Tests', () => {
                 expect(message.textContent).toBe('Test Message');
             });
 
+            test('showCustomAlert renders element messages without flattening markup', () => {
+                const content = document.createElement('div');
+                content.innerHTML = `
+                    <p data-testid="intro">A cleaner intro</p>
+                    <ul>
+                        <li data-testid="feature">Feature one</li>
+                        <li data-testid="feature">Feature two</li>
+                    </ul>
+                `;
+
+                showCustomAlert('Test Title', content);
+
+                const message = document.getElementById('custom-alert-message');
+                expect(message.querySelector('[data-testid="intro"]').textContent).toBe(
+                    'A cleaner intro'
+                );
+                expect(message.querySelectorAll('[data-testid="feature"]')).toHaveLength(2);
+            });
+
             test('hideCustomAlert hides the modal', () => {
                 showCustomAlert('Title', 'Message');
                 hideCustomAlert();
@@ -212,6 +231,30 @@ describe('Modal Manager Tests', () => {
                 expect(modal.classList.contains('hidden')).toBe(true);
             });
 
+            test('showCustomAlert resolves only after alert is dismissed', async () => {
+                const resultPromise = showCustomAlert('Title', 'Message');
+                let resolved = false;
+                resultPromise.then(() => {
+                    resolved = true;
+                });
+
+                await Promise.resolve();
+                expect(resolved).toBe(false);
+
+                document.getElementById('ok-custom-alert-modal').click();
+                await resultPromise;
+
+                expect(resolved).toBe(true);
+            });
+
+            test('showCustomAlert resolves when Escape dismisses alert', async () => {
+                const resultPromise = showCustomAlert('Title', 'Message');
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBeUndefined();
+            });
+
             test('showCustomAlert applies indigo theme by default', () => {
                 showCustomAlert('Title', 'Message');
 
@@ -224,6 +267,23 @@ describe('Modal Manager Tests', () => {
 
                 const title = document.getElementById('custom-alert-title');
                 expect(title.className).toContain('text-teal-400');
+            });
+
+            test('Escape key closes visible alert modal', () => {
+                showCustomAlert('Title', 'Message');
+
+                const modal = document.getElementById('custom-alert-modal');
+                expect(modal.classList.contains('hidden')).toBe(false);
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                expect(modal.classList.contains('hidden')).toBe(true);
+            });
+
+            test('Escape key does not error when no alert modal is visible', () => {
+                expect(() => {
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                }).not.toThrow();
             });
         });
 
@@ -282,6 +342,38 @@ describe('Modal Manager Tests', () => {
 
                 const okBtn = document.getElementById('ok-custom-confirm-modal');
                 okBtn.click();
+            });
+
+            test('Escape key closes visible confirm modal and resolves false', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const modal = document.getElementById('custom-confirm-modal');
+
+                expect(modal.classList.contains('hidden')).toBe(false);
+
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                expect(modal.classList.contains('hidden')).toBe(true);
+                await expect(resultPromise).resolves.toBe(false);
+            });
+
+            test('confirm Escape listener is cleaned up after OK resolves', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const okBtn = document.getElementById('ok-custom-confirm-modal');
+
+                okBtn.click();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBe(true);
+            });
+
+            test('confirm Escape listener is cleaned up after cancel resolves', async () => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message');
+                const cancelBtn = document.getElementById('cancel-custom-confirm-modal');
+
+                cancelBtn.click();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+                await expect(resultPromise).resolves.toBe(false);
             });
         });
 

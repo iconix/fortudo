@@ -50,6 +50,7 @@ import {
     initializeActivitiesViewToggle,
     renderActiveInsightsView
 } from './activities/view-toggle.js';
+import { maybeShowOnboarding } from './activities/onboarding.js';
 import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
@@ -60,6 +61,7 @@ import {
     openSettingsAfterActivitiesReloadIfNeeded,
     renderSettingsContent
 } from './settings-renderer.js';
+import { maybeShowWhatsNew } from './whats-new.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
@@ -70,6 +72,7 @@ import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-ren
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
+import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -142,6 +145,11 @@ async function initAndBootApp(roomCode) {
     // Load settings before any UI checks that depend on cached flags.
     await loadSettings();
     syncActivitiesUI(isActivitiesEnabled());
+    void (async () => {
+        const activitiesEnabled = isActivitiesEnabled();
+        await maybeShowWhatsNew({ announcementEnabled: ACTIVITIES_ANNOUNCEMENT_ENABLED });
+        await maybeShowOnboarding({ activitiesEnabled, signal });
+    })();
 
     // Load and initialize state
     await loadAppState();
