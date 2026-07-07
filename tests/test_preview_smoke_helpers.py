@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.playwright_preview_smoke import (
+from scripts.e2e_helpers import (
     add_activity,
     add_active_scheduled_task,
     add_category_via_settings,
@@ -105,7 +105,7 @@ class CouchDbHelpersTests(unittest.TestCase):
         self.assertEqual(base_url, "https://example.cloudant.com")
         self.assertIn("Authorization", headers)
 
-    @patch("scripts.playwright_preview_smoke.urlopen")
+    @patch("scripts.e2e_helpers.urlopen")
     def test_fetch_remote_docs_reads_all_docs(self, mock_urlopen):
         mock_response = mock_urlopen.return_value.__enter__.return_value
         mock_response.read.return_value = (
@@ -307,7 +307,7 @@ class CliHelpersTests(unittest.TestCase):
     def setUp(self):
         configure_demo_logging(enabled=False)
 
-    @patch("scripts.playwright_preview_smoke.time.strftime")
+    @patch("scripts.e2e_helpers.time.strftime")
     def test_demo_step_prints_timestamped_message_and_waits(self, mock_strftime):
         mock_strftime.return_value = "14:37:12"
 
@@ -320,7 +320,7 @@ class CliHelpersTests(unittest.TestCase):
         self.assertEqual(messages, ["[demo 14:37:12] checking activities room flows"])
         self.assertEqual(page.waits, [900])
 
-    @patch("scripts.playwright_preview_smoke.time.strftime")
+    @patch("scripts.e2e_helpers.time.strftime")
     def test_demo_step_skips_logging_when_pause_is_zero(self, mock_strftime):
         page = FakePage({})
         messages = []
@@ -331,7 +331,7 @@ class CliHelpersTests(unittest.TestCase):
         self.assertEqual(page.waits, [])
         mock_strftime.assert_not_called()
 
-    @patch("scripts.playwright_preview_smoke.time.strftime")
+    @patch("scripts.e2e_helpers.time.strftime")
     def test_demo_note_prints_timestamped_message(self, mock_strftime):
         mock_strftime.return_value = "14:40:03"
         messages = []
@@ -342,7 +342,7 @@ class CliHelpersTests(unittest.TestCase):
 
         self.assertEqual(messages, ["[demo 14:40:03] activities: timer restored after reload"])
 
-    @patch("scripts.playwright_preview_smoke.time.strftime")
+    @patch("scripts.e2e_helpers.time.strftime")
     def test_demo_note_skips_logging_when_demo_mode_is_disabled(self, mock_strftime):
         messages = []
 
@@ -655,6 +655,8 @@ class DeleteStatePage(FakePage):
         if selector == task_selector:
             self.card._count = 0 if self.state == "deleted" else 1
             return self.card
+        if selector == f"{task_selector} .unscheduled-task-actions-menu":
+            return FakeLocator()
         if selector == f"{task_selector} .btn-delete-unscheduled":
             self.button.classes = (
                 "btn-delete-unscheduled text-rose-400"
@@ -726,7 +728,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(submit_button.clicks, 1)
 
     def test_add_unscheduled_task_can_set_category(self):
-        from scripts.playwright_preview_smoke import add_unscheduled_task
+        from scripts.e2e_helpers import add_unscheduled_task
 
         unscheduled_radio = FakeLocator()
         description = FakeLocator()
@@ -744,6 +746,8 @@ class PreviewWaitHelperTests(unittest.TestCase):
                 task_form_input_selector("est-duration-minutes"): duration_minutes,
                 "#category-select": category,
                 "#task-form button[type='submit']": submit_button,
+                "#custom-confirm-modal": FakeLocator(visible=False),
+                "#cancel-custom-confirm-modal": FakeLocator(),
             }
         )
         unscheduled_radio.check = lambda: setattr(unscheduled_radio, "value", "checked")
@@ -886,6 +890,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         timer_description = FakeLocator()
         page = FakePage(
             {
+                f'.task-card[data-task-id="{task_id}"] .unscheduled-task-actions-menu': FakeLocator(),
                 f'.task-card[data-task-id="{task_id}"] .btn-start-unscheduled-timer': start_button,
                 "#timer-display": timer_display,
                 "#timer-description": timer_description,
@@ -949,7 +954,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
         self.assertEqual(result["id"], "activity-1")
 
-    @patch("scripts.playwright_preview_smoke.read_docs")
+    @patch("scripts.e2e_helpers.read_docs")
     def test_wait_for_activity_doc_waits_until_activity_persists(self, mock_read_docs):
         mock_read_docs.side_effect = [
             [],
@@ -961,7 +966,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
         self.assertEqual(result["id"], "activity-1")
 
-    @patch("scripts.playwright_preview_smoke.read_docs")
+    @patch("scripts.e2e_helpers.read_docs")
     def test_wait_for_running_activity_config_waits_until_config_persists(self, mock_read_docs):
         mock_read_docs.side_effect = [
             [],
@@ -981,7 +986,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
         self.assertEqual(result["id"], "config-running-activity")
 
-    @patch("scripts.playwright_preview_smoke.read_docs")
+    @patch("scripts.e2e_helpers.read_docs")
     def test_wait_for_running_activity_config_waits_until_matching_values_persist(
         self, mock_read_docs
     ):
@@ -1017,7 +1022,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(result["description"], "Replacement timer")
         self.assertEqual(result["category"], "work/comms")
 
-    @patch("scripts.playwright_preview_smoke.read_docs")
+    @patch("scripts.e2e_helpers.read_docs")
     def test_wait_for_task_doc_waits_until_task_persists(self, mock_read_docs):
         mock_read_docs.side_effect = [
             [],
@@ -1256,24 +1261,24 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(doc["dateText"], "Sun, Jun 14")
         self.assertEqual(doc["localDate"], "2026-06-14")
 
-    @patch("scripts.playwright_preview_smoke.assert_running_timer_id_reused_by_stopped_activity")
-    @patch("scripts.playwright_preview_smoke.assert_activity_data_issue_badge")
-    @patch("scripts.playwright_preview_smoke.assert_trend_day_selection_scopes_details")
-    @patch("scripts.playwright_preview_smoke.assert_insights_rerender_preserves_vertical_scroll")
-    @patch("scripts.playwright_preview_smoke.assert_trend_strip_scrollbar_hidden_and_scrollable")
-    @patch("scripts.playwright_preview_smoke.assert_selected_trend_day_visible")
-    @patch("scripts.playwright_preview_smoke.assert_phase5_insights_view")
-    @patch("scripts.playwright_preview_smoke.stop_activity_timer")
-    @patch("scripts.playwright_preview_smoke.wait_for_running_activity_config")
-    @patch("scripts.playwright_preview_smoke.start_activity_timer")
-    @patch("scripts.playwright_preview_smoke.wait_for_activity_doc")
-    @patch("scripts.playwright_preview_smoke.complete_scheduled_task_via_ui")
-    @patch("scripts.playwright_preview_smoke.wait_for_task_doc")
-    @patch("scripts.playwright_preview_smoke.add_active_scheduled_task")
-    @patch("scripts.playwright_preview_smoke.seed_docs")
-    @patch("scripts.playwright_preview_smoke.build_relative_day_activity_doc")
-    @patch("scripts.playwright_preview_smoke.wait_for_main_app")
-    @patch("scripts.playwright_preview_smoke.set_activities_enabled")
+    @patch("scripts.e2e_helpers.assert_running_timer_id_reused_by_stopped_activity")
+    @patch("scripts.e2e_helpers.assert_activity_data_issue_badge")
+    @patch("scripts.e2e_helpers.assert_trend_day_selection_scopes_details")
+    @patch("scripts.e2e_helpers.assert_insights_rerender_preserves_vertical_scroll")
+    @patch("scripts.e2e_helpers.assert_trend_strip_scrollbar_hidden_and_scrollable")
+    @patch("scripts.e2e_helpers.assert_selected_trend_day_visible")
+    @patch("scripts.e2e_helpers.assert_phase5_insights_view")
+    @patch("scripts.e2e_helpers.stop_activity_timer")
+    @patch("scripts.e2e_helpers.wait_for_running_activity_config")
+    @patch("scripts.e2e_helpers.start_activity_timer")
+    @patch("scripts.e2e_helpers.wait_for_activity_doc")
+    @patch("scripts.e2e_helpers.complete_scheduled_task_via_ui")
+    @patch("scripts.e2e_helpers.wait_for_task_doc")
+    @patch("scripts.e2e_helpers.add_active_scheduled_task")
+    @patch("scripts.e2e_helpers.seed_docs")
+    @patch("scripts.e2e_helpers.build_relative_day_activity_doc")
+    @patch("scripts.e2e_helpers.wait_for_main_app")
+    @patch("scripts.e2e_helpers.set_activities_enabled")
     def test_run_phase5_insights_smoke_seeds_activity_and_opens_insights(
         self,
         mock_set_activities_enabled,
@@ -1416,7 +1421,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(page.button.clicks, 1)
         self.assertEqual(page.state, "confirming")
 
-    @patch("scripts.playwright_preview_smoke.wait_until")
+    @patch("scripts.e2e_helpers.wait_until")
     def test_wait_for_activity_failure_alert_accepts_visible_modal(self, mock_wait_until):
         page = FakePage({"#custom-alert-modal": FakeLocator(visible=True)})
         mock_wait_until.side_effect = lambda predicate, *_args, **_kwargs: predicate()
@@ -1425,8 +1430,8 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
         self.assertEqual(mock_wait_until.call_count, 1)
 
-    @patch("scripts.playwright_preview_smoke.read_docs")
-    @patch("scripts.playwright_preview_smoke.wait_until")
+    @patch("scripts.e2e_helpers.read_docs")
+    @patch("scripts.e2e_helpers.wait_until")
     def test_wait_for_activity_failure_alert_raises_when_activity_persists(
         self, mock_wait_until, mock_read_docs
     ):
@@ -1457,7 +1462,13 @@ class PreviewWaitHelperTests(unittest.TestCase):
         button = FakeLocator()
         form = FakeLocator(visible=False)
         form.wait_failures_before_visible = 1
-        page = FakePage({button_selector: button, form_selector: form})
+        page = FakePage(
+            {
+                f'[data-task-id="{task_id}"] .task-actions-menu': FakeLocator(),
+                button_selector: button,
+                form_selector: form,
+            }
+        )
 
         selector = open_scheduled_edit_form(
             page, task_id, attempts=3, form_timeout_ms=5, retry_delay_ms=0
@@ -1475,7 +1486,13 @@ class PreviewWaitHelperTests(unittest.TestCase):
         button = FakeLocator()
         button.scroll_failures_before_success = 1
         form = FakeLocator(visible=False)
-        page = FakePage({button_selector: button, form_selector: form})
+        page = FakePage(
+            {
+                f'[data-task-id="{task_id}"] .task-actions-menu': FakeLocator(),
+                button_selector: button,
+                form_selector: form,
+            }
+        )
 
         selector = open_scheduled_edit_form(
             page, task_id, attempts=3, form_timeout_ms=5, retry_delay_ms=0
@@ -1632,3 +1649,4 @@ class PreviewWaitHelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

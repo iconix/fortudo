@@ -13,26 +13,33 @@ firebase init  # one-time setup
 firebase deploy  # can also enable github actions to deploy
 ```
 
-## app tests
+## testing
 
-set up environment:
+Three layers, each with a distinct job:
 
-```bash
-nvm install --lts
-nvm use --lts
-npm install --save-dev jest @babel/core @babel/preset-env babel-jest @testing-library/dom jest-environment-jsdom
-```
-
-run tests:
+**Unit (Jest, `__tests__/`)** - pre-merge, runs in CI:
 
 ```bash
 npm test
 ```
 
-preview storage smoke:
+**E2E (pytest + Playwright, `tests/`)** - pre-merge, runs in CI against a local
+server on `127.0.0.1:9847` started by a session fixture. New browser-level
+coverage goes here by default:
 
 ```bash
-uv run python -B -m unittest test_playwright_preview_smoke.py
+uv run --with pytest --with playwright python -m pytest tests -q
+
+# headed debugging with system Chrome
+E2E_BROWSER_CHANNEL=chrome uv run --with pytest --with playwright python -m pytest tests/e2e -q
+```
+
+**Preview smoke (`scripts/playwright_preview_smoke.py`)** - post-deploy, run
+manually against a Firebase preview URL. This owns deployed-environment concerns
+such as CouchDB sync, room reset, and cross-room scenarios:
+
+```bash
+uv run --with pytest python -m pytest tests/test_preview_smoke_helpers.py
 uv run --with playwright python -B scripts/playwright_preview_smoke.py <preview-url> --channel chrome
 ```
 

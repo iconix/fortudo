@@ -75,3 +75,9 @@ tmp/
 # Playwright E2E test artifacts
 test_screenshots/
 
+# Python test artifacts
+__pycache__/
+.pytest_cache/
+.venv/
+uv.lock
+
