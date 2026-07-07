@@ -90,7 +90,7 @@ jobs:
 
             - name: Install Playwright
               run: |
-                  pip install playwright
+                  pip install playwright pytest
                   python -m playwright install chromium --with-deps
 
             - name: Run E2E tests

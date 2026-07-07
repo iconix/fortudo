@@ -16,6 +16,10 @@ scripts = [
     "test_overlap_warnings.py",
 ]
 
+pytest_suites = [
+    "test_phase6_e2e.py",
+]
+
 
 def is_port_in_use(port):
     """Check if a TCP port is already bound."""
@@ -76,6 +80,21 @@ try:
             exit_code = 1
             print(
                 f"\n  *** {script} exited with code {result.returncode} ***\n",
+                flush=True,
+            )
+
+    for suite in pytest_suites:
+        print(f"\n{'='*70}", flush=True)
+        print(f"  RUNNING: {suite} (pytest)", flush=True)
+        print(f"{'='*70}\n", flush=True)
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", suite, "-q"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        if result.returncode != 0:
+            exit_code = 1
+            print(
+                f"\n  *** {suite} exited with code {result.returncode} ***\n",
                 flush=True,
             )
 finally:

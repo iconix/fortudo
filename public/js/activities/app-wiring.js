@@ -40,6 +40,18 @@ function getRefreshUiForClickTarget(target, refreshUI) {
     return refreshUI;
 }
 
+/**
+ * Create app-level callbacks that bridge generic task UI events to Activities behavior.
+ * @param {Object} options
+ * @param {Function} options.getActivitiesEnabled
+ * @param {Function} options.refreshUI
+ * @param {Function} options.resetAllConfirmingDeleteFlags
+ * @param {Function} options.handleTaskSubmit
+ * @param {Function} options.focusTaskDescriptionInput
+ * @param {Function} options.resetTaskFormPreviewState
+ * @param {Function} options.initializeTaskTypeToggle
+ * @returns {{ onTaskFormSubmit: Function, onGlobalClick: Function }}
+ */
 export function createActivityAppCallbacks({
     getActivitiesEnabled,
     refreshUI,
@@ -166,6 +178,15 @@ function initializeInsightsTimelineEventHandlers(timelineElement, { signal, rend
     );
 }
 
+/**
+ * Initialize Activities event handlers and timer UI for the current app lifecycle.
+ * @param {Object} options
+ * @param {AbortSignal} options.signal
+ * @param {Function} options.refreshUI
+ * @param {Function} options.refreshTaskDisplays
+ * @param {Function} options.getActivitiesEnabled
+ * @param {Function} [options.renderInsights]
+ */
 export function initializeActivityUi({
     signal,
     refreshUI,
@@ -200,6 +221,10 @@ export function initializeActivityUi({
     });
 }
 
+/**
+ * Sync form mode and timer fields after loading a persisted running timer.
+ * @param {boolean} activitiesEnabled
+ */
 export function syncRestoredRunningTimer(activitiesEnabled) {
     if (!activitiesEnabled) {
         return;
@@ -217,6 +242,10 @@ export function syncRestoredRunningTimer(activitiesEnabled) {
     syncTimerFormState();
 }
 
+/**
+ * Refresh the timer display when the running timer may have changed.
+ * @param {boolean} activitiesEnabled
+ */
 export function syncRunningTimerDisplay(activitiesEnabled) {
     if (!activitiesEnabled) {
         return;
