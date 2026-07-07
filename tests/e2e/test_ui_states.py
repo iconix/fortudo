@@ -69,7 +69,7 @@ def dismiss_modals(page):
             page.wait_for_timeout(300)
 
 
-def test_visual_inspection_flow():
+def test_ui_states_flow():
     T1_TIME, T2_TIME, D1, D2 = build_schedule()
 
     with sync_playwright() as p:

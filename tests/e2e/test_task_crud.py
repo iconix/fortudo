@@ -99,7 +99,7 @@ def open_unscheduled_action_menu_for_text(page, text):
     return task
 
 
-def test_functional_flow():
+def test_task_crud_flow():
     with sync_playwright() as p:
         browser = launch_browser(p)
         page = browser.new_page(viewport={"width": 1280, "height": 900})

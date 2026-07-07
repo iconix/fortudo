@@ -3,7 +3,18 @@ from playwright.sync_api import sync_playwright
 from datetime import datetime, timedelta
 import os
 
-from scripts.e2e_helpers import launch_browser
+from conftest import BASE_URL, REPO_ROOT as E2E_REPO_ROOT, activities_config
+from scripts.e2e_helpers import (
+    build_relative_day_scheduled_task_doc,
+    clear_room_storage,
+    dismiss_open_modals,
+    enter_room,
+    install_local_pouchdb_route,
+    launch_browser,
+    open_scheduled_edit_form,
+    seed_docs,
+    wait_for_main_app,
+)
 
 PORT = 9847
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -149,7 +160,7 @@ def open_unscheduled_action_menu_for_text(page, text):
     return task
 
 
-def test_ui_interaction_flow():
+def test_task_editing_flow():
     schedule = build_schedule()
     T_VAL_TIME = schedule["T_VAL_TIME"]
     T1_TIME = schedule["T1_TIME"]
@@ -551,3 +562,50 @@ def test_ui_interaction_flow():
         browser.close()
 
     assert failed == 0, f"{failed} checks failed (see FAIL lines above)"
+
+
+def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
+    room_code = "task-editing-mobile-draft"
+
+    with sync_playwright() as playwright:
+        browser = launch_browser(playwright)
+        context = browser.new_context(viewport={"width": 375, "height": 812})
+        install_local_pouchdb_route(context, repo_root=E2E_REPO_ROOT)
+        page = context.new_page()
+
+        try:
+            page.goto(BASE_URL, wait_until="load")
+            page.evaluate("localStorage.clear()")
+            clear_room_storage(page, room_code)
+            seed_docs(
+                page,
+                room_code,
+                [
+                    activities_config(),
+                    build_relative_day_scheduled_task_doc(
+                        page,
+                        doc_id="task-editing-mobile-draft-task",
+                        description="Draft preservation task",
+                        day_offset=0,
+                        start_hour=9,
+                        start_minute=0,
+                        duration_minutes=30,
+                    ),
+                ],
+            )
+
+            enter_room(page, room_code)
+            wait_for_main_app(page)
+            dismiss_open_modals(page)
+
+            edit_form = open_scheduled_edit_form(page, "task-editing-mobile-draft-task")
+            duration_minutes = page.locator(f'{edit_form} input[name="duration-minutes"]')
+            duration_minutes.fill("45")
+
+            page.evaluate("import('/js/dom-renderer.js').then(({ refreshUI }) => refreshUI())")
+            page.wait_for_timeout(500)
+
+            assert duration_minutes.input_value() == "45"
+        finally:
+            context.close()
+            browser.close()
