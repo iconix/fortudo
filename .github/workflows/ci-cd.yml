@@ -93,6 +93,12 @@ jobs:
                   pip install playwright pytest
                   python -m playwright install chromium --with-deps
 
+            - name: Install npm dependencies
+              # Full install, not --omit=dev: pouchdb is a devDependency and
+              # the E2E suite serves node_modules/pouchdb/dist/pouchdb.min.js
+              # instead of loading it from the CDN.
+              run: npm ci
+
             - name: Run E2E tests
               run: npm run test:e2e
 
