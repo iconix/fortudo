@@ -2,11 +2,9 @@
 from playwright.sync_api import sync_playwright
 import os
 
-from scripts.e2e_helpers import launch_browser
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
 
-PORT = 9847
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SCREENSHOTS_DIR = os.path.join(REPO_ROOT, "test_screenshots")
+SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 ROOM_CODE = "test-room"
@@ -101,9 +99,11 @@ def open_unscheduled_action_menu_for_text(page, text):
 
 def test_task_crud_flow():
     with sync_playwright() as p:
-        browser = launch_browser(p)
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
-        page.goto(f"http://127.0.0.1:{PORT}")
+        browser, _context, page = launch_e2e_page(
+            p,
+            viewport={"width": 1280, "height": 900},
+        )
+        page.goto(BASE_URL)
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
 

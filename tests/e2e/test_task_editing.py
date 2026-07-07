@@ -8,15 +8,12 @@ from scripts.e2e_helpers import (
     clear_room_storage,
     dismiss_open_modals,
     enter_room,
-    install_local_pouchdb_route,
-    launch_browser,
     open_scheduled_edit_form,
     seed_docs,
     wait_for_main_app,
 )
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config, launch_e2e_page
 
-PORT = 9847
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
@@ -173,8 +170,10 @@ def test_task_editing_flow():
     D_MODAL = schedule["D_MODAL"]
 
     with sync_playwright() as p:
-        browser = launch_browser(p)
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        browser, _context, page = launch_e2e_page(
+            p,
+            viewport={"width": 1280, "height": 900},
+        )
 
         console_messages = []
         http_404_urls = []
@@ -184,7 +183,7 @@ def test_task_editing_flow():
             lambda response: http_404_urls.append(response.url) if response.status == 404 else None
         )
 
-        page.goto(f"http://127.0.0.1:{PORT}")
+        page.goto(BASE_URL)
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
 
@@ -567,10 +566,10 @@ def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
     room_code = "task-editing-mobile-draft"
 
     with sync_playwright() as playwright:
-        browser = launch_browser(playwright)
-        context = browser.new_context(viewport={"width": 375, "height": 812})
-        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
-        page = context.new_page()
+        browser, context, page = launch_e2e_page(
+            playwright,
+            viewport={"width": 375, "height": 812},
+        )
 
         try:
             page.goto(BASE_URL, wait_until="load")

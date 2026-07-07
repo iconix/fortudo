@@ -730,7 +730,3 @@ def main(argv: list[str] | None = None) -> int:
         step_pause_ms=parsed["step_pause_ms"],
     )
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(__import__("sys").argv[1:]))

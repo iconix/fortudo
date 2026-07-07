@@ -12,9 +12,8 @@ from pathlib import Path
 
 import pytest
 
-PORT = 9847
-HOST = "127.0.0.1"
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.e2e.helpers import HOST, PORT, REPO_ROOT
+
 PUBLIC_DIR = REPO_ROOT / "public"
 
 

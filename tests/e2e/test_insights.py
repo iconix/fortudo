@@ -7,9 +7,9 @@ from playwright.sync_api import sync_playwright
 
 from tests.e2e.helpers import (
     BASE_URL,
-    REPO_ROOT,
     activities_config,
     format_browser_long_date,
+    launch_e2e_page,
     seed_and_enter_room,
 )
 from scripts.e2e_helpers import (
@@ -19,8 +19,6 @@ from scripts.e2e_helpers import (
     clear_room_storage,
     dismiss_open_modals,
     enter_room,
-    install_local_pouchdb_route,
-    launch_browser,
     seed_docs,
     wait_for_main_app,
 )
@@ -31,10 +29,10 @@ ROOM_CODE = "insights-mobile"
 @pytest.mark.parametrize("viewport_width", [375, 768])
 def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
     with sync_playwright() as playwright:
-        browser = launch_browser(playwright)
-        context = browser.new_context(viewport={"width": viewport_width, "height": 812})
-        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
-        page = context.new_page()
+        browser, context, page = launch_e2e_page(
+            playwright,
+            viewport={"width": viewport_width, "height": 812},
+        )
 
         try:
             page.goto(BASE_URL, wait_until="load")
@@ -87,10 +85,10 @@ def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
 def test_insights_selected_day_scopes_details():
     room_code = "insights-selected-day-scope"
     with sync_playwright() as playwright:
-        browser = launch_browser(playwright)
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
-        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
-        page = context.new_page()
+        browser, context, page = launch_e2e_page(
+            playwright,
+            viewport={"width": 1280, "height": 900},
+        )
 
         try:
             # Doc builders evaluate date math in the browser, so load the page first.

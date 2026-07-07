@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import http.client
 
+from tests.e2e.helpers import HOST, PORT
+
 
 def test_app_server_serves_index():
-    conn = http.client.HTTPConnection("127.0.0.1", 9847, timeout=5)
+    conn = http.client.HTTPConnection(HOST, PORT, timeout=5)
     conn.request("GET", "/")
     response = conn.getresponse()
     body = response.read().decode("utf-8", errors="ignore")

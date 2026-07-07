@@ -9,8 +9,6 @@ from scripts.e2e_helpers import (
     dismiss_open_modals,
     enter_room,
     force_activity_mode,
-    install_local_pouchdb_route,
-    launch_browser,
     open_settings_modal,
     read_docs,
     seed_docs,
@@ -20,7 +18,7 @@ from scripts.e2e_helpers import (
     wait_for_running_timer_ui,
     wait_until,
 )
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config, launch_seeded_page
+from tests.e2e.helpers import BASE_URL, activities_config, launch_e2e_page, launch_seeded_page
 
 
 def get_onboarding_target(page):
@@ -55,10 +53,10 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
     room_code = "activities-onboarding-sequence"
 
     with sync_playwright() as playwright:
-        browser = launch_browser(playwright)
-        context = browser.new_context(viewport={"width": 390, "height": 844})
-        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
-        page = context.new_page()
+        browser, context, page = launch_e2e_page(
+            playwright,
+            viewport={"width": 390, "height": 844},
+        )
 
         try:
             page.goto(BASE_URL, wait_until="load")

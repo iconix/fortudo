@@ -20,6 +20,27 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_URL = f"http://{HOST}:{PORT}"
 
 
+def install_required_local_pouchdb_route(context, *, repo_root: Path = REPO_ROOT) -> None:
+    """Install the local PouchDB route required by local E2E tests."""
+    if install_local_pouchdb_route(context, repo_root=repo_root):
+        return
+
+    raise RuntimeError(
+        "PouchDB asset not found at node_modules/pouchdb/dist/pouchdb.min.js. "
+        "Run npm ci before local E2E tests so browsers do not fall back to the CDN."
+    )
+
+
+def launch_e2e_page(playwright, *, viewport: dict | None = None):
+    """Launch a browser page with the required local PouchDB asset route installed."""
+    browser = launch_browser(playwright)
+    context = browser.new_context(viewport=viewport or {"width": 1280, "height": 900})
+    install_required_local_pouchdb_route(context)
+    page = context.new_page()
+
+    return browser, context, page
+
+
 def seed_and_enter_room(page, room_code: str, docs: list[dict] | None = None) -> None:
     page.goto(BASE_URL, wait_until="load")
     page.evaluate("localStorage.clear()")
@@ -31,10 +52,7 @@ def seed_and_enter_room(page, room_code: str, docs: list[dict] | None = None) ->
 
 
 def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = None):
-    browser = launch_browser(playwright)
-    context = browser.new_context(viewport={"width": 1280, "height": 900})
-    install_local_pouchdb_route(context, repo_root=REPO_ROOT)
-    page = context.new_page()
+    browser, context, page = launch_e2e_page(playwright)
     seed_and_enter_room(page, room_code, docs)
 
     return browser, context, page
