@@ -34,7 +34,7 @@
 - `__tests__/integration.test.js`
 
 **Optional docs**
-- `docs/plans/2026-03-16-fortudo-activities-design.md`
+- `docs/plans/design/2026-03-16-fortudo-activities-design.md`
 - `docs/ARCHITECTURE-ASSESSMENT.md`
 
 ---
@@ -294,13 +294,13 @@ git commit -m "test: lock in coordinator integration boundaries"
 ### Task 5: Align Docs with the Hardened Coordinator Boundary
 
 **Files:**
-- Modify: `docs/plans/2026-03-16-fortudo-activities-design.md`
+- Modify: `docs/plans/design/2026-03-16-fortudo-activities-design.md`
 - Optionally modify: `docs/ARCHITECTURE-ASSESSMENT.md`
 - Optionally modify: `README.md`
 
 - [ ] **Step 1: Update the design doc to match the actual pre-Activities boundary**
 
-In `docs/plans/2026-03-16-fortudo-activities-design.md`:
+In `docs/plans/design/2026-03-16-fortudo-activities-design.md`:
 - keep the broader Activities vision
 - update coordinator examples so they describe the semantic event surface that now exists
 - note that day-rollover behavior remains future work even though the placeholder hook was removed
@@ -320,7 +320,7 @@ Expected:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/plans/2026-03-16-fortudo-activities-design.md docs/ARCHITECTURE-ASSESSMENT.md README.md
+git add docs/plans/design/2026-03-16-fortudo-activities-design.md docs/ARCHITECTURE-ASSESSMENT.md README.md
 git commit -m "docs: align coordinator architecture guidance"
 ```
 

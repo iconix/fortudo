@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JS/ES modules, PouchDB config persistence via `storage.js`, Tailwind CSS, Font Awesome, Jest + jsdom.
 
-**Spec reference:** `docs/plans/2026-03-23-fortudo-activities-phase3-5-design.md`
+**Spec reference:** `docs/plans/design/2026-03-23-fortudo-activities-phase3-5-design.md`
 
 ---
 

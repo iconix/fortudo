@@ -10,6 +10,18 @@ Fortudo is a daily time-blocking to-do app. It runs as a single-page application
 
 - GitHub CLI (`gh`) is installed at `/c/Program Files/GitHub CLI/gh`
 
+## Planning Docs
+
+Plans live under `docs/plans/` by document type, not by the workflow or tool that
+produced them:
+
+- Design/specification docs go in `docs/plans/design/`
+- Implementation plans, including superpowers-generated plans, go in
+  `docs/plans/implementation/`
+
+See `docs/plans/README.md` for the current convention. Do not create new plans under
+`docs/superpowers/`.
+
 ## Commands
 
 ```bash

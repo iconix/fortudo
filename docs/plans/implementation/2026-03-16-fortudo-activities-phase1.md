@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JS (ES modules), PouchDB, Jest + jsdom, Tailwind CSS
 
-**Spec:** `docs/plans/2026-03-16-fortudo-activities-design.md`
+**Spec:** `docs/plans/design/2026-03-16-fortudo-activities-design.md`
 
 **Repo:** `https://github.com/iconix/fortudo` (clone locally before starting)
 

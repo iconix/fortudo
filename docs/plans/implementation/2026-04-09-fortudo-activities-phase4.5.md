@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JS with ES modules, PouchDB, Tailwind CSS, Jest 30 + jsdom for testing.
 
-**Design doc:** `docs/plans/2026-03-16-fortudo-activities-design.md` — see "UI: Live Activity Timer" and "Phase 4.5 Design Decisions"
+**Design doc:** `docs/plans/design/2026-03-16-fortudo-activities-design.md` — see "UI: Live Activity Timer" and "Phase 4.5 Design Decisions"
 
 ---
 

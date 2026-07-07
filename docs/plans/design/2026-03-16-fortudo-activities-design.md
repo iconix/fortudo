@@ -340,17 +340,18 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **Empty states:** Each view should have a meaningful empty state with guidance, for example "No activities tracked today - log one or complete a scheduled task" or "Enable Activities in settings to start tracking."
 
-**Keyboard shortcuts:** Add once form modes and the insights tab exist.
+**Keyboard shortcuts:** `Tab` toggles Tasks / Insights, and `Esc` closes custom modals.
+The proposed `1` / `2` / `3` form-mode shortcuts and shortcut registry were cut as
+low-value for v1.
 
-- `1`, `2`, `3` to switch form mode
-- `Tab` to toggle Tasks / Insights views
-- `Esc` to close modals
+**Transitions:** Phase 6 added reduced-motion handling plus subtle transitions for view
+switching, action menus, timeline selection, and settings reload prompts.
 
-**Transitions:** Tab switching, chart animations, and timeline build-in belong in the polish phase.
+**Mobile:** Phase 6 adapted the plan-vs-actual timeline for touch targets, responsive
+tick labels, and selected-block details on narrow screens.
 
-**Mobile:** Plan-vs-actual timeline should either stack vertically or support horizontal scroll on narrow screens.
-
-**Onboarding:** One-time tooltip or walkthrough on first Activities enable. Polish phase.
+**Onboarding:** Phase 6 added a feature-flagged "What's new?" prompt and room-scoped
+Activities onboarding walkthrough with a 24-hour remind-me-later option.
 
 ### Testing
 
@@ -372,9 +373,24 @@ Accessed via a tab toggle in the header ("Tasks" / "Insights"). The toggle switc
 
 **Existing tests:** The `tasks/` reorganization, toast system, coordinator hardening, and orchestration boundary are already covered. Phase 4 extended that baseline with activity-specific unit and integration tests.
 
-**E2E tests:** Add activity tracking E2E coverage once the UI exists.
+**E2E tests:** Browser-level regression coverage now lives under `tests/e2e/` and runs
+through pytest in CI. The product-oriented suites cover task CRUD/editing, schedule gaps
+and overlaps, UI states, Activities, Insights, timer restoration, settings persistence,
+mobile overflow, and selected-day scoping.
 
-**Existing smoke coverage:** `scripts/playwright_preview_smoke.py` covers storage-level merge-readiness and seeded UI confidence passes, including legacy migration, cross-type isolation, room isolation, synced-preview behavior, taxonomy/settings rendering, group-vs-child task assignment, category edit persistence, timer start/edit/stop/replacement, unscheduled task timer promotion, reload persistence, overlap auto-stop, referenced-delete safety, Phase 5 Insights rendering, selected trend-day visibility, hidden-but-scrollable trend strips, selected-day detail scoping, embedded activity data issue badges, preserved vertical scroll during Insights re-renders, and timer stop ID reuse. `activities/smoke-hooks.js` provides testability hooks for injecting activity failures in preview/smoke environments (localhost and preview hosts only).
+**Preview smoke coverage:** The canonical post-deploy entry point is
+`python -m scripts.preview_smoke <preview-url> --channel chrome`, with
+`scripts/playwright_preview_smoke.py` retained as a compatibility wrapper. Preview smoke
+covers storage-level merge-readiness and seeded UI confidence passes, including legacy
+migration, cross-type isolation, room isolation, synced-preview behavior,
+taxonomy/settings rendering, group-vs-child task assignment, category edit persistence,
+timer start/edit/stop/replacement, unscheduled task timer promotion, reload persistence,
+overlap auto-stop, referenced-delete safety, Phase 5 Insights rendering, selected
+trend-day visibility, hidden-but-scrollable trend strips, selected-day detail scoping,
+embedded activity data issue badges, preserved vertical scroll during Insights
+re-renders, running-timer sync refresh, and timer stop ID reuse.
+`activities/smoke-hooks.js` provides testability hooks for injecting activity failures in
+preview/smoke environments (localhost and preview hosts only).
 
 ### Sync Considerations
 
@@ -384,11 +400,13 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 
 ## Open Questions
 
-- **Activity accent color:** Currently sky in the implementation. Still open to experimenting with cyan and orange.
-- **Charts:** Hand-rolled HTML/CSS/SVG for v1. If that looks too plain, evaluate either a lightweight library such as uPlot or Frappe Charts, or Chart.js for full interactivity.
-- **Legacy settings migration cleanup:** remove the one-time `fortudo-activities-enabled` migration path after a later release, once it is acceptable to stop supporting users skipping directly from pre-3.9 builds.
-- **Unscheduled task hint:** When Activities are enabled, surface a hint near unscheduled tasks that they won't auto-log on completion. Exact placement and wording TBD.
-- **Timer display compactness:** How compact should the timer display be? One-line minimal bar vs. showing all editable fields (description, category, start time) inline.
+- **Legacy settings migration cleanup:** remove the one-time
+  `fortudo-activities-enabled` migration path after a later release, once it is
+  acceptable to stop supporting users skipping directly from pre-3.9 builds.
+- **Unscheduled task hint:** Decide whether to surface a hint near unscheduled tasks
+  that they will not auto-log on completion. Exact placement and wording TBD.
+- **Timer display compactness:** Decide whether the running-timer display should stay as
+  an editable field set or collapse toward a smaller one-line bar.
 
 ### Phase 4 Design Decisions (resolved)
 
@@ -525,21 +543,73 @@ Lazy loading: activity modules can be imported eagerly but gated by `isActivitie
 - Added UI behavior for preserved vertical scroll during Insights re-renders
 - Expanded preview smoke coverage for the Phase 5 surfaces and timer stop ID reuse
 
+### Completed Phase 5.5 Work
+
+**Phase 5.5: Activity polish, task actions, and operational hardening**
+
+- Refined Activities settings behavior so reload prompts stay in-modal, taxonomy controls
+  remain hidden until reload after enabling, and reload-from-enable returns to settings
+  after sync settles
+- Made taxonomy settings easier to scan with common color-family names, another color
+  family, and left-aligned group/category names
+- Kept the main schedule day-scoped so completed tasks from other days do not appear in
+  today's schedule
+- Added `Do now` for scheduled tasks through the task actions menu, using the existing
+  reschedule workflow and leaving the schedule unchanged when the user declines
+  rescheduling
+- Added task action menus for scheduled and unscheduled tasks, including `Start timer`
+  for unscheduled tasks, edit, schedule/unschedule, delete, and lock-time controls
+- Renamed locked-task actions to `Lock time` / `Allow reschedule` and replaced the row
+  text badge with a compact lock indicator and explanatory tooltip
+- Updated now/free timeline treatment so free blocks and until-next blocks communicate
+  their mode more clearly
+- Fixed stale-page sync so running timer displays refresh after storage sync without
+  repeatedly forcing the Activity tab except during initial running-timer restoration
+- Added diagnostic logging for caught start-timer exceptions before the generic "Could
+  not start timer." alert
+- Stopped task action menus from auto-focusing the first menu item on open
+- Hardened Firebase preview and production deploy workflows against Firebase CLI retry
+  responses where the target version is already active
+
+### Completed Phase 6 Work
+
+**Phase 6: Polish, mobile adaptation, onboarding, and E2E consolidation**
+
+- Added reduced-motion handling and subtle transition hooks for view switching, action
+  menus, selected timeline blocks, and settings reload prompts
+- Adapted the Insights plan-vs-actual timeline for mobile, including touch-friendly block
+  targets, taller timeline rows, responsive tick labels, and selected-block detail wrapping
+- Added Escape handling for custom alert and confirm modals
+- Added a feature-flagged "What's new?" prompt for the Activities release announcement
+- Added room-scoped Activities onboarding with a three-step walkthrough, dismissal
+  persistence, and a 24-hour remind-me-later path
+- Expanded E2E coverage for timer reload/restore, settings persistence, selected-day
+  Insights scoping, mobile overflow, and edit-draft protection during delayed UI refreshes
+- Consolidated Python E2E into the pytest `tests/` tree with product-oriented suite names,
+  shared E2E helpers, guarded local PouchDB routing, and a packaged preview-smoke CLI
+- Confirmed that hand-rolled Insights visuals are sufficient for v1; Chart.js was not
+  adopted
+- Cut the proposed `1` / `2` / `3` form-mode shortcut registry as low-value for v1
+- Dropped the orchestration naming/doc review and activity accent-color finalization from
+  Phase 6 scope; neither currently justifies a standalone follow-up unless the code or UI
+  starts to feel unclear in later work
+
 ### Next Planned Work
 
-**Phase 6: Polish and E2E**
+**Future Activities polish**
 
-- Expand E2E coverage for remaining activity flows and cross-device/sync confidence after Phase 5 acceptance coverage is in place
-- Add a one-time "What's new?" prompt on initial app load after Activities ships, highlighting activity logging, timer capture, and insights
-- Review orchestration module naming and docs so `app-lifecycle.js` clearly owns room/session lifecycle and day-boundary timers, while `app-coordinator.js` owns post-mutation side effects
-- Finalize activity accent color
-- Add transitions and micro-interactions
-- Adapt timeline UX for mobile
-- Add onboarding tooltips on first Activities enable
-- Evaluate Chart.js only if the hand-rolled visuals are too plain
+- Revisit the unscheduled-task auto-log hint if users expect unscheduled completions to
+  create activity records
+- Revisit running-timer display density if the editable timer form feels too large in
+  repeated daily use
+- Remove the legacy `fortudo-activities-enabled` migration path after a later release,
+  once it is acceptable to stop supporting users skipping directly from pre-3.9 builds
 
 **Operational hardening follow-up**
 
 - Preserve the timer debug snapshot seam and server-clock offset handling for future elapsed-time work
 - Add focused regression coverage whenever a feature touches elapsed counters, midnight boundaries, restored timer state, or cross-device running-timer sync
 - Keep lifecycle behavior session-scoped so room switches and in-flight sync cannot mutate the wrong room's activity/timer UI
+- Keep the three-layer test boundary intact: Jest unit/integration tests for module
+  behavior, pytest E2E for pre-merge browser coverage, and preview smoke for deployed
+  Firebase/CouchDB confidence
