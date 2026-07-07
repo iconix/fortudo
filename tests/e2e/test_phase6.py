@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
 
-sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-from playwright_preview_smoke import (  # noqa: E402
+from scripts.e2e_helpers import (
     assert_trend_day_selection_scopes_details,
     build_relative_day_activity_doc,
     build_relative_day_scheduled_task_doc,
@@ -28,19 +25,12 @@ from playwright_preview_smoke import (  # noqa: E402
     wait_for_running_timer_ui,
     wait_until,
     wait_for_main_app,
+    launch_browser,
 )
 
 BASE_URL = "http://127.0.0.1:9847"
 ROOM_CODE = "phase6-mobile"
-BROWSER_CHANNEL = os.environ.get("E2E_BROWSER_CHANNEL", "chromium")
-
-
-def launch_browser(playwright):
-    """Launch chromium; set E2E_BROWSER_CHANNEL=chrome to use system Chrome instead."""
-    options = {"headless": True}
-    if BROWSER_CHANNEL != "chromium":
-        options["channel"] = BROWSER_CHANNEL
-    return playwright.chromium.launch(**options)
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def get_onboarding_target(page):
@@ -77,7 +67,7 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
     with sync_playwright() as playwright:
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 390, "height": 844})
-        install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
         page = context.new_page()
 
         try:
@@ -162,7 +152,7 @@ def seed_and_enter_room(page, room_code: str, docs: list[dict] | None = None) ->
 def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = None):
     browser = launch_browser(playwright)
     context = browser.new_context(viewport={"width": 1280, "height": 900})
-    install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+    install_local_pouchdb_route(context, repo_root=REPO_ROOT)
     page = context.new_page()
     seed_and_enter_room(page, room_code, docs)
 
@@ -197,7 +187,7 @@ def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
     with sync_playwright() as playwright:
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": viewport_width, "height": 812})
-        install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
         page = context.new_page()
 
         try:
@@ -254,7 +244,7 @@ def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
     with sync_playwright() as playwright:
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 375, "height": 812})
-        install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
         page = context.new_page()
 
         try:
@@ -367,7 +357,7 @@ def test_insights_selected_day_scopes_details():
     with sync_playwright() as playwright:
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
-        install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
         page = context.new_page()
 
         try:
