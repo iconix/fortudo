@@ -18,23 +18,15 @@ from scripts.e2e_helpers import (
     assert_trend_day_selection_scopes_details,
     assert_trend_strip_scrollbar_hidden_and_scrollable,
     build_phase3_taxonomy_config_doc,
-    build_launch_options,
-    build_couchdb_request_parts,
-    build_remote_db_name,
     build_relative_day_activity_doc,
     clear_all_tasks_via_ui,
     complete_scheduled_task_via_ui,
     configure_demo_logging,
     compute_storage_room_code,
-    create_run_scoped_prefix,
-    create_scenario_rooms,
     delete_unscheduled_task_via_ui,
-    derive_smoke_room_prefix,
     demo_note,
     demo_step,
     ensure_activity_doc_present,
-    extract_couchdb_url,
-    fetch_remote_docs,
     fill_locator_value,
     filter_runtime_errors,
     get_running_activity_config,
@@ -45,10 +37,8 @@ from scripts.e2e_helpers import (
     is_expected_sync_response_error,
     is_preview_host,
     open_scheduled_edit_form,
-    parse_cli_args,
     queue_activity_smoke_failure,
     request_manual_sync,
-    run_phase5_insights_smoke,
     start_activity_timer,
     start_timer_from_unscheduled_task,
     stop_activity_timer,
@@ -65,6 +55,19 @@ from scripts.e2e_helpers import (
     wait_for_demo_start,
     wait_for_room_code,
     wait_for_text_in_locator,
+)
+from scripts.preview_smoke.cli import build_launch_options, parse_cli_args
+from scripts.preview_smoke.remote import (
+    build_couchdb_request_parts,
+    build_remote_db_name,
+    extract_couchdb_url,
+    fetch_remote_docs,
+)
+from scripts.preview_smoke.scenarios import (
+    create_run_scoped_prefix,
+    create_scenario_rooms,
+    derive_smoke_room_prefix,
+    run_phase5_insights_smoke,
 )
 
 
@@ -105,7 +108,7 @@ class CouchDbHelpersTests(unittest.TestCase):
         self.assertEqual(base_url, "https://example.cloudant.com")
         self.assertIn("Authorization", headers)
 
-    @patch("scripts.e2e_helpers.urlopen")
+    @patch("scripts.preview_smoke.remote.urlopen")
     def test_fetch_remote_docs_reads_all_docs(self, mock_urlopen):
         mock_response = mock_urlopen.return_value.__enter__.return_value
         mock_response.read.return_value = (
@@ -1261,24 +1264,24 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(doc["dateText"], "Sun, Jun 14")
         self.assertEqual(doc["localDate"], "2026-06-14")
 
-    @patch("scripts.e2e_helpers.assert_running_timer_id_reused_by_stopped_activity")
-    @patch("scripts.e2e_helpers.assert_activity_data_issue_badge")
-    @patch("scripts.e2e_helpers.assert_trend_day_selection_scopes_details")
-    @patch("scripts.e2e_helpers.assert_insights_rerender_preserves_vertical_scroll")
-    @patch("scripts.e2e_helpers.assert_trend_strip_scrollbar_hidden_and_scrollable")
-    @patch("scripts.e2e_helpers.assert_selected_trend_day_visible")
-    @patch("scripts.e2e_helpers.assert_phase5_insights_view")
-    @patch("scripts.e2e_helpers.stop_activity_timer")
-    @patch("scripts.e2e_helpers.wait_for_running_activity_config")
-    @patch("scripts.e2e_helpers.start_activity_timer")
-    @patch("scripts.e2e_helpers.wait_for_activity_doc")
-    @patch("scripts.e2e_helpers.complete_scheduled_task_via_ui")
-    @patch("scripts.e2e_helpers.wait_for_task_doc")
-    @patch("scripts.e2e_helpers.add_active_scheduled_task")
-    @patch("scripts.e2e_helpers.seed_docs")
-    @patch("scripts.e2e_helpers.build_relative_day_activity_doc")
-    @patch("scripts.e2e_helpers.wait_for_main_app")
-    @patch("scripts.e2e_helpers.set_activities_enabled")
+    @patch("scripts.preview_smoke.scenarios.assert_running_timer_id_reused_by_stopped_activity")
+    @patch("scripts.preview_smoke.scenarios.assert_activity_data_issue_badge")
+    @patch("scripts.preview_smoke.scenarios.assert_trend_day_selection_scopes_details")
+    @patch("scripts.preview_smoke.scenarios.assert_insights_rerender_preserves_vertical_scroll")
+    @patch("scripts.preview_smoke.scenarios.assert_trend_strip_scrollbar_hidden_and_scrollable")
+    @patch("scripts.preview_smoke.scenarios.assert_selected_trend_day_visible")
+    @patch("scripts.preview_smoke.scenarios.assert_phase5_insights_view")
+    @patch("scripts.preview_smoke.scenarios.stop_activity_timer")
+    @patch("scripts.preview_smoke.scenarios.wait_for_running_activity_config")
+    @patch("scripts.preview_smoke.scenarios.start_activity_timer")
+    @patch("scripts.preview_smoke.scenarios.wait_for_activity_doc")
+    @patch("scripts.preview_smoke.scenarios.complete_scheduled_task_via_ui")
+    @patch("scripts.preview_smoke.scenarios.wait_for_task_doc")
+    @patch("scripts.preview_smoke.scenarios.add_active_scheduled_task")
+    @patch("scripts.preview_smoke.scenarios.seed_docs")
+    @patch("scripts.preview_smoke.scenarios.build_relative_day_activity_doc")
+    @patch("scripts.preview_smoke.scenarios.wait_for_main_app")
+    @patch("scripts.preview_smoke.scenarios.set_activities_enabled")
     def test_run_phase5_insights_smoke_seeds_activity_and_opens_insights(
         self,
         mock_set_activities_enabled,

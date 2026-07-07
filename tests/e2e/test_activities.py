@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from playwright.sync_api import sync_playwright
 
-from conftest import BASE_URL, REPO_ROOT, activities_config, launch_seeded_page
 from scripts.e2e_helpers import (
     clear_room_storage,
+    dismiss_open_modals,
     enter_room,
     force_activity_mode,
     install_local_pouchdb_route,
@@ -19,8 +19,8 @@ from scripts.e2e_helpers import (
     wait_for_running_activity_config,
     wait_for_running_timer_ui,
     wait_until,
-    dismiss_open_modals,
 )
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config, launch_seeded_page
 
 
 def get_onboarding_target(page):

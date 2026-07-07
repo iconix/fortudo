@@ -81,3 +81,6 @@ __pycache__/
 .venv/
 uv.lock
 
+# macOS metadata
+.DS_Store
+

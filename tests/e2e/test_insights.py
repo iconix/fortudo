@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import sync_playwright
 
-from conftest import (
+from tests.e2e.helpers import (
     BASE_URL,
     REPO_ROOT,
     activities_config,

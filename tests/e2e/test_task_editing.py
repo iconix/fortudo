@@ -3,7 +3,6 @@ from playwright.sync_api import sync_playwright
 from datetime import datetime, timedelta
 import os
 
-from conftest import BASE_URL, REPO_ROOT as E2E_REPO_ROOT, activities_config
 from scripts.e2e_helpers import (
     build_relative_day_scheduled_task_doc,
     clear_room_storage,
@@ -15,10 +14,10 @@ from scripts.e2e_helpers import (
     seed_docs,
     wait_for_main_app,
 )
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config
 
 PORT = 9847
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SCREENSHOTS_DIR = os.path.join(REPO_ROOT, "test_screenshots")
+SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 ROOM_CODE = "test-room"
@@ -570,7 +569,7 @@ def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
     with sync_playwright() as playwright:
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 375, "height": 812})
-        install_local_pouchdb_route(context, repo_root=E2E_REPO_ROOT)
+        install_local_pouchdb_route(context, repo_root=REPO_ROOT)
         page = context.new_page()
 
         try:

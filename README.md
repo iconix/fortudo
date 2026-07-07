@@ -34,13 +34,13 @@ uv run --with pytest --with playwright python -m pytest tests -q
 E2E_BROWSER_CHANNEL=chrome uv run --with pytest --with playwright python -m pytest tests/e2e -q
 ```
 
-**Preview smoke (`scripts/playwright_preview_smoke.py`)** - post-deploy, run
-manually against a Firebase preview URL. This owns deployed-environment concerns
-such as CouchDB sync, room reset, and cross-room scenarios:
+**Preview smoke (`scripts.preview_smoke`)** - post-deploy, run manually against a
+Firebase preview URL. The preview smoke package owns deployed-environment
+concerns such as CouchDB sync, room reset, and cross-room scenarios:
 
 ```bash
 uv run --with pytest python -m pytest tests/test_preview_smoke_helpers.py
-uv run --with playwright python -B scripts/playwright_preview_smoke.py <preview-url> --channel chrome
+uv run --with playwright python -m scripts.preview_smoke <preview-url> --channel chrome
 ```
 
 ## roadmap
