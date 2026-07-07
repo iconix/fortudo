@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,15 @@ from playwright_preview_smoke import (  # noqa: E402
 
 BASE_URL = "http://127.0.0.1:9847"
 ROOM_CODE = "phase6-mobile"
+BROWSER_CHANNEL = os.environ.get("E2E_BROWSER_CHANNEL", "chromium")
+
+
+def launch_browser(playwright):
+    """Launch chromium; set E2E_BROWSER_CHANNEL=chrome to use system Chrome instead."""
+    options = {"headless": True}
+    if BROWSER_CHANNEL != "chromium":
+        options["channel"] = BROWSER_CHANNEL
+    return playwright.chromium.launch(**options)
 
 
 def get_onboarding_target(page):
@@ -65,7 +75,7 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
     room_code = "phase6-onboarding-sequence"
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, channel="chrome")
+        browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 390, "height": 844})
         install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
         page = context.new_page()
@@ -139,12 +149,7 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
 # onboarding sequence that follows Activities enablement.
 
 
-def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = None):
-    browser = playwright.chromium.launch(headless=True, channel="chrome")
-    context = browser.new_context(viewport={"width": 1280, "height": 900})
-    install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
-    page = context.new_page()
-
+def seed_and_enter_room(page, room_code: str, docs: list[dict] | None = None) -> None:
     page.goto(BASE_URL, wait_until="load")
     page.evaluate("localStorage.clear()")
     clear_room_storage(page, room_code)
@@ -152,6 +157,14 @@ def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = Non
     enter_room(page, room_code)
     wait_for_main_app(page)
     dismiss_open_modals(page)
+
+
+def launch_seeded_page(playwright, room_code: str, docs: list[dict] | None = None):
+    browser = launch_browser(playwright)
+    context = browser.new_context(viewport={"width": 1280, "height": 900})
+    install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+    page = context.new_page()
+    seed_and_enter_room(page, room_code, docs)
 
     return browser, context, page
 
@@ -182,7 +195,7 @@ def format_browser_long_date(page, date_value: str) -> str:
 @pytest.mark.parametrize("viewport_width", [375, 768])
 def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, channel="chrome")
+        browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": viewport_width, "height": 812})
         install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
         page = context.new_page()
@@ -239,7 +252,7 @@ def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
     room_code = "phase6-mobile-edit-draft"
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, channel="chrome")
+        browser = launch_browser(playwright)
         context = browser.new_context(viewport={"width": 375, "height": 812})
         install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
         page = context.new_page()
@@ -352,14 +365,16 @@ def test_settings_activities_toggle_persists_across_reload():
 def test_insights_selected_day_scopes_details():
     room_code = "phase6-insights-scope"
     with sync_playwright() as playwright:
-        page_for_dates_browser, page_for_dates_context, page_for_dates = launch_seeded_page(
-            playwright,
-            f"{room_code}-dates",
-            [activities_config()],
-        )
+        browser = launch_browser(playwright)
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        install_local_pouchdb_route(context, repo_root=Path(__file__).parent)
+        page = context.new_page()
+
         try:
+            # Doc builders evaluate date math in the browser, so load the page first.
+            page.goto(BASE_URL, wait_until="load")
             today_activity = build_relative_day_activity_doc(
-                page_for_dates,
+                page,
                 doc_id="phase6-today-activity",
                 description="Phase 6 today actual",
                 day_offset=0,
@@ -368,7 +383,7 @@ def test_insights_selected_day_scopes_details():
                 duration_minutes=30,
             )
             prior_activity = build_relative_day_activity_doc(
-                page_for_dates,
+                page,
                 doc_id="phase6-prior-activity",
                 description="Phase 6 prior actual",
                 day_offset=-1,
@@ -377,7 +392,7 @@ def test_insights_selected_day_scopes_details():
                 duration_minutes=45,
             )
             today_task = build_relative_day_scheduled_task_doc(
-                page_for_dates,
+                page,
                 doc_id="phase6-today-task",
                 description="Phase 6 today plan",
                 day_offset=0,
@@ -386,7 +401,7 @@ def test_insights_selected_day_scopes_details():
                 duration_minutes=30,
             )
             prior_task = build_relative_day_scheduled_task_doc(
-                page_for_dates,
+                page,
                 doc_id="phase6-prior-task",
                 description="Phase 6 prior plan",
                 day_offset=-1,
@@ -394,17 +409,13 @@ def test_insights_selected_day_scopes_details():
                 start_minute=30,
                 duration_minutes=30,
             )
-        finally:
-            page_for_dates_context.close()
-            page_for_dates_browser.close()
 
-        browser, context, page = launch_seeded_page(
-            playwright,
-            room_code,
-            [activities_config(), today_task, prior_task, today_activity, prior_activity],
-        )
+            seed_and_enter_room(
+                page,
+                room_code,
+                [activities_config(), today_task, prior_task, today_activity, prior_activity],
+            )
 
-        try:
             page.locator("#view-toggle-insights").click()
             page.locator("#insights-view").wait_for(state="visible", timeout=10000)
 
