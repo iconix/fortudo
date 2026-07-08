@@ -2324,7 +2324,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 duration: 30,
                 status: 'incomplete',
                 editing: false,
-                confirmingDelete: false
+                confirmingDelete: false,
+                locked: true
             });
             updateTaskState([task]);
 
@@ -2334,6 +2335,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].type).toBe('unscheduled');
             expect(tasks[0].estDuration).toBe(30);
+            expect(tasks[0]).not.toHaveProperty('startDateTime');
+            expect(tasks[0]).not.toHaveProperty('endDateTime');
+            expect(tasks[0]).not.toHaveProperty('duration');
+            expect(tasks[0]).not.toHaveProperty('locked');
         });
 
         test('unscheduleTask preserves category on the converted task', () => {

@@ -276,6 +276,26 @@ const stripUIFlags = (task) => {
     return persistable;
 };
 
+function convertScheduledTaskToUnscheduled(task) {
+    const {
+        startDateTime: _startDateTime,
+        endDateTime: _endDateTime,
+        duration,
+        locked: _locked,
+        editing: _editing,
+        confirmingDelete: _confirmingDelete,
+        isEditingInline: _isEditingInline,
+        ...remainingTask
+    } = task;
+
+    return {
+        ...remainingTask,
+        type: 'unscheduled',
+        priority: 'medium',
+        estDuration: duration ?? null
+    };
+}
+
 const finalizeTaskModification = (changedTasks) => {
     logger.debug('Finalizing task modification (invalidate cache, save)');
     invalidateTaskCaches();
@@ -1326,23 +1346,7 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
         }
 
         movedTasksCount++;
-        const {
-            startDateTime: _startDateTime,
-            endDateTime: _endDateTime,
-            duration,
-            locked: _locked,
-            editing: _editing,
-            confirmingDelete: _confirmingDelete,
-            isEditingInline: _isEditingInline,
-            ...remainingTask
-        } = task;
-
-        return {
-            ...remainingTask,
-            type: 'unscheduled',
-            priority: 'medium',
-            estDuration: duration ?? null
-        };
+        return convertScheduledTaskToUnscheduled(task);
     });
 
     if (movedTasksCount === 0) {
@@ -1518,33 +1522,12 @@ export function unscheduleTask(taskId) {
         return { success: false, reason: 'Task is not currently scheduled.' };
     }
 
-    const formerScheduledDuration = task.duration; // Capture the duration before deleting it
+    const unscheduledTask = convertScheduledTaskToUnscheduled(task);
+    tasks[taskIndex] = unscheduledTask;
+    finalizeTaskModification(unscheduledTask);
 
-    // Convert to unscheduled
-    task.type = 'unscheduled';
-    delete task.startDateTime;
-    delete task.endDateTime;
-    delete task.duration; // Delete the original 'duration' property for scheduled tasks
-
-    // Add properties typical for unscheduled tasks
-    task.priority = 'medium'; // Default priority
-    // Use the captured former scheduled duration as the new estimated duration.
-    // If it wasn't defined (though it should be for a scheduled task), set to null or a default.
-    // createTaskObject allows estDuration to be null.
-    task.estDuration =
-        formerScheduledDuration !== undefined && formerScheduledDuration !== null
-            ? formerScheduledDuration
-            : null;
-    task.isEditingInline = false; // Ensure it's not in edit mode by default
-
-    // Remove properties not relevant to unscheduled tasks (if any) - Placeholder if needed
-    // delete task.someScheduledOnlyProperty;
-
-    tasks[taskIndex] = task;
-    finalizeTaskModification(task);
-
-    logger.info('Task unscheduled:', task);
-    return { success: true, task };
+    logger.info('Task unscheduled:', unscheduledTask);
+    return { success: true, task: unscheduledTask };
 }
 
 // ============================================================================
