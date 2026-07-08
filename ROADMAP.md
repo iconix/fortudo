@@ -41,9 +41,8 @@ Historical and planned repo tasks for Fortudo.
 - [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
 
 - [x] (v4) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
-- [x] (v4) keep the action menu accessible on completed unscheduled tasks, with unavailable actions disabled
 - [x] (v4) clear completed unscheduled tasks on day rollover
-- [x] (v4) add a one-click Insights action to repair overlapping activities for the selected day
+- [x] (v4) complete day rollover by moving unfinished scheduled tasks from prior days back to the backlog
 
 - [ ] (vNext) add `completedAt` to unscheduled tasks so completed backlog items can be day-scoped and included in historical Insights instead of only being ephemeral cleanup state
 - [ ] (vNext) make Fortudo a PWA: installable and offline-friendly as a first-class web app
@@ -51,12 +50,6 @@ Historical and planned repo tasks for Fortudo.
   - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
   - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then
   - show a toast so the user knows the task was moved out of the current day's schedule instead of silently disappearing
-- [ ] (vNext) clear schedule on a new day (unschedule incomplete tasks)
-  - reintroduce a dedicated day-rollover coordinator boundary when this ships, rather than hiding the behavior behind ad hoc timer code
-  - run once per room per local calendar day, including the first app open after midnight, so rollover is idempotent instead of tick-sensitive
-  - delete all completed tasks from the prior day
-  - convert all remaining incomplete scheduled tasks from prior days into unscheduled tasks, copying `duration` into `estDuration` and defaulting `priority` to `medium`
-  - show a summary toast after rollover so the user can see what changed
 - [ ] (vNext) add checkbox to "make a habit" so we can have a second list that gets injected daily
 - [ ] (vNext) support configurable task quick actions so frequently used menu actions can be promoted back onto the task card
 - [ ] (vNext) support pomodoro alarms on running timers (?)

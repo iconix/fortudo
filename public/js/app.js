@@ -5,7 +5,8 @@ import {
     resetAllConfirmingDeleteFlags,
     getSortedUnscheduledTasks,
     getTodaysScheduledTasks,
-    deleteCompletedUnscheduledTasks
+    deleteCompletedUnscheduledTasks,
+    rolloverPriorDayScheduledTasks
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -70,6 +71,7 @@ import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js'
 import { handleAddTaskProcess } from './tasks/add-handler.js';
 import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
+import { showToast } from './toast-manager.js';
 import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
@@ -212,6 +214,8 @@ async function initAndBootApp(roomCode) {
         getRunningActivity,
         stopTimerAt,
         deleteCompletedUnscheduledTasks,
+        rolloverPriorDayScheduledTasks,
+        showToast,
         onSyncStatusChange,
         updateSyncStatusUI,
         triggerSync,

@@ -1312,6 +1312,59 @@ export function deleteCompletedUnscheduledTasks() {
     };
 }
 
+export function rolloverPriorDayScheduledTasks(now = new Date()) {
+    const currentDate = extractDateFromDateTime(now);
+    let movedTasksCount = 0;
+    const nextTasks = getTaskState().map((task) => {
+        if (
+            task.type !== 'scheduled' ||
+            task.status === 'completed' ||
+            !task.startDateTime ||
+            isTaskScheduledForLocalDate(task, currentDate)
+        ) {
+            return task;
+        }
+
+        movedTasksCount++;
+        const {
+            startDateTime: _startDateTime,
+            endDateTime: _endDateTime,
+            duration,
+            locked: _locked,
+            editing: _editing,
+            confirmingDelete: _confirmingDelete,
+            isEditingInline: _isEditingInline,
+            ...remainingTask
+        } = task;
+
+        return {
+            ...remainingTask,
+            type: 'unscheduled',
+            priority: 'medium',
+            estDuration: duration ?? null
+        };
+    });
+
+    if (movedTasksCount === 0) {
+        logger.info('rolloverPriorDayScheduledTasks: No unfinished scheduled tasks to move.');
+        return {
+            success: true,
+            message: 'No unfinished scheduled tasks to move.',
+            tasksMoved: 0
+        };
+    }
+
+    updateTaskState(nextTasks);
+    const taskWord = movedTasksCount === 1 ? 'task' : 'tasks';
+    const message = `${movedTasksCount} unfinished scheduled ${taskWord} moved to backlog.`;
+    logger.info(`rolloverPriorDayScheduledTasks: ${message}`);
+    return {
+        success: true,
+        message,
+        tasksMoved: movedTasksCount
+    };
+}
+
 export function scheduleUnscheduledTask(taskId, startTime, duration) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) return { success: false, reason: 'Unscheduled task not found.' };

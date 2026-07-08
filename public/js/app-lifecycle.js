@@ -13,6 +13,8 @@ export function createRoomSessionLifecycle({
     getRunningActivity,
     stopTimerAt,
     deleteCompletedUnscheduledTasks,
+    rolloverPriorDayScheduledTasks,
+    showToast,
     onSyncStatusChange,
     updateSyncStatusUI,
     triggerSync,
@@ -114,6 +116,23 @@ export function createRoomSessionLifecycle({
         });
     }
 
+    function runDayRollover(now) {
+        const cleanupResult = deleteCompletedUnscheduledTasks?.();
+        const rolloverResult = rolloverPriorDayScheduledTasks?.(now);
+        const deletedTasksCount = cleanupResult?.tasksDeleted || 0;
+        const movedTasksCount = rolloverResult?.tasksMoved || 0;
+
+        if (movedTasksCount > 0 && rolloverResult?.message) {
+            showToast?.(rolloverResult.message, { theme: 'teal' });
+        }
+
+        if (deletedTasksCount > 0 || movedTasksCount > 0) {
+            refreshFromStorage().catch((err) => {
+                logger.error('Failed to refresh tasks after midnight task rollover:', err);
+            });
+        }
+    }
+
     function startClockTickLoop() {
         activeTaskColorInterval = setInterval(() => {
             const now = new Date();
@@ -121,16 +140,7 @@ export function createRoomSessionLifecycle({
 
             if (currentDate !== lastObservedDate) {
                 lastObservedDate = currentDate;
-
-                const cleanupResult = deleteCompletedUnscheduledTasks?.();
-                if (cleanupResult?.tasksDeleted > 0) {
-                    refreshFromStorage().catch((err) => {
-                        logger.error(
-                            'Failed to refresh tasks after midnight unscheduled cleanup:',
-                            err
-                        );
-                    });
-                }
+                runDayRollover(now);
 
                 if (getActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
                     midnightTimerStopInFlight = true;

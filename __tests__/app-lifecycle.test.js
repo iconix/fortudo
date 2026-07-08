@@ -29,6 +29,12 @@ describe('app room/session lifecycle', () => {
             getRunningActivity: jest.fn(() => null),
             stopTimerAt: jest.fn(async () => ({ success: true })),
             deleteCompletedUnscheduledTasks: jest.fn(() => ({ success: true, tasksDeleted: 0 })),
+            rolloverPriorDayScheduledTasks: jest.fn(() => ({
+                success: true,
+                tasksMoved: 0,
+                message: 'No unfinished scheduled tasks to move.'
+            })),
+            showToast: jest.fn(),
             syncTimerFormState: jest.fn(),
             refreshTaskDisplays: jest.fn(),
             onSyncStatusChange: jest.fn(() => jest.fn()),
@@ -244,5 +250,35 @@ describe('app room/session lifecycle', () => {
         expect(deps.deleteCompletedUnscheduledTasks).toHaveBeenCalledTimes(1);
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
         expect(deps.refreshUI).toHaveBeenCalledTimes(1);
+    });
+
+    test('moves stale incomplete scheduled tasks and shows a toast when the local date changes', async () => {
+        jest.setSystemTime(new Date('2026-04-21T23:59:59'));
+        const { deps, lifecycle } = createLifecycle({
+            rolloverPriorDayScheduledTasks: jest.fn(() => ({
+                success: true,
+                tasksMoved: 2,
+                message: '2 unfinished scheduled tasks moved to backlog.'
+            }))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        deps.loadAppState.mockClear();
+        deps.refreshUI.mockClear();
+
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.rolloverPriorDayScheduledTasks).toHaveBeenCalledTimes(1);
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.refreshUI).toHaveBeenCalledTimes(1);
+        expect(deps.showToast).toHaveBeenCalledWith(
+            '2 unfinished scheduled tasks moved to backlog.',
+            {
+                theme: 'teal'
+            }
+        );
     });
 });
