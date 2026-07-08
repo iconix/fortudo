@@ -4,7 +4,8 @@ import {
     getTaskState,
     resetAllConfirmingDeleteFlags,
     getSortedUnscheduledTasks,
-    getTodaysScheduledTasks
+    getTodaysScheduledTasks,
+    deleteCompletedUnscheduledTasks
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -210,6 +211,7 @@ async function initAndBootApp(roomCode) {
         refreshStartTimeField,
         getRunningActivity,
         stopTimerAt,
+        deleteCompletedUnscheduledTasks,
         onSyncStatusChange,
         updateSyncStatusUI,
         triggerSync,

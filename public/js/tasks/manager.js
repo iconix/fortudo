@@ -1285,6 +1285,33 @@ export function deleteCompletedTasks() {
     };
 }
 
+export function deleteCompletedUnscheduledTasks() {
+    const currentTasks = getTaskState();
+    const remainingTasks = currentTasks.filter(
+        (task) => !(task.type === 'unscheduled' && task.status === 'completed')
+    );
+    const completedUnscheduledTasksCount = currentTasks.length - remainingTasks.length;
+
+    if (completedUnscheduledTasksCount === 0) {
+        logger.info('deleteCompletedUnscheduledTasks: No completed unscheduled tasks to delete.');
+        return {
+            success: true,
+            message: 'No completed unscheduled tasks to delete.',
+            tasksDeleted: 0
+        };
+    }
+
+    updateTaskState(remainingTasks);
+    logger.info(
+        `deleteCompletedUnscheduledTasks: ${completedUnscheduledTasksCount} completed unscheduled tasks have been deleted.`
+    );
+    return {
+        success: true,
+        message: `${completedUnscheduledTasksCount} completed unscheduled tasks deleted.`,
+        tasksDeleted: completedUnscheduledTasksCount
+    };
+}
+
 export function scheduleUnscheduledTask(taskId, startTime, duration) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) return { success: false, reason: 'Unscheduled task not found.' };

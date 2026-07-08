@@ -12,6 +12,7 @@ export function createRoomSessionLifecycle({
     refreshStartTimeField,
     getRunningActivity,
     stopTimerAt,
+    deleteCompletedUnscheduledTasks,
     onSyncStatusChange,
     updateSyncStatusUI,
     triggerSync,
@@ -120,6 +121,16 @@ export function createRoomSessionLifecycle({
 
             if (currentDate !== lastObservedDate) {
                 lastObservedDate = currentDate;
+
+                const cleanupResult = deleteCompletedUnscheduledTasks?.();
+                if (cleanupResult?.tasksDeleted > 0) {
+                    refreshFromStorage().catch((err) => {
+                        logger.error(
+                            'Failed to refresh tasks after midnight unscheduled cleanup:',
+                            err
+                        );
+                    });
+                }
 
                 if (getActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
                     midnightTimerStopInFlight = true;

@@ -1182,6 +1182,25 @@ describe('DOM Handler Interaction Tests', () => {
             expect(mockUnscheduledTaskCallbacks.onScheduleUnscheduledTask).not.toHaveBeenCalled();
         });
 
+        test('completed task actions menu can still open and delete the task', () => {
+            setupUnscheduledTask('unsched-1', true);
+
+            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+            const menu = document.querySelector('.unscheduled-task-actions-menu');
+            trigger.click();
+
+            expect(trigger.getAttribute('aria-expanded')).toBe('true');
+            expect(menu.hidden).toBe(false);
+
+            const deleteBtn = document.querySelector('.btn-delete-unscheduled');
+            deleteBtn.dispatchEvent(new Event('click', { bubbles: true }));
+
+            expect(mockUnscheduledTaskCallbacks.onDeleteUnscheduledTask).toHaveBeenCalledWith(
+                'unsched-1'
+            );
+            expect(menu.hidden).toBe(true);
+        });
+
         test('edit button calls onEditUnscheduledTask', () => {
             setupUnscheduledTask('unsched-1');
 

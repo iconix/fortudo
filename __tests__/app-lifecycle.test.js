@@ -28,6 +28,7 @@ describe('app room/session lifecycle', () => {
             refreshStartTimeField: jest.fn(),
             getRunningActivity: jest.fn(() => null),
             stopTimerAt: jest.fn(async () => ({ success: true })),
+            deleteCompletedUnscheduledTasks: jest.fn(() => ({ success: true, tasksDeleted: 0 })),
             syncTimerFormState: jest.fn(),
             refreshTaskDisplays: jest.fn(),
             onSyncStatusChange: jest.fn(() => jest.fn()),
@@ -220,5 +221,28 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncTimerFormState).not.toHaveBeenCalled();
         expect(deps.refreshTaskDisplays).not.toHaveBeenCalled();
         expect(deps.refreshStartTimeField).toHaveBeenCalledTimes(1);
+    });
+
+    test('clears completed unscheduled tasks when the local date changes', async () => {
+        jest.setSystemTime(new Date('2026-04-21T23:59:59'));
+        const { deps, lifecycle } = createLifecycle({
+            deleteCompletedUnscheduledTasks: jest.fn(() => ({
+                success: true,
+                tasksDeleted: 2
+            }))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        deps.loadAppState.mockClear();
+        deps.refreshUI.mockClear();
+
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.deleteCompletedUnscheduledTasks).toHaveBeenCalledTimes(1);
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.refreshUI).toHaveBeenCalledTimes(1);
     });
 });

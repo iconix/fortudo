@@ -41,7 +41,11 @@ Historical and planned repo tasks for Fortudo.
 - [x] (v3) rename `dom-handler.js` to `dom-renderer.js` or `view.js` (it's a rendering/view layer, not a feature handler)
 
 - [x] (v4) add a version of my `tracks` app to this (either directly or more like a plugin, somehow..?)
+- [x] (v4) keep the action menu accessible on completed unscheduled tasks, with unavailable actions disabled
+- [x] (v4) clear completed unscheduled tasks on day rollover
+- [x] (v4) add a one-click Insights action to repair overlapping activities for the selected day
 
+- [ ] (vNext) add `completedAt` to unscheduled tasks so completed backlog items can be day-scoped and included in historical Insights instead of only being ephemeral cleanup state
 - [ ] (vNext) make Fortudo a PWA: installable and offline-friendly as a first-class web app
 - [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
   - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same

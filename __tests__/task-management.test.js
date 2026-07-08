@@ -18,6 +18,7 @@ import {
     cancelEdit,
     deleteAllTasks,
     deleteAllScheduledTasks,
+    deleteCompletedUnscheduledTasks,
     performReschedule,
     confirmAddTaskAndReschedule,
     confirmScheduleUnscheduledTask,
@@ -2527,6 +2528,57 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([task]);
 
             const result = deleteCompletedTasks();
+            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(0);
+        });
+
+        test('deleteCompletedUnscheduledTasks removes only completed unscheduled tasks', () => {
+            const completedScheduled = createTaskWithDateTime({
+                description: 'Completed Scheduled',
+                startTime: '11:00',
+                duration: 30,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            const incompleteUnscheduled = {
+                id: 'unsched-incomplete',
+                type: 'unscheduled',
+                description: 'Incomplete Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            const completedUnscheduled = {
+                id: 'unsched-completed',
+                type: 'unscheduled',
+                description: 'Completed Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'completed'
+            };
+            updateTaskState([completedScheduled, incompleteUnscheduled, completedUnscheduled]);
+
+            const result = deleteCompletedUnscheduledTasks();
+
+            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(1);
+            expect(getTaskState()).toEqual([completedScheduled, incompleteUnscheduled]);
+        });
+
+        test('deleteCompletedUnscheduledTasks returns zero deleted when none exist', () => {
+            const task = {
+                id: 'unsched-incomplete',
+                type: 'unscheduled',
+                description: 'Incomplete Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            updateTaskState([task]);
+
+            const result = deleteCompletedUnscheduledTasks();
+
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(0);
         });
