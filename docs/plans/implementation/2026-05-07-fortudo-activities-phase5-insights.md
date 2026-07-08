@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JavaScript ES modules, PouchDB-backed state already loaded in memory, Tailwind utility classes, Font Awesome icons, Jest 30 + jsdom, existing Python smoke suite.
 
-**Design Source:** `docs/plans/2026-03-16-fortudo-activities-design.md`, "UI: Insights View" and "Next Planned Work / Phase 5".
+**Design Source:** `docs/plans/design/2026-03-16-fortudo-activities-design.md`, "UI: Insights View" and "Next Planned Work / Phase 5".
 
 **Visual Reference:** `public/phase5-insights-mockup.html` is the Phase 5 UI target. Treat it as the aesthetic and layout reference for the production implementation, while still using production modules and existing renderers rather than copying static mockup markup wholesale.
 
@@ -2082,7 +2082,7 @@ git commit -m "test: add phase 5 insights smoke coverage"
 
 **Files:**
 
-- Create: `docs/superpowers/plans/2026-05-07-fortudo-activities-phase5-insights.md`
+- Create: `docs/plans/implementation/2026-05-07-fortudo-activities-phase5-insights.md`
 
 - [ ] **Step 1: Run targeted test set**
 
@@ -2133,7 +2133,7 @@ git diff --stat
 git diff -- public/index.html public/js/activities public/js/app.js public/js/dom-renderer.js __tests__ scripts/playwright_preview_smoke.py test_playwright_preview_smoke.py
 ```
 
-Expected: Only Phase 5 code, tests, smoke, and this plan changed. Existing user modifications to `docs/plans/2026-03-16-fortudo-activities-design.md` must remain untouched unless the user explicitly asks to update the design doc.
+Expected: Only Phase 5 code, tests, smoke, and this plan changed. Existing user modifications to `docs/plans/design/2026-03-16-fortudo-activities-design.md` must remain untouched unless the user explicitly asks to update the design doc.
 
 ---
 

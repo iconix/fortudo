@@ -73,8 +73,8 @@
 ### Task 5: Final Verification
 
 **Files:**
-- Modify: `docs/plans/2026-03-16-fortudo-activities-design.md`
-- Create: `docs/superpowers/plans/2026-04-27-phase-4-7-category-editing-parity.md`
+- Modify: `docs/plans/design/2026-03-16-fortudo-activities-design.md`
+- Create: `docs/plans/implementation/2026-04-27-phase-4-7-category-editing-parity.md`
 
 - [ ] Run `npm.cmd run check`.
 - [ ] Run `npm.cmd test`.

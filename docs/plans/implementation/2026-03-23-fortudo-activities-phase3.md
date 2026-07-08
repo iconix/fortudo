@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JS/ES modules, PouchDB (via existing `storage.js` primitives), Tailwind CSS, Font Awesome icons, Jest + jsdom for tests.
 
-**Spec reference:** `docs/plans/2026-03-16-fortudo-activities-design.md` (Phase 3 section, lines 327-334; Settings section, lines 192-202; Category data model, lines 69-91; Category dropdown, lines 210-214).
+**Spec reference:** `docs/plans/design/2026-03-16-fortudo-activities-design.md` (Phase 3 section, lines 327-334; Settings section, lines 192-202; Category data model, lines 69-91; Category dropdown, lines 210-214).
 
 ---
 

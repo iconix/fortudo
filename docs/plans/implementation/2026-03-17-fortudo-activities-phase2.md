@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JS (ES modules), PouchDB (in-memory adapter for tests), Jest + jsdom
 
-**Spec:** `docs/plans/2026-03-16-fortudo-activities-design.md` (sections: Data Model, Storage Layer Changes)
+**Spec:** `docs/plans/design/2026-03-16-fortudo-activities-design.md` (sections: Data Model, Storage Layer Changes)
 
 **Repo:** `https://github.com/iconix/fortudo` — branch from `activities-phase1` (or `main` if PR #52 is merged)
 

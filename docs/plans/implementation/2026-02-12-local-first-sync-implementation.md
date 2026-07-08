@@ -8,7 +8,7 @@
 
 **Tech Stack:** PouchDB 9.0.0 (CDN for browser, npm for tests), pouchdb-adapter-memory (tests only), vanilla JS ES modules.
 
-**Design doc:** `docs/plans/2026-02-12-local-first-sync-design.md`
+**Design doc:** `docs/plans/design/2026-02-12-local-first-sync-design.md`
 
 ---
 
