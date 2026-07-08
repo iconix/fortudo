@@ -7,7 +7,13 @@ import {
     refreshTodayActivitySummary
 } from './ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from './timer-ui.js';
-import { getRunningActivity } from './manager.js';
+import {
+    getActivityOverlapTruncationPreviewForDate,
+    getRunningActivity,
+    truncateActivityOverlapsForDate
+} from './manager.js';
+import { askConfirmation } from '../modal-manager.js';
+import { showToast } from '../toast-manager.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
@@ -138,14 +144,58 @@ function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderIns
     );
 }
 
-function initializeInsightsActivityListEventHandlers(listElement, { signal, renderInsights }) {
-    if (!listElement) {
+function getTruncatedActivitiesMessage(count) {
+    return count === 1
+        ? 'Truncated 1 overlapping activity.'
+        : `Truncated ${count} overlapping activities.`;
+}
+
+async function handleTruncateActivityOverlaps(date, { refreshUI }) {
+    const preview = getActivityOverlapTruncationPreviewForDate(date);
+    if (!preview?.success || !preview.truncatedCount) {
         return;
     }
 
-    listElement.addEventListener(
+    const activityLabel = preview.truncatedCount === 1 ? 'activity' : 'activities';
+    const confirmed = await askConfirmation(
+        `This will shorten ${preview.truncatedCount} ${activityLabel} so each one ends when the next one starts.`,
+        { ok: 'Fix overlaps', cancel: 'Cancel' },
+        'amber'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const result = await truncateActivityOverlapsForDate(date);
+    if (!result?.success) {
+        return;
+    }
+
+    refreshUI();
+    showToast(getTruncatedActivitiesMessage(result.truncatedCount || 0), { theme: 'amber' });
+}
+
+function initializeInsightsActivityLogEventHandlers(
+    logElement,
+    { signal, refreshUI, renderInsights }
+) {
+    if (!logElement) {
+        return;
+    }
+
+    logElement.addEventListener(
         'click',
         (event) => {
+            const truncateButton = event.target.closest('[data-truncate-activity-overlaps]');
+            if (truncateButton) {
+                const date = truncateButton.dataset.truncateActivityOverlapsDate;
+                if (date) {
+                    void handleTruncateActivityOverlaps(date, { refreshUI });
+                }
+                return;
+            }
+
             const showMoreButton = event.target.closest('[data-show-more-activities]');
             if (!showMoreButton) {
                 return;
@@ -215,8 +265,9 @@ export function initializeActivityUi({
         signal,
         renderInsights
     });
-    initializeInsightsActivityListEventHandlers(document.getElementById('insights-activity-list'), {
+    initializeInsightsActivityLogEventHandlers(document.getElementById('insights-activity-log'), {
         signal,
+        refreshUI,
         renderInsights
     });
 }

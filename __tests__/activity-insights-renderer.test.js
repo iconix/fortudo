@@ -527,6 +527,55 @@ describe('activity insights renderer', () => {
         );
     });
 
+    test('renders truncate overlaps action only when the selected Activity Log has overlaps', () => {
+        renderWith({
+            selectedDate: '2026-05-07',
+            activities: [
+                activity({
+                    id: 'activity-overlapped',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'activity-overlapping',
+                    startDateTime: isoAt('09:30'),
+                    endDateTime: isoAt('10:30'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ]
+        });
+
+        const action = document.querySelector('[data-truncate-activity-overlaps]');
+        expect(action).not.toBeNull();
+        expect(action.dataset.truncateActivityOverlapsDate).toBe('2026-05-07');
+        expect(action.textContent).toContain('Fix overlaps');
+
+        renderWith({
+            selectedDate: '2026-05-07',
+            activities: [
+                activity({
+                    id: 'activity-clean-1',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('09:30'),
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'activity-clean-2',
+                    startDateTime: isoAt('09:30'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ]
+        });
+
+        expect(document.querySelector('[data-truncate-activity-overlaps]')).toBeNull();
+    });
+
     test('renderInsightsView preserves caller activity issue annotations with model issues', () => {
         const existingIssue = {
             type: 'manual-review',

@@ -261,6 +261,35 @@ function renderShowMoreButton(hiddenCount) {
     listContainer.append(button);
 }
 
+function renderActivityLogActions(model) {
+    const logContainer = document.getElementById('insights-activity-log');
+    if (!logContainer) {
+        return;
+    }
+
+    logContainer.querySelector('[data-activity-log-actions]')?.remove();
+
+    const hasOverlaps = model.activityLogIssues.some((issue) => issue.type === 'overlap');
+    if (!hasOverlaps) {
+        return;
+    }
+
+    const actions = document.createElement('div');
+    actions.dataset.activityLogActions = 'true';
+    actions.className = 'mb-3 flex justify-end px-2';
+    actions.innerHTML = `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(model.date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
+        <i class="fa-solid fa-scissors" aria-hidden="true"></i>
+        <span>Fix overlaps</span>
+    </button>`;
+
+    const listContainer = document.getElementById('insights-activity-list');
+    if (listContainer) {
+        logContainer.insertBefore(actions, listContainer);
+    } else {
+        logContainer.append(actions);
+    }
+}
+
 function renderActivityLog(model, activityRenderOptions = {}) {
     const listContainer = document.getElementById('insights-activity-list');
     if (!listContainer) {
@@ -275,6 +304,8 @@ function renderActivityLog(model, activityRenderOptions = {}) {
     if (heading) {
         heading.textContent = 'Activity Log';
     }
+
+    renderActivityLogActions(model);
 
     if (model.activityLog.length === 0) {
         listContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-4 text-sm text-slate-400">
