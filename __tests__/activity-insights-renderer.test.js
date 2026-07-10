@@ -741,6 +741,48 @@ describe('activity insights renderer', () => {
         );
     });
 
+    test('renderInsightsView flags trend day cards that contain data issues', () => {
+        renderWith({
+            activities: [
+                activity({
+                    id: 'clean-day',
+                    startDateTime: isoOn('2026-05-06', '09:00'),
+                    endDateTime: isoOn('2026-05-06', '09:30'),
+                    duration: 30,
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'overlapped',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:00'),
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'overlapping',
+                    startDateTime: isoOn('2026-05-07', '09:30'),
+                    endDateTime: isoOn('2026-05-07', '10:15'),
+                    duration: 45,
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ],
+            now: new Date(isoAt('12:00'))
+        });
+
+        const cleanDay = document.querySelector('[data-trend-day="2026-05-06"]');
+        const issueDay = document.querySelector('[data-trend-day="2026-05-07"]');
+        const indicator = issueDay.querySelector('[data-trend-day-issue]');
+
+        expect(cleanDay.querySelector('[data-trend-day-issue]')).toBeNull();
+        expect(indicator).not.toBeNull();
+        expect(indicator.textContent).toContain('!');
+        expect(indicator.getAttribute('aria-label')).toBe('1 data issue on this day');
+        expect(indicator.getAttribute('title')).toBe('1 data issue on this day');
+    });
+
     test('renderInsightsView scrolls only the horizontal trend strip to the selected day', () => {
         const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
         const originalRequestAnimationFrame = window.requestAnimationFrame;

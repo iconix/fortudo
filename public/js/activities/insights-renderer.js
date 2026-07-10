@@ -536,6 +536,15 @@ function renderSelectedDayContext(selectedDate) {
 
 function renderTrendDayCard(day, selectedDate) {
     const minutes = Number(day.minutes) || 0;
+    const issueCount = Number(day.issueCount) || 0;
+    const issueLabel = `${issueCount} data ${issueCount === 1 ? 'issue' : 'issues'} on this day`;
+    const issueIndicator =
+        issueCount > 0
+            ? `<span data-trend-day-issue
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400/50 bg-amber-400/15 text-[10px] font-bold leading-none text-amber-200"
+                aria-label="${escapeHtml(issueLabel)}"
+                title="${escapeHtml(issueLabel)}">!</span>`
+            : '';
     const segments = (day.categorySegments || [])
         .map((segment) => {
             const segmentMinutes = Number(segment.minutes) || 0;
@@ -563,7 +572,10 @@ function renderTrendDayCard(day, selectedDate) {
         }">
         <div class="flex items-center justify-between text-[11px] font-semibold uppercase text-sky-300">
             <span>${escapeHtml(formatWeekday(day.date))}</span>
-            <span>${escapeHtml(day.activityCount || 0)}</span>
+            <span class="flex items-center gap-1.5">
+                ${issueIndicator}
+                <span>${escapeHtml(day.activityCount || 0)}</span>
+            </span>
         </div>
         <div class="mt-1 text-sm font-semibold text-slate-100">${escapeHtml(formatShortDate(day.date))}</div>
         <div class="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-800">
