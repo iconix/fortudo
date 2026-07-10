@@ -17,7 +17,23 @@ jest.mock('../public/js/activities/timer-ui.js', () => ({
 }));
 
 jest.mock('../public/js/activities/manager.js', () => ({
-    getRunningActivity: jest.fn(() => null)
+    getRunningActivity: jest.fn(() => null),
+    getActivityOverlapTruncationPreviewForDate: jest.fn(() => ({
+        success: true,
+        truncatedCount: 2,
+        truncatedActivityIds: ['activity-1', 'activity-2']
+    })),
+    truncateActivityOverlapsForDate: jest.fn(() =>
+        Promise.resolve({ success: true, truncatedCount: 2 })
+    )
+}));
+
+jest.mock('../public/js/modal-manager.js', () => ({
+    askConfirmation: jest.fn(() => Promise.resolve(true))
+}));
+
+jest.mock('../public/js/toast-manager.js', () => ({
+    showToast: jest.fn()
 }));
 
 jest.mock('../public/js/activities/insights-renderer.js', () => ({
@@ -42,7 +58,13 @@ import {
     refreshTodayActivitySummary
 } from '../public/js/activities/ui-handlers.js';
 import { initializeTimerUI, syncTimerFormState } from '../public/js/activities/timer-ui.js';
-import { getRunningActivity } from '../public/js/activities/manager.js';
+import {
+    getActivityOverlapTruncationPreviewForDate,
+    getRunningActivity,
+    truncateActivityOverlapsForDate
+} from '../public/js/activities/manager.js';
+import { askConfirmation } from '../public/js/modal-manager.js';
+import { showToast } from '../public/js/toast-manager.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
@@ -57,7 +79,9 @@ describe('activity app wiring', () => {
             <form id="task-form"></form>
             <div id="activity-list"></div>
             <div id="insights-trends"></div>
-            <div id="insights-activity-list"></div>
+            <div id="insights-activity-log">
+                <div id="insights-activity-list"></div>
+            </div>
             <div id="insights-timeline"></div>
             <input type="radio" id="activity" name="task-type" value="activity">
         `;
@@ -290,6 +314,50 @@ describe('activity app wiring', () => {
 
         expect(expandInsightsActivityLogLimit).toHaveBeenCalledWith(50);
         expect(renderInsights).toHaveBeenCalled();
+    });
+
+    test('clicking truncate overlaps confirms, repairs selected day, refreshes, and shows toast', async () => {
+        const refreshUI = jest.fn();
+        const refreshTaskDisplays = jest.fn();
+        const renderInsights = jest.fn();
+        const signal = new AbortController().signal;
+
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays,
+            getActivitiesEnabled: () => true,
+            renderInsights
+        });
+
+        const insightsActivityLog = document.getElementById('insights-activity-log');
+        insightsActivityLog.insertAdjacentHTML(
+            'afterbegin',
+            [
+                '<button type="button" data-truncate-activity-overlaps',
+                'data-truncate-activity-overlaps-date="2026-05-07">',
+                'Truncate overlaps</button>'
+            ].join(' ')
+        );
+        insightsActivityLog
+            .querySelector('[data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(askConfirmation).toHaveBeenCalledWith(
+            expect.stringContaining('This will shorten 2 activities'),
+            { ok: 'Fix overlaps', cancel: 'Cancel' },
+            'amber'
+        );
+        expect(getActivityOverlapTruncationPreviewForDate).toHaveBeenCalledWith('2026-05-07');
+        expect(truncateActivityOverlapsForDate).toHaveBeenCalledWith('2026-05-07');
+        expect(refreshUI).toHaveBeenCalled();
+        expect(renderInsights).not.toHaveBeenCalled();
+        expect(showToast).toHaveBeenCalledWith('Truncated 2 overlapping activities.', {
+            theme: 'amber'
+        });
     });
 
     test('restores activity mode before syncing timer ui when a running timer exists', () => {

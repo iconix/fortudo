@@ -18,6 +18,8 @@ import {
     cancelEdit,
     deleteAllTasks,
     deleteAllScheduledTasks,
+    deleteCompletedUnscheduledTasks,
+    rolloverPriorDayScheduledTasks,
     performReschedule,
     confirmAddTaskAndReschedule,
     confirmScheduleUnscheduledTask,
@@ -2322,7 +2324,8 @@ describe('Task Management Functions (task-manager.js)', () => {
                 duration: 30,
                 status: 'incomplete',
                 editing: false,
-                confirmingDelete: false
+                confirmingDelete: false,
+                locked: true
             });
             updateTaskState([task]);
 
@@ -2332,6 +2335,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].type).toBe('unscheduled');
             expect(tasks[0].estDuration).toBe(30);
+            expect(tasks[0]).not.toHaveProperty('startDateTime');
+            expect(tasks[0]).not.toHaveProperty('endDateTime');
+            expect(tasks[0]).not.toHaveProperty('duration');
+            expect(tasks[0]).not.toHaveProperty('locked');
         });
 
         test('unscheduleTask preserves category on the converted task', () => {
@@ -2529,6 +2536,149 @@ describe('Task Management Functions (task-manager.js)', () => {
             const result = deleteCompletedTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(0);
+        });
+
+        test('deleteCompletedUnscheduledTasks removes only completed unscheduled tasks', () => {
+            const completedScheduled = createTaskWithDateTime({
+                description: 'Completed Scheduled',
+                startTime: '11:00',
+                duration: 30,
+                status: 'completed',
+                editing: false,
+                confirmingDelete: false
+            });
+            const incompleteUnscheduled = {
+                id: 'unsched-incomplete',
+                type: 'unscheduled',
+                description: 'Incomplete Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            const completedUnscheduled = {
+                id: 'unsched-completed',
+                type: 'unscheduled',
+                description: 'Completed Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'completed'
+            };
+            updateTaskState([completedScheduled, incompleteUnscheduled, completedUnscheduled]);
+
+            const result = deleteCompletedUnscheduledTasks();
+
+            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(1);
+            expect(getTaskState()).toEqual([completedScheduled, incompleteUnscheduled]);
+        });
+
+        test('deleteCompletedUnscheduledTasks returns zero deleted when none exist', () => {
+            const task = {
+                id: 'unsched-incomplete',
+                type: 'unscheduled',
+                description: 'Incomplete Unscheduled',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            updateTaskState([task]);
+
+            const result = deleteCompletedUnscheduledTasks();
+
+            expect(result.success).toBe(true);
+            expect(result.tasksDeleted).toBe(0);
+        });
+
+        test('rolloverPriorDayScheduledTasks converts stale incomplete scheduled tasks to unscheduled', () => {
+            const staleScheduledTask = createTaskWithDateTime({
+                description: 'Yesterday unfinished',
+                startTime: '09:00',
+                duration: 45,
+                date: '2026-04-21',
+                status: 'incomplete',
+                locked: true,
+                isEditingInline: true
+            });
+            staleScheduledTask.category = 'work/deep';
+            const todayScheduledTask = createTaskWithDateTime({
+                description: 'Today scheduled',
+                startTime: '10:00',
+                duration: 30,
+                date: '2026-04-22',
+                status: 'incomplete'
+            });
+            const completedStaleScheduledTask = createTaskWithDateTime({
+                description: 'Yesterday completed',
+                startTime: '11:00',
+                duration: 30,
+                date: '2026-04-21',
+                status: 'completed'
+            });
+            const existingUnscheduledTask = {
+                id: 'unsched-existing',
+                type: 'unscheduled',
+                description: 'Existing backlog',
+                priority: 'high',
+                estDuration: 20,
+                status: 'incomplete'
+            };
+            updateTaskState([
+                staleScheduledTask,
+                todayScheduledTask,
+                completedStaleScheduledTask,
+                existingUnscheduledTask
+            ]);
+
+            const result = rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
+
+            expect(result).toEqual({
+                success: true,
+                message: '1 unfinished scheduled task moved to backlog.',
+                tasksMoved: 1
+            });
+            const movedTask = getTaskState().find((task) => task.id === staleScheduledTask.id);
+            expect(movedTask).toEqual(
+                expect.objectContaining({
+                    id: staleScheduledTask.id,
+                    type: 'unscheduled',
+                    description: 'Yesterday unfinished',
+                    status: 'incomplete',
+                    category: 'work/deep',
+                    priority: 'medium',
+                    estDuration: 45
+                })
+            );
+            expect(movedTask).not.toHaveProperty('startDateTime');
+            expect(movedTask).not.toHaveProperty('endDateTime');
+            expect(movedTask).not.toHaveProperty('duration');
+            expect(movedTask).not.toHaveProperty('locked');
+            expect(movedTask).not.toHaveProperty('isEditingInline');
+            expect(getTaskState()).toEqual([
+                completedStaleScheduledTask,
+                todayScheduledTask,
+                movedTask,
+                existingUnscheduledTask
+            ]);
+        });
+
+        test('rolloverPriorDayScheduledTasks returns zero moved when no stale incomplete scheduled tasks exist', () => {
+            const todayScheduledTask = createTaskWithDateTime({
+                description: 'Today scheduled',
+                startTime: '10:00',
+                duration: 30,
+                date: '2026-04-22',
+                status: 'incomplete'
+            });
+            updateTaskState([todayScheduledTask]);
+
+            const result = rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
+
+            expect(result).toEqual({
+                success: true,
+                message: 'No unfinished scheduled tasks to move.',
+                tasksMoved: 0
+            });
+            expect(getTaskState()).toEqual([todayScheduledTask]);
         });
     });
 

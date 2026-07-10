@@ -276,6 +276,26 @@ const stripUIFlags = (task) => {
     return persistable;
 };
 
+function convertScheduledTaskToUnscheduled(task) {
+    const {
+        startDateTime: _startDateTime,
+        endDateTime: _endDateTime,
+        duration,
+        locked: _locked,
+        editing: _editing,
+        confirmingDelete: _confirmingDelete,
+        isEditingInline: _isEditingInline,
+        ...remainingTask
+    } = task;
+
+    return {
+        ...remainingTask,
+        type: 'unscheduled',
+        priority: 'medium',
+        estDuration: duration ?? null
+    };
+}
+
 const finalizeTaskModification = (changedTasks) => {
     logger.debug('Finalizing task modification (invalidate cache, save)');
     invalidateTaskCaches();
@@ -1285,6 +1305,70 @@ export function deleteCompletedTasks() {
     };
 }
 
+export function deleteCompletedUnscheduledTasks() {
+    const currentTasks = getTaskState();
+    const remainingTasks = currentTasks.filter(
+        (task) => !(task.type === 'unscheduled' && task.status === 'completed')
+    );
+    const completedUnscheduledTasksCount = currentTasks.length - remainingTasks.length;
+
+    if (completedUnscheduledTasksCount === 0) {
+        logger.info('deleteCompletedUnscheduledTasks: No completed unscheduled tasks to delete.');
+        return {
+            success: true,
+            message: 'No completed unscheduled tasks to delete.',
+            tasksDeleted: 0
+        };
+    }
+
+    updateTaskState(remainingTasks);
+    logger.info(
+        `deleteCompletedUnscheduledTasks: ${completedUnscheduledTasksCount} completed unscheduled tasks have been deleted.`
+    );
+    return {
+        success: true,
+        message: `${completedUnscheduledTasksCount} completed unscheduled tasks deleted.`,
+        tasksDeleted: completedUnscheduledTasksCount
+    };
+}
+
+export function rolloverPriorDayScheduledTasks(now = new Date()) {
+    const currentDate = extractDateFromDateTime(now);
+    let movedTasksCount = 0;
+    const nextTasks = getTaskState().map((task) => {
+        if (
+            task.type !== 'scheduled' ||
+            task.status === 'completed' ||
+            !task.startDateTime ||
+            isTaskScheduledForLocalDate(task, currentDate)
+        ) {
+            return task;
+        }
+
+        movedTasksCount++;
+        return convertScheduledTaskToUnscheduled(task);
+    });
+
+    if (movedTasksCount === 0) {
+        logger.info('rolloverPriorDayScheduledTasks: No unfinished scheduled tasks to move.');
+        return {
+            success: true,
+            message: 'No unfinished scheduled tasks to move.',
+            tasksMoved: 0
+        };
+    }
+
+    updateTaskState(nextTasks);
+    const taskWord = movedTasksCount === 1 ? 'task' : 'tasks';
+    const message = `${movedTasksCount} unfinished scheduled ${taskWord} moved to backlog.`;
+    logger.info(`rolloverPriorDayScheduledTasks: ${message}`);
+    return {
+        success: true,
+        message,
+        tasksMoved: movedTasksCount
+    };
+}
+
 export function scheduleUnscheduledTask(taskId, startTime, duration) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) return { success: false, reason: 'Unscheduled task not found.' };
@@ -1438,33 +1522,12 @@ export function unscheduleTask(taskId) {
         return { success: false, reason: 'Task is not currently scheduled.' };
     }
 
-    const formerScheduledDuration = task.duration; // Capture the duration before deleting it
+    const unscheduledTask = convertScheduledTaskToUnscheduled(task);
+    tasks[taskIndex] = unscheduledTask;
+    finalizeTaskModification(unscheduledTask);
 
-    // Convert to unscheduled
-    task.type = 'unscheduled';
-    delete task.startDateTime;
-    delete task.endDateTime;
-    delete task.duration; // Delete the original 'duration' property for scheduled tasks
-
-    // Add properties typical for unscheduled tasks
-    task.priority = 'medium'; // Default priority
-    // Use the captured former scheduled duration as the new estimated duration.
-    // If it wasn't defined (though it should be for a scheduled task), set to null or a default.
-    // createTaskObject allows estDuration to be null.
-    task.estDuration =
-        formerScheduledDuration !== undefined && formerScheduledDuration !== null
-            ? formerScheduledDuration
-            : null;
-    task.isEditingInline = false; // Ensure it's not in edit mode by default
-
-    // Remove properties not relevant to unscheduled tasks (if any) - Placeholder if needed
-    // delete task.someScheduledOnlyProperty;
-
-    tasks[taskIndex] = task;
-    finalizeTaskModification(task);
-
-    logger.info('Task unscheduled:', task);
-    return { success: true, task };
+    logger.info('Task unscheduled:', unscheduledTask);
+    return { success: true, task: unscheduledTask };
 }
 
 // ============================================================================

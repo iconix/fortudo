@@ -1,10 +1,12 @@
 import { getGroupByKey, resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 import { extractDateFromDateTime } from '../utils.js';
+import { detectActivityDataIssues } from './insights-issues.js';
 import {
     getDateRangeInterval,
     getDayInterval,
     getDurationCapableInterval,
     getLastLocalDaysDateRange,
+    invalidActivityTouchesInterval,
     getOverlapDuration,
     intervalsOverlap,
     parseLocalDate
@@ -58,12 +60,29 @@ export function buildTrendModel({
         }
     }
 
+    for (const activityItem of activities.filter(isCompletedActivity)) {
+        for (const dailyBucket of dailyBuckets.values()) {
+            const bucketInterval = getDayInterval(dailyBucket.date);
+            const activityInterval = getDurationCapableInterval(activityItem, now);
+
+            if (
+                (activityInterval && intervalsOverlap(activityInterval, bucketInterval)) ||
+                invalidActivityTouchesInterval(activityItem, bucketInterval)
+            ) {
+                dailyBucket.issueActivities.push(activityItem);
+            }
+        }
+    }
+
     return {
         dateRange: selectedDateRange,
-        dailyHours: [...dailyBuckets.values()].map((bucket) => ({
-            ...bucket,
-            categorySegments: sortCategoryEntries(bucket.categorySegments)
-        })),
+        dailyHours: [...dailyBuckets.values()].map(
+            ({ categorySegments, issueActivities, ...bucket }) => ({
+                ...bucket,
+                issueCount: detectActivityDataIssues(issueActivities).length,
+                categorySegments: sortCategoryEntries(categorySegments)
+            })
+        ),
         categoryTotals: sortCategoryEntries(categoryTotals)
     };
 }
@@ -89,7 +108,8 @@ function buildDailyBuckets(dateRange) {
             date,
             minutes: 0,
             activityCount: 0,
-            categorySegments: new Map()
+            categorySegments: new Map(),
+            issueActivities: []
         });
         cursor.setDate(cursor.getDate() + 1);
     }

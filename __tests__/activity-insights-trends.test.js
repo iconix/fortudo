@@ -139,4 +139,42 @@ describe('activity insights trends', () => {
             expect.objectContaining({ key: 'work', minutes: 60 })
         ]);
     });
+
+    test('buildTrendModel marks daily buckets with activity data issue counts', () => {
+        const model = buildTrendModel({
+            activities: [
+                activity({
+                    id: 'clean-day',
+                    startDateTime: isoOn('2026-05-06', '09:00'),
+                    endDateTime: isoOn('2026-05-06', '09:30'),
+                    duration: 30
+                }),
+                activity({
+                    id: 'overlapped',
+                    startDateTime: isoOn('2026-05-07', '09:00'),
+                    endDateTime: isoOn('2026-05-07', '10:00'),
+                    duration: 60
+                }),
+                activity({
+                    id: 'overlapping',
+                    startDateTime: isoOn('2026-05-07', '09:30'),
+                    endDateTime: isoOn('2026-05-07', '10:15'),
+                    duration: 45
+                })
+            ],
+            dateRange: { startDate: '2026-05-06', endDate: '2026-05-07' },
+            now: new Date(isoOn('2026-05-07', '12:00'))
+        });
+
+        expect(model.dailyHours).toEqual([
+            expect.objectContaining({
+                date: '2026-05-06',
+                issueCount: 0
+            }),
+            expect.objectContaining({
+                date: '2026-05-07',
+                issueCount: 1
+            })
+        ]);
+    });
 });

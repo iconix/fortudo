@@ -62,35 +62,47 @@ function getDurationText(estDuration) {
     return calculateHoursAndMinutes(estDuration, true).text;
 }
 
-function renderUnscheduledTaskActionsMenu(task, disabledAttr, disabledButtonClasses) {
+function renderUnscheduledTaskActionsMenu(task, actionState) {
     const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
+    const menuTriggerDisabledAttr = actionState.menuTriggerDisabled ? 'disabled' : '';
+    const menuTriggerDisabledClasses = actionState.menuTriggerDisabled
+        ? ' opacity-50 cursor-not-allowed'
+        : '';
+    const blockedActionDisabledAttr = actionState.blockedActionsDisabled ? 'disabled' : '';
+    const blockedActionDisabledClasses = actionState.blockedActionsDisabled
+        ? ' opacity-50 cursor-not-allowed'
+        : '';
+    const editDeleteDisabledAttr = actionState.editDeleteDisabled ? 'disabled' : '';
+    const editDeleteDisabledClasses = actionState.editDeleteDisabled
+        ? ' opacity-50 cursor-not-allowed'
+        : '';
 
     return `
         <div class="unscheduled-task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
-            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors${disabledButtonClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${disabledAttr}>
+            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
             <div class="unscheduled-task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
                 <div class="unscheduled-task-actions-menu-group">
-                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${disabledButtonClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${disabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
                         <i class="fa-solid fa-stopwatch text-indigo-300 text-center" aria-hidden="true"></i>
                         <span>Start timer</span>
                     </button>
                 </div>
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
-                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${disabledButtonClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${disabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
                         <i class="fa-regular fa-calendar-plus text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Schedule</span>
                     </button>
-                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${disabledButtonClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${disabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
                         <i class="fa-solid fa-pen text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Edit task</span>
                     </button>
                 </div>
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
-                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${disabledButtonClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${disabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
                         <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-rose-400 text-center" aria-hidden="true"></i>
                         <span>${task.confirmingDelete ? 'Confirm delete' : 'Delete task'}</span>
                     </button>
@@ -117,8 +129,11 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
     const checkIcon = isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500';
     const textStrike = isCompleted ? 'line-through opacity-70' : '';
     const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
-    const disabledAttr = isDisabled ? 'disabled' : '';
-    const disabledButtonClasses = isDisabled ? ' opacity-50 cursor-not-allowed' : '';
+    const actionState = {
+        menuTriggerDisabled: isLinkedToRunningTimer,
+        blockedActionsDisabled: isCompleted || isLinkedToRunningTimer,
+        editDeleteDisabled: isLinkedToRunningTimer
+    };
     const inProgressBadge = isLinkedToRunningTimer
         ? '<span class="unscheduled-in-progress-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] tracking-normal bg-slate-700/70 text-sky-200 border border-slate-500/40">In progress</span>'
         : '';
@@ -140,7 +155,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
                 </div>
             </div>
         </div>
-        ${renderUnscheduledTaskActionsMenu(task, disabledAttr, disabledButtonClasses)}
+        ${renderUnscheduledTaskActionsMenu(task, actionState)}
     `;
 }
 

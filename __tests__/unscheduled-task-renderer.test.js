@@ -65,6 +65,35 @@ describe('unscheduled task renderer', () => {
         );
     });
 
+    test('keeps edit and delete actions available for completed unscheduled tasks', () => {
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-completed',
+                    type: 'unscheduled',
+                    description: 'Completed backlog item',
+                    priority: 'medium',
+                    estDuration: 30,
+                    status: 'completed'
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const actionsTrigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+        const startTimerButton = document.querySelector('.btn-start-unscheduled-timer');
+        const scheduleButton = document.querySelector('.btn-schedule-task');
+        const editButton = document.querySelector('.btn-edit-unscheduled');
+        const deleteButton = document.querySelector('.btn-delete-unscheduled');
+
+        expect(actionsTrigger.hasAttribute('disabled')).toBe(false);
+        expect(startTimerButton.hasAttribute('disabled')).toBe(true);
+        expect(scheduleButton.hasAttribute('disabled')).toBe(true);
+        expect(editButton.hasAttribute('disabled')).toBe(false);
+        expect(deleteButton.hasAttribute('disabled')).toBe(false);
+    });
+
     test('renders the linked source task with a subdued in-progress badge and fully disabled while its timer runs', () => {
         getRunningActivity.mockReturnValue({
             description: 'Inbox zero',

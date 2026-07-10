@@ -261,6 +261,35 @@ function renderShowMoreButton(hiddenCount) {
     listContainer.append(button);
 }
 
+function renderActivityLogActions(model) {
+    const logContainer = document.getElementById('insights-activity-log');
+    if (!logContainer) {
+        return;
+    }
+
+    logContainer.querySelector('[data-activity-log-actions]')?.remove();
+
+    const hasOverlaps = model.activityLogIssues.some((issue) => issue.type === 'overlap');
+    if (!hasOverlaps) {
+        return;
+    }
+
+    const actions = document.createElement('div');
+    actions.dataset.activityLogActions = 'true';
+    actions.className = 'mb-3 flex justify-end px-2';
+    actions.innerHTML = `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(model.date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
+        <i class="fa-solid fa-scissors" aria-hidden="true"></i>
+        <span>Fix overlaps</span>
+    </button>`;
+
+    const listContainer = document.getElementById('insights-activity-list');
+    if (listContainer) {
+        logContainer.insertBefore(actions, listContainer);
+    } else {
+        logContainer.append(actions);
+    }
+}
+
 function renderActivityLog(model, activityRenderOptions = {}) {
     const listContainer = document.getElementById('insights-activity-list');
     if (!listContainer) {
@@ -275,6 +304,8 @@ function renderActivityLog(model, activityRenderOptions = {}) {
     if (heading) {
         heading.textContent = 'Activity Log';
     }
+
+    renderActivityLogActions(model);
 
     if (model.activityLog.length === 0) {
         listContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-4 text-sm text-slate-400">
@@ -505,6 +536,17 @@ function renderSelectedDayContext(selectedDate) {
 
 function renderTrendDayCard(day, selectedDate) {
     const minutes = Number(day.minutes) || 0;
+    const issueCount = Number(day.issueCount) || 0;
+    const issueLabel = `${issueCount} data ${issueCount === 1 ? 'issue' : 'issues'} on this day`;
+    const issueIndicator =
+        issueCount > 0
+            ? `<span data-trend-day-issue
+                class="inline-flex items-center justify-center text-[11px] leading-none text-amber-200"
+                aria-label="${escapeHtml(issueLabel)}"
+                title="${escapeHtml(issueLabel)}">
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            </span>`
+            : '';
     const segments = (day.categorySegments || [])
         .map((segment) => {
             const segmentMinutes = Number(segment.minutes) || 0;
@@ -532,7 +574,10 @@ function renderTrendDayCard(day, selectedDate) {
         }">
         <div class="flex items-center justify-between text-[11px] font-semibold uppercase text-sky-300">
             <span>${escapeHtml(formatWeekday(day.date))}</span>
-            <span>${escapeHtml(day.activityCount || 0)}</span>
+            <span class="flex items-center gap-1.5">
+                ${issueIndicator}
+                <span>${escapeHtml(day.activityCount || 0)}</span>
+            </span>
         </div>
         <div class="mt-1 text-sm font-semibold text-slate-100">${escapeHtml(formatShortDate(day.date))}</div>
         <div class="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-800">
