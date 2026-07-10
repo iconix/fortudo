@@ -778,7 +778,7 @@ describe('activity insights renderer', () => {
 
         expect(cleanDay.querySelector('[data-trend-day-issue]')).toBeNull();
         expect(indicator).not.toBeNull();
-        expect(indicator.textContent).toContain('!');
+        expect(indicator.querySelector('.fa-triangle-exclamation')).not.toBeNull();
         expect(indicator.getAttribute('aria-label')).toBe('1 data issue on this day');
         expect(indicator.getAttribute('title')).toBe('1 data issue on this day');
     });

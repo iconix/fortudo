@@ -541,9 +541,11 @@ function renderTrendDayCard(day, selectedDate) {
     const issueIndicator =
         issueCount > 0
             ? `<span data-trend-day-issue
-                class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400/50 bg-amber-400/15 text-[10px] font-bold leading-none text-amber-200"
+                class="inline-flex items-center justify-center text-[11px] leading-none text-amber-200"
                 aria-label="${escapeHtml(issueLabel)}"
-                title="${escapeHtml(issueLabel)}">!</span>`
+                title="${escapeHtml(issueLabel)}">
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            </span>`
             : '';
     const segments = (day.categorySegments || [])
         .map((segment) => {
