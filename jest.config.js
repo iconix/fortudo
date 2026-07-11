@@ -14,6 +14,8 @@ module.exports = {
         'public/**/*.js',
         '!public/**/node_modules/**',
         '!public/**/*.test.js',
+        '!public/sw.js',
+        '!public/sw-precache.js',
         '!**/vendor/**'
     ],
     coverageDirectory: 'coverage',

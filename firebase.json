@@ -11,6 +11,10 @@
             "value": "default-src 'self'; img-src 'self' data:; connect-src 'self' https://*.cloudantnosqldb.appdomain.cloud; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:"
           }
         ]
+      },
+      {
+        "source": "/@(sw.js|sw-precache.js)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ],
     "rewrites": [
