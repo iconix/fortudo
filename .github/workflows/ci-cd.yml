@@ -65,6 +65,9 @@ jobs:
             - name: Check code formatting
               run: npm run format:check
 
+            - name: Check generated Tailwind CSS is up to date
+              run: npm run check:css
+
             - name: Run tests
               run: npm run test:coverage
 
