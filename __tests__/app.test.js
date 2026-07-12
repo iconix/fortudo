@@ -335,6 +335,55 @@ describe('App.js Callback Functions', () => {
     });
 
     describe('sync config boot behavior', () => {
+        describe('persistent storage request', () => {
+            let originalStorageDescriptor;
+
+            beforeEach(() => {
+                originalStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage');
+            });
+
+            afterEach(() => {
+                if (originalStorageDescriptor) {
+                    Object.defineProperty(navigator, 'storage', originalStorageDescriptor);
+                } else {
+                    delete navigator.storage;
+                }
+            });
+
+            test('boot continues when the Storage API is unsupported', async () => {
+                delete navigator.storage;
+
+                await expect(setupAppWithTasks([])).resolves.toBeUndefined();
+                expect(mockPrepareStorage).toHaveBeenCalledTimes(1);
+            });
+
+            test('requests persistent storage exactly once on boot', async () => {
+                const persist = jest.fn(() => Promise.resolve(true));
+                Object.defineProperty(navigator, 'storage', {
+                    configurable: true,
+                    value: { persist }
+                });
+
+                await setupAppWithTasks([]);
+
+                expect(persist).toHaveBeenCalledTimes(1);
+            });
+
+            test('handles a rejected persistence request and continues booting', async () => {
+                const persist = jest.fn(() => Promise.reject(new Error('permission denied')));
+                Object.defineProperty(navigator, 'storage', {
+                    configurable: true,
+                    value: { persist }
+                });
+
+                await expect(setupAppWithTasks([])).resolves.toBeUndefined();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                expect(persist).toHaveBeenCalledTimes(1);
+                expect(mockPrepareStorage).toHaveBeenCalledTimes(1);
+            });
+        });
+
         test('config module defaults COUCHDB_URL to null for explicit local-only mode', async () => {
             const config = await import('../public/js/config.js');
             const featureFlags = await import('../public/js/feature-flags.js');
