@@ -8,7 +8,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; img-src 'self' data:; connect-src 'self' https://*.cloudantnosqldb.appdomain.cloud; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:"
+            "value": "default-src 'self'; img-src 'self' data:; connect-src 'self' https://*.cloudantnosqldb.appdomain.cloud; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
           }
         ]
       },

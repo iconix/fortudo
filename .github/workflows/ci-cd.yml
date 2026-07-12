@@ -68,6 +68,9 @@ jobs:
             - name: Check generated Tailwind CSS is up to date
               run: npm run check:css
 
+            - name: Check vendored Font Awesome is up to date
+              run: npm run check:fontawesome
+
             - name: Run tests
               run: npm run test:coverage
 
