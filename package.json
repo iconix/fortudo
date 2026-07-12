@@ -5,7 +5,8 @@
   "main": "app.js",
   "scripts": {
     "postinstall": "node hooks/install.js",
-    "vendor:pouchdb": "node -e \"require('fs').cpSync('node_modules/pouchdb/dist/pouchdb.min.js','public/vendor/pouchdb/pouchdb.min.js')\"",
+    "vendor:pouchdb": "node scripts/vendor-pouchdb.mjs",
+    "check:pouchdb": "node scripts/vendor-pouchdb.mjs --check",
     "build:sw-precache": "node scripts/generate-sw-precache.mjs",
     "test": "jest",
     "test:watch": "jest --watch",

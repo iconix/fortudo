@@ -8,10 +8,14 @@
 export function registerServiceWorker(callbacks = {}) {
     if (!('serviceWorker' in navigator)) return;
 
-    const hadController = Boolean(navigator.serviceWorker.controller);
+    let hasBeenControlled = Boolean(navigator.serviceWorker.controller);
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!hadController || reloading) return;
+        if (reloading) return;
+        if (!hasBeenControlled) {
+            hasBeenControlled = Boolean(navigator.serviceWorker.controller);
+            return;
+        }
         reloading = true;
         window.location.reload();
     });

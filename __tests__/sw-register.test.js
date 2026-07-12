@@ -57,6 +57,38 @@ describe('registerServiceWorker', () => {
         expect(consoleError).not.toHaveBeenCalled();
     });
 
+    test('reloads a later update after an initially uncontrolled page gains a controller', async () => {
+        const listeners = {};
+        const waiting = { postMessage: jest.fn() };
+        const registration = { waiting, installing: null, addEventListener: jest.fn() };
+        Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            value: {
+                register: jest.fn().mockResolvedValue(registration),
+                addEventListener: jest.fn((event, handler) => {
+                    listeners[event] = handler;
+                }),
+                controller: null
+            }
+        });
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const onUpdateAvailable = jest.fn();
+
+        registerServiceWorker({ onUpdateAvailable });
+        navigator.serviceWorker.controller = {};
+        listeners.controllerchange();
+        expect(consoleError).not.toHaveBeenCalled();
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
+        onUpdateAvailable.mock.calls[0][0]();
+        listeners.controllerchange();
+        listeners.controllerchange();
+
+        expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+        expect(consoleError).toHaveBeenCalledTimes(1);
+    });
+
     test('reloads exactly once when an already controlled page changes controller', () => {
         const listeners = {};
         Object.defineProperty(navigator, 'serviceWorker', {
