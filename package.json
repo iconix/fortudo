@@ -5,6 +5,9 @@
   "main": "app.js",
   "scripts": {
     "postinstall": "node hooks/install.js",
+    "vendor:pouchdb": "node scripts/vendor-pouchdb.mjs",
+    "check:pouchdb": "node scripts/vendor-pouchdb.mjs --check",
+    "build:sw-precache": "node scripts/generate-sw-precache.mjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

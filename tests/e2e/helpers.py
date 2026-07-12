@@ -8,7 +8,6 @@ from scripts.e2e_helpers import (
     clear_room_storage,
     dismiss_open_modals,
     enter_room,
-    install_local_pouchdb_route,
     launch_browser,
     seed_docs,
     wait_for_main_app,
@@ -20,22 +19,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_URL = f"http://{HOST}:{PORT}"
 
 
-def install_required_local_pouchdb_route(context, *, repo_root: Path = REPO_ROOT) -> None:
-    """Install the local PouchDB route required by local E2E tests."""
-    if install_local_pouchdb_route(context, repo_root=repo_root):
-        return
-
-    raise RuntimeError(
-        "PouchDB asset not found at node_modules/pouchdb/dist/pouchdb.min.js. "
-        "Run npm ci before local E2E tests so browsers do not fall back to the CDN."
-    )
-
-
 def launch_e2e_page(playwright, *, viewport: dict | None = None):
-    """Launch a browser page with the required local PouchDB asset route installed."""
+    """Launch a browser page for local E2E tests."""
     browser = launch_browser(playwright)
     context = browser.new_context(viewport=viewport or {"width": 1280, "height": 900})
-    install_required_local_pouchdb_route(context)
     page = context.new_page()
 
     return browser, context, page

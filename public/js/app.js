@@ -76,6 +76,7 @@ import { getActiveRoom } from './room-manager.js';
 import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
+import { registerServiceWorker } from './sw-register.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -333,6 +334,8 @@ async function initAndBootApp(roomCode) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    registerServiceWorker();
+
     // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
     const roomCodeBadge = document.getElementById('room-code-badge');
     if (roomCodeBadge) {
