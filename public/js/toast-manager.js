@@ -31,20 +31,44 @@ export function getToastContainer() {
  * Show a non-blocking toast notification.
  * @param {string} message - The message to display
  * @param {Object} [options]
- * @param {number} [options.duration=3500] - Auto-dismiss after this many ms
- * @param {string} [options.theme='default'] - Color theme: teal, indigo, amber, rose, default
+ * @param {number} [options.duration=3500] - Auto-dismiss after this many ms (ignored when action is set)
+ * @param {string} [options.theme='default'] - Color theme: teal, indigo, sky, amber, rose, default
+ * @param {{label: string, onClick: Function}} [options.action] - Renders a button; toast stays until clicked
  */
 export function showToast(message, options = {}) {
-    const { duration = DEFAULT_DURATION, theme = 'default' } = options;
+    const { duration = DEFAULT_DURATION, theme = 'default', action = null } = options;
     const toastContainer = getToastContainer();
     const toast = document.createElement('div');
     const themeClasses = THEME_CLASSES[theme] || THEME_CLASSES.default;
 
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    toast.setAttribute('aria-atomic', 'true');
     toast.className = `${themeClasses} px-4 py-2 rounded-lg border text-sm shadow-lg pointer-events-auto transition-opacity duration-300`;
-    toast.textContent = message;
-    toastContainer.appendChild(toast);
+    if (action) {
+        const text = document.createElement('span');
+        text.textContent = message;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = action.label;
+        button.className = 'ml-3 underline font-semibold';
+        button.addEventListener(
+            'click',
+            (event) => {
+                event.stopPropagation();
+                action.onClick();
+                toast.remove();
+            },
+            { once: true }
+        );
+        toast.addEventListener('click', () => toast.remove());
+        toast.append(text, button);
+    } else {
+        toast.textContent = message;
+        setTimeout(() => {
+            toast.remove();
+        }, duration);
+    }
 
-    setTimeout(() => {
-        toast.remove();
-    }, duration);
+    toastContainer.appendChild(toast);
 }

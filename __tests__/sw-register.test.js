@@ -32,6 +32,29 @@ describe('registerServiceWorker', () => {
         expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
     });
 
+    test('surfaces an update already installing when registration resolves', async () => {
+        const installing = {
+            state: 'installed',
+            postMessage: jest.fn(),
+            addEventListener: jest.fn()
+        };
+        const registration = { waiting: null, installing, addEventListener: jest.fn() };
+        Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            value: {
+                register: jest.fn().mockResolvedValue(registration),
+                addEventListener: jest.fn(),
+                controller: {}
+            }
+        });
+
+        const onUpdateAvailable = jest.fn();
+        registerServiceWorker({ onUpdateAvailable });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
+    });
+
     test('does not reload when an initially uncontrolled page gains a controller', () => {
         const listeners = {};
         Object.defineProperty(navigator, 'serviceWorker', {

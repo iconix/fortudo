@@ -334,7 +334,14 @@ async function initAndBootApp(roomCode) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    registerServiceWorker();
+    registerServiceWorker({
+        onUpdateAvailable: (activate) => {
+            showToast('New version available', {
+                theme: 'teal',
+                action: { label: 'Reload', onClick: activate }
+            });
+        }
+    });
 
     // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
     const roomCodeBadge = document.getElementById('room-code-badge');
