@@ -18,6 +18,7 @@ describe('Sync Manager', () => {
 
     afterEach(() => {
         teardownSync();
+        jest.restoreAllMocks();
         jest.useRealTimers();
     });
 
@@ -146,6 +147,54 @@ describe('Sync Manager', () => {
             expect(getSyncStatus()).toBe('error');
         });
 
+        test('sets status to offline when replication fails while the browser is offline', async () => {
+            const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+            Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockRejectedValue(new Error('network error')),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            try {
+                initSync(mockDb, 'http://remote:5984/db');
+                await triggerSync();
+
+                expect(getSyncStatus()).toBe('offline');
+            } finally {
+                if (originalOnLine) {
+                    Object.defineProperty(navigator, 'onLine', originalOnLine);
+                } else {
+                    delete navigator.onLine;
+                }
+            }
+        });
+
+        test('keeps error status when replication fails while the browser is online', async () => {
+            const originalOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+            Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockRejectedValue(new Error('server error')),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            try {
+                initSync(mockDb, 'http://remote:5984/db');
+                await triggerSync();
+
+                expect(getSyncStatus()).toBe('error');
+            } finally {
+                if (originalOnLine) {
+                    Object.defineProperty(navigator, 'onLine', originalOnLine);
+                } else {
+                    delete navigator.onLine;
+                }
+            }
+        });
+
         test('sets status to error when pull fails', async () => {
             const mockDb = {
                 replicate: {
@@ -181,6 +230,177 @@ describe('Sync Manager', () => {
             resolveFirstSync({});
             await firstTrigger;
             await secondTrigger;
+        });
+
+        test('retries once when reconnect arrives during an in-flight sync that fails', async () => {
+            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            let rejectFirstSync;
+            const firstSyncPromise = new Promise((resolve, reject) => {
+                rejectFirstSync = reject;
+            });
+            const mockDb = {
+                replicate: {
+                    to: jest
+                        .fn()
+                        .mockImplementationOnce(() => firstSyncPromise)
+                        .mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(mockDb, 'http://remote:5984/db');
+            const firstTrigger = triggerSync();
+            const reconnectTrigger = triggerSync({
+                respectCooldown: false,
+                retryAfterInFlightFailure: true
+            });
+            const duplicateReconnectTrigger = triggerSync({
+                respectCooldown: false,
+                retryAfterInFlightFailure: true
+            });
+
+            rejectFirstSync(new Error('offline during reconnect'));
+            await firstTrigger;
+            await reconnectTrigger;
+            await duplicateReconnectTrigger;
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
+            expect(mockDb.replicate.from).toHaveBeenCalledTimes(1);
+            expect(getSyncStatus()).toBe('synced');
+            consoleErrorSpy.mockRestore();
+        });
+
+        test('does not retry when reconnect coalesces with an in-flight sync that succeeds', async () => {
+            let resolveFirstSync;
+            const firstSyncPromise = new Promise((resolve) => {
+                resolveFirstSync = resolve;
+            });
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockImplementation(() => firstSyncPromise),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(mockDb, 'http://remote:5984/db');
+            const firstTrigger = triggerSync();
+            const reconnectTrigger = triggerSync({
+                respectCooldown: false,
+                retryAfterInFlightFailure: true
+            });
+
+            resolveFirstSync({});
+            await firstTrigger;
+            await reconnectTrigger;
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(1);
+            expect(mockDb.replicate.from).toHaveBeenCalledTimes(1);
+            expect(getSyncStatus()).toBe('synced');
+        });
+
+        test('does not queue another retry when reconnect fires during the follow-up attempt', async () => {
+            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            let rejectFirstSync;
+            let rejectRetrySync;
+            const firstSyncPromise = new Promise((resolve, reject) => {
+                rejectFirstSync = reject;
+            });
+            const retrySyncPromise = new Promise((resolve, reject) => {
+                rejectRetrySync = reject;
+            });
+            const mockDb = {
+                replicate: {
+                    to: jest
+                        .fn()
+                        .mockImplementationOnce(() => firstSyncPromise)
+                        .mockImplementationOnce(() => retrySyncPromise)
+                        .mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(mockDb, 'http://remote:5984/db');
+            const firstTrigger = triggerSync();
+            triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
+
+            rejectFirstSync(new Error('original attempt failed'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
+
+            triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
+            rejectRetrySync(new Error('follow-up attempt failed'));
+            await firstTrigger;
+
+            expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
+            expect(getSyncStatus()).toBe('error');
+            consoleErrorSpy.mockRestore();
+        });
+
+        test('a stale session retry cannot clear the active session retry guard', async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            let rejectAOriginal;
+            let resolveARetry;
+            const aOriginal = new Promise((resolve, reject) => {
+                rejectAOriginal = reject;
+            });
+            const aRetry = new Promise((resolve) => {
+                resolveARetry = resolve;
+            });
+            const dbA = {
+                replicate: {
+                    to: jest
+                        .fn()
+                        .mockImplementationOnce(() => aOriginal)
+                        .mockImplementationOnce(() => aRetry),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(dbA, 'http://remote:5984/a');
+            const sessionATrigger = triggerSync();
+            triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
+            rejectAOriginal(new Error('session A original failed'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(dbA.replicate.to).toHaveBeenCalledTimes(2);
+
+            let rejectBOriginal;
+            let rejectBRetry;
+            const bOriginal = new Promise((resolve, reject) => {
+                rejectBOriginal = reject;
+            });
+            const bRetry = new Promise((resolve, reject) => {
+                rejectBRetry = reject;
+            });
+            const dbB = {
+                replicate: {
+                    to: jest
+                        .fn()
+                        .mockImplementationOnce(() => bOriginal)
+                        .mockImplementationOnce(() => bRetry)
+                        .mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+
+            initSync(dbB, 'http://remote:5984/b');
+            const sessionBTrigger = triggerSync();
+            triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
+            rejectBOriginal(new Error('session B original failed'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(dbB.replicate.to).toHaveBeenCalledTimes(2);
+
+            resolveARetry({});
+            await sessionATrigger;
+
+            triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
+            rejectBRetry(new Error('session B retry failed'));
+            await sessionBTrigger;
+
+            expect(dbB.replicate.to).toHaveBeenCalledTimes(2);
+            expect(getSyncStatus()).toBe('error');
         });
 
         test('respects cooldown for resume-triggered syncs', async () => {

@@ -6,7 +6,7 @@ let localDb = null;
 /** @type {string|null} Remote CouchDB URL */
 let remoteUrl = null;
 
-/** @type {string} Current sync status: 'idle' | 'syncing' | 'synced' | 'error' | 'unsynced' */
+/** @type {string} Current sync status: 'idle' | 'syncing' | 'synced' | 'error' | 'offline' | 'unsynced' */
 let syncStatus = 'idle';
 
 /** @type {Set<Function>} Registered status change callbacks */
@@ -26,6 +26,12 @@ let lastSyncStartedAt = 0;
 
 /** @type {Promise<void>|null} */
 let inFlightSyncPromise = null;
+
+/** @type {boolean} */
+let retryAfterInFlightFailureRequested = false;
+
+/** @type {number|null} Session that owns the one allowed reconnect follow-up. */
+let reconnectRetrySessionId = null;
 
 /** @type {number} */
 let syncSessionId = 0;
@@ -58,14 +64,24 @@ export function initSync(db, remote) {
     syncInFlight = false;
     lastSyncStartedAt = 0;
     inFlightSyncPromise = null;
+    retryAfterInFlightFailureRequested = false;
+    reconnectRetrySessionId = null;
 }
 
 /**
  * Trigger a one-time bidirectional sync with the remote.
  */
-export async function triggerSync({ respectCooldown = false } = {}) {
+export async function triggerSync({
+    respectCooldown = false,
+    retryAfterInFlightFailure = false
+} = {}) {
     if (!localDb || !remoteUrl) return;
-    if (syncInFlight) return inFlightSyncPromise;
+    if (syncInFlight) {
+        if (retryAfterInFlightFailure && reconnectRetrySessionId !== syncSessionId) {
+            retryAfterInFlightFailureRequested = true;
+        }
+        return inFlightSyncPromise;
+    }
 
     const now = Date.now();
     if (respectCooldown && now - lastSyncStartedAt < RESUME_SYNC_COOLDOWN_MS) {
@@ -80,21 +96,42 @@ export async function triggerSync({ respectCooldown = false } = {}) {
     lastSyncStartedAt = now;
     setStatus('syncing');
     inFlightSyncPromise = (async () => {
+        let syncSucceeded = false;
+        let shouldRetry = false;
         try {
             await currentDb.replicate.to(currentRemoteUrl);
             await currentDb.replicate.from(currentRemoteUrl);
             if (currentSessionId === syncSessionId) {
+                syncSucceeded = true;
                 setStatus('synced');
             }
         } catch (err) {
             if (currentSessionId === syncSessionId) {
                 logger.error('Sync error:', err);
-                setStatus('error');
+                setStatus(
+                    typeof navigator !== 'undefined' && navigator.onLine === false
+                        ? 'offline'
+                        : 'error'
+                );
             }
         } finally {
             if (currentSessionId === syncSessionId) {
                 syncInFlight = false;
                 inFlightSyncPromise = null;
+                shouldRetry = !syncSucceeded && retryAfterInFlightFailureRequested;
+                retryAfterInFlightFailureRequested = false;
+            }
+        }
+
+        if (shouldRetry) {
+            const retryOwnerSessionId = currentSessionId;
+            reconnectRetrySessionId = retryOwnerSessionId;
+            try {
+                await triggerSync();
+            } finally {
+                if (reconnectRetrySessionId === retryOwnerSessionId) {
+                    reconnectRetrySessionId = null;
+                }
             }
         }
     })();
@@ -163,5 +200,7 @@ export function teardownSync() {
     syncInFlight = false;
     lastSyncStartedAt = 0;
     inFlightSyncPromise = null;
+    retryAfterInFlightFailureRequested = false;
+    reconnectRetrySessionId = null;
     statusCallbacks.clear();
 }
