@@ -3,13 +3,14 @@
 // SW script changes every deploy. Committed output; verify with --check.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
 const OUTPUT = join(PUBLIC_DIR, 'sw-precache.js');
 const SW_FILE = join(PUBLIC_DIR, 'sw.js');
 const STAMP = /^\/\/ precache-version: \w+$/m;
+const TEXT_EXTENSIONS = new Set(['.css', '.html', '.js', '.webmanifest']);
 
 // Never precache: the SW itself + its imports (browser-managed), CI-rewritten
 // config (seeded at install + network-first at runtime; excluded from the
@@ -38,7 +39,13 @@ const files = walk(PUBLIC_DIR)
     .sort();
 
 const hash = createHash('sha256');
-for (const f of files) hash.update(f).update(readFileSync(join(PUBLIC_DIR, f)));
+for (const f of files) {
+    const contents = readFileSync(join(PUBLIC_DIR, f));
+    const canonicalContents = TEXT_EXTENSIONS.has(extname(f))
+        ? contents.toString('utf8').replace(/\r\n/g, '\n')
+        : contents;
+    hash.update(f).update(canonicalContents);
+}
 const version = hash.digest('hex').slice(0, 12);
 
 const urls = ['/', ...files.map((f) => `/${f}`)];
