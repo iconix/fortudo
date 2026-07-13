@@ -343,6 +343,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // App data lives entirely in IndexedDB; ask the browser not to evict it
+    // (matters most for installed PWAs on Safari/iOS). Fire-and-forget.
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+    }
+
     // Wire up room code badge click once (outside initAndBootApp to avoid accumulation)
     const roomCodeBadge = document.getElementById('room-code-badge');
     if (roomCodeBadge) {

@@ -194,6 +194,44 @@ describe('app room/session lifecycle', () => {
         expect(deps.triggerSync).toHaveBeenCalledWith({ respectCooldown: true });
     });
 
+    test('syncs without cooldown on reconnect and removes the listener after abort', async () => {
+        const { deps, lifecycle } = createLifecycle();
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+
+        window.dispatchEvent(new Event('online'));
+        await Promise.resolve();
+        expect(deps.triggerSync).toHaveBeenCalledWith({
+            respectCooldown: false,
+            retryAfterInFlightFailure: true
+        });
+
+        deps.triggerSync.mockClear();
+        abortController.abort();
+        window.dispatchEvent(new Event('online'));
+        await Promise.resolve();
+        expect(deps.triggerSync).not.toHaveBeenCalled();
+    });
+
+    test('logs reconnect sync rejections without an unhandled rejection', async () => {
+        const reconnectError = new Error('reconnect failed');
+        const { deps, lifecycle } = createLifecycle({
+            triggerSync: jest.fn(() => Promise.reject(reconnectError))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        window.dispatchEvent(new Event('online'));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.logger.error).toHaveBeenCalledWith(
+            'Failed to sync tasks after reconnect:',
+            reconnectError
+        );
+    });
+
     test('runs the clock tick loop and stops a running timer at midnight', async () => {
         const currentTime = new Date('2026-04-21T23:59:59');
         jest.setSystemTime(currentTime);

@@ -13,6 +13,22 @@ firebase init  # one-time setup
 firebase deploy  # can also enable github actions to deploy
 ```
 
+### PWA assets
+
+Fortudo is installable and boots offline through `public/sw.js`. Its generated
+precache manifest is committed to the repository; rebuild it with
+`npm run build:sw-precache`. A freshness guard verifies the generated file.
+
+Tailwind CSS is also generated and committed. Run `npm run build:css` after any
+Tailwind class change; `npm run check:css` guards it in CI. Font Awesome is
+vendored locally with `npm run vendor:fontawesome` and verified with
+`npm run check:fontawesome`. Regenerate the app icons with
+`uv run scripts/generate_icons.py`.
+
+iOS splash images (`apple-touch-startup-image`) are deliberately out of scope.
+Safari may return `false` from `navigator.storage.persist()`; this is normal and
+does not prevent the app from working offline.
+
 ## testing
 
 Three layers, each with a distinct job:
@@ -25,7 +41,8 @@ npm test
 
 **E2E (pytest + Playwright, `tests/`)** - pre-merge, runs in CI against a local
 server on `127.0.0.1:9847` started by a session fixture. New browser-level
-coverage goes here by default:
+coverage goes here by default. `tests/e2e/test_pwa.py` covers the manifest,
+installability, service-worker lifecycle, and offline behavior:
 
 ```bash
 uv run --with pytest --with playwright python -m pytest tests -q

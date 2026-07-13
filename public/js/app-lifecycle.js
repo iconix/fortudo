@@ -116,6 +116,12 @@ export function createRoomSessionLifecycle({
         });
     }
 
+    function handleOnline() {
+        triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true }).catch((err) => {
+            logger.error('Failed to sync tasks after reconnect:', err);
+        });
+    }
+
     function runDayRollover(now) {
         const cleanupResult = deleteCompletedUnscheduledTasks?.();
         const rolloverResult = rolloverPriorDayScheduledTasks?.(now);
@@ -196,6 +202,7 @@ export function createRoomSessionLifecycle({
         );
 
         window.addEventListener('focus', syncOnFocus, { signal });
+        window.addEventListener('online', handleOnline, { signal });
         startClockTickLoop();
         window.addEventListener(
             'beforeunload',
