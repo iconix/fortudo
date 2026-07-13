@@ -30,17 +30,24 @@ export function registerServiceWorker(callbacks = {}) {
                 if (!worker || !callbacks.onUpdateAvailable) return;
                 callbacks.onUpdateAvailable(() => worker.postMessage({ type: 'SKIP_WAITING' }));
             };
+            const watchInstalling = (worker) => {
+                if (!worker) return;
+                if (worker.state === 'installed') {
+                    if (navigator.serviceWorker.controller) notifyIfWaiting(worker);
+                    return;
+                }
+                worker.addEventListener('statechange', () => {
+                    if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                        notifyIfWaiting(worker);
+                    }
+                });
+            };
             if (registration.waiting && navigator.serviceWorker.controller) {
                 notifyIfWaiting(registration.waiting);
             }
+            watchInstalling(registration.installing);
             registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (!newWorker) return;
-                newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        notifyIfWaiting(newWorker);
-                    }
-                });
+                watchInstalling(registration.installing);
             });
         })
         .catch(() => {});
