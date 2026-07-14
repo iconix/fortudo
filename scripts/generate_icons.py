@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ICONS_DIR = REPO_ROOT / "public" / "icons"
 
-BACKGROUND = "#0f766e"  # tailwind teal-700, matches the app accent
+BACKGROUND = "#1e293b"  # tailwind slate-800, matches the app shell
 EMOJI = "\N{FLEXED BICEPS}\N{EMOJI MODIFIER FITZPATRICK TYPE-5}"  # 💪🏾
 
 # (filename, canvas px, emoji px) — maskable uses a smaller glyph so the
