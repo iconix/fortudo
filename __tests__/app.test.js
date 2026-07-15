@@ -13,6 +13,7 @@ import {
     updateTaskState,
     getTaskState,
     getSuggestedStartTime,
+    getUnscheduledView,
     moveUnscheduledTask,
     cancelEdit as cancelEditDirect
 } from '../public/js/tasks/manager.js';
@@ -32,6 +33,12 @@ jest.mock('../public/js/storage.js', () => ({
     loadTasks: jest.fn(() => []),
     loadActivities: jest.fn(() => []),
     loadConfig: jest.fn(() => Promise.resolve(null))
+}));
+
+jest.mock('../public/js/tasks/unscheduled-list.js', () => ({
+    mountUnscheduledList: jest.fn(() => true),
+    renderUnscheduledList: jest.fn(),
+    destroyUnscheduledList: jest.fn()
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -113,6 +120,12 @@ import {
     handleSaveActivityEdit as mockHandleSaveActivityEditInternal
 } from '../public/js/activities/handlers.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
+import { showToast as showToastInternal } from '../public/js/toast-manager.js';
+import {
+    mountUnscheduledList as mockMountUnscheduledListInternal,
+    renderUnscheduledList as mockRenderUnscheduledListInternal,
+    destroyUnscheduledList as mockDestroyUnscheduledListInternal
+} from '../public/js/tasks/unscheduled-list.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
@@ -140,6 +153,9 @@ const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
 const mockHandleDeleteActivity = jest.mocked(mockHandleDeleteActivityInternal);
 const mockHandleSaveActivityEdit = jest.mocked(mockHandleSaveActivityEditInternal);
+const mockMountUnscheduledList = jest.mocked(mockMountUnscheduledListInternal);
+const mockRenderUnscheduledList = jest.mocked(mockRenderUnscheduledListInternal);
+const mockDestroyUnscheduledList = jest.mocked(mockDestroyUnscheduledListInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -239,6 +255,32 @@ describe('App.js Callback Functions', () => {
         if (confirmSpy) confirmSpy.mockRestore();
         if (deleteTaskSpy) deleteTaskSpy.mockRestore();
         clearLocalStorage();
+    });
+
+    describe('Unscheduled list seam wiring', () => {
+        test('room initialization mounts and renders one named-action list seam', async () => {
+            await setupAppWithTasks([]);
+
+            expect(mockDestroyUnscheduledList).toHaveBeenCalledTimes(1);
+            expect(mockMountUnscheduledList).toHaveBeenCalledTimes(1);
+            expect(mockMountUnscheduledList).toHaveBeenCalledWith({
+                readView: getUnscheduledView,
+                moveTask: moveUnscheduledTask,
+                actions: {
+                    schedule: expect.any(Function),
+                    startTimer: expect.any(Function),
+                    edit: expect.any(Function),
+                    delete: expect.any(Function),
+                    confirmSchedule: expect.any(Function),
+                    saveEdit: expect.any(Function),
+                    cancelEdit: expect.any(Function),
+                    toggleComplete: expect.any(Function)
+                },
+                getRunningActivity: mockGetRunningActivity,
+                showError: showToastInternal
+            });
+            expect(mockRenderUnscheduledList).toHaveBeenCalled();
+        });
     });
 
     describe('onDeleteTask callback', () => {
@@ -1153,9 +1195,6 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks).toHaveLength(1);
             expect(updatedTasks[0].type).toBe('unscheduled');
 
-            const unscheduledTask = document.querySelector('#unscheduled-task-list [data-task-id]');
-            expect(unscheduledTask).toBeTruthy();
-
             onTaskUnscheduledSpy.mockRestore();
         });
     });
@@ -1745,39 +1784,6 @@ describe('App.js Callback Functions', () => {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
-            });
-
-            test('should not clear unscheduled delete confirmation when clicking inside task card', async () => {
-                const unscheduledTask = {
-                    id: 'unsched-keep-confirming',
-                    type: 'unscheduled',
-                    description: 'Backlog task',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'incomplete',
-                    confirmingDelete: false
-                };
-
-                await setupAppWithTasks([unscheduledTask]);
-
-                const deleteButton = document.querySelector(
-                    '#unscheduled-task-list .btn-delete-unscheduled'
-                );
-                expect(deleteButton).toBeTruthy();
-
-                deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-                await new Promise((resolve) => setTimeout(resolve, 10));
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
-
-                const editButton = document.querySelector(
-                    '#unscheduled-task-list .btn-edit-unscheduled'
-                );
-                expect(editButton).toBeTruthy();
-
-                editButton.dispatchEvent(new Event('click', { bubbles: true }));
-                await new Promise((resolve) => setTimeout(resolve, 10));
-
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
             });
         });
 

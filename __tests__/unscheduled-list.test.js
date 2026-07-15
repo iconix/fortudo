@@ -9,9 +9,16 @@ import {
 } from '../public/js/tasks/unscheduled-list.js';
 
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
-    getSelectableCategoryOptions: jest.fn(() => []),
+    getSelectableCategoryOptions: jest.fn(() => [
+        { value: 'work', label: 'Work', indentLevel: 0 },
+        { value: 'work/deep', label: 'Deep Work', indentLevel: 1 }
+    ]),
     renderCategoryBadge: jest.fn(() => ''),
-    resolveCategoryKey: jest.fn(() => null)
+    resolveCategoryKey: jest.fn((key) =>
+        key === 'work/deep'
+            ? { kind: 'category', record: { key, label: 'Deep Work', color: '#0ea5e9' } }
+            : null
+    )
 }));
 
 const MODE_KEY = 'fortudo-unscheduled-sort-mode';
@@ -258,11 +265,35 @@ describe('Unscheduled list UI interface', () => {
 
     test('routes existing card and inline actions through the named-actions adapter', () => {
         const { actions } = renderWith();
+        const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+        const menu = document.querySelector('.unscheduled-task-actions-menu');
+        const startTimer = document.querySelector('.btn-start-unscheduled-timer');
 
-        document.querySelector('.btn-start-unscheduled-timer').click();
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(menu.hidden).toBe(true);
+        expect(menu.classList).toContain('action-menu-content--closed');
+        expect(menu.classList).not.toContain('action-menu-content--open');
+        expect(startTimer.textContent).toContain('Start timer');
+        expect(startTimer.querySelector('.fa-stopwatch')).not.toBeNull();
+        expect(document.querySelector('.btn-schedule-task').textContent).toContain('Schedule');
+        expect(document.querySelector('.btn-edit-unscheduled').textContent).toContain('Edit task');
+        expect(document.querySelector('.btn-delete-unscheduled').textContent).toContain(
+            'Delete task'
+        );
+
+        trigger.click();
+        startTimer.click();
+        expect(menu.hidden).toBe(true);
+        trigger.click();
         document.querySelector('.btn-schedule-task').click();
+        expect(menu.hidden).toBe(true);
+        trigger.click();
         document.querySelector('.btn-edit-unscheduled').click();
+        expect(menu.hidden).toBe(true);
+        trigger.click();
         document.querySelector('.btn-delete-unscheduled').click();
+        expect(menu.hidden).toBe(true);
         document.querySelector('.task-checkbox-unscheduled').click();
         document.querySelector('.btn-save-inline-edit').click();
         document.querySelector('.btn-cancel-inline-edit').click();
@@ -282,6 +313,18 @@ describe('Unscheduled list UI interface', () => {
         });
         renderWith(options);
 
+        const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
+        const startTimer = document.querySelector('.btn-start-unscheduled-timer');
+        const schedule = document.querySelector('.btn-schedule-task');
+        const edit = document.querySelector('.btn-edit-unscheduled');
+        const deleteButton = document.querySelector('.btn-delete-unscheduled');
+
+        expect(trigger.disabled).toBe(false);
+        expect(startTimer.disabled).toBe(true);
+        expect(schedule.disabled).toBe(true);
+        expect(edit.disabled).toBe(false);
+        expect(deleteButton.disabled).toBe(false);
+
         document
             .querySelector('.btn-start-unscheduled-timer i')
             .dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -291,6 +334,13 @@ describe('Unscheduled list UI interface', () => {
 
         expect(options.actions.startTimer).not.toHaveBeenCalled();
         expect(options.actions.schedule).not.toHaveBeenCalled();
+
+        trigger.click();
+        edit.click();
+        trigger.click();
+        deleteButton.click();
+        expect(options.actions.edit).toHaveBeenCalledWith('done');
+        expect(options.actions.delete).toHaveBeenCalledWith('done');
     });
 
     test('toggles menus with the expected classes and restores trigger focus on Escape', () => {
@@ -298,11 +348,15 @@ describe('Unscheduled list UI interface', () => {
         const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
         const menu = document.querySelector('.unscheduled-task-actions-menu');
 
+        trigger.focus();
         trigger.click();
         expect(menu.hidden).toBe(false);
         expect(menu.classList).toContain('action-menu-content--open');
         expect(menu.classList).not.toContain('action-menu-content--closed');
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(document.activeElement).toBe(trigger);
+        expect(trigger.closest('[data-task-id]').classList).toContain('z-40');
+        expect(trigger.closest('.unscheduled-task-actions').classList).toContain('z-50');
 
         menu.querySelector('.btn-edit-unscheduled').focus();
         menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -312,6 +366,8 @@ describe('Unscheduled list UI interface', () => {
         expect(menu.classList).not.toContain('action-menu-content--open');
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(trigger);
+        expect(trigger.closest('[data-task-id]').classList).not.toContain('z-40');
+        expect(trigger.closest('.unscheduled-task-actions').classList).not.toContain('z-50');
     });
 
     test('an outside click closes an open action menu', () => {
@@ -324,12 +380,18 @@ describe('Unscheduled list UI interface', () => {
 
         expect(menu.hidden).toBe(true);
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(menu.classList).toContain('action-menu-content--closed');
+        expect(trigger.closest('[data-task-id]').classList).not.toContain('z-40');
+        expect(trigger.closest('.unscheduled-task-actions').classList).not.toContain('z-50');
     });
 
     test('inline Enter and form submission route saves without browser submission', () => {
         const { actions } = renderWith();
         const form = document.querySelector('.inline-edit-unscheduled-form form');
         const input = form.querySelector('[name="inline-edit-description"]');
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        expect(actions.saveEdit).not.toHaveBeenCalled();
+
         const enter = new KeyboardEvent('keydown', {
             key: 'Enter',
             bubbles: true,
@@ -357,13 +419,59 @@ describe('Unscheduled list UI interface', () => {
 
     test('passes the current running activity to card rendering', () => {
         const runningActivity = { sourceTaskId: 'a' };
-        renderWith(createOptions({ getRunningActivity: () => runningActivity }));
+        const options = createOptions({ getRunningActivity: () => runningActivity });
+        renderWith(options);
 
         const card = document.querySelector('[data-task-id="a"]');
         expect(card.classList).toContain('opacity-70');
+        expect(card.classList).toContain('pointer-events-none');
         expect(card.querySelector('.unscheduled-in-progress-badge').textContent).toContain(
             'In progress'
         );
+        expect(card.querySelector('.unscheduled-in-progress-badge').classList).toContain(
+            'bg-slate-700/70'
+        );
+        expect(card.querySelector('.unscheduled-in-progress-badge').classList).toContain(
+            'text-sky-200'
+        );
+        card.querySelectorAll(
+            '.btn-start-unscheduled-timer, .btn-schedule-task, .btn-edit-unscheduled, .btn-delete-unscheduled'
+        ).forEach((button) => expect(button.disabled).toBe(true));
+    });
+
+    test('keeps a pending delete menu open through the list render seam', () => {
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => view([task('confirm', { confirmingDelete: true })]))
+            })
+        );
+
+        const card = document.querySelector('[data-task-id="confirm"]');
+        const trigger = card.querySelector('.btn-unscheduled-task-actions-menu');
+        const menu = card.querySelector('.unscheduled-task-actions-menu');
+        expect(card.classList).toContain('z-40');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(menu.hidden).toBe(false);
+        expect(menu.classList).toContain('action-menu-content--open');
+        expect(card.querySelector('.btn-delete-unscheduled').textContent).toContain(
+            'Confirm delete'
+        );
+    });
+
+    test('renders inline category controls through the list render seam', () => {
+        renderWith(
+            createOptions({
+                readView: jest.fn(() =>
+                    view([task('editing', { isEditingInline: true, category: 'work/deep' })])
+                )
+            })
+        );
+
+        const select = document.querySelector('select[name="inline-edit-category"]');
+        const dot = document.querySelector('.unscheduled-edit-category-dot');
+        expect(select.value).toBe('work/deep');
+        expect(select.querySelector('option[value="work/deep"]').textContent).toBe('› Deep Work');
+        expect(dot.style.backgroundColor).toBe('rgb(14, 165, 233)');
     });
 
     test('renders move handles and menu commands only in My order', () => {

@@ -251,7 +251,7 @@ if (closeScheduleModalButton) closeScheduleModalButton.addEventListener('click',
 if (cancelScheduleModalButton)
     cancelScheduleModalButton.addEventListener('click', hideScheduleModal);
 
-export function initializeModalEventListeners(unscheduledTaskCallbacks) {
+export function initializeModalEventListeners(unscheduledActions) {
     if (!(scheduleModalForm instanceof HTMLFormElement)) return;
 
     // Wire up end time hint for the schedule modal
@@ -326,12 +326,7 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
         if (taskId && startTime && duration !== null) {
             const modalWarningEl = document.getElementById('modal-overlap-warning');
             const reschedulePreApproved = !!(modalWarningEl && modalWarningEl.textContent.trim());
-            unscheduledTaskCallbacks.onConfirmScheduleTask(
-                taskId,
-                startTime,
-                duration,
-                reschedulePreApproved
-            );
+            unscheduledActions.confirmSchedule(taskId, startTime, duration, reschedulePreApproved);
         }
         hideScheduleModal();
     });

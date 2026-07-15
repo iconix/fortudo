@@ -193,21 +193,3 @@ export function createUnscheduledTaskActions() {
         toggleComplete: handleToggleCompleteUnscheduledTask
     };
 }
-
-/**
- * Keep the legacy DOM adapter available until app wiring moves to the list seam.
- * @returns {Object} Legacy callback-name adapter
- */
-export function createUnscheduledTaskCallbacks() {
-    const actions = createUnscheduledTaskActions();
-    return {
-        onScheduleUnscheduledTask: actions.schedule,
-        onStartTimerFromUnscheduledTask: actions.startTimer,
-        onEditUnscheduledTask: actions.edit,
-        onDeleteUnscheduledTask: actions.delete,
-        onConfirmScheduleTask: actions.confirmSchedule,
-        onSaveUnscheduledTaskEdit: actions.saveEdit,
-        onCancelUnscheduledTaskEdit: actions.cancelEdit,
-        onToggleCompleteUnscheduledTask: actions.toggleComplete
-    };
-}

@@ -43,13 +43,11 @@ jest.mock('../public/js/modal-manager.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),

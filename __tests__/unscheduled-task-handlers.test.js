@@ -10,8 +10,7 @@ import {
     handleConfirmScheduleTask,
     handleSaveUnscheduledTaskEdit,
     handleCancelUnscheduledTaskEdit,
-    handleToggleCompleteUnscheduledTask,
-    createUnscheduledTaskActions
+    handleToggleCompleteUnscheduledTask
 } from '../public/js/tasks/unscheduled-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
 import * as taskManager from '../public/js/tasks/manager.js';
@@ -38,13 +37,11 @@ jest.mock('../public/js/modal-manager.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
@@ -126,21 +123,6 @@ describe('Unscheduled Task Handlers', () => {
         `;
         updateTaskState([]);
         jest.clearAllMocks();
-    });
-
-    describe('createUnscheduledTaskActions', () => {
-        test('maps list action names to the existing business handlers', () => {
-            expect(createUnscheduledTaskActions()).toEqual({
-                schedule: handleScheduleUnscheduledTask,
-                startTimer: handleStartTimerFromUnscheduledTask,
-                edit: handleEditUnscheduledTask,
-                delete: handleDeleteUnscheduledTask,
-                confirmSchedule: handleConfirmScheduleTask,
-                saveEdit: handleSaveUnscheduledTaskEdit,
-                cancelEdit: handleCancelUnscheduledTaskEdit,
-                toggleComplete: handleToggleCompleteUnscheduledTask
-            });
-        });
     });
 
     describe('handleScheduleUnscheduledTask', () => {
