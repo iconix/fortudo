@@ -16,6 +16,8 @@
 - Grant only `contents: read` and `pull-requests: write` to the preview job.
 - Keep Dependabot preview deployment disabled.
 - Workflow-only pull requests remain excluded from preview deployment by the existing path filter.
+- Match the former Firebase Hosting action's comment wording, expiry, attribution, and site signature.
+- Omit the expiry line when Firebase does not return a valid `expireTime`; never synthesize one.
 
 ---
 
@@ -199,3 +201,140 @@ gh pr create --draft --base main --head codex/restore-preview-comment --fill
 ```
 
 Expected: GitHub creates a draft PR targeting `main`. The new Python regression test makes this PR eligible for preview deployment, so its first workflow run creates the marker-tagged comment. A follow-up documentation push updates the same comment instead of creating a duplicate.
+
+---
+
+### Task 2: Match the legacy Firebase comment content
+
+**Files:**
+
+- Modify: `tests/test_ci_preview_comment.py`
+- Modify: `.github/workflows/ci-cd.yml:187-299`
+
+**Interfaces:**
+
+- Consumes: Firebase CLI JSON fields `result.<site>.url` and `result.<site>.expireTime`
+- Produces: `steps.deploy-preview.outputs.preview_url`, `steps.deploy-preview.outputs.preview_expires`, and the existing marker-tagged PR comment in the former Firebase action's format
+
+- [ ] **Step 1: Extend the workflow regression test**
+
+Add these assertions to `test_preview_deploy_exports_url_and_updates_one_pr_comment` after the existing preview URL assertions:
+
+```python
+assert 'echo "preview_expires=$preview_expires" >> "$GITHUB_OUTPUT"' in workflow
+assert "PREVIEW_EXPIRES: ${{ steps.deploy-preview.outputs.preview_expires }}" in workflow
+assert "Visit the preview URL for this PR (updated for commit" in workflow
+assert "toUTCString()" in workflow
+assert "Firebase Hosting GitHub Action" in workflow
+assert "createHash('sha1')" in workflow
+assert ".update('fortudo')" in workflow
+```
+
+- [ ] **Step 2: Run the focused test to verify RED**
+
+Run:
+
+```bash
+uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
+```
+
+Expected: `1 failed` because `preview_expires` is not exported yet.
+
+- [ ] **Step 3: Export the actual Firebase expiration time**
+
+Rename `export_preview_url` to `export_preview_details`. After the existing `preview_url` extraction, add:
+
+```bash
+local preview_expires
+preview_expires="$(
+  grep -Eo '"expireTime":[[:space:]]*"[^"]+"' "$source_file" |
+  head -n 1 |
+  sed -E 's/^"expireTime":[[:space:]]*"([^"]+)"$/\1/'
+)"
+```
+
+Inside the successful URL branch, export the timestamp only when Firebase supplied it:
+
+```bash
+if [ -n "$preview_expires" ]; then
+  echo "Firebase Hosting preview expiry: $preview_expires"
+  echo "preview_expires=$preview_expires" >> "$GITHUB_OUTPUT"
+fi
+```
+
+Update all three callers from `export_preview_url` to `export_preview_details`.
+
+- [ ] **Step 4: Render the former Firebase action's comment format**
+
+Add the expiry output to the comment step environment:
+
+```yaml
+PREVIEW_EXPIRES: ${{ steps.deploy-preview.outputs.preview_expires }}
+```
+
+Replace the comment body's construction with:
+
+```javascript
+const marker = '<!-- firebase-hosting-preview -->';
+const shortSha = process.env.DEPLOYED_SHA.slice(0, 7);
+const expires = new Date(process.env.PREVIEW_EXPIRES);
+const expiryLines = Number.isNaN(expires.getTime())
+  ? []
+  : [`(expires ${expires.toUTCString()})`, ''];
+const signature = require('node:crypto')
+  .createHash('sha1')
+  .update('fortudo')
+  .digest('hex');
+const body = [
+  marker,
+  `Visit the preview URL for this PR (updated for commit ${shortSha}):`,
+  '',
+  `[${process.env.PREVIEW_URL}](${process.env.PREVIEW_URL})`,
+  '',
+  ...expiryLines,
+  '🔥 via [Firebase Hosting GitHub Action](https://github.com/marketplace/actions/deploy-to-firebase-hosting) 🌎',
+  '',
+  `Sign: ${signature}`
+].join('\n');
+```
+
+Keep the existing marker lookup and update-or-create logic unchanged.
+
+- [ ] **Step 5: Run the focused test to verify GREEN**
+
+Run:
+
+```bash
+uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
+```
+
+Expected: `1 passed`.
+
+- [ ] **Step 6: Run formatting and full verification**
+
+Run:
+
+```bash
+npm run format
+npm test -- --coverage --runInBand
+npm run check
+uv run --with pytest --with playwright python -m pytest tests -q
+git diff --check
+```
+
+Expected:
+
+- Jest: 61 suites and 1,290 tests pass with coverage thresholds satisfied.
+- ESLint and Prettier pass.
+- Pytest: 111 tests pass.
+- `git diff --check` reports no errors.
+
+- [ ] **Step 7: Commit and publish the follow-up**
+
+```bash
+git add .github/workflows/ci-cd.yml tests/test_ci_preview_comment.py docs/plans/implementation/2026-07-14-preview-deploy-pr-comment.md
+git commit -m "ci: match legacy preview comment content"
+git push
+```
+
+Expected: the pre-commit hook passes without `--no-verify`; PR #95 updates and its preview comment retains the same comment ID while adopting the legacy content.
