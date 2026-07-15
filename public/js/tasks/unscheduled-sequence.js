@@ -13,17 +13,14 @@ function comparePriority(left, right) {
     const completion = Number(left.status === 'completed') - Number(right.status === 'completed');
     if (completion !== 0) return completion;
 
-    const priority =
-        (PRIORITY_RANK[left.priority] ?? PRIORITY_RANK.medium) -
-        (PRIORITY_RANK[right.priority] ?? PRIORITY_RANK.medium);
+    const priority = PRIORITY_RANK[left.priority] - PRIORITY_RANK[right.priority];
     if (priority !== 0) return priority;
 
-    const leftHasDuration = Number.isFinite(left.estDuration);
-    const rightHasDuration = Number.isFinite(right.estDuration);
-    if (leftHasDuration && rightHasDuration && left.estDuration !== right.estDuration) {
+    if (left.estDuration !== null && right.estDuration !== null) {
         return left.estDuration - right.estDuration;
     }
-    if (leftHasDuration !== rightHasDuration) return leftHasDuration ? -1 : 1;
+    if (left.estDuration !== null) return -1;
+    if (right.estDuration !== null) return 1;
 
     return 0;
 }
@@ -98,12 +95,7 @@ function replaceOrderFields(allTasks, ordered) {
  * @param {Object} adapters - Task-state and persistence adapters.
  * @returns {Object} Projection, placement, and movement operations.
  */
-export function createUnscheduledSequence({
-    readTasks,
-    replaceTasks,
-    persistTasks: _persistTasks,
-    reloadTasks: _reloadTasks
-}) {
+export function createUnscheduledSequence({ readTasks, replaceTasks }) {
     function project(mode = 'priority') {
         const validMode = VALID_MODES.has(mode) ? mode : 'priority';
         const ordered =
