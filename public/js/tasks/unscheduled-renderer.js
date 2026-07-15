@@ -176,7 +176,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
         : '';
     const dragHandle =
         mode === 'manual'
-            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" ${movementDisabled ? 'disabled' : ''}>
+            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" aria-haspopup="menu" aria-expanded="false" ${movementDisabled ? 'disabled' : ''}>
                 <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
             </button>`
             : '';

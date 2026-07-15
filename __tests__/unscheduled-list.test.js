@@ -473,18 +473,28 @@ describe('Unscheduled list UI interface', () => {
         const handle = card.querySelector('.unscheduled-drag-handle');
         const menu = card.querySelector('.unscheduled-task-actions-menu');
         const firstMove = card.querySelector('[data-move-kind="up"]');
+        const actionTrigger = card.querySelector('.btn-unscheduled-task-actions-menu');
 
         expect(handle.tagName).toBe('BUTTON');
         expect(handle.type).toBe('button');
+        expect(handle.getAttribute('aria-haspopup')).toBe('menu');
+        expect(handle.getAttribute('aria-expanded')).toBe('false');
         handle.dispatchEvent(
             new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 })
         );
 
         expect(menu.hidden).toBe(false);
         expect(menu.classList).toContain('action-menu-content--open');
-        expect(card.querySelector('.btn-unscheduled-task-actions-menu').ariaExpanded).toBe('true');
+        expect(handle.getAttribute('aria-expanded')).toBe('true');
+        expect(actionTrigger.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(firstMove);
         expect(options.moveTask).not.toHaveBeenCalled();
+
+        firstMove.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        expect(menu.hidden).toBe(true);
+        expect(handle.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(handle);
     });
 
     test.each(['up', 'down', 'top', 'bottom'])(
@@ -705,6 +715,46 @@ describe('Unscheduled list UI interface', () => {
         );
         expect(document.getElementById('unscheduled-order-status').textContent).toBe(
             'Order could not be saved. Fortudo reloaded the stored order.'
+        );
+    });
+
+    test('focuses the active mode when the recovered moved task action becomes disabled', async () => {
+        useManualMode();
+        const settlement = deferred();
+        let runningActivity = null;
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            getRunningActivity: () => runningActivity,
+            moveTask: jest.fn(() => ({
+                success: true,
+                changed: true,
+                taskId: 'moving',
+                position: 1,
+                total: 3,
+                settled: settlement.promise
+            }))
+        });
+        renderWith(options);
+        document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
+
+        runningActivity = { sourceTaskId: 'moving' };
+        settlement.resolve({ success: false, rolledBack: true, reloaded: false });
+        await settlement.promise;
+        await Promise.resolve();
+
+        expect(
+            document.querySelector('[data-task-id="moving"] .btn-unscheduled-task-actions-menu')
+                .disabled
+        ).toBe(true);
+        expect(document.activeElement).toBe(
+            document.querySelector('[data-unscheduled-mode="manual"]')
+        );
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(
+            'Order could not be saved. Your previous order was restored.'
+        );
+        expect(options.showError).toHaveBeenCalledWith(
+            'Order could not be saved. Your previous order was restored.',
+            { theme: 'rose' }
         );
     });
 

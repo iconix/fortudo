@@ -38,16 +38,33 @@ function taskIdFrom(target) {
     return target.closest('[data-task-id]')?.dataset.taskId || null;
 }
 
-function setMenuState(menu, isOpen) {
+function menuTriggers(menu) {
+    const card = menu.closest('[data-task-id]');
+    return [
+        card?.querySelector('.unscheduled-drag-handle'),
+        menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu')
+    ].filter(Boolean);
+}
+
+function defaultMenuOpener(menu) {
+    return menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu') || null;
+}
+
+function setMenuState(menu, isOpen, opener = null) {
+    const activeOpener = isOpen
+        ? opener || state?.menuOpeners.get(menu) || defaultMenuOpener(menu)
+        : state?.menuOpeners.get(menu) || defaultMenuOpener(menu);
     menu.hidden = !isOpen;
     menu.classList.add('action-menu-content');
     menu.classList.toggle('action-menu-content--open', isOpen);
     menu.classList.toggle('action-menu-content--closed', !isOpen);
     menu.parentElement?.classList.toggle('z-50', isOpen);
     menu.closest('[data-task-id]')?.classList.toggle('z-40', isOpen);
-    menu.parentElement
-        ?.querySelector('.btn-unscheduled-task-actions-menu')
-        ?.setAttribute('aria-expanded', String(isOpen));
+    menuTriggers(menu).forEach((trigger) => {
+        trigger.setAttribute('aria-expanded', String(isOpen && trigger === activeOpener));
+    });
+    if (isOpen && activeOpener) state?.menuOpeners.set(menu, activeOpener);
+    else state?.menuOpeners.delete(menu);
 }
 
 function closeMenus({ except = null, restoreFocus = false } = {}) {
@@ -56,7 +73,7 @@ function closeMenus({ except = null, restoreFocus = false } = {}) {
     let focusTarget = null;
     state.root.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
         if (menu === except || menu.hidden) return;
-        focusTarget ||= menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
+        focusTarget ||= state.menuOpeners.get(menu) || defaultMenuOpener(menu);
         setMenuState(menu, false);
     });
     if (restoreFocus) focusTarget?.focus();
@@ -68,7 +85,7 @@ function toggleMenu(trigger) {
 
     const shouldOpen = menu.hidden;
     closeMenus({ except: shouldOpen ? menu : null });
-    setMenuState(menu, shouldOpen);
+    setMenuState(menu, shouldOpen, shouldOpen ? trigger : null);
 }
 
 function handleModeSelection(modeButton) {
@@ -115,7 +132,11 @@ function focusTaskActionOrMode(taskId, mountedState) {
     const trigger = findTaskCard(mountedState.root, taskId)?.querySelector(
         '.btn-unscheduled-task-actions-menu'
     );
-    (trigger || findActiveModeControl(mountedState))?.focus();
+    if (trigger && !trigger.disabled) {
+        trigger.focus();
+        if (document.activeElement === trigger) return;
+    }
+    findActiveModeControl(mountedState)?.focus();
 }
 
 async function settleMove(operation, mountedState) {
@@ -162,7 +183,7 @@ function handleDragHandle(handle) {
     if (!menu || !firstMove) return;
 
     closeMenus({ except: menu });
-    setMenuState(menu, true);
+    setMenuState(menu, true, handle);
     firstMove.focus();
 }
 
@@ -298,6 +319,7 @@ export function mountUnscheduledList({
         mode: readMode(preferenceStorage),
         abortController,
         announcementToken: 0,
+        menuOpeners: new WeakMap(),
         dragActive: false,
         pendingView: null
     };
