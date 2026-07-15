@@ -1,11 +1,10 @@
-import { calculateHoursAndMinutes, logger } from '../utils.js';
+import { calculateHoursAndMinutes } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
 import { renderCategorySelectRow } from '../category-form-utils.js';
 import {
     getSelectableCategoryOptions,
     renderCategoryBadge
 } from '../taxonomy/taxonomy-selectors.js';
-import { getRunningActivity } from '../activities/manager.js';
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {
@@ -120,8 +119,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
  * @param {boolean} isCompleted - Whether the task is completed
  * @returns {string} HTML string for the display view
  */
-function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted) {
-    const runningActivity = getRunningActivity();
+function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, runningActivity) {
     const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
@@ -256,10 +254,10 @@ function createInlineEditFormHTML(task) {
  * @param {Object} task - The task object
  * @returns {HTMLDivElement} The task card element
  */
-function createUnscheduledTaskCard(task) {
+function createUnscheduledTaskCard(task, options = {}) {
     const priorityClasses = getPriorityClasses(task.priority);
     const isCompleted = task.status === 'completed';
-    const isLinkedToRunningTimer = getRunningActivity()?.sourceTaskId === task.id;
+    const isLinkedToRunningTimer = options.runningActivity?.sourceTaskId === task.id;
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
@@ -276,7 +274,8 @@ function createUnscheduledTaskCard(task) {
         task,
         priorityClasses,
         durationText,
-        isCompleted
+        isCompleted,
+        options.runningActivity
     );
     taskCard.appendChild(taskDisplayPart);
 
@@ -298,19 +297,18 @@ const EMPTY_STATE_MESSAGE =
 /**
  * Renders all unscheduled tasks
  * @param {Array} unscheduledTasks - Array of unscheduled tasks
- * @param {Object} eventCallbacks - Event callbacks for task actions
- * @param {Function} setGlobalCallbacks - Function to set global callbacks
+ * @param {Object} options - Display-only rendering options
  */
-export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks, setGlobalCallbacks) {
-    setGlobalCallbacks(eventCallbacks);
-
+export function renderUnscheduledTasks(unscheduledTasks, options = {}) {
+    const {
+        mode = 'priority',
+        movementByTaskId = new Map(),
+        runningActivity = null
+    } = options || {};
     const unscheduledTaskList = getUnscheduledTaskListElement();
-    if (!unscheduledTaskList) {
-        logger.error('Unscheduled task list element not found.');
-        return;
-    }
+    if (!unscheduledTaskList) return;
 
-    unscheduledTaskList.innerHTML = '';
+    unscheduledTaskList.replaceChildren();
 
     if (unscheduledTasks.length === 0) {
         unscheduledTaskList.innerHTML = EMPTY_STATE_MESSAGE;
@@ -318,7 +316,11 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks, setGlob
     }
 
     unscheduledTasks.forEach((task) => {
-        const taskCard = createUnscheduledTaskCard(task);
+        const taskCard = createUnscheduledTaskCard(task, {
+            mode,
+            movement: movementByTaskId.get(task.id),
+            runningActivity
+        });
         unscheduledTaskList.appendChild(taskCard);
 
         if (task.isEditingInline) {

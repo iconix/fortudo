@@ -11,7 +11,7 @@ import {
     handleSaveUnscheduledTaskEdit,
     handleCancelUnscheduledTaskEdit,
     handleToggleCompleteUnscheduledTask,
-    createUnscheduledTaskCallbacks
+    createUnscheduledTaskActions
 } from '../public/js/tasks/unscheduled-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
 import * as taskManager from '../public/js/tasks/manager.js';
@@ -128,17 +128,18 @@ describe('Unscheduled Task Handlers', () => {
         jest.clearAllMocks();
     });
 
-    describe('createUnscheduledTaskCallbacks', () => {
-        test('returns object with all expected callback properties', () => {
-            const callbacks = createUnscheduledTaskCallbacks();
-            expect(callbacks).toHaveProperty('onScheduleUnscheduledTask');
-            expect(callbacks).toHaveProperty('onStartTimerFromUnscheduledTask');
-            expect(callbacks).toHaveProperty('onEditUnscheduledTask');
-            expect(callbacks).toHaveProperty('onDeleteUnscheduledTask');
-            expect(callbacks).toHaveProperty('onConfirmScheduleTask');
-            expect(callbacks).toHaveProperty('onSaveUnscheduledTaskEdit');
-            expect(callbacks).toHaveProperty('onCancelUnscheduledTaskEdit');
-            expect(callbacks).toHaveProperty('onToggleCompleteUnscheduledTask');
+    describe('createUnscheduledTaskActions', () => {
+        test('maps list action names to the existing business handlers', () => {
+            expect(createUnscheduledTaskActions()).toEqual({
+                schedule: handleScheduleUnscheduledTask,
+                startTimer: handleStartTimerFromUnscheduledTask,
+                edit: handleEditUnscheduledTask,
+                delete: handleDeleteUnscheduledTask,
+                confirmSchedule: handleConfirmScheduleTask,
+                saveEdit: handleSaveUnscheduledTaskEdit,
+                cancelEdit: handleCancelUnscheduledTaskEdit,
+                toggleComplete: handleToggleCompleteUnscheduledTask
+            });
         });
     });
 

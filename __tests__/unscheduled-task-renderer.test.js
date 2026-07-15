@@ -2,10 +2,6 @@
  * @jest-environment jsdom
  */
 
-jest.mock('../public/js/activities/manager.js', () => ({
-    getRunningActivity: jest.fn(() => null)
-}));
-
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     getSelectableCategoryOptions: jest.fn(() => [
         { value: 'work', label: 'Work', indentLevel: 0 },
@@ -22,7 +18,6 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
 }));
 
 import { renderUnscheduledTasks } from '../public/js/tasks/unscheduled-renderer.js';
-import { getRunningActivity } from '../public/js/activities/manager.js';
 
 describe('unscheduled task renderer', () => {
     beforeEach(() => {
@@ -31,20 +26,16 @@ describe('unscheduled task renderer', () => {
     });
 
     test('renders an actions menu with start timer for incomplete unscheduled tasks', () => {
-        renderUnscheduledTasks(
-            [
-                {
-                    id: 'unsched-1',
-                    type: 'unscheduled',
-                    description: 'Inbox zero',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'incomplete'
-                }
-            ],
-            {},
-            jest.fn()
-        );
+        renderUnscheduledTasks([
+            {
+                id: 'unsched-1',
+                type: 'unscheduled',
+                description: 'Inbox zero',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete'
+            }
+        ]);
 
         const actionsTrigger = document.querySelector('.btn-unscheduled-task-actions-menu');
         const actionsMenu = document.querySelector('.unscheduled-task-actions-menu');
@@ -66,20 +57,16 @@ describe('unscheduled task renderer', () => {
     });
 
     test('keeps edit and delete actions available for completed unscheduled tasks', () => {
-        renderUnscheduledTasks(
-            [
-                {
-                    id: 'unsched-completed',
-                    type: 'unscheduled',
-                    description: 'Completed backlog item',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'completed'
-                }
-            ],
-            {},
-            jest.fn()
-        );
+        renderUnscheduledTasks([
+            {
+                id: 'unsched-completed',
+                type: 'unscheduled',
+                description: 'Completed backlog item',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'completed'
+            }
+        ]);
 
         const actionsTrigger = document.querySelector('.btn-unscheduled-task-actions-menu');
         const startTimerButton = document.querySelector('.btn-start-unscheduled-timer');
@@ -95,13 +82,13 @@ describe('unscheduled task renderer', () => {
     });
 
     test('renders the linked source task with a subdued in-progress badge and fully disabled while its timer runs', () => {
-        getRunningActivity.mockReturnValue({
+        const runningActivity = {
             description: 'Inbox zero',
             category: 'break/admin',
             startDateTime: '2026-04-14T12:00:00.000Z',
             source: 'auto',
             sourceTaskId: 'unsched-2'
-        });
+        };
 
         renderUnscheduledTasks(
             [
@@ -114,8 +101,7 @@ describe('unscheduled task renderer', () => {
                     status: 'incomplete'
                 }
             ],
-            {},
-            jest.fn()
+            { runningActivity }
         );
 
         const taskCard = document.querySelector('[data-task-id="unsched-2"]');
@@ -137,21 +123,17 @@ describe('unscheduled task renderer', () => {
     });
 
     test('keeps the actions menu open when delete is waiting for confirmation', () => {
-        renderUnscheduledTasks(
-            [
-                {
-                    id: 'unsched-confirm-delete',
-                    type: 'unscheduled',
-                    description: 'Inbox zero',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'incomplete',
-                    confirmingDelete: true
-                }
-            ],
-            {},
-            jest.fn()
-        );
+        renderUnscheduledTasks([
+            {
+                id: 'unsched-confirm-delete',
+                type: 'unscheduled',
+                description: 'Inbox zero',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                confirmingDelete: true
+            }
+        ]);
 
         const taskCard = document.querySelector('[data-task-id="unsched-confirm-delete"]');
         expect(taskCard.className).toContain('z-40');
@@ -170,22 +152,18 @@ describe('unscheduled task renderer', () => {
     });
 
     test('renders category select and color dot for inline editing task', () => {
-        renderUnscheduledTasks(
-            [
-                {
-                    id: 'unsched-3',
-                    type: 'unscheduled',
-                    description: 'Inbox zero',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'incomplete',
-                    isEditingInline: true,
-                    category: 'work/deep'
-                }
-            ],
-            {},
-            jest.fn()
-        );
+        renderUnscheduledTasks([
+            {
+                id: 'unsched-3',
+                type: 'unscheduled',
+                description: 'Inbox zero',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                isEditingInline: true,
+                category: 'work/deep'
+            }
+        ]);
 
         const select = document.querySelector('select[name="inline-edit-category"]');
         const dot = document.querySelector('.unscheduled-edit-category-dot');

@@ -178,18 +178,36 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
 }
 
 /**
- * Create the unscheduled task callbacks object mapping on* names to handle* functions
- * @returns {Object} Callback object for unscheduled task event delegation
+ * Create the named business actions consumed by the Unscheduled list UI.
+ * @returns {Object} Named Unscheduled task actions
+ */
+export function createUnscheduledTaskActions() {
+    return {
+        schedule: handleScheduleUnscheduledTask,
+        startTimer: handleStartTimerFromUnscheduledTask,
+        edit: handleEditUnscheduledTask,
+        delete: handleDeleteUnscheduledTask,
+        confirmSchedule: handleConfirmScheduleTask,
+        saveEdit: handleSaveUnscheduledTaskEdit,
+        cancelEdit: handleCancelUnscheduledTaskEdit,
+        toggleComplete: handleToggleCompleteUnscheduledTask
+    };
+}
+
+/**
+ * Keep the legacy DOM adapter available until app wiring moves to the list seam.
+ * @returns {Object} Legacy callback-name adapter
  */
 export function createUnscheduledTaskCallbacks() {
+    const actions = createUnscheduledTaskActions();
     return {
-        onScheduleUnscheduledTask: handleScheduleUnscheduledTask,
-        onStartTimerFromUnscheduledTask: handleStartTimerFromUnscheduledTask,
-        onEditUnscheduledTask: handleEditUnscheduledTask,
-        onDeleteUnscheduledTask: handleDeleteUnscheduledTask,
-        onConfirmScheduleTask: handleConfirmScheduleTask,
-        onSaveUnscheduledTaskEdit: handleSaveUnscheduledTaskEdit,
-        onCancelUnscheduledTaskEdit: handleCancelUnscheduledTaskEdit,
-        onToggleCompleteUnscheduledTask: handleToggleCompleteUnscheduledTask
+        onScheduleUnscheduledTask: actions.schedule,
+        onStartTimerFromUnscheduledTask: actions.startTimer,
+        onEditUnscheduledTask: actions.edit,
+        onDeleteUnscheduledTask: actions.delete,
+        onConfirmScheduleTask: actions.confirmSchedule,
+        onSaveUnscheduledTaskEdit: actions.saveEdit,
+        onCancelUnscheduledTaskEdit: actions.cancelEdit,
+        onToggleCompleteUnscheduledTask: actions.toggleComplete
     };
 }
