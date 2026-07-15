@@ -103,9 +103,11 @@ function pointer(type, target, values = {}) {
         bubbles: true,
         cancelable: true,
         clientX: values.clientX ?? 0,
-        clientY: values.clientY ?? 0
+        clientY: values.clientY ?? 0,
+        button: values.button ?? 0
     });
     Object.defineProperty(event, 'pointerId', { value: values.pointerId ?? 1 });
+    Object.defineProperty(event, 'isPrimary', { value: values.isPrimary ?? true });
     target.dispatchEvent(event);
     return event;
 }
@@ -940,6 +942,28 @@ describe('Unscheduled list UI interface', () => {
         expect(options.moveTask).not.toHaveBeenCalled();
     });
 
+    test.each([
+        ['a secondary pointer button', { button: 2, isPrimary: true }],
+        ['a non-primary pointer', { button: 0, isPrimary: false }]
+    ])('does not initiate a drag for %s', (_label, pointerState) => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        handle.setPointerCapture = jest.fn();
+
+        pointer('pointerdown', handle, { pointerId: 16, clientY: 60, ...pointerState });
+        pointer('pointermove', root, { pointerId: 16, clientY: 5, ...pointerState });
+        pointer('pointerup', root, { pointerId: 16, clientY: 5, ...pointerState });
+
+        expect(handle.setPointerCapture).not.toHaveBeenCalled();
+        expect(cardById('moving').classList).not.toContain('unscheduled-task--dragging');
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
+
     test('a non-drag handle activation opens Move while a post-drag click is suppressed', () => {
         useManualMode();
         const options = createOptions({
@@ -1010,6 +1034,45 @@ describe('Unscheduled list UI interface', () => {
         }
     );
 
+    test('lost pointer capture cancels safely, applies the latest view, and restores focus', () => {
+        useManualMode();
+        const pendingTasks = [task('first'), task('moving'), task('remote'), task('last')];
+        const readView = jest
+            .fn()
+            .mockReturnValueOnce(view([task('first'), task('moving'), task('last')]))
+            .mockReturnValueOnce(view(pendingTasks));
+        const options = createOptions({ readView });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        handle.releasePointerCapture = jest.fn(() => {
+            const nestedLost = new Event('lostpointercapture', { bubbles: true });
+            Object.defineProperty(nestedLost, 'pointerId', { value: 17 });
+            handle.dispatchEvent(nestedLost);
+        });
+
+        pointer('pointerdown', handle, { pointerId: 17, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 17, clientY: 5 });
+        renderUnscheduledList();
+        expect(taskOrder()).toEqual(['first', 'moving', 'last']);
+
+        const lostCapture = new Event('lostpointercapture', { bubbles: true });
+        Object.defineProperty(lostCapture, 'pointerId', { value: 17 });
+        handle.dispatchEvent(lostCapture);
+
+        expect(handle.releasePointerCapture).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
+        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(taskOrder()).toEqual(['first', 'moving', 'remote', 'last']);
+        expect(document.activeElement).toBe(
+            cardById('moving').querySelector('.unscheduled-drag-handle')
+        );
+
+        pointer('pointerup', root, { pointerId: 17, clientY: 5 });
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
+
     test('render requests during drag apply only the latest view after cancellation', () => {
         useManualMode();
         const readView = jest
@@ -1031,6 +1094,9 @@ describe('Unscheduled list UI interface', () => {
         pointer('pointercancel', root, { pointerId: 3, clientY: 50 });
         expect(taskOrder()).toEqual(['a', 'd']);
         expect(readView).toHaveBeenCalledTimes(3);
+        expect(document.activeElement).toBe(
+            cardById('a').querySelector('.unscheduled-drag-handle')
+        );
     });
 
     test('a remote view that removes the dragged task cancels safely', () => {
@@ -1051,6 +1117,42 @@ describe('Unscheduled list UI interface', () => {
         expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
         expect(handle.releasePointerCapture).toHaveBeenCalledWith(4);
         expect(options.moveTask).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(
+            document.querySelector('[data-unscheduled-mode="manual"]')
+        );
+    });
+
+    test.each([
+        ['a no-op', { success: true, changed: false }, true],
+        ['an unavailable drop', { success: false, code: 'unavailable' }, false]
+    ])('restores logical focus after %s', (_label, operation, taskRemains) => {
+        useManualMode();
+        const initialTasks = [task('first'), task('moving'), task('last')];
+        const readView = taskRemains
+            ? jest.fn(() => view(initialTasks))
+            : jest
+                  .fn()
+                  .mockReturnValueOnce(view(initialTasks))
+                  .mockReturnValueOnce(view([task('first'), task('last')]));
+        const options = createOptions({
+            readView,
+            moveTask: jest.fn(() => operation)
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+
+        pointer('pointerdown', handle, { pointerId: 18, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 18, clientY: 5 });
+        pointer('pointerup', root, { pointerId: 18, clientY: 5 });
+
+        expect(document.activeElement).toBe(
+            taskRemains
+                ? cardById('moving').querySelector('.unscheduled-drag-handle')
+                : document.querySelector('[data-unscheduled-mode="manual"]')
+        );
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe('');
     });
 
     test('drag settlement failure reuses rollback rendering and feedback', async () => {

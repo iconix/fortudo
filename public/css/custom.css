@@ -368,6 +368,10 @@
     cursor: grabbing;
 }
 
+.unscheduled-drag-handle:disabled {
+    cursor: not-allowed;
+}
+
 .unscheduled-task--dragging {
     opacity: 0.72;
     transform: scale(1.01);

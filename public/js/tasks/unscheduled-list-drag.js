@@ -41,19 +41,19 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
         suppressionTimer = window.setTimeout(clearClickSuppression, 0);
     }
 
-    function cleanup() {
+    function cleanup({ restoreFocus = true } = {}) {
         if (!active) return;
 
         const interaction = active;
+        active = null;
+        interaction.card.classList.remove('unscheduled-task--dragging');
+        root.querySelector('.unscheduled-drop-marker')?.remove();
         try {
             interaction.handle.releasePointerCapture?.(interaction.pointerId);
         } catch {
             // Capture can already be released by the browser after cancellation.
         }
-        interaction.card.classList.remove('unscheduled-task--dragging');
-        root.querySelector('.unscheduled-drop-marker')?.remove();
-        active = null;
-        onActiveChange(false);
+        onActiveChange(false, interaction.taskId, restoreFocus);
     }
 
     function startDragging() {
@@ -79,7 +79,7 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
     }
 
     function pointerDown(event) {
-        if (active) return;
+        if (active || event.button !== 0 || event.isPrimary === false) return;
         const handle = closestHandle(event.target);
         if (!handle || handle.disabled) return;
         const card = handle.closest('.task-card');
@@ -121,11 +121,16 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
             dragging: active.dragging
         };
         if (drop.dragging) suppressPostDragClick(drop.taskId);
-        cleanup();
+        cleanup({ restoreFocus: !drop.dragging });
         if (drop.dragging) onDrop({ taskId: drop.taskId, beforeId: drop.beforeId });
     }
 
     function pointerCancel(event) {
+        if (!active || event.pointerId !== active.pointerId) return;
+        cleanup();
+    }
+
+    function lostPointerCapture(event) {
         if (!active || event.pointerId !== active.pointerId) return;
         cleanup();
     }
@@ -151,6 +156,7 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
     root.addEventListener('pointermove', pointerMove);
     root.addEventListener('pointerup', pointerUp);
     root.addEventListener('pointercancel', pointerCancel);
+    root.addEventListener('lostpointercapture', lostPointerCapture);
     root.addEventListener('keydown', keydown);
     root.addEventListener('click', click, true);
 
@@ -166,10 +172,11 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
             root.removeEventListener('pointermove', pointerMove);
             root.removeEventListener('pointerup', pointerUp);
             root.removeEventListener('pointercancel', pointerCancel);
+            root.removeEventListener('lostpointercapture', lostPointerCapture);
             root.removeEventListener('keydown', keydown);
             root.removeEventListener('click', click, true);
             clearClickSuppression();
-            cleanup();
+            cleanup({ restoreFocus: false });
         }
     };
 }

@@ -19,7 +19,9 @@ describe('custom CSS polish hooks', () => {
         expect(css).toContain('.settings-reload-prompt');
         expect(css).toContain('.unscheduled-drag-handle');
         expect(css).toContain('.unscheduled-drag-handle:active');
+        expect(css).toContain('.unscheduled-drag-handle:disabled');
         expect(css).toContain('touch-action: none');
+        expect(css).toMatch(/\.unscheduled-drag-handle:disabled\s*{[^}]*cursor: not-allowed;/);
         expect(css).toContain('.unscheduled-task--dragging');
         expect(css).toContain('.unscheduled-drop-marker');
         expect(css).toMatch(

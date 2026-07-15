@@ -345,7 +345,7 @@ export function mountUnscheduledList({
     const mountedState = state;
     mountedState.drag = createUnscheduledListDrag({
         root,
-        onActiveChange(active) {
+        onActiveChange(active, taskId, restoreFocus) {
             if (state !== mountedState) return;
             mountedState.dragActive = active;
             if (active) {
@@ -357,6 +357,7 @@ export function mountUnscheduledList({
                 mountedState.pendingView = null;
                 renderView(pendingView);
             }
+            if (restoreFocus) focusTaskHandleOrMode(taskId, mountedState);
         },
         onDrop({ taskId, beforeId }) {
             if (state !== mountedState) return;
@@ -367,6 +368,7 @@ export function mountUnscheduledList({
             });
             if (!operation?.success || !operation.changed) {
                 renderUnscheduledList();
+                focusTaskHandleOrMode(taskId, mountedState);
                 return;
             }
 
