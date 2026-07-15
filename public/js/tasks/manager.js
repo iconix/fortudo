@@ -250,6 +250,7 @@ const stripUIFlags = (task) => {
 };
 
 let unscheduledSequence = null;
+let unscheduledMoveSettlement = Promise.resolve();
 
 function replaceTaskCollection(nextTasks) {
     tasks = nextTasks;
@@ -263,10 +264,24 @@ function getUnscheduledSequence() {
             readTasks: () => tasks,
             replaceTasks: replaceTaskCollection,
             persistTasks: (changedTasks) => putTasks(changedTasks.map(stripUIFlags)),
-            reloadTasks: () => loadTasks()
+            reloadTasks: async () => {
+                const loadedTasks = await loadTasks();
+                return loadedTasks.map((task) => {
+                    if (!Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) return task;
+                    return { ...task, isEditingInline: false };
+                });
+            }
         });
     }
     return unscheduledSequence;
+}
+
+function enterUnscheduledSequence(task) {
+    const placement = getUnscheduledSequence().place(task.id);
+    return {
+        task: placement.success ? placement.task : task,
+        changedTasks: placement.success ? placement.changedTasks : [task]
+    };
 }
 
 export function getUnscheduledView(mode = 'priority') {
@@ -278,7 +293,69 @@ export function getSortedUnscheduledTasks() {
 }
 
 export function moveUnscheduledTask(taskId, destination) {
-    return getUnscheduledSequence().move(taskId, destination);
+    const priorOrders = new Map(
+        tasks
+            .filter((task) => task.type === 'unscheduled')
+            .map((task) => [
+                task.id,
+                {
+                    hadValue: Object.prototype.hasOwnProperty.call(task, 'manualOrder'),
+                    value: task.manualOrder
+                }
+            ])
+    );
+    const operation = getUnscheduledSequence().move(taskId, destination);
+    if (!operation.success || !operation.changed) return operation;
+
+    const optimisticOrders = new Map();
+    for (const task of tasks) {
+        if (task.type !== 'unscheduled') continue;
+        const prior = priorOrders.get(task.id);
+        if (!prior || !prior.hadValue || prior.value !== task.manualOrder) {
+            optimisticOrders.set(task.id, task.manualOrder);
+        }
+    }
+
+    const settled = operation.settled
+        .then((result) => {
+            if (result?.success) {
+                let changed = false;
+                const reconciledTasks = tasks.map((task) => {
+                    if (
+                        task.type !== 'unscheduled' ||
+                        !optimisticOrders.has(task.id) ||
+                        task.manualOrder === optimisticOrders.get(task.id)
+                    ) {
+                        return task;
+                    }
+                    changed = true;
+                    return { ...task, manualOrder: optimisticOrders.get(task.id) };
+                });
+                if (changed) replaceTaskCollection(reconciledTasks);
+            }
+            return result;
+        })
+        .catch((error) => ({
+            success: false,
+            code: 'reconciliation-failed',
+            reason: error instanceof Error ? error.message : String(error),
+            rolledBack: false,
+            reloaded: false,
+            recoveryFailed: true
+        }));
+    unscheduledMoveSettlement = settled.then(
+        () => undefined,
+        () => undefined
+    );
+    return { ...operation, settled };
+}
+
+/**
+ * Wait for the currently accepted Unscheduled move to finish reconciliation or recovery.
+ * @returns {Promise<void>} A promise that never rejects.
+ */
+export function waitForUnscheduledMoveSettlement() {
+    return unscheduledMoveSettlement;
 }
 
 function convertScheduledTaskToUnscheduled(task) {
@@ -701,11 +778,10 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
     } else {
         // Unscheduled task
         tasks.push(taskObject);
-        const placement = getUnscheduledSequence().place(taskObject.id);
-        const placedTask = placement.success ? placement.task : taskObject;
-        finalizeTaskModification(placement.success ? placement.changedTasks : [taskObject]);
+        const placement = enterUnscheduledSequence(taskObject);
+        finalizeTaskModification(placement.changedTasks);
         logger.info('addTask: Unscheduled task added.');
-        return createSuccessfulTaskResult(placedTask);
+        return createSuccessfulTaskResult(placement.task);
     }
 }
 
@@ -753,10 +829,9 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         if (!tasks.find((t) => t.id === taskToAdd.id)) {
             tasks.push(taskToAdd);
         }
-        const placement = getUnscheduledSequence().place(taskToAdd.id);
-        const placedTask = placement.success ? placement.task : taskToAdd;
-        finalizeTaskModification(placement.success ? placement.changedTasks : [taskToAdd]);
-        return createSuccessfulTaskResult(placedTask);
+        const placement = enterUnscheduledSequence(taskToAdd);
+        finalizeTaskModification(placement.changedTasks);
+        return createSuccessfulTaskResult(placement.task);
     }
     return createSuccessfulTaskResult(taskToAdd);
 }
@@ -1344,7 +1419,7 @@ export function deleteCompletedUnscheduledTasks() {
 
 export function rolloverPriorDayScheduledTasks(now = new Date()) {
     const currentDate = extractDateFromDateTime(now);
-    let movedTasksCount = 0;
+    const movedTaskIds = [];
     const nextTasks = getTaskState().map((task) => {
         if (
             task.type !== 'scheduled' ||
@@ -1355,11 +1430,11 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
             return task;
         }
 
-        movedTasksCount++;
+        movedTaskIds.push(task.id);
         return convertScheduledTaskToUnscheduled(task);
     });
 
-    if (movedTasksCount === 0) {
+    if (movedTaskIds.length === 0) {
         logger.info('rolloverPriorDayScheduledTasks: No unfinished scheduled tasks to move.');
         return {
             success: true,
@@ -1368,14 +1443,19 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
         };
     }
 
-    updateTaskState(nextTasks);
-    const taskWord = movedTasksCount === 1 ? 'task' : 'tasks';
-    const message = `${movedTasksCount} unfinished scheduled ${taskWord} moved to backlog.`;
+    updateTaskState(nextTasks, { persist: false });
+    for (const movedTaskId of movedTaskIds) {
+        const movedTask = getTaskById(movedTaskId);
+        if (movedTask) enterUnscheduledSequence(movedTask);
+    }
+    saveTasks(tasks.map(stripUIFlags));
+    const taskWord = movedTaskIds.length === 1 ? 'task' : 'tasks';
+    const message = `${movedTaskIds.length} unfinished scheduled ${taskWord} moved to backlog.`;
     logger.info(`rolloverPriorDayScheduledTasks: ${message}`);
     return {
         success: true,
         message,
-        tasksMoved: movedTasksCount
+        tasksMoved: movedTaskIds.length
     };
 }
 
@@ -1534,12 +1614,11 @@ export function unscheduleTask(taskId) {
 
     const unscheduledTask = convertScheduledTaskToUnscheduled(task);
     tasks[taskIndex] = unscheduledTask;
-    const placement = getUnscheduledSequence().place(unscheduledTask.id);
-    const placedTask = placement.success ? placement.task : unscheduledTask;
-    finalizeTaskModification(placement.success ? placement.changedTasks : [unscheduledTask]);
+    const placement = enterUnscheduledSequence(unscheduledTask);
+    finalizeTaskModification(placement.changedTasks);
 
-    logger.info('Task unscheduled:', placedTask);
-    return createSuccessfulTaskResult(placedTask);
+    logger.info('Task unscheduled:', placement.task);
+    return createSuccessfulTaskResult(placement.task);
 }
 
 // ============================================================================

@@ -6,7 +6,8 @@ import {
     getSortedUnscheduledTasks,
     getTodaysScheduledTasks,
     deleteCompletedUnscheduledTasks,
-    rolloverPriorDayScheduledTasks
+    rolloverPriorDayScheduledTasks,
+    waitForUnscheduledMoveSettlement
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -106,6 +107,7 @@ function getStorageRoomCode(roomCode) {
 }
 
 async function loadTasksIntoState() {
+    await waitForUnscheduledMoveSettlement();
     const loadedTasks = await loadTasks();
     loadedTasks.forEach((task) => {
         if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
@@ -135,6 +137,7 @@ async function initAndBootApp(roomCode) {
     if (appLifecycleAbortController) {
         appLifecycleAbortController.abort();
     }
+    await waitForUnscheduledMoveSettlement();
     appLifecycleAbortController = new AbortController();
     const { signal } = appLifecycleAbortController;
 

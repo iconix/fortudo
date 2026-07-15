@@ -13,6 +13,7 @@ import {
     updateTaskState,
     getTaskState,
     getSuggestedStartTime,
+    moveUnscheduledTask,
     cancelEdit as cancelEditDirect
 } from '../public/js/tasks/manager.js';
 import { resetEventDelegation, renderTasks, refreshUI } from '../public/js/dom-renderer.js';
@@ -25,6 +26,7 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => []),
@@ -79,6 +81,7 @@ import {
     initStorage as mockInitStorageInternal,
     migrateDocTypes as mockMigrateDocTypesInternal,
     saveTasks as mockSaveTasksInternal,
+    putTasks as mockPutTasksInternal,
     putConfig as mockPutConfigInternal,
     deleteTask as mockDeleteTaskFromStorageInternal,
     loadTasks as mockLoadTasksFromStorageInternal,
@@ -115,6 +118,7 @@ const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
 const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockPutTasks = jest.mocked(mockPutTasksInternal);
 const mockPutConfig = jest.mocked(mockPutConfigInternal);
 const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
@@ -257,6 +261,8 @@ describe('App.js Callback Functions', () => {
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
             mockSaveTasks.mockClear();
+            mockPutTasks.mockReset();
+            mockPutTasks.mockResolvedValue({ succeededIds: [] });
         };
 
         test('should show confirmation dialog when clicking delete button first time', async () => {
@@ -881,6 +887,55 @@ describe('App.js Callback Functions', () => {
     });
 
     describe('storage preparation boot ordering', () => {
+        test('waits for an accepted Unscheduled move before preparing or loading a room', async () => {
+            let resolveMoveWrite;
+            const moveWrite = new Promise((resolve) => {
+                resolveMoveWrite = resolve;
+            });
+            mockPutTasks.mockReturnValueOnce(moveWrite);
+            updateTaskState(
+                [
+                    {
+                        id: 'unscheduled-a',
+                        type: 'unscheduled',
+                        description: 'A',
+                        status: 'incomplete',
+                        priority: 'medium',
+                        estDuration: 30,
+                        manualOrder: 0
+                    },
+                    {
+                        id: 'unscheduled-b',
+                        type: 'unscheduled',
+                        description: 'B',
+                        status: 'incomplete',
+                        priority: 'medium',
+                        estDuration: 30,
+                        manualOrder: 1
+                    }
+                ],
+                { persist: false }
+            );
+            const operation = moveUnscheduledTask('unscheduled-b', { kind: 'top' });
+            mockPrepareStorage.mockReset();
+            mockPrepareStorage.mockResolvedValue(undefined);
+            mockLoadTasksFromStorage.mockClear();
+
+            const bootPromise = setupAppWithTasks([]);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockPrepareStorage).not.toHaveBeenCalled();
+            expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
+
+            resolveMoveWrite({ succeededIds: ['unscheduled-a', 'unscheduled-b'] });
+            await operation.settled;
+            await bootPromise;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockPrepareStorage).toHaveBeenCalled();
+            expect(mockLoadTasksFromStorage).toHaveBeenCalled();
+        });
+
         test('awaits prepareStorage before loading tasks', async () => {
             let resolvePreparation;
             const preparationPromise = new Promise((resolve) => {
@@ -1948,6 +2003,7 @@ describe('App.js Callback Functions', () => {
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
                 document.dispatchEvent(new Event('visibilitychange'));
+                await Promise.resolve();
 
                 expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
                 expect(mockSaveTasks).not.toHaveBeenCalled();
