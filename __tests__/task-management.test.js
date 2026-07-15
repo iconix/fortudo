@@ -2258,6 +2258,49 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
         });
 
+        test('moveUnscheduledTask reloads durable manager state after compensation fails', async () => {
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
+            const durableScheduled = createTaskWithDateTime({
+                description: 'Durable scheduled',
+                startTime: '09:00',
+                duration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false
+            });
+            const durableTasks = [
+                rankedTask('a', 1, { description: 'Durable A' }),
+                rankedTask('b', 0, { description: 'Durable B' }),
+                durableScheduled
+            ];
+            mockPutTasks
+                .mockRejectedValueOnce(
+                    Object.assign(new Error('Partial write failed.'), { succeededIds: ['a'] })
+                )
+                .mockRejectedValueOnce(new Error('Compensation failed.'));
+            mockLoadTasks.mockResolvedValueOnce(durableTasks);
+
+            const operation = moveUnscheduledTask('b', { kind: 'top' });
+
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
+            await expect(operation.settled).resolves.toMatchObject({
+                success: false,
+                rolledBack: false,
+                reloaded: true,
+                recoveryFailed: false
+            });
+            expect(mockPutTasks).toHaveBeenCalledTimes(2);
+            expect(mockLoadTasks).toHaveBeenCalledTimes(1);
+            expect(getTaskState().map((task) => task.id)).toEqual([durableScheduled.id, 'a', 'b']);
+            expect(getTaskState()).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: 'a', description: 'Durable A', manualOrder: 1 }),
+                    expect.objectContaining({ id: 'b', description: 'Durable B', manualOrder: 0 })
+                ])
+            );
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
+        });
+
         test('addTask places after the last incomplete task and persists every changed rank', () => {
             updateTaskState(
                 [
