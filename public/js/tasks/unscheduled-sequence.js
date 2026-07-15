@@ -146,6 +146,8 @@ function errorMessage(error) {
  * @returns {Object} Projection, placement, and movement operations.
  */
 export function createUnscheduledSequence({ readTasks, replaceTasks, persistTasks, reloadTasks }) {
+    let moveInFlight = false;
+
     function project(mode = 'priority') {
         const validMode = VALID_MODES.has(mode) ? mode : 'priority';
         const ordered =
@@ -181,7 +183,33 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
         };
     }
 
+    async function reloadDurableState(recoveryError) {
+        try {
+            const durableTasks = await reloadTasks();
+            replaceTasks(durableTasks);
+            return {
+                success: false,
+                code: 'persist-failed',
+                reason: errorMessage(recoveryError),
+                rolledBack: false,
+                reloaded: true,
+                recoveryFailed: false
+            };
+        } catch (reloadError) {
+            return {
+                success: false,
+                code: 'persist-failed',
+                reason: errorMessage(reloadError),
+                rolledBack: true,
+                reloaded: false,
+                recoveryFailed: true
+            };
+        }
+    }
+
     function move(taskId, destination) {
+        if (moveInFlight) return { success: false, code: 'unavailable' };
+
         const currentTasks = readTasks();
         const source = currentTasks.find((task) => task.id === taskId);
         if (!source) return { success: false, code: 'not-found' };
@@ -212,6 +240,7 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
         const replacement = replaceOrderFields(currentTasks, moved);
         replaceTasks(replacement.nextTasks);
         const changedIds = new Set(replacement.changedTasks.map((task) => task.id));
+        moveInFlight = true;
 
         const settled = (async () => {
             try {
@@ -226,33 +255,21 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
                     : [];
 
                 if (succeededIds.length > 0) {
+                    const uniqueSucceededIds = [...new Set(succeededIds)];
+                    const canCompensateEveryWrite = uniqueSucceededIds.every(
+                        (id) => changedIds.has(id) && restoredById.has(id)
+                    );
+                    if (!canCompensateEveryWrite) {
+                        return reloadDurableState(
+                            new Error('Successful task writes could not all be compensated.')
+                        );
+                    }
+
                     try {
-                        const compensation = succeededIds
-                            .map((id) => restoredById.get(id))
-                            .filter(Boolean);
+                        const compensation = uniqueSucceededIds.map((id) => restoredById.get(id));
                         await persistTasks(compensation);
                     } catch (compensationError) {
-                        try {
-                            const durableTasks = await reloadTasks();
-                            replaceTasks(durableTasks);
-                            return {
-                                success: false,
-                                code: 'persist-failed',
-                                reason: errorMessage(compensationError),
-                                rolledBack: false,
-                                reloaded: true,
-                                recoveryFailed: false
-                            };
-                        } catch (reloadError) {
-                            return {
-                                success: false,
-                                code: 'persist-failed',
-                                reason: errorMessage(reloadError),
-                                rolledBack: true,
-                                reloaded: false,
-                                recoveryFailed: true
-                            };
-                        }
+                        return reloadDurableState(compensationError);
                     }
                 }
 
@@ -264,14 +281,18 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
                     reloaded: false
                 };
             }
-        })().catch((recoveryError) => ({
-            success: false,
-            code: 'persist-failed',
-            reason: errorMessage(recoveryError),
-            rolledBack: false,
-            reloaded: false,
-            recoveryFailed: true
-        }));
+        })()
+            .catch((recoveryError) => ({
+                success: false,
+                code: 'persist-failed',
+                reason: errorMessage(recoveryError),
+                rolledBack: false,
+                reloaded: false,
+                recoveryFailed: true
+            }))
+            .finally(() => {
+                moveInFlight = false;
+            });
 
         return {
             success: true,

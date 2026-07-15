@@ -52,6 +52,16 @@ function changedOrders(result) {
     return result.changedTasks.map(({ id, manualOrder }) => ({ id, manualOrder }));
 }
 
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
 test('Priority preserves automatic ordering and never writes', () => {
     const harness = createHarness([
         task('low', { priority: 'low', estDuration: 10 }),
@@ -413,6 +423,90 @@ describe('move', () => {
         await operation.settled;
     });
 
+    test('serializes accepted moves until persistence settles', async () => {
+        const firstWrite = deferred();
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 }),
+            task('c', { manualOrder: 2 })
+        ]);
+        harness.persistTasks
+            .mockReturnValueOnce(firstWrite.promise)
+            .mockResolvedValueOnce({ succeededIds: ['a', 'b'] });
+
+        const first = harness.sequence.move('c', { kind: 'top' });
+        const optimisticTasks = harness.getTasks();
+        const overlapping = harness.sequence.move('a', { kind: 'bottom' });
+
+        expect(overlapping).toEqual({ success: false, code: 'unavailable' });
+        expect(harness.getTasks()).toBe(optimisticTasks);
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual([
+            'c',
+            'a',
+            'b'
+        ]);
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+
+        firstWrite.resolve({ succeededIds: ['a', 'b', 'c'] });
+        await expect(first.settled).resolves.toEqual({ success: true });
+
+        const afterSettlement = harness.sequence.move('a', { kind: 'bottom' });
+        expect(afterSettlement).toMatchObject({ success: true, changed: true, position: 3 });
+        expect(harness.persistTasks).toHaveBeenCalledTimes(2);
+        await afterSettlement.settled;
+    });
+
+    test('accepts another move after a failed transaction settles', async () => {
+        const firstWrite = deferred();
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks
+            .mockReturnValueOnce(firstWrite.promise)
+            .mockResolvedValueOnce({ succeededIds: ['a', 'b'] });
+
+        const first = harness.sequence.move('b', { kind: 'top' });
+        expect(harness.sequence.move('a', { kind: 'bottom' })).toEqual({
+            success: false,
+            code: 'unavailable'
+        });
+
+        firstWrite.reject(new Error('offline'));
+        await expect(first.settled).resolves.toMatchObject({
+            success: false,
+            rolledBack: true
+        });
+
+        const retry = harness.sequence.move('b', { kind: 'top' });
+        expect(retry).toMatchObject({ success: true, changed: true });
+        await retry.settled;
+    });
+
+    test('writes exactly the normalized tasks changed by a sparse legacy move', async () => {
+        const scheduled = task('scheduled', { type: 'scheduled', manualOrder: 99 });
+        const fixed = task('fixed', { manualOrder: 0 });
+        const shifted = task('shifted', { manualOrder: 1 });
+        const legacy = task('legacy');
+        const tail = task('tail', { status: 'completed', manualOrder: 3 });
+        const harness = createHarness([scheduled, fixed, shifted, legacy, tail]);
+
+        const operation = harness.sequence.move('legacy', { kind: 'up' });
+
+        expect(harness.persistTasks).toHaveBeenNthCalledWith(1, [
+            { ...shifted, manualOrder: 2 },
+            { ...legacy, manualOrder: 1 }
+        ]);
+        expect(operation).toMatchObject({
+            success: true,
+            changed: true,
+            taskId: 'legacy',
+            position: 2,
+            total: 4
+        });
+        await operation.settled;
+    });
+
     test.each([
         ['top boundary', 'a', { kind: 'top' }, 1],
         ['up boundary', 'a', { kind: 'up' }, 1],
@@ -534,6 +628,105 @@ describe('move', () => {
             expect.objectContaining({ id: 'a', manualOrder: 0, status: 'completed' })
         ]);
         expect(harness.reloadTasks).not.toHaveBeenCalled();
+    });
+
+    test('deduplicates successful IDs before compensating restored documents', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks
+            .mockRejectedValueOnce(
+                Object.assign(new Error('partial'), { succeededIds: ['a', 'a'] })
+            )
+            .mockResolvedValueOnce({ succeededIds: ['a'] });
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+
+        await expect(operation.settled).resolves.toMatchObject({
+            success: false,
+            rolledBack: true,
+            reloaded: false
+        });
+        expect(harness.persistTasks).toHaveBeenCalledTimes(2);
+        expect(harness.persistTasks.mock.calls[1][0]).toEqual([
+            expect.objectContaining({ id: 'a', manualOrder: 0 })
+        ]);
+        expect(harness.reloadTasks).not.toHaveBeenCalled();
+    });
+
+    test('foreign successful IDs trigger durable reload without subset compensation', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks.mockRejectedValueOnce(
+            Object.assign(new Error('partial'), { succeededIds: ['a', 'foreign'] })
+        );
+        harness.reloadTasks.mockResolvedValueOnce([
+            task('a', { manualOrder: 1 }),
+            task('b', { manualOrder: 0 })
+        ]);
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+
+        await expect(operation.settled).resolves.toMatchObject({
+            success: false,
+            rolledBack: false,
+            reloaded: true,
+            recoveryFailed: false
+        });
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+        expect(harness.reloadTasks).toHaveBeenCalledTimes(1);
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(['b', 'a']);
+    });
+
+    test('a deleted successful document triggers reload instead of partial compensation', async () => {
+        const firstWrite = deferred();
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks.mockReturnValueOnce(firstWrite.promise);
+        harness.reloadTasks.mockResolvedValueOnce([task('b', { manualOrder: 0 })]);
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+        harness.replaceTasks(harness.getTasks().filter((item) => item.id !== 'a'));
+        firstWrite.reject(Object.assign(new Error('partial'), { succeededIds: ['a', 'b'] }));
+
+        await expect(operation.settled).resolves.toMatchObject({
+            success: false,
+            rolledBack: false,
+            reloaded: true
+        });
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+        expect(harness.reloadTasks).toHaveBeenCalledTimes(1);
+        expect(harness.getTasks()).toEqual([task('b', { manualOrder: 0 })]);
+    });
+
+    test('failed anomaly reload retains restored memory and resolves recovery failure', async () => {
+        const firstWrite = deferred();
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks.mockReturnValueOnce(firstWrite.promise);
+        harness.reloadTasks.mockRejectedValueOnce(new Error('reload failed'));
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+        harness.replaceTasks(harness.getTasks().filter((item) => item.id !== 'a'));
+        firstWrite.reject(Object.assign(new Error('partial'), { succeededIds: ['a'] }));
+
+        await expect(operation.settled).resolves.toEqual({
+            success: false,
+            code: 'persist-failed',
+            reason: 'reload failed',
+            rolledBack: true,
+            reloaded: false,
+            recoveryFailed: true
+        });
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+        expect(harness.getTasks()).toEqual([task('b', { manualOrder: 1 })]);
     });
 
     test('failed compensation reloads durable local state', async () => {
