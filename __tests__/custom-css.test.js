@@ -17,5 +17,13 @@ describe('custom CSS polish hooks', () => {
         expect(css).toContain('.action-menu-content');
         expect(css).toContain('[data-timeline-block-id]');
         expect(css).toContain('.settings-reload-prompt');
+        expect(css).toContain('.unscheduled-drag-handle');
+        expect(css).toContain('.unscheduled-drag-handle:active');
+        expect(css).toContain('touch-action: none');
+        expect(css).toContain('.unscheduled-task--dragging');
+        expect(css).toContain('.unscheduled-drop-marker');
+        expect(css).toMatch(
+            /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.unscheduled-task--dragging[\s\S]*transform: none;/
+        );
     });
 });

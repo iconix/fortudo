@@ -98,6 +98,32 @@ function taskOrder() {
     );
 }
 
+function pointer(type, target, values = {}) {
+    const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: values.clientX ?? 0,
+        clientY: values.clientY ?? 0
+    });
+    Object.defineProperty(event, 'pointerId', { value: values.pointerId ?? 1 });
+    target.dispatchEvent(event);
+    return event;
+}
+
+function setCardRects(cards, height = 40, gap = 10) {
+    cards.forEach((card, index) => {
+        const top = index * (height + gap);
+        card.getBoundingClientRect = () => ({
+            top,
+            bottom: top + height,
+            height,
+            left: 0,
+            right: 300,
+            width: 300
+        });
+    });
+}
+
 function cardById(taskId) {
     return [...document.querySelectorAll('#unscheduled-task-list .task-card')].find(
         (card) => card.dataset.taskId === taskId
@@ -119,6 +145,7 @@ describe('Unscheduled list UI interface', () => {
         destroyUnscheduledList();
         installDom();
         localStorage.clear();
+        window.scrollBy = jest.fn();
     });
 
     afterEach(() => destroyUnscheduledList());
@@ -804,6 +831,264 @@ describe('Unscheduled list UI interface', () => {
 
         expect(options.showError).toHaveBeenCalledWith(
             'Order could not be recovered from storage. Reload Fortudo before making more changes.',
+            { theme: 'rose' }
+        );
+    });
+
+    test('dragging by an enabled handle sends an identity-safe before destination', async () => {
+        useManualMode();
+        const targetId = 'target"]';
+        const sourceId = 'source"]';
+        let tasks = [task(targetId), task('middle'), task(sourceId)];
+        const settlement = deferred();
+        const options = createOptions({
+            readView: jest.fn(() => view(tasks)),
+            moveTask: jest.fn((taskId, destination) => {
+                expect(taskId).toBe(sourceId);
+                expect(destination).toEqual({ kind: 'before', taskId: targetId });
+                tasks = [tasks[2], tasks[0], tasks[1]];
+                return {
+                    success: true,
+                    changed: true,
+                    taskId,
+                    position: 1,
+                    total: 3,
+                    settled: settlement.promise
+                };
+            })
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const cards = [...root.querySelectorAll('.task-card')];
+        setCardRects(cards);
+        const handle = cardById(sourceId).querySelector('.unscheduled-drag-handle');
+        handle.setPointerCapture = jest.fn();
+        handle.releasePointerCapture = jest.fn();
+        const scrollBy = jest.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+        pointer('pointerdown', handle, { pointerId: 7, clientX: 10, clientY: 110 });
+        expect(handle.setPointerCapture).toHaveBeenCalledWith(7);
+        pointer('pointermove', root, { pointerId: 7, clientX: 10, clientY: 5 });
+
+        const marker = root.querySelector('.unscheduled-drop-marker');
+        expect(marker).not.toBeNull();
+        expect(marker.nextElementSibling.dataset.taskId).toBe(targetId);
+        expect(cardById(sourceId).classList).toContain('unscheduled-task--dragging');
+        expect(scrollBy).toHaveBeenCalledWith({ top: -24, behavior: 'auto' });
+
+        pointer('pointerup', root, { pointerId: 7, clientX: 10, clientY: 5 });
+
+        expect(handle.releasePointerCapture).toHaveBeenCalledWith(7);
+        expect(options.moveTask).toHaveBeenCalledTimes(1);
+        expect(taskOrder()).toEqual([sourceId, targetId, 'middle']);
+        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(document.activeElement).toBe(
+            cardById(sourceId).querySelector('.unscheduled-drag-handle')
+        );
+        await Promise.resolve();
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(
+            `Moved ${sourceId} to position 1 of 3.`
+        );
+
+        settlement.resolve({ success: true });
+        scrollBy.mockRestore();
+    });
+
+    test('auto-scrolls at both viewport edges while dragging', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            moveTask: jest.fn(() => ({ success: true, changed: false }))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const cards = [...root.querySelectorAll('.task-card')];
+        setCardRects(cards);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        const scrollBy = jest.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+        pointer('pointerdown', handle, { pointerId: 8, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 8, clientY: 5 });
+        pointer('pointermove', root, { pointerId: 8, clientY: window.innerHeight - 5 });
+        pointer('pointerup', root, { pointerId: 8, clientY: window.innerHeight - 5 });
+
+        expect(scrollBy).toHaveBeenCalledWith({ top: -24, behavior: 'auto' });
+        expect(scrollBy).toHaveBeenCalledWith({ top: 24, behavior: 'auto' });
+        scrollBy.mockRestore();
+    });
+
+    test('does not initiate a drag from the card or a disabled handle', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('only')]))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const card = cardById('only');
+        const handle = card.querySelector('.unscheduled-drag-handle');
+        handle.setPointerCapture = jest.fn();
+
+        pointer('pointerdown', card, { pointerId: 2, clientY: 10 });
+        pointer('pointermove', root, { pointerId: 2, clientY: 50 });
+        pointer('pointerup', root, { pointerId: 2, clientY: 50 });
+        pointer('pointerdown', handle, { pointerId: 3, clientY: 10 });
+
+        expect(handle.disabled).toBe(true);
+        expect(handle.setPointerCapture).not.toHaveBeenCalled();
+        expect(card.classList).not.toContain('unscheduled-task--dragging');
+        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
+
+    test('a non-drag handle activation opens Move while a post-drag click is suppressed', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            moveTask: jest.fn(() => ({ success: true, changed: false }))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
+        let handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+
+        pointer('pointerdown', handle, { pointerId: 9, clientX: 10, clientY: 60 });
+        pointer('pointerup', root, { pointerId: 9, clientX: 10, clientY: 60 });
+        handle.click();
+        expect(cardById('moving').querySelector('.unscheduled-task-actions-menu').hidden).toBe(
+            false
+        );
+
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        pointer('pointerdown', handle, { pointerId: 10, clientX: 10, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 10, clientX: 30, clientY: 5 });
+        pointer('pointerup', root, { pointerId: 10, clientX: 30, clientY: 5 });
+        handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        handle.click();
+
+        expect(cardById('moving').querySelector('.unscheduled-task-actions-menu').hidden).toBe(
+            true
+        );
+        expect(options.moveTask).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['pointercancel', 'Escape', 'destroy'])(
+        '%s cleans pointer capture, marker, and drag state without dropping',
+        (cleanupKind) => {
+            useManualMode();
+            const options = createOptions({
+                readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+            });
+            renderWith(options);
+            const root = document.getElementById('unscheduled-task-list');
+            setCardRects([...root.querySelectorAll('.task-card')]);
+            const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+            handle.releasePointerCapture = jest.fn();
+
+            pointer('pointerdown', handle, { pointerId: 12, clientY: 60 });
+            pointer('pointermove', root, { pointerId: 12, clientY: 5 });
+            expect(cardById('moving').classList).toContain('unscheduled-task--dragging');
+
+            if (cleanupKind === 'pointercancel') {
+                pointer('pointercancel', root, { pointerId: 12, clientY: 5 });
+            } else if (cleanupKind === 'Escape') {
+                root.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'Escape',
+                        bubbles: true,
+                        cancelable: true
+                    })
+                );
+            } else {
+                destroyUnscheduledList();
+            }
+
+            expect(handle.releasePointerCapture).toHaveBeenCalledWith(12);
+            expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
+            expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+            pointer('pointerup', root, { pointerId: 12, clientY: 5 });
+            expect(options.moveTask).not.toHaveBeenCalled();
+        }
+    );
+
+    test('render requests during drag apply only the latest view after cancellation', () => {
+        useManualMode();
+        const readView = jest
+            .fn()
+            .mockReturnValueOnce(view([task('a'), task('b')]))
+            .mockReturnValueOnce(view([task('a'), task('c')]))
+            .mockReturnValueOnce(view([task('a'), task('d')]));
+        const options = createOptions({ readView });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const handle = cardById('a').querySelector('.unscheduled-drag-handle');
+
+        pointer('pointerdown', handle, { pointerId: 3, clientY: 10 });
+        pointer('pointermove', root, { pointerId: 3, clientY: 50 });
+        renderUnscheduledList();
+        renderUnscheduledList();
+
+        expect(taskOrder()).toEqual(['a', 'b']);
+        pointer('pointercancel', root, { pointerId: 3, clientY: 50 });
+        expect(taskOrder()).toEqual(['a', 'd']);
+        expect(readView).toHaveBeenCalledTimes(3);
+    });
+
+    test('a remote view that removes the dragged task cancels safely', () => {
+        useManualMode();
+        let currentView = view([task('a'), task('b')]);
+        const options = createOptions({ readView: jest.fn(() => currentView) });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const handle = cardById('a').querySelector('.unscheduled-drag-handle');
+        handle.releasePointerCapture = jest.fn();
+
+        pointer('pointerdown', handle, { pointerId: 4, clientY: 10 });
+        pointer('pointermove', root, { pointerId: 4, clientY: 50 });
+        currentView = view([task('b')]);
+        renderUnscheduledList();
+
+        expect(taskOrder()).toEqual(['b']);
+        expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
+        expect(handle.releasePointerCapture).toHaveBeenCalledWith(4);
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
+
+    test('drag settlement failure reuses rollback rendering and feedback', async () => {
+        useManualMode();
+        const settlement = deferred();
+        let tasks = [task('first'), task('moving'), task('last')];
+        const options = createOptions({
+            readView: jest.fn(() => view(tasks)),
+            moveTask: jest.fn(() => {
+                tasks = [tasks[1], tasks[0], tasks[2]];
+                return {
+                    success: true,
+                    changed: true,
+                    taskId: 'moving',
+                    position: 1,
+                    total: 3,
+                    settled: settlement.promise
+                };
+            })
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+
+        pointer('pointerdown', handle, { pointerId: 14, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 14, clientY: 5 });
+        pointer('pointerup', root, { pointerId: 14, clientY: 5 });
+        expect(taskOrder()).toEqual(['moving', 'first', 'last']);
+
+        tasks = [task('first'), task('moving'), task('last')];
+        settlement.resolve({ success: false, rolledBack: true, reloaded: false });
+        await settlement.promise;
+        await Promise.resolve();
+
+        expect(taskOrder()).toEqual(['first', 'moving', 'last']);
+        expect(options.showError).toHaveBeenCalledWith(
+            'Order could not be saved. Your previous order was restored.',
             { theme: 'rose' }
         );
     });

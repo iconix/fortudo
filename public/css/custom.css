@@ -359,7 +359,32 @@
     opacity: 1;
 }
 
+.unscheduled-drag-handle {
+    touch-action: none;
+    cursor: grab;
+}
+
+.unscheduled-drag-handle:active {
+    cursor: grabbing;
+}
+
+.unscheduled-task--dragging {
+    opacity: 0.72;
+    transform: scale(1.01);
+}
+
+.unscheduled-drop-marker {
+    height: 0.25rem;
+    margin: 0.25rem 0;
+    border-radius: 9999px;
+    background: rgb(129 140 248);
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .unscheduled-task--dragging {
+        transform: none;
+    }
+
     .task-card {
         transition: none;
     }

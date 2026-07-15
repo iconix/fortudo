@@ -1,4 +1,5 @@
 import { renderUnscheduledTasks } from './unscheduled-renderer.js';
+import { createUnscheduledListDrag } from './unscheduled-list-drag.js';
 
 const MODE_KEY = 'fortudo-unscheduled-sort-mode';
 const VALID_MODES = new Set(['priority', 'manual']);
@@ -139,7 +140,18 @@ function focusTaskActionOrMode(taskId, mountedState) {
     findActiveModeControl(mountedState)?.focus();
 }
 
-async function settleMove(operation, mountedState) {
+function focusTaskHandleOrMode(taskId, mountedState) {
+    const handle = findTaskCard(mountedState.root, taskId)?.querySelector(
+        '.unscheduled-drag-handle'
+    );
+    if (handle && !handle.disabled) {
+        handle.focus();
+        if (document.activeElement === handle) return;
+    }
+    findActiveModeControl(mountedState)?.focus();
+}
+
+async function settleMove(operation, mountedState, focusAfterFailure = focusTaskActionOrMode) {
     let result;
     try {
         result = await operation.settled;
@@ -155,7 +167,7 @@ async function settleMove(operation, mountedState) {
         : result?.reloaded
           ? RELOADED_ORDER_MESSAGE
           : RESTORED_ORDER_MESSAGE;
-    focusTaskActionOrMode(operation.taskId, mountedState);
+    focusAfterFailure(operation.taskId, mountedState);
     announceStatus(message, mountedState);
     mountedState.showError(message, { theme: 'rose' });
 }
@@ -330,6 +342,40 @@ export function mountUnscheduledList({
     root.addEventListener('submit', handleSubmit, listenerOptions);
     root.addEventListener('keydown', handleKeydown, listenerOptions);
     document.addEventListener('click', handleDocumentClick, listenerOptions);
+    const mountedState = state;
+    mountedState.drag = createUnscheduledListDrag({
+        root,
+        onActiveChange(active) {
+            if (state !== mountedState) return;
+            mountedState.dragActive = active;
+            if (active) {
+                closeMenus();
+                return;
+            }
+            if (mountedState.pendingView) {
+                const pendingView = mountedState.pendingView;
+                mountedState.pendingView = null;
+                renderView(pendingView);
+            }
+        },
+        onDrop({ taskId, beforeId }) {
+            if (state !== mountedState) return;
+            const description = findTaskCard(root, taskId)?.dataset.taskName || 'task';
+            const operation = mountedState.moveTask(taskId, {
+                kind: 'before',
+                taskId: beforeId
+            });
+            if (!operation?.success || !operation.changed) {
+                renderUnscheduledList();
+                return;
+            }
+
+            renderUnscheduledList();
+            focusTaskHandleOrMode(taskId, mountedState);
+            void settleMove(operation, mountedState, focusTaskHandleOrMode);
+            announceMove(description, operation, mountedState);
+        }
+    });
     return true;
 }
 
@@ -340,6 +386,10 @@ export function renderUnscheduledList() {
     const view = state.readView(state.mode);
     if (state.dragActive) {
         state.pendingView = view;
+        const activeTaskId = state.drag?.getActiveTaskId();
+        if (activeTaskId && !view.tasks.some((task) => task.id === activeTaskId)) {
+            state.drag.cancel();
+        }
         return;
     }
     renderView(view);
@@ -347,6 +397,9 @@ export function renderUnscheduledList() {
 
 /** Remove all Unscheduled list listeners and transient interaction state. */
 export function destroyUnscheduledList() {
-    state?.abortController.abort();
+    if (!state) return;
+    state.pendingView = null;
+    state.drag?.destroy();
+    state.abortController.abort();
     state = null;
 }
