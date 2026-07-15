@@ -341,8 +341,248 @@ test.each([
     expect(harness.reloadTasks).not.toHaveBeenCalled();
 });
 
-test('move is reserved for the movement task', () => {
-    const harness = createHarness([]);
+describe('move', () => {
+    test('exposes the optimistic position before persistence settles', async () => {
+        const harness = createHarness([task('a'), task('b'), task('c')]);
+        harness.persistTasks.mockResolvedValueOnce({ succeededIds: ['a', 'b', 'c'] });
 
-    expect(() => harness.sequence.move()).toThrow('Sequence movement is added in Task 3.');
+        const operation = harness.sequence.move('c', { kind: 'top' });
+
+        expect(operation).toMatchObject({
+            success: true,
+            changed: true,
+            taskId: 'c',
+            position: 1,
+            total: 3
+        });
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual([
+            'c',
+            'a',
+            'b'
+        ]);
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+        await expect(operation.settled).resolves.toEqual({ success: true });
+    });
+
+    test.each([
+        ['up', 'c', { kind: 'up' }, ['a', 'c', 'b'], 2],
+        ['down', 'a', { kind: 'down' }, ['b', 'a', 'c'], 2],
+        ['top', 'c', { kind: 'top' }, ['c', 'a', 'b'], 1],
+        ['bottom', 'a', { kind: 'bottom' }, ['b', 'c', 'a'], 3],
+        ['before a task', 'c', { kind: 'before', taskId: 'b' }, ['a', 'c', 'b'], 2],
+        ['before the end', 'a', { kind: 'before', taskId: null }, ['b', 'c', 'a'], 3]
+    ])(
+        'supports %s destinations',
+        async (_label, taskId, destination, expectedOrder, expectedPosition) => {
+            const harness = createHarness([
+                task('a', { manualOrder: 0 }),
+                task('b', { manualOrder: 1 }),
+                task('c', { manualOrder: 2 })
+            ]);
+
+            const operation = harness.sequence.move(taskId, destination);
+
+            expect(operation).toMatchObject({
+                success: true,
+                changed: true,
+                taskId,
+                position: expectedPosition,
+                total: 3
+            });
+            expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(
+                expectedOrder
+            );
+            await expect(operation.settled).resolves.toEqual({ success: true });
+        }
+    );
+
+    test('resolves before a task by identity rather than a stale index', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 }),
+            task('c', { manualOrder: 2 })
+        ]);
+
+        const operation = harness.sequence.move('a', { kind: 'before', taskId: 'c' });
+
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual([
+            'b',
+            'a',
+            'c'
+        ]);
+        await operation.settled;
+    });
+
+    test.each([
+        ['top boundary', 'a', { kind: 'top' }, 1],
+        ['up boundary', 'a', { kind: 'up' }, 1],
+        ['bottom boundary', 'b', { kind: 'bottom' }, 2],
+        ['down boundary', 'b', { kind: 'down' }, 2],
+        ['before itself', 'a', { kind: 'before', taskId: 'a' }, 1]
+    ])(
+        'returns a settled no-op at the %s without persistence',
+        async (_label, taskId, destination, position) => {
+            const harness = createHarness([
+                task('a', { manualOrder: 0 }),
+                task('b', { manualOrder: 1 })
+            ]);
+            const before = harness.getTasks();
+
+            const operation = harness.sequence.move(taskId, destination);
+
+            expect(operation).toMatchObject({
+                success: true,
+                changed: false,
+                taskId,
+                position,
+                total: 2
+            });
+            await expect(operation.settled).resolves.toEqual({ success: true });
+            expect(harness.getTasks()).toBe(before);
+            expect(harness.replaceTasks).not.toHaveBeenCalled();
+            expect(harness.persistTasks).not.toHaveBeenCalled();
+        }
+    );
+
+    test.each([
+        ['missing task', 'missing', { kind: 'top' }, 'not-found'],
+        ['scheduled task', 'scheduled', { kind: 'top' }, 'not-unscheduled'],
+        ['inline-editing task', 'editing', { kind: 'top' }, 'unavailable'],
+        ['unknown destination', 'available', { kind: 'sideways' }, 'invalid-destination'],
+        [
+            'missing before target',
+            'available',
+            { kind: 'before', taskId: 'missing' },
+            'invalid-destination'
+        ],
+        ['omitted before target', 'available', { kind: 'before' }, 'invalid-destination'],
+        ['omitted destination', 'available', undefined, 'invalid-destination']
+    ])('returns a structured failure for a %s', (_label, taskId, destination, code) => {
+        const harness = createHarness([
+            task('scheduled', { type: 'scheduled' }),
+            task('editing', { isEditingInline: true }),
+            task('available')
+        ]);
+        const before = harness.getTasks();
+
+        expect(harness.sequence.move(taskId, destination)).toEqual({ success: false, code });
+        expect(harness.getTasks()).toBe(before);
+        expect(harness.replaceTasks).not.toHaveBeenCalled();
+        expect(harness.persistTasks).not.toHaveBeenCalled();
+    });
+
+    test('a full persistence failure restores memory without compensation', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks.mockRejectedValueOnce(new Error('offline'));
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+
+        await expect(operation.settled).resolves.toEqual({
+            success: false,
+            code: 'persist-failed',
+            reason: 'offline',
+            rolledBack: true,
+            reloaded: false
+        });
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(['a', 'b']);
+        expect(harness.persistTasks).toHaveBeenCalledTimes(1);
+        expect(harness.reloadTasks).not.toHaveBeenCalled();
+    });
+
+    test('rollback restores missing order fields while preserving concurrent task fields', async () => {
+        const harness = createHarness([task('a'), task('b')]);
+        harness.persistTasks.mockRejectedValueOnce(new Error('offline'));
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+        harness.getTasks().find((item) => item.id === 'a').description = 'concurrent edit';
+        await operation.settled;
+
+        expect(harness.getTasks().find((item) => item.id === 'a').description).toBe(
+            'concurrent edit'
+        );
+        harness.getTasks().forEach((item) => {
+            expect(Object.prototype.hasOwnProperty.call(item, 'manualOrder')).toBe(false);
+        });
+    });
+
+    test('a partial failure restores memory and compensates successful documents', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks
+            .mockRejectedValueOnce(Object.assign(new Error('partial'), { succeededIds: ['a'] }))
+            .mockResolvedValueOnce({ succeededIds: ['a'] });
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+        harness.getTasks().find((item) => item.id === 'a').status = 'completed';
+
+        await expect(operation.settled).resolves.toEqual({
+            success: false,
+            code: 'persist-failed',
+            reason: 'partial',
+            rolledBack: true,
+            reloaded: false
+        });
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(['a', 'b']);
+        expect(harness.getTasks().find((item) => item.id === 'a').status).toBe('completed');
+        expect(harness.persistTasks).toHaveBeenCalledTimes(2);
+        expect(harness.persistTasks.mock.calls[1][0]).toEqual([
+            expect.objectContaining({ id: 'a', manualOrder: 0, status: 'completed' })
+        ]);
+        expect(harness.reloadTasks).not.toHaveBeenCalled();
+    });
+
+    test('failed compensation reloads durable local state', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks
+            .mockRejectedValueOnce(Object.assign(new Error('partial'), { succeededIds: ['a'] }))
+            .mockRejectedValueOnce(new Error('compensation failed'));
+        harness.reloadTasks.mockResolvedValueOnce([
+            task('a', { manualOrder: 1 }),
+            task('b', { manualOrder: 0 })
+        ]);
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+
+        await expect(operation.settled).resolves.toEqual({
+            success: false,
+            code: 'persist-failed',
+            reason: 'compensation failed',
+            rolledBack: false,
+            reloaded: true,
+            recoveryFailed: false
+        });
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(['b', 'a']);
+        expect(harness.reloadTasks).toHaveBeenCalledTimes(1);
+    });
+
+    test('failed compensation and reload resolve a recovery failure', async () => {
+        const harness = createHarness([
+            task('a', { manualOrder: 0 }),
+            task('b', { manualOrder: 1 })
+        ]);
+        harness.persistTasks
+            .mockRejectedValueOnce(Object.assign(new Error('partial'), { succeededIds: ['a'] }))
+            .mockRejectedValueOnce(new Error('compensation failed'));
+        harness.reloadTasks.mockRejectedValueOnce(new Error('reload failed'));
+
+        const operation = harness.sequence.move('b', { kind: 'top' });
+
+        await expect(operation.settled).resolves.toEqual({
+            success: false,
+            code: 'persist-failed',
+            reason: 'reload failed',
+            rolledBack: true,
+            reloaded: false,
+            recoveryFailed: true
+        });
+        expect(harness.sequence.project('manual').tasks.map((item) => item.id)).toEqual(['a', 'b']);
+    });
 });

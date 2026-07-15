@@ -90,12 +90,62 @@ function replaceOrderFields(allTasks, ordered) {
     return { nextTasks, changedTasks };
 }
 
+function resolveDestination(ordered, sourceIndex, destination) {
+    switch (destination?.kind) {
+        case 'up':
+            return Math.max(0, sourceIndex - 1);
+        case 'down':
+            return Math.min(ordered.length - 1, sourceIndex + 1);
+        case 'top':
+            return 0;
+        case 'bottom':
+            return ordered.length - 1;
+        case 'before': {
+            if (destination.taskId === null) return ordered.length - 1;
+            if (destination.taskId === undefined) return null;
+            const targetIndex = ordered.findIndex((task) => task.id === destination.taskId);
+            if (targetIndex < 0) return null;
+            return targetIndex > sourceIndex ? targetIndex - 1 : targetIndex;
+        }
+        default:
+            return null;
+    }
+}
+
+function snapshotManualOrder(tasks) {
+    return new Map(
+        tasks.map((task) => [
+            task.id,
+            {
+                hadValue: Object.prototype.hasOwnProperty.call(task, 'manualOrder'),
+                value: task.manualOrder
+            }
+        ])
+    );
+}
+
+function restoreManualOrder(tasks, snapshot, changedIds) {
+    return tasks.map((task) => {
+        if (!changedIds.has(task.id) || !snapshot.has(task.id)) return task;
+
+        const restored = { ...task };
+        const prior = snapshot.get(task.id);
+        if (prior.hadValue) restored.manualOrder = prior.value;
+        else delete restored.manualOrder;
+        return restored;
+    });
+}
+
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Create the ordering interface for the manager-owned Unscheduled task sequence.
  * @param {Object} adapters - Task-state and persistence adapters.
  * @returns {Object} Projection, placement, and movement operations.
  */
-export function createUnscheduledSequence({ readTasks, replaceTasks }) {
+export function createUnscheduledSequence({ readTasks, replaceTasks, persistTasks, reloadTasks }) {
     function project(mode = 'priority') {
         const validMode = VALID_MODES.has(mode) ? mode : 'priority';
         const ordered =
@@ -131,11 +181,111 @@ export function createUnscheduledSequence({ readTasks, replaceTasks }) {
         };
     }
 
+    function move(taskId, destination) {
+        const currentTasks = readTasks();
+        const source = currentTasks.find((task) => task.id === taskId);
+        if (!source) return { success: false, code: 'not-found' };
+        if (source.type !== 'unscheduled') return { success: false, code: 'not-unscheduled' };
+        if (source.isEditingInline) return { success: false, code: 'unavailable' };
+
+        const ordered = projectManual(currentTasks);
+        const sourceIndex = ordered.findIndex((task) => task.id === taskId);
+        const destinationIndex = resolveDestination(ordered, sourceIndex, destination);
+        if (destinationIndex === null) {
+            return { success: false, code: 'invalid-destination' };
+        }
+        if (sourceIndex === destinationIndex) {
+            return {
+                success: true,
+                changed: false,
+                taskId,
+                position: sourceIndex + 1,
+                total: ordered.length,
+                settled: Promise.resolve({ success: true })
+            };
+        }
+
+        const before = snapshotManualOrder(currentTasks);
+        const moved = [...ordered];
+        const [moving] = moved.splice(sourceIndex, 1);
+        moved.splice(destinationIndex, 0, moving);
+        const replacement = replaceOrderFields(currentTasks, moved);
+        replaceTasks(replacement.nextTasks);
+        const changedIds = new Set(replacement.changedTasks.map((task) => task.id));
+
+        const settled = (async () => {
+            try {
+                await persistTasks(replacement.changedTasks);
+                return { success: true };
+            } catch (persistError) {
+                const restoredTasks = restoreManualOrder(readTasks(), before, changedIds);
+                replaceTasks(restoredTasks);
+                const restoredById = new Map(restoredTasks.map((task) => [task.id, task]));
+                const succeededIds = Array.isArray(persistError?.succeededIds)
+                    ? persistError.succeededIds
+                    : [];
+
+                if (succeededIds.length > 0) {
+                    try {
+                        const compensation = succeededIds
+                            .map((id) => restoredById.get(id))
+                            .filter(Boolean);
+                        await persistTasks(compensation);
+                    } catch (compensationError) {
+                        try {
+                            const durableTasks = await reloadTasks();
+                            replaceTasks(durableTasks);
+                            return {
+                                success: false,
+                                code: 'persist-failed',
+                                reason: errorMessage(compensationError),
+                                rolledBack: false,
+                                reloaded: true,
+                                recoveryFailed: false
+                            };
+                        } catch (reloadError) {
+                            return {
+                                success: false,
+                                code: 'persist-failed',
+                                reason: errorMessage(reloadError),
+                                rolledBack: true,
+                                reloaded: false,
+                                recoveryFailed: true
+                            };
+                        }
+                    }
+                }
+
+                return {
+                    success: false,
+                    code: 'persist-failed',
+                    reason: errorMessage(persistError),
+                    rolledBack: true,
+                    reloaded: false
+                };
+            }
+        })().catch((recoveryError) => ({
+            success: false,
+            code: 'persist-failed',
+            reason: errorMessage(recoveryError),
+            rolledBack: false,
+            reloaded: false,
+            recoveryFailed: true
+        }));
+
+        return {
+            success: true,
+            changed: true,
+            taskId,
+            position: destinationIndex + 1,
+            total: moved.length,
+            settled
+        };
+    }
+
     return {
         project,
         place,
-        move() {
-            throw new Error('Sequence movement is added in Task 3.');
-        }
+        move
     };
 }
