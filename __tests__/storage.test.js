@@ -35,13 +35,20 @@ import {
     getDb,
     destroyStorage
 } from '../public/js/storage.js';
-import { waitForIdleSync as mockWaitForIdleSync } from '../public/js/sync-manager.js';
+import {
+    debouncedSync as mockDebouncedSync,
+    waitForIdleSync as mockWaitForIdleSync
+} from '../public/js/sync-manager.js';
 
 // Use a unique DB name per test to avoid cross-contamination
 let testDbCounter = 0;
 function uniqueRoomCode() {
     return `test-room-${testDbCounter++}-${Date.now()}`;
 }
+
+beforeEach(() => {
+    mockDebouncedSync.mockClear();
+});
 
 afterEach(async () => {
     await destroyStorage();
@@ -139,6 +146,19 @@ describe('Storage - PouchDB', () => {
     });
 
     describe('putTasks', () => {
+        test('returns empty IDs without writing or syncing an empty batch', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const bulkDocsSpy = jest.spyOn(getDb(), 'bulkDocs');
+
+            try {
+                await expect(putTasks([])).resolves.toEqual({ succeededIds: [] });
+                expect(bulkDocsSpy).not.toHaveBeenCalled();
+                expect(mockDebouncedSync).not.toHaveBeenCalled();
+            } finally {
+                bulkDocsSpy.mockRestore();
+            }
+        });
+
         test('upserts only supplied tasks and returns successful IDs', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await putTask({
@@ -175,33 +195,108 @@ describe('Storage - PouchDB', () => {
             );
         });
 
+        test('refreshes tracked revisions across consecutive batch updates', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'unscheduled-a',
+                type: 'unscheduled',
+                description: 'Original',
+                status: 'incomplete',
+                manualOrder: 2
+            });
+
+            await expect(
+                putTasks([
+                    {
+                        id: 'unscheduled-a',
+                        type: 'unscheduled',
+                        description: 'First update',
+                        status: 'incomplete',
+                        manualOrder: 1
+                    }
+                ])
+            ).resolves.toEqual({ succeededIds: ['unscheduled-a'] });
+            await expect(
+                putTasks([
+                    {
+                        id: 'unscheduled-a',
+                        type: 'unscheduled',
+                        description: 'Second update',
+                        status: 'incomplete',
+                        manualOrder: 0
+                    }
+                ])
+            ).resolves.toEqual({ succeededIds: ['unscheduled-a'] });
+
+            expect(await loadTasks()).toEqual([
+                expect.objectContaining({
+                    id: 'unscheduled-a',
+                    description: 'Second update',
+                    manualOrder: 0
+                })
+            ]);
+        });
+
+        test('triggers debounced sync exactly once after a successful batch', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+            await putTasks([
+                { id: 'unscheduled-a', type: 'unscheduled', manualOrder: 1 },
+                { id: 'unscheduled-b', type: 'unscheduled', manualOrder: 0 }
+            ]);
+
+            expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
+        });
+
         test('throws structured row results after a partial batch failure', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            const successRow = { ok: true, id: 'unscheduled-a', rev: '1-a' };
+            const database = getDb();
+            const realBulkDocs = database.bulkDocs.bind(database);
             const conflictRow = {
                 id: 'unscheduled-b',
-                error: 'conflict',
+                error: true,
                 name: 'conflict',
-                status: 409
+                status: 409,
+                message: 'Document update conflict'
             };
             const bulkDocsSpy = jest
-                .spyOn(getDb(), 'bulkDocs')
-                .mockResolvedValueOnce([successRow, conflictRow]);
+                .spyOn(database, 'bulkDocs')
+                .mockImplementationOnce(async (docs) => {
+                    const [successRow] = await realBulkDocs([docs[0]]);
+                    return [successRow, conflictRow];
+                });
+            let thrownError;
 
             try {
-                await expect(
-                    putTasks([
-                        { id: 'unscheduled-a', type: 'unscheduled', manualOrder: 1 },
-                        { id: 'unscheduled-b', type: 'unscheduled', manualOrder: 0 }
-                    ])
-                ).rejects.toMatchObject({
-                    name: TaskBatchWriteError.name,
-                    succeededIds: ['unscheduled-a'],
-                    failures: [conflictRow]
-                });
+                await putTasks([
+                    {
+                        id: 'unscheduled-a',
+                        type: 'unscheduled',
+                        description: 'Durably written',
+                        manualOrder: 1
+                    },
+                    { id: 'unscheduled-b', type: 'unscheduled', manualOrder: 0 }
+                ]);
+            } catch (error) {
+                thrownError = error;
             } finally {
                 bulkDocsSpy.mockRestore();
             }
+
+            expect(thrownError).toBeInstanceOf(TaskBatchWriteError);
+            expect(thrownError).toMatchObject({
+                name: 'TaskBatchWriteError',
+                succeededIds: ['unscheduled-a'],
+                failures: [conflictRow]
+            });
+            expect(await loadTasks()).toEqual([
+                expect.objectContaining({
+                    id: 'unscheduled-a',
+                    description: 'Durably written',
+                    manualOrder: 1
+                })
+            ]);
+            expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
         });
     });
 
