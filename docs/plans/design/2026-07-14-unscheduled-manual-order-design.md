@@ -1,7 +1,7 @@
 # Unscheduled Manual Order Design
 
 **Date:** 2026-07-14
-**Status:** Approved UX design; awaiting written-spec review
+**Status:** Approved for implementation
 
 ## Summary
 
@@ -115,16 +115,94 @@ not use this field.
 - Invalid or duplicate values use stable task ID as a final tie-breaker. This prevents tasks from
   disappearing or rendering nondeterministically while data is repaired or synchronized.
 
-The manager owns all ordering and mutation rules. Rendering code receives an already ordered list,
-and event handlers translate drag or menu actions into manager operations. This follows Fortudo's
-existing separation between task state, handlers, and DOM rendering.
+The **Unscheduled sequence module** owns Priority and My order projection, lifecycle placement,
+movement, normalization, and the persistence transaction for sequence changes. Its interface is
+the test surface for all sequence invariants and rollback behavior. The task manager remains the
+canonical owner of the full task collection and supplies narrow state and persistence adapters to
+the sequence module; callers do not learn rank math or PouchDB write details.
+
+The **Unscheduled list UI module** owns the remembered display mode, list rendering, ordering
+affordances, delegated list events, accessible feedback, drag state, and deferred rerendering.
+Application orchestration mounts and refreshes the list through this module instead of threading
+mode, callbacks, and drag state through `app.js` and `dom-renderer.js`.
+
+All Unscheduled-list event routing moves behind this seam, including scheduling, timer start,
+editing, deletion, completion, inline forms, action menus, movement, and dragging. The UI module
+interprets DOM events and owns interaction state, then delegates business operations through an
+injected named-actions adapter. Scheduling, timer, and task-mutation rules remain outside the UI
+module. `dom-renderer.js` no longer stores Unscheduled callback globals or branches on
+Unscheduled-list controls.
+
+### Unscheduled sequence interface
+
+`public/js/tasks/unscheduled-sequence.js` is a deep domain module created with narrow adapters for
+reading and replacing manager-owned task state, persisting changed task documents, and reloading
+durable local state. Its logical interface has three operations:
+
+- `project(mode)` returns the ordered Unscheduled tasks plus movement metadata for the selected
+  `priority` or `manual` mode. Projection never writes.
+- `place(taskId)` applies lifecycle placement when a task enters the Unscheduled list and returns
+  the placed task plus the tasks whose order fields changed. The manager persists those changes
+  through the existing add or unschedule mutation; this operation does not redefine those
+  mutations' error contracts.
+- `move(taskId, destination)` applies an explicit user reorder and owns its optimistic state,
+  batch persistence, compensation, rollback, and durable-state recovery.
+
+Move destinations express intent rather than array arithmetic: up, down, top, bottom, or before a
+specific task ID, with a null before-ID meaning the end. Pointer drops translate to the ID that
+follows the insertion point. Identity-based destinations remain meaningful if sync changes the
+manager-owned collection before a deferred drop is applied.
+
+An accepted move returns its immediate position and a settlement promise. This makes the
+optimistic render explicit instead of requiring callers to know that an async function mutates
+memory before its first await. Boundary moves return a successful no-op without persistence;
+invalid, missing, wrong-type, or unavailable tasks return a structured failure.
+
+The manager keeps the sequence factory private. Existing callers receive narrow manager wrappers
+for reading the Unscheduled projection and requesting a move; application code never receives
+state-replacement or persistence adapters.
+
+### Unscheduled list UI interface
+
+`public/js/tasks/unscheduled-list.js` exposes one list instance with three lifecycle operations:
+
+- `mount()` resolves stable DOM roots, restores the local mode preference, and binds delegated
+  events once.
+- `render()` reads the current mode and sequence projection, then renders immediately or retains
+  the latest requested render while a drag is active.
+- `destroy()` aborts listeners, cancels transient interaction state, and clears deferred work for
+  room teardown and tests.
+
+The list UI module receives narrow sequence, named-actions, preference, feedback, and running-
+activity adapters. Browser implementations are used in production and lightweight fakes in
+tests. The logical module may use private render or pointer-geometry files to control file size,
+but only the list interface is imported outside the module and tests exercise behavior through
+that interface.
+
+`app.js` mounts the list once and calls its render operation from the normal task-display refresh.
+`dom-renderer.js` calls the same render seam from broader refreshes and contains no Unscheduled-
+specific delegation. The list module is the sole owner of the remembered mode, rendered
+affordances, open-menu/focus state, announcements, pointer gesture, and latest-only deferred
+render.
 
 ## Persistence and Synchronization
 
-- Persist changed manual-order fields through the existing task storage path.
-- Update the UI immediately, persist in the background, and keep the prior sequence available for
-  rollback.
-- If local persistence fails, restore the prior sequence and show an error toast.
+- Persist changed manual-order fields through a non-destructive PouchDB batch adapter owned by the
+  existing storage module.
+- The sequence module snapshots affected manual-order fields, updates manager-owned memory for an
+  immediate UI response, and settles the batch write in the background.
+- The batch adapter inspects every PouchDB result because a bulk write can partially succeed. The
+  sequence module owns compensation for successful rows and restores the prior in-memory sequence
+  when the transaction fails.
+- If local persistence fails, rerender the restored sequence and show an error toast.
+- If compensating persistence also fails, reload tasks from local PouchDB, rerender the durable
+  state, and show a stronger error toast. In this exceptional path, matching durable storage takes
+  precedence over preserving the optimistic visual sequence.
+- If that durable reload also fails, keep the restored in-memory snapshot, resolve the sequence
+  operation as a recovery failure, and tell the user to reload Fortudo before making more changes.
+- Transactional persistence and rollback apply to explicit reorder operations. Lifecycle
+  placement remains part of the existing add or unschedule persistence path so this feature does
+  not redefine every task mutation's asynchronous contract.
 - Continue surfacing remote state through the existing passive sync indicator; do not add a
   reorder-specific success or conflict dialog.
 - PouchDB's existing task-level conflict policy applies. A deterministic tie-breaker keeps the
@@ -154,23 +232,41 @@ existing separation between task state, handlers, and DOM rendering.
 
 ## Testing and Acceptance Criteria
 
-### Manager tests
+### Unscheduled sequence interface tests
 
-- Manual sorting, including missing, duplicate, and invalid values
-- Initial fallback to the current Priority sequence
-- Reorder operations and top/bottom boundaries
+- Priority and My order projection, including missing, duplicate, and invalid values
+- Initial fallback to the current Priority sequence without persistence
+- Identity-based move destinations and movement boundaries
 - New-task and newly-unscheduled-task placement after the last incomplete task
-- Completion, reopening, editing, scheduling, and deletion behavior
-- Persistence failure restores the prior order
+- Completion, reopening, editing, scheduling, and deletion stability
+- Optimistic position metadata, successful settlement, partial batch failure, compensation,
+  in-memory rollback, durable reload when compensation also fails, and non-rejecting recovery
+  failure when durable reload is unavailable
 
-### Renderer and interaction tests
+### Unscheduled list UI interface tests
 
 - Sort control state and local preference restoration
 - Handles and Move menu visibility by mode
 - Disabled handle and menu states
+- Existing schedule, timer, edit, delete, completion, inline form, and menu actions through the
+  named-actions adapter
 - Pointer/touch drop position and insertion feedback
 - Menu movement, focus preservation, and live-region announcements
-- No interference with completion, scrolling, inline editing, or existing task actions
+- Latest-only rerender deferral during a drag and remote task removal
+- Optimistic render, rollback render, durable-reload render, and error feedback
+- Mount and destroy listener lifecycle
+
+### Integration and adapter tests
+
+- Manager add and unschedule operations delegate lifecycle placement while preserving their
+  existing result contracts
+- The PouchDB batch adapter updates revisions, reports per-document partial failures, and supports
+  compensation writes
+- App and broader DOM refresh paths call the same list render seam
+- Existing tests are removed only after a traceability review maps each protected behavior to a
+  passing replacement interface, adapter, integration, or end-to-end test
+- A failure-sensitivity check temporarily breaks each migrated behavior and confirms its
+  replacement test fails; coverage percentage alone does not justify deleting a test
 
 ### End-to-end coverage
 
