@@ -237,6 +237,39 @@ describe('Storage - PouchDB', () => {
             ]);
         });
 
+        test('refreshes a task revision after another writer updates it', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'unscheduled-shared',
+                type: 'unscheduled',
+                description: 'Original description',
+                status: 'incomplete',
+                priority: 'medium'
+            });
+
+            const database = getDb();
+            const externalDoc = await database.get('unscheduled-shared');
+            await database.put({
+                ...externalDoc,
+                description: 'Updated in another page',
+                externalNote: 'preserve this field'
+            });
+
+            const [loadedTask] = await loadTasks();
+            await expect(putTasks([{ ...loadedTask, manualOrder: 0 }])).resolves.toEqual({
+                succeededIds: ['unscheduled-shared']
+            });
+
+            expect(await loadTasks()).toEqual([
+                expect.objectContaining({
+                    id: 'unscheduled-shared',
+                    description: 'Updated in another page',
+                    externalNote: 'preserve this field',
+                    manualOrder: 0
+                })
+            ]);
+        });
+
         test('triggers debounced sync exactly once after a successful batch', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
 
@@ -344,6 +377,69 @@ describe('Storage - PouchDB', () => {
             });
             const tasks = await loadTasks();
             expect(tasks).toHaveLength(2);
+        });
+
+        test('drops a tracked revision after another writer deletes the task', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'externally-deleted',
+                type: 'unscheduled',
+                description: 'Deleted elsewhere',
+                status: 'incomplete'
+            });
+
+            const database = getDb();
+            await database.remove(await database.get('externally-deleted'));
+
+            await expect(loadTasks()).resolves.toEqual([]);
+            await expect(deleteTask('externally-deleted')).resolves.toBeUndefined();
+        });
+
+        test('does not replace a newer revision when an older load finishes late', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'concurrent-task',
+                type: 'unscheduled',
+                description: 'Before concurrent write',
+                status: 'incomplete'
+            });
+
+            const database = getDb();
+            const staleResult = await database.allDocs({ include_docs: true });
+            const allDocsSpy = jest.spyOn(database, 'allDocs');
+            let finishLoad;
+            allDocsSpy.mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        finishLoad = () => resolve(staleResult);
+                    })
+            );
+
+            const delayedLoad = loadTasks();
+            await putTask({
+                id: 'concurrent-task',
+                type: 'unscheduled',
+                description: 'Concurrent write',
+                status: 'incomplete'
+            });
+            finishLoad();
+            await delayedLoad;
+            allDocsSpy.mockRestore();
+
+            await expect(
+                putTask({
+                    id: 'concurrent-task',
+                    type: 'unscheduled',
+                    description: 'After delayed load',
+                    status: 'incomplete'
+                })
+            ).resolves.toBeUndefined();
+            expect(await loadTasks()).toEqual([
+                expect.objectContaining({
+                    id: 'concurrent-task',
+                    description: 'After delayed load'
+                })
+            ]);
         });
     });
 

@@ -26,6 +26,7 @@ import {
     putTask,
     deleteTask,
     loadTasks,
+    getDb,
     destroyStorage
 } from '../public/js/storage.js';
 
@@ -68,6 +69,28 @@ describe('Storage - activities', () => {
             expect(activities).toHaveLength(1);
             expect(activities[0].name).toBe('Updated');
             expect(activities[0].status).toBe('completed');
+        });
+
+        test('refreshes an activity revision after another writer updates it', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putActivity({ id: 'activity-shared', name: 'Original', status: 'planned' });
+
+            const database = getDb();
+            const externalDoc = await database.get('activity-shared');
+            await database.put({ ...externalDoc, name: 'Updated elsewhere', externalNote: 'keep' });
+
+            const [loadedActivity] = await loadActivities();
+            await expect(
+                putActivity({ ...loadedActivity, status: 'completed' })
+            ).resolves.toBeUndefined();
+            expect(await loadActivities()).toEqual([
+                expect.objectContaining({
+                    id: 'activity-shared',
+                    name: 'Updated elsewhere',
+                    externalNote: 'keep',
+                    status: 'completed'
+                })
+            ]);
         });
     });
 

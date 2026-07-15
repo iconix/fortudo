@@ -98,6 +98,27 @@ describe('Storage - config docs', () => {
         expect(loaded.id).toBe('config-categories');
     });
 
+    test('refreshes a config revision after another writer updates it', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({ id: 'config-categories', categories: ['A'] });
+
+        const database = getDb();
+        const externalDoc = await database.get('config-categories');
+        await database.put({ ...externalDoc, categories: ['A', 'B'], externalNote: 'keep' });
+
+        const loaded = await loadConfig('config-categories');
+        await expect(
+            putConfig({ ...loaded, categories: [...loaded.categories, 'C'] })
+        ).resolves.toBeUndefined();
+        expect(await loadConfig('config-categories')).toEqual(
+            expect.objectContaining({
+                id: 'config-categories',
+                categories: ['A', 'B', 'C'],
+                externalNote: 'keep'
+            })
+        );
+    });
+
     test('config docs survive saveTasks bulk replace', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await putConfig({ id: 'config-categories', categories: ['survive'] });

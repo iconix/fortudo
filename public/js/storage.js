@@ -118,8 +118,47 @@ function seedRevisionStore(rows) {
     }
 }
 
-async function loadDocsByPredicate(predicate) {
+function hasSameTrackedRevision(revStore, snapshot, id) {
+    return revStore.has(id) === snapshot.has(id) && revStore.get(id) === snapshot.get(id);
+}
+
+function refreshRevisionStore(docType, rows, snapshot) {
+    const revStore = getRevStore(docType);
+    const loadedRevisions = new Map(
+        rows
+            .filter((row) => getStoredDocType(row.doc) === docType)
+            .map((row) => [row.id, row.value.rev])
+    );
+    const candidateIds = new Set([...snapshot.keys(), ...loadedRevisions.keys()]);
+
+    for (const id of candidateIds) {
+        if (!hasSameTrackedRevision(revStore, snapshot, id)) {
+            continue;
+        }
+        if (loadedRevisions.has(id)) {
+            revStore.set(id, loadedRevisions.get(id));
+        } else {
+            revStore.delete(id);
+        }
+    }
+}
+
+function refreshOneTrackedRevision(docType, id, revision, snapshot) {
+    const revStore = getRevStore(docType);
+    if (!hasSameTrackedRevision(revStore, snapshot, id)) {
+        return;
+    }
+    if (revision) {
+        revStore.set(id, revision);
+    } else {
+        revStore.delete(id);
+    }
+}
+
+async function loadDocsByPredicate(predicate, docType) {
+    const revisionSnapshot = new Map(getRevStore(docType));
     const rows = await loadAllRows();
+    refreshRevisionStore(docType, rows, revisionSnapshot);
     return rows
         .map((row) => row.doc)
         .filter(predicate)
@@ -184,17 +223,21 @@ async function deleteTypedDoc(id, docType, logLabel) {
     debouncedSync();
 }
 
-async function loadTypedDocById(id, predicate) {
+async function loadTypedDocById(id, predicate, docType) {
     ensureStorageInitialized();
+    const revisionSnapshot = new Map(getRevStore(docType));
 
     try {
         const doc = await db.get(id);
         if (!predicate(doc)) {
+            refreshOneTrackedRevision(docType, id, null, revisionSnapshot);
             return null;
         }
+        refreshOneTrackedRevision(docType, id, doc._rev, revisionSnapshot);
         return normalizeStoredDoc(doc);
     } catch (err) {
         if (err.status === 404) {
+            refreshOneTrackedRevision(docType, id, null, revisionSnapshot);
             return null;
         }
         throw err;
@@ -357,7 +400,7 @@ export async function deleteConfig(id) {
  * @returns {Promise<Object[]>} Array of task objects
  */
 export async function loadTasks() {
-    return loadDocsByPredicate(isTaskDoc);
+    return loadDocsByPredicate(isTaskDoc, DOC_TYPES.TASK);
 }
 
 /**
@@ -365,7 +408,7 @@ export async function loadTasks() {
  * @returns {Promise<Object[]>}
  */
 export async function loadActivities() {
-    return loadDocsByPredicate(isActivityDoc);
+    return loadDocsByPredicate(isActivityDoc, DOC_TYPES.ACTIVITY);
 }
 
 /**
@@ -375,7 +418,7 @@ export async function loadActivities() {
  * @returns {Promise<Object|null>}
  */
 export async function loadConfig(configId) {
-    return loadTypedDocById(configId, isConfigDoc);
+    return loadTypedDocById(configId, isConfigDoc, DOC_TYPES.CONFIG);
 }
 
 /**
