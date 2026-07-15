@@ -9,7 +9,13 @@ import {
     extractDateFromDateTime,
     convertTo12HourTime
 } from '../utils.js';
-import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from '../storage.js';
+import {
+    putTask,
+    putTasks,
+    loadTasks,
+    deleteTask as deleteTaskFromStorage,
+    saveTasks
+} from '../storage.js';
 
 // Import from new modules
 import {
@@ -24,6 +30,7 @@ import {
 } from '../reschedule-engine.js';
 
 import { isValidTaskData, isScheduledTask } from './validators.js';
+import { createUnscheduledSequence } from './unscheduled-sequence.js';
 
 /**
  * @typedef {Object} BaseTaskProps
@@ -163,40 +170,6 @@ const invalidateTaskCaches = () => {
 // ============================================================================
 // SORTING AND TASK UTILITIES
 // ============================================================================
-const priorityOrder = {
-    high: 0,
-    medium: 1,
-    low: 2
-};
-
-const sortUnscheduledTasks = (tasksToSort) => {
-    tasksToSort.sort((a, b) => {
-        // Sort by completion status (incomplete tasks first)
-        if (a.status === 'completed' && b.status !== 'completed') return 1;
-        if (a.status !== 'completed' && b.status === 'completed') return -1;
-
-        // Then sort by priority
-        const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
-        if (priorityDiff !== 0) return priorityDiff;
-
-        // If same priority, sort by estimated duration (shorter tasks first)
-        if (a.estDuration !== null && b.estDuration !== null) {
-            return a.estDuration - b.estDuration; // Shorter tasks first within same priority
-        } else if (a.estDuration !== null) {
-            return -1; // Tasks with duration before tasks without
-        } else if (b.estDuration !== null) {
-            return 1; // Tasks without duration after tasks with
-        }
-        return 0; // If priorities are the same and durations are both null or incomparable
-    });
-};
-
-export const getSortedUnscheduledTasks = () => {
-    const unscheduledTasks = tasks.filter((task) => task.type === 'unscheduled');
-    sortUnscheduledTasks(unscheduledTasks);
-    return unscheduledTasks;
-};
-
 const sortScheduledTasks = (tasksToSort) => {
     tasksToSort.sort(
         (a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
@@ -275,6 +248,38 @@ const stripUIFlags = (task) => {
     const { editing: _e, confirmingDelete: _c, isEditingInline: _i, ...persistable } = task;
     return persistable;
 };
+
+let unscheduledSequence = null;
+
+function replaceTaskCollection(nextTasks) {
+    tasks = nextTasks;
+    reorganizeTaskArray();
+    invalidateTaskCaches();
+}
+
+function getUnscheduledSequence() {
+    if (!unscheduledSequence) {
+        unscheduledSequence = createUnscheduledSequence({
+            readTasks: () => tasks,
+            replaceTasks: replaceTaskCollection,
+            persistTasks: (changedTasks) => putTasks(changedTasks.map(stripUIFlags)),
+            reloadTasks: () => loadTasks()
+        });
+    }
+    return unscheduledSequence;
+}
+
+export function getUnscheduledView(mode = 'priority') {
+    return getUnscheduledSequence().project(mode);
+}
+
+export function getSortedUnscheduledTasks() {
+    return getUnscheduledView('priority').tasks;
+}
+
+export function moveUnscheduledTask(taskId, destination) {
+    return getUnscheduledSequence().move(taskId, destination);
+}
 
 function convertScheduledTaskToUnscheduled(task) {
     const {
@@ -696,9 +701,11 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
     } else {
         // Unscheduled task
         tasks.push(taskObject);
-        putTask(stripUIFlags(taskObject));
+        const placement = getUnscheduledSequence().place(taskObject.id);
+        const placedTask = placement.success ? placement.task : taskObject;
+        finalizeTaskModification(placement.success ? placement.changedTasks : [taskObject]);
         logger.info('addTask: Unscheduled task added.');
-        return createSuccessfulTaskResult(taskObject);
+        return createSuccessfulTaskResult(placedTask);
     }
 }
 
@@ -746,7 +753,10 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         if (!tasks.find((t) => t.id === taskToAdd.id)) {
             tasks.push(taskToAdd);
         }
-        putTask(stripUIFlags(taskToAdd));
+        const placement = getUnscheduledSequence().place(taskToAdd.id);
+        const placedTask = placement.success ? placement.task : taskToAdd;
+        finalizeTaskModification(placement.success ? placement.changedTasks : [taskToAdd]);
+        return createSuccessfulTaskResult(placedTask);
     }
     return createSuccessfulTaskResult(taskToAdd);
 }
@@ -1524,10 +1534,12 @@ export function unscheduleTask(taskId) {
 
     const unscheduledTask = convertScheduledTaskToUnscheduled(task);
     tasks[taskIndex] = unscheduledTask;
-    finalizeTaskModification(unscheduledTask);
+    const placement = getUnscheduledSequence().place(unscheduledTask.id);
+    const placedTask = placement.success ? placement.task : unscheduledTask;
+    finalizeTaskModification(placement.success ? placement.changedTasks : [unscheduledTask]);
 
-    logger.info('Task unscheduled:', unscheduledTask);
-    return { success: true, task: unscheduledTask };
+    logger.info('Task unscheduled:', placedTask);
+    return createSuccessfulTaskResult(placedTask);
 }
 
 // ============================================================================

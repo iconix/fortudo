@@ -31,9 +31,14 @@ import {
     getTaskById,
     getTaskIndex,
     getTodaysScheduledTasks,
+    getSortedUnscheduledTasks,
+    getUnscheduledView,
+    moveUnscheduledTask,
     setTaskInlineEditing,
     resetAllInlineEditingFlags,
-    consumeUnscheduledTask
+    consumeUnscheduledTask,
+    toggleUnscheduledTaskCompleteState,
+    unscheduleTask
 } from '../public/js/tasks/manager.js';
 import { isValidTaskData } from '../public/js/tasks/validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
@@ -51,15 +56,24 @@ jest.mock('../public/js/storage.js', () => ({
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     saveTasks: jest.fn(),
     putTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
 
 // Import the mocked storage functions
-import { saveTasks, putTask, deleteTask as deleteTaskFromStorage } from '../public/js/storage.js';
+import {
+    saveTasks,
+    putTask,
+    putTasks,
+    loadTasks,
+    deleteTask as deleteTaskFromStorage
+} from '../public/js/storage.js';
 
 const mockSaveTasks = jest.mocked(saveTasks);
 const mockPutTask = jest.mocked(putTask);
+const mockPutTasks = jest.mocked(putTasks);
+const mockLoadTasks = jest.mocked(loadTasks);
 const mockDeleteTaskFromStorage = jest.mocked(deleteTaskFromStorage);
 
 // Mock localStorage before any other imports
@@ -78,6 +92,10 @@ describe('Task Management Functions (task-manager.js)', () => {
         updateTaskState([]);
         mockSaveTasks.mockClear();
         mockPutTask.mockClear();
+        mockPutTasks.mockReset();
+        mockPutTasks.mockResolvedValue({ succeededIds: [] });
+        mockLoadTasks.mockReset();
+        mockLoadTasks.mockResolvedValue([]);
         mockDeleteTaskFromStorage.mockClear();
     });
 
@@ -2154,9 +2172,216 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
     });
 
-    describe('Unscheduled Task Sorting', () => {
-        const { getSortedUnscheduledTasks } = require('../public/js/tasks/manager.js');
+    describe('Unscheduled sequence composition', () => {
+        function rankedTask(id, manualOrder, overrides = {}) {
+            return {
+                id,
+                type: 'unscheduled',
+                description: id,
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                manualOrder,
+                ...overrides
+            };
+        }
 
+        test('getUnscheduledView delegates both display modes without persisting', () => {
+            updateTaskState(
+                [
+                    rankedTask('manual-first', 0, { priority: 'low' }),
+                    rankedTask('priority-first', 1, { priority: 'high' })
+                ],
+                { persist: false }
+            );
+
+            expect(getUnscheduledView('priority').tasks.map((task) => task.id)).toEqual([
+                'priority-first',
+                'manual-first'
+            ]);
+            expect(getUnscheduledView().tasks.map((task) => task.id)).toEqual([
+                'priority-first',
+                'manual-first'
+            ]);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'manual-first',
+                'priority-first'
+            ]);
+            expect(getSortedUnscheduledTasks().map((task) => task.id)).toEqual([
+                'priority-first',
+                'manual-first'
+            ]);
+            expect(mockPutTasks).not.toHaveBeenCalled();
+            expect(mockLoadTasks).not.toHaveBeenCalled();
+        });
+
+        test('moveUnscheduledTask persists stripped changed documents', async () => {
+            updateTaskState(
+                [
+                    rankedTask('a', 0, {
+                        editing: true,
+                        confirmingDelete: true,
+                        isEditingInline: false
+                    }),
+                    rankedTask('b', 1, {
+                        editing: true,
+                        confirmingDelete: true,
+                        isEditingInline: false
+                    })
+                ],
+                { persist: false }
+            );
+            mockPutTasks.mockResolvedValueOnce({ succeededIds: ['a', 'b'] });
+
+            const operation = moveUnscheduledTask('b', { kind: 'top' });
+
+            expect(operation).toMatchObject({
+                success: true,
+                changed: true,
+                taskId: 'b',
+                position: 1,
+                total: 2
+            });
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
+            await expect(operation.settled).resolves.toEqual({ success: true });
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks).toHaveBeenCalledWith([
+                expect.objectContaining({ id: 'a', manualOrder: 1 }),
+                expect.objectContaining({ id: 'b', manualOrder: 0 })
+            ]);
+            for (const persistedTask of mockPutTasks.mock.calls[0][0]) {
+                expect(persistedTask).not.toHaveProperty('editing');
+                expect(persistedTask).not.toHaveProperty('confirmingDelete');
+                expect(persistedTask).not.toHaveProperty('isEditingInline');
+            }
+        });
+
+        test('addTask places after the last incomplete task and persists every changed rank', () => {
+            updateTaskState(
+                [
+                    rankedTask('incomplete', 0),
+                    rankedTask('completed', 1, {
+                        status: 'completed',
+                        editing: true,
+                        confirmingDelete: true
+                    })
+                ],
+                { persist: false }
+            );
+
+            const result = addTask({
+                taskType: 'unscheduled',
+                description: 'Added',
+                priority: 'medium',
+                estDuration: 20
+            });
+
+            expect(result).toMatchObject({ success: true, taskId: result.task.id });
+            expect(result.task.manualOrder).toBe(1);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'incomplete',
+                result.task.id,
+                'completed'
+            ]);
+            expect(mockPutTask).toHaveBeenCalledTimes(2);
+            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
+                'completed',
+                result.task.id
+            ]);
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('editing');
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('confirmingDelete');
+            expect(mockPutTasks).not.toHaveBeenCalled();
+        });
+
+        test('confirmAddTaskAndReschedule places an unscheduled task through lifecycle persistence', () => {
+            updateTaskState(
+                [rankedTask('incomplete', 0), rankedTask('completed', 1, { status: 'completed' })],
+                { persist: false }
+            );
+            const proposedTask = rankedTask('confirmed', undefined, {
+                description: 'Confirmed',
+                editing: true,
+                confirmingDelete: true
+            });
+            delete proposedTask.manualOrder;
+
+            const result = confirmAddTaskAndReschedule({ proposedTask });
+
+            expect(result).toMatchObject({
+                success: true,
+                taskId: 'confirmed',
+                task: expect.objectContaining({ id: 'confirmed', manualOrder: 1 })
+            });
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'incomplete',
+                'confirmed',
+                'completed'
+            ]);
+            expect(mockPutTask).toHaveBeenCalledTimes(2);
+            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
+                'completed',
+                'confirmed'
+            ]);
+            expect(mockPutTask.mock.calls[1][0]).not.toHaveProperty('editing');
+            expect(mockPutTask.mock.calls[1][0]).not.toHaveProperty('confirmingDelete');
+            expect(mockPutTasks).not.toHaveBeenCalled();
+        });
+
+        test('unscheduleTask places the converted task through lifecycle persistence', () => {
+            const scheduled = createTaskWithDateTime({
+                description: 'Convert',
+                startTime: '10:00',
+                duration: 30,
+                status: 'incomplete',
+                editing: true,
+                confirmingDelete: true
+            });
+            updateTaskState(
+                [
+                    scheduled,
+                    rankedTask('incomplete', 0),
+                    rankedTask('completed', 1, { status: 'completed' })
+                ],
+                { persist: false }
+            );
+
+            const result = unscheduleTask(scheduled.id);
+
+            expect(result).toMatchObject({
+                success: true,
+                taskId: scheduled.id,
+                task: expect.objectContaining({
+                    id: scheduled.id,
+                    type: 'unscheduled',
+                    manualOrder: 1
+                })
+            });
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'incomplete',
+                scheduled.id,
+                'completed'
+            ]);
+            expect(mockPutTask).toHaveBeenCalledTimes(2);
+            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
+                scheduled.id,
+                'completed'
+            ]);
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('editing');
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('confirmingDelete');
+            expect(mockPutTasks).not.toHaveBeenCalled();
+        });
+
+        test('completion and reopening preserve manualOrder', () => {
+            updateTaskState([rankedTask('ranked', 4)], { persist: false });
+
+            expect(toggleUnscheduledTaskCompleteState('ranked').task.manualOrder).toBe(4);
+            expect(toggleUnscheduledTaskCompleteState('ranked').task.manualOrder).toBe(4);
+        });
+    });
+
+    describe('Unscheduled Task Sorting', () => {
         function createUnscheduledTask(priority, estDuration, status = 'incomplete') {
             return {
                 id: `unsched-${Date.now()}-${Math.random()}`,
