@@ -33,8 +33,20 @@ active channels produce the same output.
 A following `actions/github-script@v9` step will run only when the deploy output contains
 a URL. It will use a stable HTML marker to find a previous bot-authored preview comment on
 the pull request. If found, it updates that comment; otherwise, it creates one. The body
-will contain a clear preview link and the deployed commit SHA. Updating one comment avoids
-notification noise and prevents stale URLs after subsequent pushes.
+will reproduce the former Firebase Hosting action's presentation: “Visit the preview URL
+for this PR,” the short deployed commit SHA, the full linked preview URL, the actual
+Firebase expiration time, the Firebase Hosting GitHub Action attribution, and the legacy
+site signature. The signature is the SHA-1 digest of the sorted Firebase site names; it is
+a stable deployment identifier, not a security claim. The hidden marker remains the
+authoritative identifier for updates. Updating one comment avoids notification noise and
+prevents stale URLs after subsequent pushes.
+
+The deploy helper will export both the URL and Firebase's `expireTime` value from the CLI
+JSON. The comment step will format the timestamp with JavaScript's `toUTCString()`, matching
+the former action. If the successful CLI response unexpectedly lacks an expiration time,
+the comment will omit the expiry line rather than inventing one. The site signature will
+be derived from the known Firebase site name using Node's SHA-1 implementation, matching
+the former action without using it as the update key.
 
 The deploy job will declare the minimum required permissions: read access to repository
 contents and write access to pull requests. Preview deployment remains disabled for
@@ -45,14 +57,18 @@ Dependabot, matching current behavior.
 Deployment remains the source of truth. A deployment failure stops the job before the
 comment step. If deployment succeeds but no URL can be extracted, the existing diagnostic
 message remains in the job log and the comment step is skipped rather than posting a
-broken link.
+broken link. If the expiration time is absent or invalid, the remaining legacy-style
+content is still posted and the expiry line is omitted.
 
 ## Verification
 
 A static workflow regression test will assert that:
 
 - the deploy step exports a preview URL;
+- the deploy step exports the Firebase expiration time;
 - the comment step consumes that output;
+- the comment body retains the former action's wording, attribution, and stable site
+  signature;
 - the stable marker and update-or-create behavior remain present; and
 - the job has pull-request write permission.
 
