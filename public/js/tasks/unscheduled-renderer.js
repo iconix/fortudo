@@ -157,7 +157,9 @@ function renderUnscheduledTaskActionsMenu(task, actionState, options) {
 function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, options) {
     const { mode, movement, runningActivity } = options;
     const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
-    const movementDisabled = task.isEditingInline || isLinkedToRunningTimer;
+    const hasAvailableMovement = Boolean(movement && (movement.canMoveUp || movement.canMoveDown));
+    const movementDisabled =
+        task.isEditingInline || isLinkedToRunningTimer || !hasAvailableMovement;
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';

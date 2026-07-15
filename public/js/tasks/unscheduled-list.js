@@ -80,15 +80,42 @@ function handleModeSelection(modeButton) {
     renderUnscheduledList();
 }
 
-function announceMove(description, operation) {
+function announceStatus(message, mountedState) {
     const status = document.getElementById('unscheduled-order-status');
     if (!status) return;
 
-    status.textContent = `Moved ${description} to position ${operation.position} of ${operation.total}.`;
+    const announcementToken = ++mountedState.announcementToken;
+    status.textContent = '';
+    queueMicrotask(() => {
+        if (state !== mountedState || mountedState.announcementToken !== announcementToken) return;
+        const currentStatus = document.getElementById('unscheduled-order-status');
+        if (currentStatus !== status) return;
+        currentStatus.textContent = message;
+    });
+}
+
+function announceMove(description, operation, mountedState) {
+    announceStatus(
+        `Moved ${description} to position ${operation.position} of ${operation.total}.`,
+        mountedState
+    );
 }
 
 function findTaskCard(root, taskId) {
     return [...root.querySelectorAll('.task-card')].find((card) => card.dataset.taskId === taskId);
+}
+
+function findActiveModeControl(mountedState) {
+    return [...mountedState.controls.querySelectorAll('[data-unscheduled-mode]')].find(
+        (button) => button.dataset.unscheduledMode === mountedState.mode
+    );
+}
+
+function focusTaskActionOrMode(taskId, mountedState) {
+    const trigger = findTaskCard(mountedState.root, taskId)?.querySelector(
+        '.btn-unscheduled-task-actions-menu'
+    );
+    (trigger || findActiveModeControl(mountedState))?.focus();
 }
 
 async function settleMove(operation, mountedState) {
@@ -107,6 +134,8 @@ async function settleMove(operation, mountedState) {
         : result?.reloaded
           ? RELOADED_ORDER_MESSAGE
           : RESTORED_ORDER_MESSAGE;
+    focusTaskActionOrMode(operation.taskId, mountedState);
+    announceStatus(message, mountedState);
     mountedState.showError(message, { theme: 'rose' });
 }
 
@@ -119,11 +148,22 @@ function handleMoveButton(moveButton, taskId) {
     if (!operation?.success || !operation.changed) return;
 
     renderUnscheduledList();
-    announceMove(description, operation);
-    findTaskCard(mountedState.root, taskId)
-        ?.querySelector('.btn-unscheduled-task-actions-menu')
-        ?.focus();
+    focusTaskActionOrMode(taskId, mountedState);
     void settleMove(operation, mountedState);
+    announceMove(description, operation, mountedState);
+}
+
+function handleDragHandle(handle) {
+    const card = handle.closest('.task-card');
+    const menu = card?.querySelector('.unscheduled-task-actions-menu');
+    const firstMove = [...(menu?.querySelectorAll('[data-move-kind]') || [])].find(
+        (button) => !button.disabled
+    );
+    if (!menu || !firstMove) return;
+
+    closeMenus({ except: menu });
+    setMenuState(menu, true);
+    firstMove.focus();
 }
 
 function handleClick(event) {
@@ -132,6 +172,14 @@ function handleClick(event) {
     const modeButton = event.target.closest('[data-unscheduled-mode]');
     if (modeButton) {
         handleModeSelection(modeButton);
+        return;
+    }
+
+    const dragHandle = event.target.closest('.unscheduled-drag-handle');
+    if (dragHandle) {
+        if (dragHandle.disabled) return;
+        event.preventDefault();
+        handleDragHandle(dragHandle);
         return;
     }
 
@@ -200,7 +248,9 @@ function handleSubmit(event) {
 }
 
 function handleDocumentClick(event) {
-    if (!state || event.target?.closest?.('.unscheduled-task-actions')) return;
+    if (!state || event.target?.closest?.('.unscheduled-task-actions, .unscheduled-drag-handle')) {
+        return;
+    }
     closeMenus();
 }
 
@@ -247,6 +297,7 @@ export function mountUnscheduledList({
         storage: preferenceStorage,
         mode: readMode(preferenceStorage),
         abortController,
+        announcementToken: 0,
         dragActive: false,
         pendingView: null
     };

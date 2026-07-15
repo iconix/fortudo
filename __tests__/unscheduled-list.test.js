@@ -429,6 +429,64 @@ describe('Unscheduled list UI interface', () => {
         });
     });
 
+    test.each([
+        ['movement metadata is missing', new Map()],
+        [
+            'the task has no available movement',
+            new Map([
+                [
+                    'only',
+                    {
+                        position: 1,
+                        total: 1,
+                        canMoveUp: false,
+                        canMoveDown: false
+                    }
+                ]
+            ])
+        ]
+    ])('disables the handle when %s', (_label, movementByTaskId) => {
+        useManualMode();
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => ({
+                    tasks: [task('only')],
+                    movementByTaskId
+                }))
+            })
+        );
+
+        const card = document.querySelector('[data-task-id="only"]');
+        expect(card.querySelector('.unscheduled-drag-handle').disabled).toBe(true);
+        card.querySelectorAll('[data-move-kind]').forEach((button) => {
+            expect(button.disabled).toBe(true);
+        });
+    });
+
+    test('activating an enabled handle opens its menu and focuses the first move command', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+        });
+        renderWith(options);
+        const card = document.querySelector('[data-task-id="moving"]');
+        const handle = card.querySelector('.unscheduled-drag-handle');
+        const menu = card.querySelector('.unscheduled-task-actions-menu');
+        const firstMove = card.querySelector('[data-move-kind="up"]');
+
+        expect(handle.tagName).toBe('BUTTON');
+        expect(handle.type).toBe('button');
+        handle.dispatchEvent(
+            new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 })
+        );
+
+        expect(menu.hidden).toBe(false);
+        expect(menu.classList).toContain('action-menu-content--open');
+        expect(card.querySelector('.btn-unscheduled-task-actions-menu').ariaExpanded).toBe('true');
+        expect(document.activeElement).toBe(firstMove);
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
+
     test.each(['up', 'down', 'top', 'bottom'])(
         'routes the %s command to the matching sequence destination',
         (kind) => {
@@ -445,7 +503,7 @@ describe('Unscheduled list UI interface', () => {
         }
     );
 
-    test('renders and announces an accepted optimistic move before settlement and restores focus', () => {
+    test('renders and announces an accepted optimistic move before settlement and restores focus', async () => {
         useManualMode();
         const settlement = deferred();
         const hostileId = 'hostile"]';
@@ -471,6 +529,8 @@ describe('Unscheduled list UI interface', () => {
         cardById(hostileId).querySelector('[data-move-kind="top"]').click();
 
         expect(taskOrder()).toEqual([hostileId, 'ordinary']);
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe('');
+        await Promise.resolve();
         expect(document.getElementById('unscheduled-order-status').textContent).toBe(
             `Moved ${hostileId} to position 1 of 2.`
         );
@@ -479,6 +539,60 @@ describe('Unscheduled list UI interface', () => {
         );
         expect(options.showError).not.toHaveBeenCalled();
         settlement.resolve({ success: true });
+    });
+
+    test('clears and reannounces identical accepted move feedback', async () => {
+        useManualMode();
+        const message = 'Moved moving to position 1 of 3.';
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            moveTask: jest.fn(() => ({
+                success: true,
+                changed: true,
+                taskId: 'moving',
+                position: 1,
+                total: 3,
+                settled: Promise.resolve({ success: true })
+            }))
+        });
+        renderWith(options);
+
+        document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
+        await Promise.resolve();
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(message);
+
+        document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe('');
+        await Promise.resolve();
+
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(message);
+        expect(options.moveTask).toHaveBeenCalledTimes(2);
+    });
+
+    test('does not deliver a stale optimistic announcement after remount', async () => {
+        useManualMode();
+        const first = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            moveTask: jest.fn(() => ({
+                success: true,
+                changed: true,
+                taskId: 'moving',
+                position: 1,
+                total: 3,
+                settled: Promise.resolve({ success: true })
+            }))
+        });
+        renderWith(first);
+        document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
+
+        const second = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+        });
+        mountUnscheduledList(second);
+        renderUnscheduledList();
+        await Promise.resolve();
+
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe('');
     });
 
     test.each([
@@ -524,9 +638,51 @@ describe('Unscheduled list UI interface', () => {
     ])('rerenders after settlement reports %s', async (_label, settlementResult, message) => {
         useManualMode();
         const settlement = deferred();
-        const readView = jest.fn(() => view([task('first'), task('moving'), task('last')]));
+        const settledTasks = [task('first'), task('last'), task('moving')];
+        let tasks = [task('first'), task('moving'), task('last')];
+        const readView = jest.fn(() => view(tasks));
         const options = createOptions({
             readView,
+            moveTask: jest.fn(() => {
+                tasks = [tasks[1], tasks[0], tasks[2]];
+                return {
+                    success: true,
+                    changed: true,
+                    taskId: 'moving',
+                    position: 1,
+                    total: 3,
+                    settled: settlement.promise
+                };
+            })
+        });
+        renderWith(options);
+        document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
+        const optimisticTrigger = document.activeElement;
+        expect(taskOrder()).toEqual(['moving', 'first', 'last']);
+        expect(readView).toHaveBeenCalledTimes(2);
+
+        tasks = settledTasks;
+        settlement.resolve(settlementResult);
+        await settlement.promise;
+        await Promise.resolve();
+
+        expect(readView).toHaveBeenCalledTimes(3);
+        expect(taskOrder()).toEqual(['first', 'last', 'moving']);
+        const settledTrigger = document.querySelector(
+            '[data-task-id="moving"] .btn-unscheduled-task-actions-menu'
+        );
+        expect(settledTrigger).not.toBe(optimisticTrigger);
+        expect(document.activeElement).toBe(settledTrigger);
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(message);
+        expect(options.showError).toHaveBeenCalledWith(message, { theme: 'rose' });
+    });
+
+    test('focuses the active mode control when failed settlement removes the moved task', async () => {
+        useManualMode();
+        const settlement = deferred();
+        let tasks = [task('first'), task('moving'), task('last')];
+        const options = createOptions({
+            readView: jest.fn(() => view(tasks)),
             moveTask: jest.fn(() => ({
                 success: true,
                 changed: true,
@@ -538,14 +694,18 @@ describe('Unscheduled list UI interface', () => {
         });
         renderWith(options);
         document.querySelector('[data-task-id="moving"] [data-move-kind="top"]').click();
-        expect(readView).toHaveBeenCalledTimes(2);
 
-        settlement.resolve(settlementResult);
+        tasks = [task('first'), task('last')];
+        settlement.resolve({ success: false, rolledBack: false, reloaded: true });
         await settlement.promise;
         await Promise.resolve();
 
-        expect(readView).toHaveBeenCalledTimes(3);
-        expect(options.showError).toHaveBeenCalledWith(message, { theme: 'rose' });
+        expect(document.activeElement).toBe(
+            document.querySelector('[data-unscheduled-mode="manual"]')
+        );
+        expect(document.getElementById('unscheduled-order-status').textContent).toBe(
+            'Order could not be saved. Fortudo reloaded the stored order.'
+        );
     });
 
     test('successful settlement does not rerender again or show an error', async () => {
