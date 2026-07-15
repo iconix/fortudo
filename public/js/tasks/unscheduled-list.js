@@ -2,6 +2,10 @@ import { renderUnscheduledTasks } from './unscheduled-renderer.js';
 
 const MODE_KEY = 'fortudo-unscheduled-sort-mode';
 const VALID_MODES = new Set(['priority', 'manual']);
+const RESTORED_ORDER_MESSAGE = 'Order could not be saved. Your previous order was restored.';
+const RELOADED_ORDER_MESSAGE = 'Order could not be saved. Fortudo reloaded the stored order.';
+const RECOVERY_FAILED_MESSAGE =
+    'Order could not be recovered from storage. Reload Fortudo before making more changes.';
 
 let state = null;
 
@@ -76,6 +80,52 @@ function handleModeSelection(modeButton) {
     renderUnscheduledList();
 }
 
+function announceMove(description, operation) {
+    const status = document.getElementById('unscheduled-order-status');
+    if (!status) return;
+
+    status.textContent = `Moved ${description} to position ${operation.position} of ${operation.total}.`;
+}
+
+function findTaskCard(root, taskId) {
+    return [...root.querySelectorAll('.task-card')].find((card) => card.dataset.taskId === taskId);
+}
+
+async function settleMove(operation, mountedState) {
+    let result;
+    try {
+        result = await operation.settled;
+    } catch {
+        result = { success: false, recoveryFailed: true };
+    }
+
+    if (result?.success || state !== mountedState) return;
+
+    renderUnscheduledList();
+    const message = result?.recoveryFailed
+        ? RECOVERY_FAILED_MESSAGE
+        : result?.reloaded
+          ? RELOADED_ORDER_MESSAGE
+          : RESTORED_ORDER_MESSAGE;
+    mountedState.showError(message, { theme: 'rose' });
+}
+
+function handleMoveButton(moveButton, taskId) {
+    const mountedState = state;
+    const description = moveButton.closest('.task-card')?.dataset.taskName || 'task';
+    const operation = mountedState.moveTask(taskId, {
+        kind: moveButton.dataset.moveKind
+    });
+    if (!operation?.success || !operation.changed) return;
+
+    renderUnscheduledList();
+    announceMove(description, operation);
+    findTaskCard(mountedState.root, taskId)
+        ?.querySelector('.btn-unscheduled-task-actions-menu')
+        ?.focus();
+    void settleMove(operation, mountedState);
+}
+
 function handleClick(event) {
     if (!state || !(event.target instanceof Element)) return;
 
@@ -96,7 +146,10 @@ function handleClick(event) {
     const taskId = taskIdFrom(event.target);
     if (!taskId || event.target.closest('button[disabled]')) return;
 
-    if (event.target.closest('.btn-schedule-task')) {
+    const moveButton = event.target.closest('[data-move-kind]');
+    if (moveButton) {
+        handleMoveButton(moveButton, taskId);
+    } else if (event.target.closest('.btn-schedule-task')) {
         closeMenus();
         state.actions.schedule(taskId);
     } else if (event.target.closest('.btn-start-unscheduled-timer')) {

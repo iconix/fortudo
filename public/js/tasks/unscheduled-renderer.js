@@ -13,6 +13,15 @@ export function getUnscheduledTaskListElement() {
 
 // --- Helper Functions ---
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 /**
  * Priority configuration for visual styling
  */
@@ -61,7 +70,29 @@ function getDurationText(estDuration) {
     return calculateHoursAndMinutes(estDuration, true).text;
 }
 
-function renderUnscheduledTaskActionsMenu(task, actionState) {
+function renderMoveMenu(movement, movementDisabled) {
+    const upDisabled = movementDisabled || !movement?.canMoveUp;
+    const downDisabled = movementDisabled || !movement?.canMoveDown;
+    const itemClasses =
+        'unscheduled-task-actions-menu-item grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300';
+    const disabledClasses = ' opacity-50 cursor-not-allowed';
+
+    const moveButton = (kind, label, icon, disabled) => `
+        <button class="${itemClasses}${disabled ? disabledClasses : ''}" type="button" role="menuitem" data-move-kind="${kind}" ${disabled ? 'disabled' : ''}>
+            <i class="fa-solid ${icon} text-slate-400 text-center" aria-hidden="true"></i>
+            <span>${label}</span>
+        </button>`;
+
+    return `
+        <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
+            ${moveButton('up', 'Move up', 'fa-arrow-up', upDisabled)}
+            ${moveButton('down', 'Move down', 'fa-arrow-down', downDisabled)}
+            ${moveButton('top', 'Move to top', 'fa-angles-up', upDisabled)}
+            ${moveButton('bottom', 'Move to bottom', 'fa-angles-down', downDisabled)}
+        </div>`;
+}
+
+function renderUnscheduledTaskActionsMenu(task, actionState, options) {
     const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
     const actionMenuTransitionClass = task.confirmingDelete
@@ -103,6 +134,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
                         <span>Edit task</span>
                     </button>
                 </div>
+                ${options.mode === 'manual' ? renderMoveMenu(options.movement, options.movementDisabled) : ''}
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
                     <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
                         <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-rose-400 text-center" aria-hidden="true"></i>
@@ -122,8 +154,10 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
  * @param {boolean} isCompleted - Whether the task is completed
  * @returns {string} HTML string for the display view
  */
-function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, runningActivity) {
+function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, options) {
+    const { mode, movement, runningActivity } = options;
     const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
+    const movementDisabled = task.isEditingInline || isLinkedToRunningTimer;
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
@@ -138,9 +172,16 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
     const inProgressBadge = isLinkedToRunningTimer
         ? '<span class="unscheduled-in-progress-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] tracking-normal bg-slate-700/70 text-sky-200 border border-slate-500/40">In progress</span>'
         : '';
+    const dragHandle =
+        mode === 'manual'
+            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" ${movementDisabled ? 'disabled' : ''}>
+                <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+            </button>`
+            : '';
 
     return `
         <div class="flex items-start space-x-3 min-w-0 flex-1">
+            ${dragHandle}
             <label class="task-checkbox-unscheduled mt-0.5 ${completedClass}" title="${completedTitle}">
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
@@ -156,7 +197,11 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
                 </div>
             </div>
         </div>
-        ${renderUnscheduledTaskActionsMenu(task, actionState)}
+        ${renderUnscheduledTaskActionsMenu(task, actionState, {
+            mode,
+            movement,
+            movementDisabled
+        })}
     `;
 }
 
@@ -278,7 +323,7 @@ function createUnscheduledTaskCard(task, options = {}) {
         priorityClasses,
         durationText,
         isCompleted,
-        options.runningActivity
+        options
     );
     taskCard.appendChild(taskDisplayPart);
 
