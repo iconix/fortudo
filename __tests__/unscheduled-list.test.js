@@ -136,6 +136,22 @@ describe('Unscheduled list UI interface', () => {
         expect(options.readView).toHaveBeenCalledWith('priority');
     });
 
+    test('restores a saved My order preference on mount', () => {
+        localStorage.setItem(MODE_KEY, 'manual');
+
+        const options = renderWith();
+
+        expect(options.readView).toHaveBeenCalledWith('manual');
+        expect(
+            document.querySelector('[data-unscheduled-mode="manual"]').getAttribute('aria-pressed')
+        ).toBe('true');
+        expect(
+            document
+                .querySelector('[data-unscheduled-mode="priority"]')
+                .getAttribute('aria-pressed')
+        ).toBe('false');
+    });
+
     test('mode selection persists locally and changes the rendered projection', () => {
         const options = createOptions();
         mountUnscheduledList(options);
