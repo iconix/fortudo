@@ -59,8 +59,8 @@ A static workflow regression test will assert that:
 The test will be observed failing before the workflow change and passing afterward. The
 normal JavaScript, formatting, and Python suites will run before publication.
 
-Workflow-only changes are deliberately excluded from preview deployment by the existing
-path filter, so this CI-only PR cannot exercise the comment against Firebase itself. The
-final end-to-end check will occur on the next eligible application PR: its successful
-deploy must create the preview comment, and a subsequent push must update the same comment
-rather than duplicate it.
+Workflow-only and Markdown-only changes are deliberately excluded from preview deployment
+by the existing path filter. This implementation also adds a Python regression test,
+which makes its PR eligible for preview deployment. Its first successful deploy must
+create the preview comment, and the follow-up documentation push must update the same
+comment rather than duplicate it.

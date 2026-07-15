@@ -182,7 +182,7 @@ Expected:
 - ESLint and Prettier pass.
 - Pytest: 111 tests pass.
 
-- [ ] **Step 7: Commit the implementation**
+- [x] **Step 7: Commit the implementation**
 
 ```bash
 git add .github/workflows/ci-cd.yml tests/test_ci_preview_comment.py docs/plans/implementation/2026-07-14-preview-deploy-pr-comment.md
@@ -191,11 +191,11 @@ git commit -m "ci: restore preview URL PR comment"
 
 Expected: the pre-commit hook passes without `--no-verify`.
 
-- [ ] **Step 8: Publish the separate PR**
+- [x] **Step 8: Publish the separate PR**
 
 ```bash
 git push -u origin codex/restore-preview-comment
 gh pr create --draft --base main --head codex/restore-preview-comment --fill
 ```
 
-Expected: GitHub creates a draft PR targeting `main`. Because `.github/**` and Markdown-only changes do not trigger preview deployment, live comment creation will be verified on the next eligible application PR after merge.
+Expected: GitHub creates a draft PR targeting `main`. The new Python regression test makes this PR eligible for preview deployment, so its first workflow run creates the marker-tagged comment. A follow-up documentation push updates the same comment instead of creating a duplicate.
