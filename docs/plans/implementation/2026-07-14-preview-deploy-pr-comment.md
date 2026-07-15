@@ -216,7 +216,7 @@ Expected: GitHub creates a draft PR targeting `main`. The new Python regression 
 - Consumes: Firebase CLI JSON fields `result.<site>.url` and `result.<site>.expireTime`
 - Produces: `steps.deploy-preview.outputs.preview_url`, `steps.deploy-preview.outputs.preview_expires`, and the existing marker-tagged PR comment in the former Firebase action's format
 
-- [ ] **Step 1: Extend the workflow regression test**
+- [x] **Step 1: Extend the workflow regression test**
 
 Add these assertions to `test_preview_deploy_exports_url_and_updates_one_pr_comment` after the existing preview URL assertions:
 
@@ -230,7 +230,7 @@ assert "createHash('sha1')" in workflow
 assert ".update('fortudo')" in workflow
 ```
 
-- [ ] **Step 2: Run the focused test to verify RED**
+- [x] **Step 2: Run the focused test to verify RED**
 
 Run:
 
@@ -240,7 +240,7 @@ uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
 
 Expected: `1 failed` because `preview_expires` is not exported yet.
 
-- [ ] **Step 3: Export the actual Firebase expiration time**
+- [x] **Step 3: Export the actual Firebase expiration time**
 
 Rename `export_preview_url` to `export_preview_details`. After the existing `preview_url` extraction, add:
 
@@ -264,7 +264,7 @@ fi
 
 Update all three callers from `export_preview_url` to `export_preview_details`.
 
-- [ ] **Step 4: Render the former Firebase action's comment format**
+- [x] **Step 4: Render the former Firebase action's comment format**
 
 Add the expiry output to the comment step environment:
 
@@ -300,7 +300,7 @@ const body = [
 
 Keep the existing marker lookup and update-or-create logic unchanged.
 
-- [ ] **Step 5: Run the focused test to verify GREEN**
+- [x] **Step 5: Run the focused test to verify GREEN**
 
 Run:
 
@@ -310,7 +310,7 @@ uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 6: Run formatting and full verification**
+- [x] **Step 6: Run formatting and full verification**
 
 Run:
 
@@ -329,7 +329,7 @@ Expected:
 - Pytest: 111 tests pass.
 - `git diff --check` reports no errors.
 
-- [ ] **Step 7: Commit and publish the follow-up**
+- [x] **Step 7: Commit and publish the follow-up**
 
 ```bash
 git add .github/workflows/ci-cd.yml tests/test_ci_preview_comment.py docs/plans/implementation/2026-07-14-preview-deploy-pr-comment.md
