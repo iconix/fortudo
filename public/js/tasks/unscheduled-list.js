@@ -22,6 +22,14 @@ function writeMode(storage, mode) {
     }
 }
 
+function getDefaultStorage() {
+    try {
+        return window.localStorage;
+    } catch {
+        return null;
+    }
+}
+
 function taskIdFrom(target) {
     return target.closest('[data-task-id]')?.dataset.taskId || null;
 }
@@ -165,7 +173,7 @@ export function mountUnscheduledList({
     actions,
     getRunningActivity = () => null,
     showError = () => {},
-    storage = window.localStorage
+    storage
 }) {
     destroyUnscheduledList();
 
@@ -173,6 +181,7 @@ export function mountUnscheduledList({
     const controls = document.getElementById('unscheduled-sort-control');
     if (!root || !controls) return false;
 
+    const preferenceStorage = storage === undefined ? getDefaultStorage() : storage;
     const abortController = new window.AbortController();
     state = {
         root,
@@ -182,8 +191,8 @@ export function mountUnscheduledList({
         actions,
         getRunningActivity,
         showError,
-        storage,
-        mode: readMode(storage),
+        storage: preferenceStorage,
+        mode: readMode(preferenceStorage),
         abortController,
         dragActive: false,
         pendingView: null

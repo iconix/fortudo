@@ -7,7 +7,7 @@ import {
 } from './tasks/manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
-import { getSuggestedActivityStartTime } from './activities/manager.js';
+import { getRunningActivity, getSuggestedActivityStartTime } from './activities/manager.js';
 import { renderActiveInsightsView } from './activities/view-toggle.js';
 import {
     getTaskFormElement,
@@ -716,9 +716,9 @@ export function renderTasks(tasksToRender, eventCallbacks) {
 }
 
 export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
-    const callbacks = eventCallbacks || globalUnscheduledTaskCallbacks;
-    renderUnscheduledTasksBase(unscheduledTasks, callbacks, (cb) => {
-        globalUnscheduledTaskCallbacks = cb;
+    if (eventCallbacks) globalUnscheduledTaskCallbacks = eventCallbacks;
+    renderUnscheduledTasksBase(unscheduledTasks, {
+        runningActivity: getRunningActivity()
     });
 }
 

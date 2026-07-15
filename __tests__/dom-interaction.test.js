@@ -18,7 +18,7 @@ import {
 } from '../public/js/dom-renderer.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/tasks/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
-import { resetActivityState, updateActivityState } from '../public/js/activities/manager.js';
+import * as activityManager from '../public/js/activities/manager.js';
 import {
     convertTo12HourTime,
     timeToDateTime,
@@ -145,7 +145,7 @@ describe('DOM Handler Interaction Tests', () => {
         jest.useRealTimers();
         jest.clearAllMocks();
         resetEventDelegation();
-        resetActivityState();
+        activityManager.resetActivityState();
         disableStartTimeAutoUpdate();
         document.body.innerHTML = '';
     });
@@ -1028,6 +1028,45 @@ describe('DOM Handler Interaction Tests', () => {
             };
         });
 
+        test('passes the current running activity through the transitional renderer adapter', () => {
+            const runningActivitySpy = jest
+                .spyOn(activityManager, 'getRunningActivity')
+                .mockReturnValue({
+                    description: 'Inbox zero',
+                    startDateTime: '2026-07-15T12:00:00.000Z',
+                    source: 'auto',
+                    sourceTaskId: 'unsched-running'
+                });
+
+            try {
+                renderUnscheduledTasks(
+                    [
+                        {
+                            id: 'unsched-running',
+                            type: 'unscheduled',
+                            description: 'Inbox zero',
+                            priority: 'medium',
+                            estDuration: 30,
+                            status: 'incomplete'
+                        }
+                    ],
+                    mockUnscheduledTaskCallbacks
+                );
+
+                const card = document.querySelector('[data-task-id="unsched-running"]');
+                expect(card.classList).toContain('opacity-70');
+                expect(card.classList).toContain('pointer-events-none');
+                expect(card.querySelector('.unscheduled-in-progress-badge').textContent).toContain(
+                    'In progress'
+                );
+                expect(card.querySelector('.btn-unscheduled-task-actions-menu').disabled).toBe(
+                    true
+                );
+            } finally {
+                runningActivitySpy.mockRestore();
+            }
+        });
+
         function setupUnscheduledTask(taskId, isCompleted = false) {
             const unscheduledTaskList = document.getElementById('unscheduled-task-list');
             unscheduledTaskList.innerHTML = `
@@ -1475,7 +1514,7 @@ describe('DOM Handler Interaction Tests', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-1',
                     description: 'Standup',
@@ -1513,7 +1552,7 @@ describe('DOM Handler Interaction Tests', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-3',
                     description: 'Review',
@@ -1644,7 +1683,7 @@ describe('DOM Handler Interaction Tests', () => {
             renderTasks([], scheduledCallbacks);
             renderUnscheduledTasks([], unscheduledCallbacks);
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-1',
                     description: 'Deep work',

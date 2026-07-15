@@ -530,8 +530,10 @@ describe('App.js Callback Functions', () => {
             expectedBoundary.setHours(24, 0, 0, 0);
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
             mockLoadRunningActivity.mockResolvedValue(staleTimer);
-            mockGetRunningActivity.mockReturnValueOnce(staleTimer).mockReturnValue(null);
             mockStopTimerAt.mockResolvedValue({ success: true });
+            mockGetRunningActivity.mockImplementation(() =>
+                mockStopTimerAt.mock.calls.length === 0 ? staleTimer : null
+            );
 
             await setupAppWithTasks([]);
 

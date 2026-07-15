@@ -136,6 +136,25 @@ describe('Unscheduled list UI interface', () => {
         expect(options.readView).toHaveBeenCalledWith('priority');
     });
 
+    test('guards access to the default localStorage property', () => {
+        const localStorageDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            get() {
+                throw new Error('Storage access denied');
+            }
+        });
+        const options = createOptions();
+
+        try {
+            expect(() => mountUnscheduledList(options)).not.toThrow();
+            expect(() => renderUnscheduledList()).not.toThrow();
+            expect(options.readView).toHaveBeenCalledWith('priority');
+        } finally {
+            Object.defineProperty(window, 'localStorage', localStorageDescriptor);
+        }
+    });
+
     test('restores a saved My order preference on mount', () => {
         localStorage.setItem(MODE_KEY, 'manual');
 

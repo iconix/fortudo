@@ -45,6 +45,9 @@ describe('unscheduled task renderer', () => {
         expect(actionsTrigger.getAttribute('aria-expanded')).toBe('false');
         expect(actionsMenu).not.toBeNull();
         expect(actionsMenu.hasAttribute('hidden')).toBe(true);
+        expect(actionsMenu.classList).toContain('action-menu-content');
+        expect(actionsMenu.classList).toContain('action-menu-content--closed');
+        expect(actionsMenu.classList).not.toContain('action-menu-content--open');
         expect(startTimerButton).not.toBeNull();
         expect(startTimerButton.textContent).toContain('Start timer');
         expect(startTimerButton.querySelector('.fa-stopwatch')).not.toBeNull();
@@ -146,6 +149,15 @@ describe('unscheduled task renderer', () => {
         expect(
             taskCard.querySelector('.unscheduled-task-actions-menu').hasAttribute('hidden')
         ).toBe(false);
+        expect(taskCard.querySelector('.unscheduled-task-actions-menu').classList).toContain(
+            'action-menu-content'
+        );
+        expect(taskCard.querySelector('.unscheduled-task-actions-menu').classList).toContain(
+            'action-menu-content--open'
+        );
+        expect(taskCard.querySelector('.unscheduled-task-actions-menu').classList).not.toContain(
+            'action-menu-content--closed'
+        );
         expect(taskCard.querySelector('.btn-delete-unscheduled').textContent).toContain(
             'Confirm delete'
         );
