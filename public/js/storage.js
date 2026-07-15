@@ -251,6 +251,65 @@ export async function putTask(task) {
 }
 
 /**
+ * Error containing the successful and failed rows returned by a task batch write.
+ */
+export class TaskBatchWriteError extends Error {
+    /**
+     * @param {Object[]} results - PouchDB bulkDocs row results
+     */
+    constructor(results) {
+        const succeededIds = results.filter((result) => result.ok).map((result) => result.id);
+        const failures = results.filter((result) => !result.ok);
+        super('One or more task documents could not be written.');
+        this.name = 'TaskBatchWriteError';
+        this.succeededIds = succeededIds;
+        this.failures = failures;
+    }
+}
+
+/**
+ * Upsert only the supplied task documents and report each successful row.
+ * @param {Object[]} tasksToPut - Task objects to write
+ * @returns {Promise<{succeededIds: string[]}>}
+ * @throws {TaskBatchWriteError} When one or more PouchDB rows fail
+ */
+export async function putTasks(tasksToPut) {
+    ensureStorageInitialized();
+    if (tasksToPut.length === 0) {
+        return { succeededIds: [] };
+    }
+
+    const docs = await Promise.all(
+        tasksToPut.map(async (task) => {
+            const doc = toStoredDoc(task, DOC_TYPES.TASK);
+            const revision = await getTrackedRevision(task.id, DOC_TYPES.TASK);
+            if (revision) {
+                doc._rev = revision;
+            }
+            return doc;
+        })
+    );
+    const results = await db.bulkDocs(docs);
+    const succeededIds = [];
+
+    for (const result of results) {
+        if (result.ok) {
+            taskRevMap.set(result.id, result.rev);
+            succeededIds.push(result.id);
+        }
+    }
+
+    if (succeededIds.length > 0) {
+        debouncedSync();
+    }
+    if (results.some((result) => !result.ok)) {
+        throw new TaskBatchWriteError(results);
+    }
+
+    return { succeededIds };
+}
+
+/**
  * Write a single activity to PouchDB.
  * Handles insert/update via _rev tracking and enforces docType.
  * @param {Object} activity - Activity object (must have `id`)

@@ -23,6 +23,8 @@ jest.mock('../public/js/sync-manager.js', () => ({
 import {
     initStorage,
     putTask,
+    putTasks,
+    TaskBatchWriteError,
     putActivity,
     putConfig,
     deleteTask,
@@ -133,6 +135,73 @@ describe('Storage - PouchDB', () => {
             const tasks = await loadTasks();
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('Updated');
+        });
+    });
+
+    describe('putTasks', () => {
+        test('upserts only supplied tasks and returns successful IDs', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTask({
+                id: 'scheduled-kept',
+                type: 'scheduled',
+                description: 'Keep me',
+                status: 'incomplete'
+            });
+
+            const result = await putTasks([
+                {
+                    id: 'unscheduled-a',
+                    type: 'unscheduled',
+                    description: 'First backlog task',
+                    status: 'incomplete',
+                    manualOrder: 1
+                },
+                {
+                    id: 'unscheduled-b',
+                    type: 'unscheduled',
+                    description: 'Second backlog task',
+                    status: 'incomplete',
+                    manualOrder: 0
+                }
+            ]);
+
+            expect(result).toEqual({ succeededIds: ['unscheduled-a', 'unscheduled-b'] });
+            expect(await loadTasks()).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: 'scheduled-kept' }),
+                    expect.objectContaining({ id: 'unscheduled-a', manualOrder: 1 }),
+                    expect.objectContaining({ id: 'unscheduled-b', manualOrder: 0 })
+                ])
+            );
+        });
+
+        test('throws structured row results after a partial batch failure', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const successRow = { ok: true, id: 'unscheduled-a', rev: '1-a' };
+            const conflictRow = {
+                id: 'unscheduled-b',
+                error: 'conflict',
+                name: 'conflict',
+                status: 409
+            };
+            const bulkDocsSpy = jest
+                .spyOn(getDb(), 'bulkDocs')
+                .mockResolvedValueOnce([successRow, conflictRow]);
+
+            try {
+                await expect(
+                    putTasks([
+                        { id: 'unscheduled-a', type: 'unscheduled', manualOrder: 1 },
+                        { id: 'unscheduled-b', type: 'unscheduled', manualOrder: 0 }
+                    ])
+                ).rejects.toMatchObject({
+                    name: TaskBatchWriteError.name,
+                    succeededIds: ['unscheduled-a'],
+                    failures: [conflictRow]
+                });
+            } finally {
+                bulkDocsSpy.mockRestore();
+            }
         });
     });
 
