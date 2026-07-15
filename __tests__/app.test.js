@@ -281,6 +281,46 @@ describe('App.js Callback Functions', () => {
             });
             expect(mockRenderUnscheduledList).toHaveBeenCalled();
         });
+
+        test('a real list click inside the same task card preserves pending delete confirmation', async () => {
+            const unscheduledTask = {
+                id: 'unsched-keep-confirming',
+                type: 'unscheduled',
+                description: 'Backlog task',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                confirmingDelete: false
+            };
+            await setupAppWithTasks([unscheduledTask]);
+
+            const listRoot = document.getElementById('unscheduled-task-list');
+            listRoot.insertAdjacentHTML(
+                'beforebegin',
+                `
+                    <div id="unscheduled-sort-control">
+                        <button type="button" data-unscheduled-mode="manual">My order</button>
+                        <button type="button" data-unscheduled-mode="priority">Priority</button>
+                    </div>
+                    <div id="unscheduled-order-status" aria-live="polite"></div>
+                `
+            );
+            const actualList = jest.requireActual('../public/js/tasks/unscheduled-list.js');
+            const mountOptions = mockMountUnscheduledList.mock.calls.at(-1)[0];
+
+            try {
+                actualList.mountUnscheduledList(mountOptions);
+                actualList.renderUnscheduledList();
+
+                document.querySelector('.btn-delete-unscheduled').click();
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+
+                document.querySelector('.btn-unscheduled-task-actions-menu i').click();
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+            } finally {
+                actualList.destroyUnscheduledList();
+            }
+        });
     });
 
     describe('onDeleteTask callback', () => {
