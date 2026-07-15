@@ -353,7 +353,7 @@ Expected: the pre-commit hook passes without `--no-verify`; PR #95 updates and i
 - Consumes: `PREVIEW_URL`, `PREVIEW_EXPIRES`, and `DEPLOYED_SHA`
 - Produces: the existing marker-tagged PR comment containing only the deployed commit SHA, full preview URL, and valid Firebase expiry
 
-- [ ] **Step 1: Change the regression test to reject stale metadata**
+- [x] **Step 1: Change the regression test to reject stale metadata**
 
 Replace the three positive assertions for action attribution and signature generation with:
 
@@ -366,7 +366,7 @@ assert "Sign: ${signature}" not in workflow
 
 Keep the positive assertions for the commit wording, preview URL output, and `toUTCString()` expiry formatting.
 
-- [ ] **Step 2: Run the focused test to verify RED**
+- [x] **Step 2: Run the focused test to verify RED**
 
 Run:
 
@@ -376,7 +376,7 @@ uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
 
 Expected: `1 failed` because the workflow still contains `Firebase Hosting GitHub Action`.
 
-- [ ] **Step 3: Remove the retired action metadata**
+- [x] **Step 3: Remove the retired action metadata**
 
 Delete the signature construction:
 
@@ -402,7 +402,7 @@ const body = [
 
 Keep the hidden marker, actual expiry parsing, and existing update-or-create logic unchanged.
 
-- [ ] **Step 4: Run the focused test to verify GREEN**
+- [x] **Step 4: Run the focused test to verify GREEN**
 
 Run:
 
@@ -412,7 +412,7 @@ uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Run formatting and full verification**
+- [x] **Step 5: Run formatting and full verification**
 
 Run:
 
@@ -431,7 +431,7 @@ Expected:
 - Pytest: 111 tests pass.
 - `git diff --check` reports no errors.
 
-- [ ] **Step 6: Commit and publish the cleanup**
+- [x] **Step 6: Commit and publish the cleanup**
 
 ```bash
 git add .github/workflows/ci-cd.yml tests/test_ci_preview_comment.py docs/plans/implementation/2026-07-14-preview-deploy-pr-comment.md

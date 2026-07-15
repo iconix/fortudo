@@ -287,10 +287,6 @@ jobs:
                       const expiryLines = Number.isNaN(expires.getTime())
                         ? []
                         : [`(expires ${expires.toUTCString()})`, ''];
-                      const signature = require('node:crypto')
-                        .createHash('sha1')
-                        .update('fortudo')
-                        .digest('hex');
                       const body = [
                         marker,
                         `Visit the preview URL for this PR (updated for commit ${shortSha}):`,
@@ -298,9 +294,6 @@ jobs:
                         `[${process.env.PREVIEW_URL}](${process.env.PREVIEW_URL})`,
                         '',
                         ...expiryLines,
-                        '🔥 via [Firebase Hosting GitHub Action](https://github.com/marketplace/actions/deploy-to-firebase-hosting) 🌎',
-                        '',
-                        `Sign: ${signature}`,
                       ].join('\n');
 
                       const issue = {

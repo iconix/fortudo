@@ -16,9 +16,10 @@ def test_preview_deploy_exports_url_and_updates_one_pr_comment():
     assert "PREVIEW_EXPIRES: ${{ steps.deploy-preview.outputs.preview_expires }}" in workflow
     assert "Visit the preview URL for this PR (updated for commit" in workflow
     assert "toUTCString()" in workflow
-    assert "Firebase Hosting GitHub Action" in workflow
-    assert "createHash('sha1')" in workflow
-    assert ".update('fortudo')" in workflow
+    assert "Firebase Hosting GitHub Action" not in workflow
+    assert "createHash('sha1')" not in workflow
+    assert ".update('fortudo')" not in workflow
+    assert "Sign: ${signature}" not in workflow
     assert "<!-- firebase-hosting-preview -->" in workflow
     assert "await github.paginate(" in workflow
     assert "github.rest.issues.listComments" in workflow
