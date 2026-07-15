@@ -16,7 +16,7 @@
 - Grant only `contents: read` and `pull-requests: write` to the preview job.
 - Keep Dependabot preview deployment disabled.
 - Workflow-only pull requests remain excluded from preview deployment by the existing path filter.
-- Match the former Firebase Hosting action's comment wording, expiry, attribution, and site signature.
+- Retain the useful commit SHA, full preview URL, and expiry; do not attribute deployment to the retired action or display its legacy signature.
 - Omit the expiry line when Firebase does not return a valid `expireTime`; never synthesize one.
 
 ---
@@ -338,3 +338,105 @@ git push
 ```
 
 Expected: the pre-commit hook passes without `--no-verify`; PR #95 updates and its preview comment retains the same comment ID while adopting the legacy content.
+
+---
+
+### Task 3: Remove stale action metadata
+
+**Files:**
+
+- Modify: `tests/test_ci_preview_comment.py`
+- Modify: `.github/workflows/ci-cd.yml:284-305`
+
+**Interfaces:**
+
+- Consumes: `PREVIEW_URL`, `PREVIEW_EXPIRES`, and `DEPLOYED_SHA`
+- Produces: the existing marker-tagged PR comment containing only the deployed commit SHA, full preview URL, and valid Firebase expiry
+
+- [ ] **Step 1: Change the regression test to reject stale metadata**
+
+Replace the three positive assertions for action attribution and signature generation with:
+
+```python
+assert "Firebase Hosting GitHub Action" not in workflow
+assert "createHash('sha1')" not in workflow
+assert ".update('fortudo')" not in workflow
+assert "Sign: ${signature}" not in workflow
+```
+
+Keep the positive assertions for the commit wording, preview URL output, and `toUTCString()` expiry formatting.
+
+- [ ] **Step 2: Run the focused test to verify RED**
+
+Run:
+
+```bash
+uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
+```
+
+Expected: `1 failed` because the workflow still contains `Firebase Hosting GitHub Action`.
+
+- [ ] **Step 3: Remove the retired action metadata**
+
+Delete the signature construction:
+
+```javascript
+const signature = require('node:crypto')
+  .createHash('sha1')
+  .update('fortudo')
+  .digest('hex');
+```
+
+Replace the body construction with:
+
+```javascript
+const body = [
+  marker,
+  `Visit the preview URL for this PR (updated for commit ${shortSha}):`,
+  '',
+  `[${process.env.PREVIEW_URL}](${process.env.PREVIEW_URL})`,
+  '',
+  ...expiryLines
+].join('\n');
+```
+
+Keep the hidden marker, actual expiry parsing, and existing update-or-create logic unchanged.
+
+- [ ] **Step 4: Run the focused test to verify GREEN**
+
+Run:
+
+```bash
+uv run --with pytest python -m pytest tests/test_ci_preview_comment.py -q
+```
+
+Expected: `1 passed`.
+
+- [ ] **Step 5: Run formatting and full verification**
+
+Run:
+
+```bash
+npm run format
+npm test -- --coverage --runInBand
+npm run check
+uv run --with pytest --with playwright python -m pytest tests -q
+git diff --check
+```
+
+Expected:
+
+- Jest: 61 suites and 1,290 tests pass with coverage thresholds satisfied.
+- ESLint and Prettier pass.
+- Pytest: 111 tests pass.
+- `git diff --check` reports no errors.
+
+- [ ] **Step 6: Commit and publish the cleanup**
+
+```bash
+git add .github/workflows/ci-cd.yml tests/test_ci_preview_comment.py docs/plans/implementation/2026-07-14-preview-deploy-pr-comment.md
+git commit -m "ci: remove stale preview comment metadata"
+git push
+```
+
+Expected: the pre-commit hook passes without `--no-verify`; PR #95 updates and the same marker comment no longer attributes deployment to the retired action or displays its signature.
