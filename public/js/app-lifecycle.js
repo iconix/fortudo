@@ -122,9 +122,21 @@ export function createRoomSessionLifecycle({
         });
     }
 
-    function runDayRollover(now) {
-        const cleanupResult = deleteCompletedUnscheduledTasks?.();
-        const rolloverResult = rolloverPriorDayScheduledTasks?.(now);
+    async function runDayRollover(now) {
+        const cleanupResult = await deleteCompletedUnscheduledTasks?.();
+        if (cleanupResult?.persistenceFailed) {
+            showToast?.(cleanupResult.reason, { theme: 'rose' });
+            await refreshFromStorage();
+            return;
+        }
+
+        const rolloverResult = await rolloverPriorDayScheduledTasks?.(now);
+        if (rolloverResult?.persistenceFailed) {
+            showToast?.(rolloverResult.reason, { theme: 'rose' });
+            await refreshFromStorage();
+            return;
+        }
+
         const deletedTasksCount = cleanupResult?.tasksDeleted || 0;
         const movedTasksCount = rolloverResult?.tasksMoved || 0;
 
@@ -146,7 +158,15 @@ export function createRoomSessionLifecycle({
 
             if (currentDate !== lastObservedDate) {
                 lastObservedDate = currentDate;
-                runDayRollover(now);
+                runDayRollover(now).catch((error) => {
+                    logger.error('Failed to persist midnight task rollover:', error);
+                    refreshFromStorage().catch((refreshError) => {
+                        logger.error(
+                            'Failed to recover after midnight task rollover:',
+                            refreshError
+                        );
+                    });
+                });
 
                 if (getActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
                     midnightTimerStopInFlight = true;

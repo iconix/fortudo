@@ -23,15 +23,14 @@ import * as appCoordinator from '../public/js/app-coordinator.js';
 import { extractDateFromDateTime, extractTimeFromDateTime } from '../public/js/utils.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 
-// Mock storage.js to spy on saveTasks
+// Mock storage.js to spy on explicit task deltas
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     initStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     putConfig: jest.fn(() => Promise.resolve()),
-    deleteTask: jest.fn(),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => []),
     loadConfig: jest.fn(() => Promise.resolve(null)),
     loadConfigWithConflicts: jest.fn(() =>
@@ -47,10 +46,9 @@ jest.mock('../public/js/sync-manager.js', () => ({
     debouncedSync: jest.fn()
 }));
 import {
-    saveTasks as mockSaveTasksInternal,
-    putTask as mockPutTaskInternal,
+    putTasks as mockPutTasksInternal,
     putConfig as mockPutConfigInternal,
-    deleteTask as mockDeleteTaskFromStorageInternal,
+    deleteTasks as mockDeleteTasksInternal,
     loadTasks as mockLoadTasksFromStorageInternal,
     loadConfig as mockLoadConfigInternal
 } from '../public/js/storage.js';
@@ -58,10 +56,9 @@ import {
 // Import task-manager after the mock since it depends on mock storage.js
 import * as taskManager from '../public/js/tasks/manager.js';
 
-const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
-const mockPutTask = jest.mocked(mockPutTaskInternal);
+const mockPutTasks = jest.mocked(mockPutTasksInternal);
 const mockPutConfig = jest.mocked(mockPutConfigInternal);
-const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
+const mockDeleteTasks = jest.mocked(mockDeleteTasksInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 
@@ -187,9 +184,9 @@ describe('User Confirmation Flows', () => {
             // Set up fresh spies after the environment is initialized
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         };
 
         test('User confirms reschedule: future overlap triggers reschedule flow', async () => {
@@ -229,7 +226,7 @@ describe('User Confirmation Flows', () => {
                 expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             const currentTasks = taskManager.getTaskState();
             const savedInitialTask = currentTasks.find((t) => t.description === 'Initial Task');
             const savedOverlappingTask = currentTasks.find(
@@ -278,7 +275,7 @@ describe('User Confirmation Flows', () => {
                 expect(overlappingTaskDOM.endTime12).toBe('10:30 PM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             const currentTasks = taskManager.getTaskState();
             const savedInitialTask = currentTasks.find((t) => t.description === 'Initial Task');
             const savedOverlappingTask = currentTasks.find(
@@ -314,7 +311,7 @@ describe('User Confirmation Flows', () => {
             expect(tasks.length).toBe(1);
             expect(tasks[0].description).toBe('Initial Task');
 
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
     });
 
@@ -358,9 +355,9 @@ describe('User Confirmation Flows', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         };
 
         test('User confirms update reschedule: task updated and other tasks shifted', async () => {
@@ -401,7 +398,7 @@ describe('User Confirmation Flows', () => {
                 expect(taskBDOM.endTime12).toBe('11:30 PM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
         test('User denies update reschedule: edit cancelled, tasks unchanged', async () => {
@@ -444,7 +441,7 @@ describe('User Confirmation Flows', () => {
                 expect(taskBDOM.endTime12).toBe('11:00 PM');
             }
 
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
         test('User confirms moving a locked task: locked task moved, overlapping unlocked tasks shifted', async () => {
@@ -481,9 +478,9 @@ describe('User Confirmation Flows', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             // Confirm the reschedule
             confirmSpy.mockReturnValueOnce(true);
@@ -520,7 +517,7 @@ describe('User Confirmation Flows', () => {
                 expect(unlockedTaskDOM.endTime12).toBe('11:15 PM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
     });
 
@@ -562,9 +559,9 @@ describe('User Confirmation Flows', () => {
             // Set up fresh spies after the environment is initialized
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         };
 
         test('User confirms schedule update: Task completed late, time updated, subsequent task shifted', async () => {
@@ -605,7 +602,7 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('11:00 AM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             const currentTasks = taskManager.getTaskState();
             const savedCompletedTask = currentTasks.find(
                 (t) => t.description === 'Task To Complete'
@@ -649,7 +646,7 @@ describe('User Confirmation Flows', () => {
                 expect(subsequentTaskDOM.endTime12).toBe('10:30 AM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             const currentTasks = taskManager.getTaskState();
             const savedCompletedTask = currentTasks.find(
                 (t) => t.description === 'Task To Complete'
@@ -695,7 +692,7 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toBe('11:00');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
 
             // Clean up the spy
             getCurrentTimeRoundedSpy.mockRestore();
@@ -775,7 +772,7 @@ describe('User Confirmation Flows', () => {
                 expect(shiftableTaskDOM.endTime12).toBe('1:00 PM');
             }
 
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
     });
 
@@ -802,9 +799,9 @@ describe('User Confirmation Flows', () => {
             // Set up fresh spies after the environment is initialized
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         };
 
         test('User confirms clear schedule: scheduled tasks are removed', async () => {
@@ -837,8 +834,8 @@ describe('User Confirmation Flows', () => {
             const tasks = getRenderedTasksDOM();
             expect(tasks.length).toBe(0);
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
 
             onScheduledTasksClearedSpy.mockRestore();
         });
@@ -866,7 +863,7 @@ describe('User Confirmation Flows', () => {
             expect(tasks.length).toBe(2); // Tasks should still be there
             expect(tasks[0].description).toBe('Task 1');
 
-            expect(mockSaveTasks).not.toHaveBeenCalled(); // No save because action was cancelled
+            expect(mockPutTasks).not.toHaveBeenCalled(); // No save because action was cancelled
         });
 
         test('Clear Schedule button does nothing if no scheduled tasks exist', async () => {
@@ -882,9 +879,9 @@ describe('User Confirmation Flows', () => {
             const toastSpy = jest
                 .spyOn(require('../public/js/toast-manager.js'), 'showToast')
                 .mockImplementation(() => {});
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             await clickClearScheduleButton();
 
@@ -893,7 +890,7 @@ describe('User Confirmation Flows', () => {
             expect(toastSpy).toHaveBeenCalledWith('There are no scheduled tasks to clear.', {
                 theme: 'teal'
             });
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
             toastSpy.mockRestore();
         });
 
@@ -938,8 +935,8 @@ describe('User Confirmation Flows', () => {
                 expect(startTimeInput.value).toMatch(/^\d{2}:\d{2}$/); // Should match HH:MM format
             }
 
-            expect(mockSaveTasks).toHaveBeenCalledTimes(1);
-            expect(mockSaveTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks.mock.calls[0][0]).toEqual([]); // Saved an empty array
         });
     });
 
@@ -966,9 +963,9 @@ describe('User Confirmation Flows', () => {
             // Set up fresh spies after the environment is initialized
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         };
 
         test('Active task color changes from green to yellow when it becomes late', async () => {

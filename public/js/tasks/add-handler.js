@@ -21,7 +21,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
     const { reschedulePreApproved = false } = options;
     const theme = getThemeForTaskType(initialTaskData.taskType);
 
-    let operationResult = addTask(initialTaskData);
+    let operationResult = await addTask(initialTaskData);
 
     // Handle adjust running task confirmation (truncate or extend)
     if (
@@ -38,21 +38,24 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         );
 
         if (userConfirmed) {
-            const adjustResult = adjustAndCompleteTask(
+            const adjustResult = await adjustAndCompleteTask(
                 operationResult.adjustableTask.id,
                 operationResult.newEndTime
             );
 
             if (adjustResult.success) {
                 triggerConfettiAnimation(operationResult.adjustableTask.id);
-                operationResult = addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+                operationResult = await addTask(
+                    { ...initialTaskData, _skipAdjustCheck: true },
+                    false
+                );
             } else {
                 showAlert(`Could not complete task: ${adjustResult.reason}`, theme);
                 refreshUI();
                 return;
             }
         } else {
-            operationResult = addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+            operationResult = await addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
         }
     }
 
@@ -68,13 +71,16 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         );
 
         if (userConfirmed) {
-            const truncateResult = truncateCompletedTask(
+            const truncateResult = await truncateCompletedTask(
                 operationResult.completedTaskToTruncate.id,
                 operationResult.newEndTime
             );
 
             if (truncateResult.success) {
-                operationResult = addTask({ ...initialTaskData, _skipCompletedCheck: true }, false);
+                operationResult = await addTask(
+                    { ...initialTaskData, _skipCompletedCheck: true },
+                    false
+                );
             } else {
                 showAlert(`Could not truncate task: ${truncateResult.reason}`, theme);
                 refreshUI();
@@ -94,7 +100,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
     ) {
         const userConfirmedShift = await askConfirmation(operationResult.reason, undefined, theme);
         if (userConfirmedShift && operationResult.context?.resubmissionTaskData) {
-            operationResult = addTask(operationResult.context.resubmissionTaskData, true);
+            operationResult = await addTask(operationResult.context.resubmissionTaskData, true);
         } else {
             showAlert(
                 'Task not added as the proposed shift due to a locked task was declined.',
@@ -114,7 +120,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
             reschedulePreApproved ||
             (await askConfirmation(operationResult.reason, undefined, theme));
         if (userConfirmedReschedule && operationResult.proposedTask) {
-            operationResult = confirmAddTaskAndReschedule({
+            operationResult = await confirmAddTaskAndReschedule({
                 proposedTask: operationResult.proposedTask
             });
         } else {

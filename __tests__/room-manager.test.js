@@ -16,9 +16,6 @@ jest.mock('../public/js/storage.js', () => ({
     initStorage: jest.fn(),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
     destroyStorage: jest.fn(),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
     loadTasks: jest.fn(() => [])
 }));
 

@@ -120,7 +120,7 @@ async function loadTasksIntoState() {
             task.isEditingInline = false;
         }
     });
-    updateTaskState(loadedTasks, { persist: false });
+    updateTaskState(loadedTasks);
     await refreshUnscheduledSequenceState();
 }
 

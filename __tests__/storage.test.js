@@ -28,12 +28,12 @@ import {
     putActivity,
     putConfig,
     deleteTask,
+    deleteTasks,
     loadTasks,
     loadActivities,
     loadConfig,
     loadConfigWithConflicts,
     resolveConfigConflicts,
-    saveTasks,
     getDb,
     destroyStorage
 } from '../public/js/storage.js';
@@ -660,45 +660,64 @@ describe('Storage - PouchDB', () => {
         });
     });
 
-    describe('saveTasks (bulk)', () => {
-        test('replaces all tasks with provided array', async () => {
+    describe('deleteTasks (batch delete)', () => {
+        test('reports partial deletion instead of silently succeeding', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await putTask({
-                id: 'old-1',
-                type: 'scheduled',
-                description: 'Old',
-                status: 'incomplete'
+            await putTasks([
+                { id: 'task-a', type: 'unscheduled', description: 'A' },
+                { id: 'task-b', type: 'unscheduled', description: 'B' }
+            ]);
+            mockDebouncedSync.mockClear();
+
+            const database = getDb();
+            const realBulkDocs = database.bulkDocs.bind(database);
+            const conflictRow = {
+                id: 'task-b',
+                error: true,
+                name: 'conflict',
+                status: 409,
+                message: 'Document update conflict'
+            };
+            const bulkDocsSpy = jest
+                .spyOn(database, 'bulkDocs')
+                .mockImplementationOnce(async (docs) => {
+                    const [successRow] = await realBulkDocs([docs[0]]);
+                    return [successRow, conflictRow];
+                });
+
+            await expect(deleteTasks(['task-a', 'task-b'])).rejects.toMatchObject({
+                name: 'TaskBatchWriteError',
+                succeededIds: ['task-a'],
+                failures: [conflictRow]
             });
-            await saveTasks([
-                { id: 'new-1', type: 'scheduled', description: 'New 1', status: 'incomplete' },
+            bulkDocsSpy.mockRestore();
+
+            expect((await loadTasks()).map((task) => task.id)).toEqual(['task-b']);
+            expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('task delta persistence', () => {
+        test('deletes only the supplied task IDs', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await putTasks([
+                { id: 'delete-me', type: 'scheduled', description: 'Delete', status: 'incomplete' },
                 {
-                    id: 'new-2',
+                    id: 'keep-me',
                     type: 'unscheduled',
-                    description: 'New 2',
+                    description: 'Keep',
                     status: 'incomplete',
                     priority: 'low'
                 }
             ]);
-            const tasks = await loadTasks();
-            expect(tasks).toHaveLength(2);
-            const ids = tasks.map((t) => t.id).sort();
-            expect(ids).toEqual(['new-1', 'new-2']);
+            await deleteTasks(['delete-me']);
+
+            expect(await loadTasks()).toEqual([
+                expect.objectContaining({ id: 'keep-me', description: 'Keep' })
+            ]);
         });
 
-        test('clearing all tasks with empty array', async () => {
-            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-            await putTask({
-                id: 'sched-1',
-                type: 'scheduled',
-                description: 'Task',
-                status: 'incomplete'
-            });
-            await saveTasks([]);
-            const tasks = await loadTasks();
-            expect(tasks).toEqual([]);
-        });
-
-        test('clearing all tasks preserves activity and config docs', async () => {
+        test('deleting task deltas preserves activity and config docs', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
             await putTask({
                 id: 'sched-1',
@@ -730,7 +749,7 @@ describe('Storage - PouchDB', () => {
                 categories: []
             });
 
-            await saveTasks([]);
+            await deleteTasks(['sched-1', 'unsched-1']);
 
             const tasks = await loadTasks();
             const activities = await loadActivities();

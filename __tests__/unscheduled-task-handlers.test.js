@@ -19,9 +19,8 @@ import * as taskManager from '../public/js/tasks/manager.js';
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
@@ -437,11 +436,11 @@ describe('Unscheduled Task Handlers', () => {
     });
 
     describe('handleToggleCompleteUnscheduledTask', () => {
-        test('toggles completion and refreshes UI', () => {
+        test('toggles completion and refreshes UI', async () => {
             const task = createUnscheduledTask();
             updateTaskState([task]);
 
-            handleToggleCompleteUnscheduledTask(task.id);
+            await handleToggleCompleteUnscheduledTask(task.id);
 
             expect(getTaskById(task.id).status).toBe('completed');
             expect(onTaskEdited).toHaveBeenCalledWith({
@@ -450,8 +449,8 @@ describe('Unscheduled Task Handlers', () => {
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
-        test('shows alert on failure', () => {
-            handleToggleCompleteUnscheduledTask('nonexistent');
+        test('shows alert on failure', async () => {
+            await handleToggleCompleteUnscheduledTask('nonexistent');
             expect(showAlert).toHaveBeenCalled();
         });
     });

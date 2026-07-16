@@ -3,7 +3,7 @@ from playwright.sync_api import sync_playwright
 from datetime import datetime, timedelta
 import os
 
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page, wait_for_main_app
 
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -221,8 +221,8 @@ def test_schedule_overlaps_flow():
         # Clear any leftover state from prior runs, then set a room to bypass entry screen
         page.evaluate("localStorage.clear()")
         page.evaluate("localStorage.setItem('fortudo-active-room', 'test-room')")
-        page.reload()
-        page.wait_for_load_state("networkidle")
+        page.reload(wait_until="load")
+        wait_for_main_app(page)
         page.wait_for_timeout(2000)
 
         # =========================================================================

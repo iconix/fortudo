@@ -9,7 +9,7 @@ import {
     extractDateFromDateTime,
     convertTo12HourTime
 } from '../utils.js';
-import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from '../storage.js';
+import { putTasks, deleteTasks, loadTasks } from '../storage.js';
 
 // Import from new modules
 import {
@@ -67,6 +67,9 @@ import {
  * @property {string} [newEndTime] - New end time for late completion
  * @property {number} [newDuration] - New duration for late completion
  * @property {number} [tasksDeleted] - Number of tasks deleted in bulk operations
+ * @property {boolean} [persistenceFailed] - Whether the primary local task write failed
+ * @property {boolean} [stateReconciled] - Whether durable local task state was reloaded
+ * @property {boolean} [rolledBack] - Whether memory was restored from the last durable snapshot
  */
 
 /**
@@ -85,6 +88,7 @@ import {
 // STATE MANAGEMENT
 // ============================================================================
 let tasks = [];
+let durableTaskSnapshot = [];
 let currentTasksVersion = 0;
 export function getTaskState() {
     return [...tasks];
@@ -137,8 +141,8 @@ export function resetAllInlineEditingFlags() {
     });
     return changed;
 }
-export function updateTaskState(newTasks, { persist = true } = {}) {
-    tasks = newTasks || [];
+function replaceTaskState(newTasks, { markDurable = false } = {}) {
+    tasks = (newTasks || []).map((task) => ({ ...task }));
     if (tasks.length === 0) {
         /* Sample tasks are added in task-manager.js's updateTaskState */
     }
@@ -150,9 +154,13 @@ export function updateTaskState(newTasks, { persist = true } = {}) {
     tasks = [...scheduledTasks, ...unscheduledTasks];
 
     invalidateTaskCaches();
-    if (persist) {
-        saveTasks(tasks.map(stripUIFlags));
+    if (markDurable) {
+        durableTaskSnapshot = tasks.map((task) => ({ ...stripUIFlags(task) }));
     }
+}
+
+export function updateTaskState(newTasks) {
+    replaceTaskState(newTasks, { markDurable: true });
 }
 
 // ============================================================================
@@ -216,7 +224,7 @@ const createTaskObject = (taskData) => {
         const startDateTime = timeToDateTime(taskData.startTime, today);
         finalTask = {
             ...baseTask,
-            id: `sched-${Date.now()}`,
+            id: id.replace('task-', 'sched-'),
             startDateTime,
             endDateTime: calculateEndDateTime(startDateTime, taskData.duration),
             duration: taskData.duration
@@ -225,7 +233,7 @@ const createTaskObject = (taskData) => {
         // unscheduled
         finalTask = {
             ...baseTask,
-            id: `unsched-${Date.now()}`,
+            id: id.replace('task-', 'unsched-'),
             priority: taskData.priority || 'medium',
             estDuration:
                 taskData.estDuration !== undefined && taskData.estDuration !== null
@@ -345,14 +353,61 @@ function convertScheduledTaskToUnscheduled(task) {
     };
 }
 
-const finalizeTaskModification = (changedTasks) => {
-    logger.debug('Finalizing task modification (invalidate cache, save)');
+async function recoverDurableTaskState(persistenceError) {
+    logger.error('Task persistence failed. Reloading durable local task state.', persistenceError);
+    try {
+        updateTaskState(await loadTasks());
+        return {
+            success: false,
+            persistenceFailed: true,
+            stateReconciled: true,
+            reason: 'Fortudo could not save that change. Tasks were reloaded from local storage.'
+        };
+    } catch (reloadError) {
+        logger.error('Task persistence recovery failed.', reloadError);
+        replaceTaskState(durableTaskSnapshot);
+        return {
+            success: false,
+            persistenceFailed: true,
+            stateReconciled: false,
+            rolledBack: true,
+            reason: 'Fortudo could not save or verify that change. Reload before continuing.'
+        };
+    }
+}
+
+function applyDurableTaskDeltas(upsertedTasks, deletedTaskIds) {
+    const durableTasksById = new Map(durableTaskSnapshot.map((task) => [task.id, task]));
+    for (const task of upsertedTasks) {
+        durableTasksById.set(task.id, { ...task });
+    }
+    for (const taskId of deletedTaskIds) {
+        durableTasksById.delete(taskId);
+    }
+    durableTaskSnapshot = [...durableTasksById.values()];
+}
+
+const finalizeTaskModification = async (changedTasks, { deletedTaskIds = [] } = {}) => {
+    logger.debug('Finalizing task modification (invalidate cache, persist task deltas)');
     invalidateTaskCaches();
-    if (changedTasks) {
-        const tasksToSave = Array.isArray(changedTasks) ? changedTasks : [changedTasks];
-        for (const task of tasksToSave) {
-            putTask(stripUIFlags(task));
-        }
+    const tasksToSave = changedTasks
+        ? Array.isArray(changedTasks)
+            ? changedTasks
+            : [changedTasks]
+        : [];
+    const uniqueTasksToSave = [
+        ...new Map(tasksToSave.map((task) => [task.id, stripUIFlags(task)])).values()
+    ];
+    const uniqueDeletedTaskIds = [...new Set(deletedTaskIds)];
+
+    try {
+        // Upserts precede deletes so conversions can fail with duplicates, never missing tasks.
+        await putTasks(uniqueTasksToSave);
+        await deleteTasks(uniqueDeletedTaskIds);
+        applyDurableTaskDeltas(uniqueTasksToSave, uniqueDeletedTaskIds);
+        return null;
+    } catch (error) {
+        return recoverDurableTaskState(error);
     }
 };
 
@@ -537,7 +592,7 @@ const createSuccessfulTaskResult = (task, extra = {}) => ({
 // ============================================================================
 // CORE TASK OPERATIONS
 // ============================================================================
-export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
+export async function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
     logger.debug(
         'addTask called with taskData:',
         taskData,
@@ -739,20 +794,22 @@ export function addTask(taskData, isResubmissionAfterShiftConfirm = false) {
         if (taskInArray && isScheduledTask(taskInArray)) {
             affectedTasks = performRescheduleAndReorganize(taskInArray);
         }
-        finalizeTaskModification(affectedTasks);
+        const persistenceFailure = await finalizeTaskModification(affectedTasks);
+        if (persistenceFailure) return persistenceFailure;
         logger.info('addTask: Scheduled task added and processed.');
         return createSuccessfulTaskResult(taskObject);
     } else {
         // Unscheduled task
         tasks.push(taskObject);
+        const persistenceFailure = await finalizeTaskModification(taskObject);
+        if (persistenceFailure) return persistenceFailure;
         const placement = enterUnscheduledSequence(taskObject);
-        finalizeTaskModification(placement.changedTasks);
         logger.info('addTask: Unscheduled task added.');
         return createSuccessfulTaskResult(placement.task);
     }
 }
 
-export function confirmAddTaskAndReschedule(confirmedPayload) {
+export async function confirmAddTaskAndReschedule(confirmedPayload) {
     logger.debug('confirmAddTaskAndReschedule called with payload:', confirmedPayload);
 
     const taskToAdd =
@@ -790,20 +847,22 @@ export function confirmAddTaskAndReschedule(confirmedPayload) {
         if (taskInArray && isScheduledTask(taskInArray)) {
             affectedTasks = performRescheduleAndReorganize(taskInArray);
         }
-        finalizeTaskModification(affectedTasks);
+        const persistenceFailure = await finalizeTaskModification(affectedTasks);
+        if (persistenceFailure) return persistenceFailure;
     } else {
         // Unscheduled task
         if (!tasks.find((t) => t.id === taskToAdd.id)) {
             tasks.push(taskToAdd);
         }
+        const persistenceFailure = await finalizeTaskModification(taskToAdd);
+        if (persistenceFailure) return persistenceFailure;
         const placement = enterUnscheduledSequence(taskToAdd);
-        finalizeTaskModification(placement.changedTasks);
         return createSuccessfulTaskResult(placement.task);
     }
     return createSuccessfulTaskResult(taskToAdd);
 }
 
-export function updateTask(index, taskData) {
+export async function updateTask(index, taskData) {
     if (index < 0 || index >= tasks.length) {
         return { success: false, reason: 'Invalid task index.' };
     }
@@ -888,7 +947,8 @@ export function updateTask(index, taskData) {
                 if (isScheduledTask(tasks[index])) {
                     shiftAffected = performRescheduleAndReorganize(tasks[index]);
                 }
-                finalizeTaskModification(shiftAffected);
+                const persistenceFailure = await finalizeTaskModification(shiftAffected);
+                if (persistenceFailure) return persistenceFailure;
                 return {
                     success: true,
                     task: tasks[index],
@@ -930,7 +990,8 @@ export function updateTask(index, taskData) {
     if (isScheduledTask(tasks[index])) {
         updateAffected = performRescheduleAndReorganize(tasks[index]);
     }
-    finalizeTaskModification(updateAffected);
+    const persistenceFailure = await finalizeTaskModification(updateAffected);
+    if (persistenceFailure) return persistenceFailure;
 
     const autoMessage =
         wasShiftedByLocked && unlockedOverlappingTasks.length === 0
@@ -960,7 +1021,7 @@ export function doScheduledTaskNow(taskId, startTime) {
     });
 }
 
-export function updateUnscheduledTask(taskId, newData) {
+export async function updateUnscheduledTask(taskId, newData) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {
         return { success: false, reason: 'Unscheduled task not found.' };
@@ -985,11 +1046,12 @@ export function updateUnscheduledTask(taskId, newData) {
         taskToUpdate.category = newData.category || null;
     }
 
-    finalizeTaskModification(taskToUpdate);
+    const persistenceFailure = await finalizeTaskModification(taskToUpdate);
+    if (persistenceFailure) return persistenceFailure;
     return { success: true, task: taskToUpdate };
 }
 
-export function confirmUpdateTaskAndReschedule(confirmedPayload) {
+export async function confirmUpdateTaskAndReschedule(confirmedPayload) {
     const { taskIndex: index, updatedTaskObject } = confirmedPayload;
 
     if (index === undefined || index < 0 || index >= tasks.length || !updatedTaskObject) {
@@ -1020,7 +1082,8 @@ export function confirmUpdateTaskAndReschedule(confirmedPayload) {
     if (isScheduledTask(tasks[index])) {
         confirmAffected = performRescheduleAndReorganize(tasks[index]);
     }
-    finalizeTaskModification(confirmAffected);
+    const persistenceFailure = await finalizeTaskModification(confirmAffected);
+    if (persistenceFailure) return persistenceFailure;
     return { success: true, task: tasks[index] };
 }
 
@@ -1030,7 +1093,7 @@ export function confirmUpdateTaskAndReschedule(confirmedPayload) {
  * @param {string} [currentTime24Hour] - Current time in 24-hour format (HH:MM)
  * @returns {TaskCompletionResult} Result of the complete operation
  */
-export function completeTask(index, currentTime24Hour) {
+export async function completeTask(index, currentTime24Hour) {
     if (index < 0 || index >= tasks.length) {
         return { success: false, reason: 'Invalid task index.' };
     }
@@ -1073,13 +1136,8 @@ export function completeTask(index, currentTime24Hour) {
     task.editing = false;
     task.confirmingDelete = false;
 
-    // For scheduled tasks, we need to handle rescheduling
-    if (task.type === 'scheduled') {
-        finalizeTaskModification(task);
-    } else {
-        // For unscheduled tasks, just save without invalidating caches
-        putTask(stripUIFlags(task));
-    }
+    const persistenceFailure = await finalizeTaskModification(task);
+    if (persistenceFailure) return persistenceFailure;
 
     return {
         success: true,
@@ -1090,7 +1148,7 @@ export function completeTask(index, currentTime24Hour) {
     };
 }
 
-export function confirmCompleteLate(index, newEndTime, newDuration) {
+export async function confirmCompleteLate(index, newEndTime, newDuration) {
     if (index < 0 || index >= tasks.length) {
         return { success: false, reason: 'Invalid task index.' };
     }
@@ -1135,7 +1193,8 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
 
     // Reschedule other tasks if needed (and resort the task list)
     const lateAffected = performRescheduleAndReorganize(task);
-    finalizeTaskModification(lateAffected);
+    const persistenceFailure = await finalizeTaskModification(lateAffected);
+    if (persistenceFailure) return persistenceFailure;
 
     return { success: true, task };
 }
@@ -1147,7 +1206,7 @@ export function confirmCompleteLate(index, newEndTime, newDuration) {
  * @param {string} newEndDateTime - ISO datetime for new end time
  * @returns {Object} {success, task, originalEndTime, newDuration, wasExtended}
  */
-export function adjustAndCompleteTask(taskId, newEndDateTime) {
+export async function adjustAndCompleteTask(taskId, newEndDateTime) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
         return { success: false, reason: 'Task not found' };
@@ -1176,7 +1235,8 @@ export function adjustAndCompleteTask(taskId, newEndDateTime) {
     task.status = 'completed';
     task.editing = false;
 
-    finalizeTaskModification(task);
+    const persistenceFailure = await finalizeTaskModification(task);
+    if (persistenceFailure) return persistenceFailure;
 
     return {
         success: true,
@@ -1193,7 +1253,7 @@ export function adjustAndCompleteTask(taskId, newEndDateTime) {
  * @param {string} newEndDateTime - The new end DateTime for the completed task
  * @returns {TaskOperationResult} Result of the operation
  */
-export function truncateCompletedTask(taskId, newEndDateTime) {
+export async function truncateCompletedTask(taskId, newEndDateTime) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
         return { success: false, reason: 'Task not found' };
@@ -1223,7 +1283,8 @@ export function truncateCompletedTask(taskId, newEndDateTime) {
     task.endDateTime = newEndDateTime;
     task.duration = newDuration;
 
-    finalizeTaskModification(task);
+    const persistenceFailure = await finalizeTaskModification(task);
+    if (persistenceFailure) return persistenceFailure;
 
     logger.info('truncateCompletedTask: Truncated completed task.', {
         taskId,
@@ -1260,7 +1321,7 @@ export function cancelEdit(index) {
  * @param {boolean} confirmed - Whether deletion has been confirmed
  * @returns {TaskOperationResult} Result of the delete operation
  */
-export function deleteTask(index, confirmed = false) {
+export async function deleteTask(index, confirmed = false) {
     if (index < 0 || index >= tasks.length)
         return { success: false, reason: 'Invalid task index.' };
     const taskToDelete = tasks[index];
@@ -1273,8 +1334,10 @@ export function deleteTask(index, confirmed = false) {
     const taskId = taskToDelete.id;
     tasks.splice(index, 1);
     resetAllUIFlags();
-    invalidateTaskCaches();
-    deleteTaskFromStorage(taskId);
+    const persistenceFailure = await finalizeTaskModification(null, {
+        deletedTaskIds: [taskId]
+    });
+    if (persistenceFailure) return persistenceFailure;
     return { success: true, task: taskToDelete };
 }
 
@@ -1283,7 +1346,7 @@ export function deleteTask(index, confirmed = false) {
  * @param {string} taskId - ID of unscheduled task to delete
  * @returns {TaskOperationResult} Result of the delete operation
  */
-export function deleteUnscheduledTask(taskId) {
+export async function deleteUnscheduledTask(taskId) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {
         return { success: false, reason: 'Unscheduled task not found.' };
@@ -1291,7 +1354,7 @@ export function deleteUnscheduledTask(taskId) {
     return deleteTask(taskIndex, tasks[taskIndex].confirmingDelete);
 }
 
-export function consumeUnscheduledTask(taskId) {
+export async function consumeUnscheduledTask(taskId) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {
         return { success: false, reason: 'Unscheduled task not found.' };
@@ -1300,32 +1363,42 @@ export function consumeUnscheduledTask(taskId) {
     const taskToConsume = tasks[taskIndex];
     tasks.splice(taskIndex, 1);
     resetAllUIFlags();
-    invalidateTaskCaches();
-    deleteTaskFromStorage(taskToConsume.id);
+    const persistenceFailure = await finalizeTaskModification(null, {
+        deletedTaskIds: [taskToConsume.id]
+    });
+    if (persistenceFailure) return persistenceFailure;
 
     return { success: true, task: taskToConsume };
 }
 
-export function deleteAllTasks() {
+export async function deleteAllTasks() {
     if (tasks.length === 0) return { success: true, tasksDeleted: 0 };
     const num = tasks.length;
-    updateTaskState([]);
+    const deletedTaskIds = tasks.map((task) => task.id);
+    replaceTaskState([]);
+    const persistenceFailure = await finalizeTaskModification(null, { deletedTaskIds });
+    if (persistenceFailure) return persistenceFailure;
     logger.info(`deleteAllTasks: All ${num} tasks have been deleted.`);
     return { success: true, message: `${num} tasks deleted.`, tasksDeleted: num };
 }
 
-export function deleteAllScheduledTasks() {
+export async function deleteAllScheduledTasks() {
     const currentTasks = getTaskState();
     const today = extractDateFromDateTime(new Date());
-    const remainingTasks = currentTasks.filter((task) => !isTaskScheduledForLocalDate(task, today));
-    const scheduledTasksCount = currentTasks.length - remainingTasks.length;
+    const tasksToDelete = currentTasks.filter((task) => isTaskScheduledForLocalDate(task, today));
+    const remainingTasks = currentTasks.filter((task) => !tasksToDelete.includes(task));
+    const scheduledTasksCount = tasksToDelete.length;
 
     if (scheduledTasksCount === 0) {
         logger.info('deleteAllScheduledTasks: No scheduled tasks to delete.');
         return { success: true, message: 'No scheduled tasks to delete.', tasksDeleted: 0 };
     }
 
-    updateTaskState(remainingTasks);
+    replaceTaskState(remainingTasks);
+    const persistenceFailure = await finalizeTaskModification(null, {
+        deletedTaskIds: tasksToDelete.map((task) => task.id)
+    });
+    if (persistenceFailure) return persistenceFailure;
     logger.info(
         `deleteAllScheduledTasks: All ${scheduledTasksCount} scheduled tasks have been deleted.`
     );
@@ -1336,17 +1409,22 @@ export function deleteAllScheduledTasks() {
     };
 }
 
-export function deleteCompletedTasks() {
+export async function deleteCompletedTasks() {
     const currentTasks = getTaskState();
-    const incompleteTasks = currentTasks.filter((task) => task.status !== 'completed');
-    const completedTasksCount = currentTasks.length - incompleteTasks.length;
+    const tasksToDelete = currentTasks.filter((task) => task.status === 'completed');
+    const incompleteTasks = currentTasks.filter((task) => !tasksToDelete.includes(task));
+    const completedTasksCount = tasksToDelete.length;
 
     if (completedTasksCount === 0) {
         logger.info('deleteCompletedTasks: No completed tasks to delete.');
         return { success: true, message: 'No completed tasks to delete.', tasksDeleted: 0 };
     }
 
-    updateTaskState(incompleteTasks);
+    replaceTaskState(incompleteTasks);
+    const persistenceFailure = await finalizeTaskModification(null, {
+        deletedTaskIds: tasksToDelete.map((task) => task.id)
+    });
+    if (persistenceFailure) return persistenceFailure;
     logger.info(
         `deleteCompletedTasks: All ${completedTasksCount} completed tasks have been deleted.`
     );
@@ -1357,12 +1435,13 @@ export function deleteCompletedTasks() {
     };
 }
 
-export function deleteCompletedUnscheduledTasks() {
+export async function deleteCompletedUnscheduledTasks() {
     const currentTasks = getTaskState();
-    const remainingTasks = currentTasks.filter(
-        (task) => !(task.type === 'unscheduled' && task.status === 'completed')
+    const tasksToDelete = currentTasks.filter(
+        (task) => task.type === 'unscheduled' && task.status === 'completed'
     );
-    const completedUnscheduledTasksCount = currentTasks.length - remainingTasks.length;
+    const remainingTasks = currentTasks.filter((task) => !tasksToDelete.includes(task));
+    const completedUnscheduledTasksCount = tasksToDelete.length;
 
     if (completedUnscheduledTasksCount === 0) {
         logger.info('deleteCompletedUnscheduledTasks: No completed unscheduled tasks to delete.');
@@ -1373,7 +1452,11 @@ export function deleteCompletedUnscheduledTasks() {
         };
     }
 
-    updateTaskState(remainingTasks);
+    replaceTaskState(remainingTasks);
+    const persistenceFailure = await finalizeTaskModification(null, {
+        deletedTaskIds: tasksToDelete.map((task) => task.id)
+    });
+    if (persistenceFailure) return persistenceFailure;
     logger.info(
         `deleteCompletedUnscheduledTasks: ${completedUnscheduledTasksCount} completed unscheduled tasks have been deleted.`
     );
@@ -1384,7 +1467,7 @@ export function deleteCompletedUnscheduledTasks() {
     };
 }
 
-export function rolloverPriorDayScheduledTasks(now = new Date()) {
+export async function rolloverPriorDayScheduledTasks(now = new Date()) {
     const currentDate = extractDateFromDateTime(now);
     const movedTaskIds = [];
     const nextTasks = getTaskState().map((task) => {
@@ -1410,9 +1493,13 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
         };
     }
 
-    updateTaskState(nextTasks, { persist: false });
+    replaceTaskState(nextTasks);
+    const movedTaskIdsSet = new Set(movedTaskIds);
+    const persistenceFailure = await finalizeTaskModification(
+        tasks.filter((task) => movedTaskIdsSet.has(task.id))
+    );
+    if (persistenceFailure) return persistenceFailure;
     trackUnscheduledSequenceSettlement(getUnscheduledSequence().placeMany(movedTaskIds));
-    saveTasks(tasks.map(stripUIFlags));
     const taskWord = movedTaskIds.length === 1 ? 'task' : 'tasks';
     const message = `${movedTaskIds.length} unfinished scheduled ${taskWord} moved to backlog.`;
     logger.info(`rolloverPriorDayScheduledTasks: ${message}`);
@@ -1423,7 +1510,7 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
     };
 }
 
-export function scheduleUnscheduledTask(taskId, startTime, duration) {
+export async function scheduleUnscheduledTask(taskId, startTime, duration) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) return { success: false, reason: 'Unscheduled task not found.' };
     const unscheduledTask = tasks[taskIndex];
@@ -1498,18 +1585,20 @@ export function scheduleUnscheduledTask(taskId, startTime, duration) {
     // No conflicts - proceed with scheduling
     const unscheduledTaskId = tasks[taskIndex].id;
     tasks.splice(taskIndex, 1); // Remove the original unscheduled task
-    deleteTaskFromStorage(unscheduledTaskId);
 
     const newScheduledTask = createTaskObject(newScheduledTaskData);
     tasks.push(newScheduledTask);
     reorganizeTaskArray();
 
     const schedAffected = performRescheduleAndReorganize(newScheduledTask);
-    finalizeTaskModification(schedAffected);
+    const persistenceFailure = await finalizeTaskModification(schedAffected, {
+        deletedTaskIds: [unscheduledTaskId]
+    });
+    if (persistenceFailure) return persistenceFailure;
     return createSuccessfulTaskResult(newScheduledTask);
 }
 
-export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTaskData) {
+export async function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTaskData) {
     const taskIndex = tasks.findIndex(
         (t) => t.id === unscheduledTaskId && t.type === 'unscheduled'
     );
@@ -1532,7 +1621,6 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     // Validation passed - now remove the unscheduled task
     if (taskIndex !== -1) {
         tasks.splice(taskIndex, 1);
-        deleteTaskFromStorage(unscheduledTaskId);
     } else {
         logger.warn(`Unscheduled task ID ${unscheduledTaskId} not found for confirmation.`);
     }
@@ -1541,11 +1629,14 @@ export function confirmScheduleUnscheduledTask(unscheduledTaskId, newScheduledTa
     reorganizeTaskArray();
 
     const confirmSchedAffected = performRescheduleAndReorganize(newScheduledTask);
-    finalizeTaskModification(confirmSchedAffected);
+    const persistenceFailure = await finalizeTaskModification(confirmSchedAffected, {
+        deletedTaskIds: taskIndex === -1 ? [] : [unscheduledTaskId]
+    });
+    if (persistenceFailure) return persistenceFailure;
     return createSuccessfulTaskResult(newScheduledTask);
 }
 
-export function toggleUnscheduledTaskCompleteState(taskId) {
+export async function toggleUnscheduledTaskCompleteState(taskId) {
     const taskIndex = tasks.findIndex((task) => task.id === taskId && task.type === 'unscheduled');
     if (taskIndex === -1) {
         logger.warn(`Unscheduled task not found for toggling complete state: ${taskId}`);
@@ -1562,11 +1653,12 @@ export function toggleUnscheduledTaskCompleteState(taskId) {
         logger.info(`Unscheduled task '${task.description}' marked as completed.`);
     }
 
-    finalizeTaskModification(task);
+    const persistenceFailure = await finalizeTaskModification(task);
+    if (persistenceFailure) return persistenceFailure;
     return { success: true, task };
 }
 
-export function unscheduleTask(taskId) {
+export async function unscheduleTask(taskId) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
         return { success: false, reason: 'Task not found for unscheduling.' };
@@ -1578,8 +1670,9 @@ export function unscheduleTask(taskId) {
 
     const unscheduledTask = convertScheduledTaskToUnscheduled(task);
     tasks[taskIndex] = unscheduledTask;
+    const persistenceFailure = await finalizeTaskModification(unscheduledTask);
+    if (persistenceFailure) return persistenceFailure;
     const placement = enterUnscheduledSequence(unscheduledTask);
-    finalizeTaskModification(placement.changedTasks);
 
     logger.info('Task unscheduled:', placement.task);
     return createSuccessfulTaskResult(placement.task);
@@ -1588,7 +1681,7 @@ export function unscheduleTask(taskId) {
 // ============================================================================
 // TASK LOCKING
 // ============================================================================
-export function toggleLockState(taskId) {
+export async function toggleLockState(taskId) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId);
     if (taskIndex === -1) {
         logger.warn(`toggleLockState: Task with ID ${taskId} not found.`);
@@ -1601,6 +1694,7 @@ export function toggleLockState(taskId) {
     }
 
     task.locked = !task.locked;
-    finalizeTaskModification(task);
+    const persistenceFailure = await finalizeTaskModification(task);
+    if (persistenceFailure) return persistenceFailure;
     return { success: true, task };
 }

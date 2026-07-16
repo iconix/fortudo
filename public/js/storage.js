@@ -303,7 +303,7 @@ export class TaskBatchWriteError extends Error {
     constructor(results) {
         const succeededIds = results.filter((result) => result.ok).map((result) => result.id);
         const failures = results.filter((result) => !result.ok);
-        super('One or more task documents could not be written.');
+        super('One or more task documents could not be persisted.');
         this.name = 'TaskBatchWriteError';
         this.succeededIds = succeededIds;
         this.failures = failures;
@@ -376,6 +376,54 @@ export async function putConfig(config) {
  */
 export async function deleteTask(id) {
     await deleteTypedDoc(id, DOC_TYPES.TASK, 'deleteTask');
+}
+
+/**
+ * Delete only the supplied task documents and report each successful row.
+ * Missing task IDs are treated as already deleted.
+ * @param {string[]} taskIds - Task IDs to delete
+ * @returns {Promise<{succeededIds: string[]}>}
+ * @throws {TaskBatchWriteError} When one or more PouchDB rows fail
+ */
+export async function deleteTasks(taskIds) {
+    ensureStorageInitialized();
+    const uniqueTaskIds = [...new Set(taskIds)];
+    if (uniqueTaskIds.length === 0) {
+        return { succeededIds: [] };
+    }
+
+    const candidates = await Promise.all(
+        uniqueTaskIds.map(async (id) => ({
+            id,
+            revision: await getTrackedRevision(id, DOC_TYPES.TASK)
+        }))
+    );
+    const existing = candidates.filter(({ revision }) => revision);
+    const alreadyDeletedIds = candidates.filter(({ revision }) => !revision).map(({ id }) => id);
+    if (existing.length === 0) {
+        return { succeededIds: alreadyDeletedIds };
+    }
+
+    const results = await db.bulkDocs(
+        existing.map(({ id, revision }) => ({ _id: id, _rev: revision, _deleted: true }))
+    );
+    const succeededIds = [...alreadyDeletedIds];
+
+    for (const result of results) {
+        if (result.ok) {
+            taskRevMap.delete(result.id);
+            succeededIds.push(result.id);
+        }
+    }
+
+    if (results.some((result) => result.ok)) {
+        debouncedSync();
+    }
+    if (results.some((result) => !result.ok)) {
+        throw new TaskBatchWriteError(results);
+    }
+
+    return { succeededIds };
 }
 
 /**
@@ -533,43 +581,6 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
             debouncedSync();
         }
     }
-}
-
-/**
- * Bulk replace all tasks. Deletes existing docs and inserts new ones.
- * Used for init/clear-all operations.
- * @param {Object[]} tasks - Array of task objects to save
- */
-export async function saveTasks(tasks) {
-    ensureStorageInitialized();
-
-    const rows = await loadAllRows();
-    const deletions = rows
-        .filter((row) => isTaskDoc(row.doc))
-        .map((row) => ({
-            _id: row.id,
-            _rev: row.value.rev,
-            _deleted: true
-        }));
-
-    if (deletions.length > 0) {
-        await db.bulkDocs(deletions);
-        for (const { _id } of deletions) {
-            taskRevMap.delete(_id);
-        }
-    }
-
-    if (tasks.length > 0) {
-        const docs = tasks.map((task) => toStoredDoc(task, DOC_TYPES.TASK));
-        const results = await db.bulkDocs(docs);
-        for (const result of results) {
-            if (result.ok) {
-                taskRevMap.set(result.id, result.rev);
-            }
-        }
-    }
-
-    debouncedSync();
 }
 
 /**

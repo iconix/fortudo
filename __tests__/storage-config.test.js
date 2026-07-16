@@ -24,7 +24,7 @@ import {
     putConfig,
     loadConfig,
     deleteConfig,
-    saveTasks,
+    deleteTasks,
     putTask,
     getDb
 } from '../public/js/storage.js';
@@ -119,10 +119,11 @@ describe('Storage - config docs', () => {
         );
     });
 
-    test('config docs survive saveTasks bulk replace', async () => {
+    test('config docs survive task delta deletion', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await putConfig({ id: 'config-categories', categories: ['survive'] });
-        await saveTasks([]);
+        await putTask({ id: 'task-to-delete', type: 'unscheduled', description: 'Delete me' });
+        await deleteTasks(['task-to-delete']);
 
         const loaded = await loadConfig('config-categories');
         expect(loaded).not.toBeNull();

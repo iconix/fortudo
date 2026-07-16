@@ -253,9 +253,7 @@ describe('app room/session lifecycle', () => {
         deps.syncTimerFormState.mockClear();
         deps.refreshTaskDisplays.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
         await Promise.resolve();
 
         expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
@@ -281,9 +279,7 @@ describe('app room/session lifecycle', () => {
         deps.loadAppState.mockClear();
         deps.refreshUI.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
 
         expect(deps.deleteCompletedUnscheduledTasks).toHaveBeenCalledTimes(1);
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
@@ -305,9 +301,7 @@ describe('app room/session lifecycle', () => {
         deps.loadAppState.mockClear();
         deps.refreshUI.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
 
         expect(deps.rolloverPriorDayScheduledTasks).toHaveBeenCalledTimes(1);
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
@@ -318,5 +312,31 @@ describe('app room/session lifecycle', () => {
                 theme: 'teal'
             }
         );
+    });
+
+    test('stops rollover and refreshes durable state when cleanup persistence fails', async () => {
+        jest.setSystemTime(new Date('2026-04-21T23:59:59'));
+        const { deps, lifecycle } = createLifecycle({
+            deleteCompletedUnscheduledTasks: jest.fn(async () => ({
+                success: false,
+                persistenceFailed: true,
+                stateReconciled: true,
+                reason: 'Tasks were reloaded from local storage.'
+            }))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        deps.loadAppState.mockClear();
+        deps.refreshUI.mockClear();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(deps.rolloverPriorDayScheduledTasks).not.toHaveBeenCalled();
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.refreshUI).toHaveBeenCalledTimes(1);
+        expect(deps.showToast).toHaveBeenCalledWith('Tasks were reloaded from local storage.', {
+            theme: 'rose'
+        });
     });
 });
