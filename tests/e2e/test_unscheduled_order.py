@@ -187,7 +187,7 @@ def drag_task_before(page: Page, source_description: str, target_description: st
     assert page.locator(".unscheduled-drag-placeholder").count() == 0
 
 
-def test_unscheduled_manual_order_is_flexible_durable_and_shared():
+def test_unscheduled_manual_order_is_flexible_durable_and_shared(app_server):
     seeded_tasks = [
         unscheduled_task("unsched-drop-off", "Drop off", "medium", 30),
         unscheduled_task("unsched-interview", "Interview prep", "high", 60),

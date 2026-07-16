@@ -175,7 +175,7 @@ def open_unscheduled_action_menu_for_text(page, text):
     return task
 
 
-def test_schedule_overlaps_flow():
+def test_schedule_overlaps_flow(app_server):
     schedule = build_schedule()
     fixed_now = schedule["FIXED_NOW"]
     T1_TIME = schedule["T1_TIME"]

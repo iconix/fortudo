@@ -136,7 +136,7 @@ def add_scheduled_task(page, description, start_time, hours, minutes):
     dismiss_modals(page)
 
 
-def test_schedule_gaps_flow():
+def test_schedule_gaps_flow(app_server):
     schedule = build_schedule()
     T1_TIME = schedule["T1_TIME"]
     T2_TIME = schedule["T2_TIME"]
