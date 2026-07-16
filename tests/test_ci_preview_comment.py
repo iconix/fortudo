@@ -25,3 +25,17 @@ def test_preview_deploy_exports_url_and_updates_one_pr_comment():
     assert "github.rest.issues.listComments" in workflow
     assert "github.rest.issues.updateComment" in workflow
     assert "github.rest.issues.createComment" in workflow
+
+
+def test_preview_deploy_reuses_one_channel_and_only_prunes_same_pr_legacy_channels():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'channel="pr${{ github.event.pull_request.number }}-${slug}"' in workflow
+    assert 'short_sha="$(printf' not in workflow
+    assert '${channel}-${short_sha}' not in workflow
+    assert 'legacy_channel_prefix="${channel}-"' in workflow
+    assert "python3 scripts/firebase_preview_channels.py" in workflow
+    assert 'hosting:channel:list' in workflow
+    assert 'hosting:channel:delete "$legacy_channel"' in workflow
+    assert '--site fortudo' in workflow
+    assert 'hosting:channel:delete "$channel"' in workflow

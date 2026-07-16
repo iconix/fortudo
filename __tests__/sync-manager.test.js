@@ -7,6 +7,7 @@ import {
     triggerSync,
     teardownSync,
     onSyncStatusChange,
+    onSyncDataChange,
     getSyncStatus,
     debouncedSync
 } from '../public/js/sync-manager.js';
@@ -95,6 +96,46 @@ describe('Sync Manager', () => {
             // Bad callback threw, but good callback still received updates
             expect(goodCallback).toHaveBeenCalledWith('syncing');
             expect(goodCallback).toHaveBeenCalledWith('synced');
+        });
+    });
+
+    describe('onSyncDataChange', () => {
+        test('notifies listeners only when pull replication writes local documents', async () => {
+            const callback = jest.fn();
+            onSyncDataChange(callback);
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest
+                        .fn()
+                        .mockResolvedValueOnce({ docs_written: 0 })
+                        .mockResolvedValueOnce({ docs_written: 2 })
+                }
+            };
+            initSync(mockDb, 'http://localhost:5984/test');
+
+            await triggerSync();
+            expect(callback).not.toHaveBeenCalled();
+
+            await triggerSync();
+            expect(callback).toHaveBeenCalledTimes(1);
+        });
+
+        test('returns an unsubscribe function', async () => {
+            const callback = jest.fn();
+            const unsubscribe = onSyncDataChange(callback);
+            unsubscribe();
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({ docs_written: 1 })
+                }
+            };
+            initSync(mockDb, 'http://localhost:5984/test');
+
+            await triggerSync();
+
+            expect(callback).not.toHaveBeenCalled();
         });
     });
 

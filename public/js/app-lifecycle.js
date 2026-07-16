@@ -16,12 +16,14 @@ export function createRoomSessionLifecycle({
     rolloverPriorDayScheduledTasks,
     showToast,
     onSyncStatusChange,
+    onSyncDataChange,
     updateSyncStatusUI,
     triggerSync,
     logger
 }) {
     let refreshFromStoragePromise = null;
     let unsubscribeSyncStatus = null;
+    let unsubscribeSyncDataChange = null;
     let activeTaskColorInterval = null;
     let midnightTimerStopInFlight = false;
     let lastObservedDate = extractDateFromDateTime(new Date());
@@ -122,9 +124,21 @@ export function createRoomSessionLifecycle({
         });
     }
 
-    function runDayRollover(now) {
-        const cleanupResult = deleteCompletedUnscheduledTasks?.();
-        const rolloverResult = rolloverPriorDayScheduledTasks?.(now);
+    async function runDayRollover(now) {
+        const cleanupResult = await deleteCompletedUnscheduledTasks?.();
+        if (cleanupResult?.persistenceFailed) {
+            showToast?.(cleanupResult.reason, { theme: 'rose' });
+            await refreshFromStorage();
+            return;
+        }
+
+        const rolloverResult = await rolloverPriorDayScheduledTasks?.(now);
+        if (rolloverResult?.persistenceFailed) {
+            showToast?.(rolloverResult.reason, { theme: 'rose' });
+            await refreshFromStorage();
+            return;
+        }
+
         const deletedTasksCount = cleanupResult?.tasksDeleted || 0;
         const movedTasksCount = rolloverResult?.tasksMoved || 0;
 
@@ -146,7 +160,15 @@ export function createRoomSessionLifecycle({
 
             if (currentDate !== lastObservedDate) {
                 lastObservedDate = currentDate;
-                runDayRollover(now);
+                runDayRollover(now).catch((error) => {
+                    logger.error('Failed to persist midnight task rollover:', error);
+                    refreshFromStorage().catch((refreshError) => {
+                        logger.error(
+                            'Failed to recover after midnight task rollover:',
+                            refreshError
+                        );
+                    });
+                });
 
                 if (getActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
                     midnightTimerStopInFlight = true;
@@ -182,14 +204,14 @@ export function createRoomSessionLifecycle({
     function start({ signal }) {
         unsubscribeSyncStatus = onSyncStatusChange((status) => {
             updateSyncStatusUI(status);
-            if (status === 'synced') {
-                const restoreRunningTimer = shouldRestoreRunningTimerAfterInitialSync;
+            if (status === 'synced' && shouldRestoreRunningTimerAfterInitialSync) {
                 shouldRestoreRunningTimerAfterInitialSync = false;
-                refreshFromStorage({ restoreRunningTimer }).catch((err) => {
+                refreshFromStorage({ restoreRunningTimer: true }).catch((err) => {
                     logger.error('Failed to refresh tasks after sync:', err);
                 });
             }
         });
+        unsubscribeSyncDataChange = onSyncDataChange?.(refreshFromExternalChange) || null;
 
         document.addEventListener(
             'visibilitychange',
@@ -219,6 +241,10 @@ export function createRoomSessionLifecycle({
         if (unsubscribeSyncStatus) {
             unsubscribeSyncStatus();
             unsubscribeSyncStatus = null;
+        }
+        if (unsubscribeSyncDataChange) {
+            unsubscribeSyncDataChange();
+            unsubscribeSyncDataChange = null;
         }
         if (activeTaskColorInterval) {
             clearInterval(activeTaskColorInterval);

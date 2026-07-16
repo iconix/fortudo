@@ -20,8 +20,9 @@ jest.mock('../public/js/sync-manager.js', () => ({
 import {
     initStorage,
     loadTasks,
-    saveTasks,
     putTask,
+    putTasks,
+    deleteTasks,
     getDb,
     destroyStorage
 } from '../public/js/storage.js';
@@ -107,11 +108,12 @@ describe('Storage scoping', () => {
         expect(tasks.some((t) => t.id === 'legacy-config')).toBe(false);
     });
 
-    test('saveTasks only deletes task docs and preserves other docTypes', async () => {
+    test('task deltas only change task docs and preserve other docTypes', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await insertMixedDocs();
 
-        await saveTasks([
+        await deleteTasks(['task-doc', 'legacy-task']);
+        await putTasks([
             {
                 id: 'replacement',
                 type: 'scheduled',
@@ -139,9 +141,9 @@ describe('Storage scoping', () => {
         await expect(db.get('legacy-task')).rejects.toHaveProperty('status', 404);
     });
 
-    test('saveTasks stamps docType "task" on inserted task docs', async () => {
+    test('putTasks stamps docType "task" on inserted task docs', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await saveTasks([
+        await putTasks([
             {
                 id: 'bulk-without-doctype',
                 type: 'scheduled',

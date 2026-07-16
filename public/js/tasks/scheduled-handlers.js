@@ -57,7 +57,7 @@ export async function handleCompleteTask(taskId, _taskIndex) {
         currentTime24 = convertTo24HourTime(currentTimeDisplayElement.textContent);
     }
 
-    const result = completeTask(originalIndex, currentTime24);
+    const result = await completeTask(originalIndex, currentTime24);
     let taskActuallyCompleted = false;
 
     if (
@@ -74,7 +74,7 @@ export async function handleCompleteTask(taskId, _taskIndex) {
                 getThemeForTask(taskToComplete)
             )
         ) {
-            const lateResult = confirmCompleteLate(
+            const lateResult = await confirmCompleteLate(
                 originalIndex,
                 result.newEndTime,
                 result.newDuration
@@ -82,16 +82,16 @@ export async function handleCompleteTask(taskId, _taskIndex) {
             if (lateResult.success) {
                 taskActuallyCompleted = true;
             } else {
-                completeTask(originalIndex);
-                taskActuallyCompleted = true;
+                const fallbackResult = await completeTask(originalIndex);
+                taskActuallyCompleted = fallbackResult.success;
                 showAlert(
                     `Completed the task, but couldn't extend the end time: ${lateResult.reason}`,
                     getThemeForTask(taskToComplete)
                 );
             }
         } else {
-            completeTask(originalIndex);
-            taskActuallyCompleted = true;
+            const fallbackResult = await completeTask(originalIndex);
+            taskActuallyCompleted = fallbackResult.success;
         }
     } else if (result.success) {
         taskActuallyCompleted = true;
@@ -104,12 +104,13 @@ export async function handleCompleteTask(taskId, _taskIndex) {
     }
 }
 
-export function handleLockTask(taskId, _taskIndex) {
-    const result = toggleLockState(taskId);
+export async function handleLockTask(taskId, _taskIndex) {
+    const result = await toggleLockState(taskId);
     if (result.success) {
         onTaskEdited({ task: result.task });
     } else if (result.reason) {
         showAlert(result.reason, getThemeForTaskId(taskId));
+        refreshUI();
     }
 }
 
@@ -124,23 +125,23 @@ export function handleEditTask(taskId, _taskIndex) {
     refreshUI();
 }
 
-export function handleDeleteTask(taskId, _taskIndex) {
+export async function handleDeleteTask(taskId, _taskIndex) {
     const taskToDelete = getTaskById(taskId);
     if (!taskToDelete || taskToDelete.type !== 'scheduled') {
         logger.warn('handleDeleteTask for non-scheduled', taskId);
         return;
     }
     const originalIndex = getTaskIndex(taskId);
-    const result = deleteTask(originalIndex, taskToDelete.confirmingDelete);
+    const result = await deleteTask(originalIndex, taskToDelete.confirmingDelete);
     if (result.success) onTaskDeleted({ task: result.task || taskToDelete });
     else if (!result.requiresConfirmation && result.reason)
         showAlert(result.reason, getThemeForTaskId(taskId));
     if (!result.success) refreshUI();
 }
 
-export function handleUnscheduleTask(taskId, _taskIndex) {
+export async function handleUnscheduleTask(taskId, _taskIndex) {
     logger.info('Unschedule button clicked for', { taskId });
-    const unscheduleResult = unscheduleTask(taskId);
+    const unscheduleResult = await unscheduleTask(taskId);
     if (unscheduleResult.success) {
         onTaskUnscheduled({ task: unscheduleResult.task });
     } else if (unscheduleResult.reason) {
@@ -161,7 +162,7 @@ export async function handleDoNowTask(taskId, _taskIndex) {
         currentTimeDisplayElement && currentTimeDisplayElement.textContent
             ? convertTo24HourTime(currentTimeDisplayElement.textContent)
             : getCurrentTimeRounded();
-    const result = doScheduledTaskNow(taskId, startTime);
+    const result = await doScheduledTaskNow(taskId, startTime);
 
     if (
         result.requiresConfirmation &&
@@ -180,7 +181,7 @@ export async function handleDoNowTask(taskId, _taskIndex) {
             return;
         }
 
-        const confirmedResult = confirmUpdateTaskAndReschedule({
+        const confirmedResult = await confirmUpdateTaskAndReschedule({
             taskIndex: result.taskIndex,
             updatedTaskObject: result.updatedTaskObject
         });
@@ -227,7 +228,7 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     const overlapEl = formElement.querySelector('.edit-overlap-warning');
     const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
 
-    const updateResult = updateTask(originalIndex, taskData);
+    const updateResult = await updateTask(originalIndex, taskData);
     const finalResult = await handleRescheduleConfirmation(
         updateResult,
         confirmUpdateTaskAndReschedule,

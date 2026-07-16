@@ -1367,37 +1367,51 @@ def open_scheduled_task_actions_menu(page: Any, task_id: str) -> None:
 
 def open_unscheduled_task_actions_menu(page: Any, task_id: str) -> None:
     task_selector = f'.task-card[data-task-id="{task_id}"]'
-    menu = page.locator(f"{task_selector} .unscheduled-task-actions-menu").first
-    if menu.is_visible():
-        return
-    trigger = page.locator(f"{task_selector} .btn-unscheduled-task-actions-menu").first
-    trigger.scroll_into_view_if_needed()
-    trigger.click()
-    menu.wait_for(state="visible", timeout=5000)
+
+    def open_current_card_menu() -> bool:
+        menu = page.locator(f"{task_selector} .unscheduled-task-actions-menu").first
+        if menu.is_visible():
+            return True
+        trigger = page.locator(f"{task_selector} .btn-unscheduled-task-actions-menu").first
+        trigger.click(timeout=500)
+        return menu.is_visible()
+
+    wait_until(
+        open_current_card_menu,
+        f"unscheduled task actions menu for {task_id}",
+        timeout_s=5,
+        interval_s=0.05,
+    )
 
 
 def get_unscheduled_delete_state(page: Any, task_id: str) -> str:
-    task_selector = f'.task-card[data-task-id="{task_id}"]'
-    if page.locator(task_selector).count() == 0:
-        return "deleted"
+    return page.evaluate(
+        """
+        (taskId) => {
+            const card = [...document.querySelectorAll('.task-card[data-task-id]')].find(
+                (candidate) => candidate.dataset.taskId === taskId
+            );
+            if (!card) return 'deleted';
 
-    button_classes = (
-        page.locator(f"{task_selector} .btn-delete-unscheduled").first.get_attribute("class") or ""
+            const button = card.querySelector('.btn-delete-unscheduled');
+            const icon = button?.querySelector('i');
+            if (
+                button?.classList.contains('text-rose-400') ||
+                icon?.classList.contains('fa-check-circle')
+            ) {
+                return 'confirming';
+            }
+            return 'idle';
+        }
+        """,
+        task_id,
     )
-    icon_classes = (
-        page.locator(f"{task_selector} .btn-delete-unscheduled i").first.get_attribute("class")
-        or ""
-    )
-    if "text-rose-400" in button_classes or "fa-check-circle" in icon_classes:
-        return "confirming"
-    return "idle"
 
 
 def delete_unscheduled_task_via_ui(
     page: Any, task_id: str, *, timeout_s: float = 10.0, interval_s: float = 0.2
 ) -> None:
     button_selector = f'.task-card[data-task-id="{task_id}"] .btn-delete-unscheduled'
-    deadline = time.time() + timeout_s
     open_unscheduled_task_actions_menu(page, task_id)
     page.locator(button_selector).click()
 
@@ -1416,26 +1430,14 @@ def delete_unscheduled_task_via_ui(
     page.locator(
         f'.task-card[data-task-id="{task_id}"] .unscheduled-task-actions-menu'
     ).wait_for(state="visible", timeout=5000)
-
-    while time.time() < deadline:
-        open_unscheduled_task_actions_menu(page, task_id)
-        page.locator(button_selector).click()
-        state = wait_until(
-            lambda: (
-                current_state
-                if (
-                    current_state := get_unscheduled_delete_state(page, task_id)
-                ) in {"confirming", "deleted"}
-                else False
-            ),
-            f"unscheduled task deletion state for {task_id}",
-            timeout_s=max(interval_s, 0.05),
-            interval_s=interval_s,
-        )
-        if state == "deleted":
-            return
-
-    raise TimeoutError(f"Timed out waiting for unscheduled task deletion for {task_id}")
+    open_unscheduled_task_actions_menu(page, task_id)
+    page.locator(button_selector).click()
+    wait_until(
+        lambda: get_unscheduled_delete_state(page, task_id) == "deleted",
+        f"unscheduled task deletion for {task_id}",
+        timeout_s=timeout_s,
+        interval_s=interval_s,
+    )
 
 
 def arm_unscheduled_delete_confirm(

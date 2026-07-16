@@ -23,9 +23,8 @@ import { createTaskWithDateTime } from './test-utils.js';
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
@@ -43,13 +42,11 @@ jest.mock('../public/js/modal-manager.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
@@ -194,7 +191,7 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleLockTask', () => {
-        test('toggles lock state and routes the update through the coordinator', () => {
+        test('toggles lock state and routes the update through the coordinator', async () => {
             const task = createTaskWithDateTime({
                 description: 'Lock Test',
                 startTime: '09:00',
@@ -202,7 +199,7 @@ describe('Scheduled Task Handlers', () => {
             });
             updateTaskState([{ ...task, category: 'work/deep' }]);
 
-            handleLockTask(task.id, 0);
+            await handleLockTask(task.id, 0);
 
             expect(getTaskById(task.id).locked).toBe(true);
             expect(onTaskEdited).toHaveBeenCalledWith({
@@ -211,8 +208,8 @@ describe('Scheduled Task Handlers', () => {
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
-        test('shows alert on failure', () => {
-            handleLockTask('nonexistent', 0);
+        test('shows alert on failure', async () => {
+            await handleLockTask('nonexistent', 0);
             expect(showAlert).toHaveBeenCalled();
         });
     });
@@ -258,7 +255,7 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleDeleteTask', () => {
-        test('triggers confirmation on first click', () => {
+        test('triggers confirmation on first click', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
@@ -266,7 +263,7 @@ describe('Scheduled Task Handlers', () => {
             });
             updateTaskState([task]);
 
-            handleDeleteTask(task.id, 0);
+            await handleDeleteTask(task.id, 0);
 
             // First click triggers confirmation, task should still exist
             expect(getTaskState()).toHaveLength(1);
@@ -274,7 +271,7 @@ describe('Scheduled Task Handlers', () => {
             expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
-        test('deletes task on confirmed click', () => {
+        test('deletes task on confirmed click', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
@@ -283,7 +280,7 @@ describe('Scheduled Task Handlers', () => {
             });
             updateTaskState([task]);
 
-            handleDeleteTask(task.id, 0);
+            await handleDeleteTask(task.id, 0);
 
             expect(getTaskState()).toHaveLength(0);
             expect(onTaskDeleted).toHaveBeenCalledWith({
@@ -294,7 +291,7 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleUnscheduleTask', () => {
-        test('converts scheduled task to unscheduled and routes the update through the coordinator', () => {
+        test('converts scheduled task to unscheduled and routes the update through the coordinator', async () => {
             const task = createTaskWithDateTime({
                 description: 'Unschedule Test',
                 startTime: '09:00',
@@ -302,7 +299,7 @@ describe('Scheduled Task Handlers', () => {
             });
             updateTaskState([task]);
 
-            handleUnscheduleTask(task.id, 0);
+            await handleUnscheduleTask(task.id, 0);
 
             const updated = getTaskById(task.id);
             expect(updated.type).toBe('unscheduled');
@@ -312,8 +309,8 @@ describe('Scheduled Task Handlers', () => {
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
-        test('shows alert for non-existent task', () => {
-            handleUnscheduleTask('nonexistent', 0);
+        test('shows alert for non-existent task', async () => {
+            await handleUnscheduleTask('nonexistent', 0);
             expect(showAlert).toHaveBeenCalled();
         });
     });

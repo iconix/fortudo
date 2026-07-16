@@ -1,11 +1,16 @@
-import { calculateHoursAndMinutes, logger } from '../utils.js';
+import { calculateHoursAndMinutes } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
 import { renderCategorySelectRow } from '../category-form-utils.js';
+import {
+    captureFormInteractionState,
+    restoreFormInteractionState
+} from './form-interaction-state.js';
 import {
     getSelectableCategoryOptions,
     renderCategoryBadge
 } from '../taxonomy/taxonomy-selectors.js';
-import { getRunningActivity } from '../activities/manager.js';
+
+const CARD_RENDER_KEY = Symbol('unscheduledTaskRenderKey');
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {
@@ -13,6 +18,15 @@ export function getUnscheduledTaskListElement() {
 }
 
 // --- Helper Functions ---
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 /**
  * Priority configuration for visual styling
@@ -62,9 +76,123 @@ function getDurationText(estDuration) {
     return calculateHoursAndMinutes(estDuration, true).text;
 }
 
-function renderUnscheduledTaskActionsMenu(task, actionState) {
+function createCardRenderKey(task, options) {
+    return JSON.stringify({
+        id: task.id,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        estDuration: task.estDuration,
+        category: task.category || null,
+        categoryBadge: renderCategoryBadge(task.category),
+        confirmingDelete: Boolean(task.confirmingDelete),
+        isEditingInline: Boolean(task.isEditingInline),
+        mode: options.mode,
+        linkedToRunningTimer: options.runningActivity?.sourceTaskId === task.id
+    });
+}
+
+function isMovementDisabled(task, options) {
+    const movement = options.movement;
+    const isLinkedToRunningTimer = options.runningActivity?.sourceTaskId === task.id;
+    const hasAvailableMovement = Boolean(movement && (movement.canMoveUp || movement.canMoveDown));
+    return task.isEditingInline || isLinkedToRunningTimer || !hasAvailableMovement;
+}
+
+function setMovementControlDisabled(control, disabled) {
+    if (!(control instanceof HTMLButtonElement)) return;
+    control.disabled = disabled;
+    control.classList.toggle('opacity-50', disabled);
+    control.classList.toggle('cursor-not-allowed', disabled);
+}
+
+function syncMovementControls(taskCard, task, options) {
+    if (options.mode !== 'manual') return;
+
+    const movementDisabled = isMovementDisabled(task, options);
+    setMovementControlDisabled(
+        taskCard.querySelector('.unscheduled-drag-handle'),
+        movementDisabled
+    );
+    taskCard.querySelectorAll('[data-move-kind]').forEach((button) => {
+        const isUpCommand = button.dataset.moveKind === 'up' || button.dataset.moveKind === 'top';
+        const directionUnavailable = isUpCommand
+            ? !options.movement?.canMoveUp
+            : !options.movement?.canMoveDown;
+        setMovementControlDisabled(button, movementDisabled || directionUnavailable);
+    });
+}
+
+function captureInlineEditDrafts(taskList) {
+    const drafts = new Map();
+    taskList.querySelectorAll('.task-card[data-task-id]').forEach((card) => {
+        const editor = card.querySelector('.inline-edit-unscheduled-form');
+        if (!editor || editor.classList.contains('hidden')) return;
+
+        const form = editor.querySelector('form');
+        if (!form) return;
+        drafts.set(card.dataset.taskId, {
+            description: form.querySelector('[name="inline-edit-description"]')?.value,
+            category: form.querySelector('[name="inline-edit-category"]')?.value,
+            priority: form.querySelector('[name="inline-edit-priority"]:checked')?.value,
+            durationHours: form.querySelector('[name="inline-edit-est-duration-hours"]')?.value,
+            durationMinutes: form.querySelector('[name="inline-edit-est-duration-minutes"]')?.value,
+            interactionState: captureFormInteractionState(form)
+        });
+    });
+    return drafts;
+}
+
+function applyInlineEditDraft(card, draft) {
+    if (!draft) return;
+
+    const form = card.querySelector('.inline-edit-unscheduled-form form');
+    if (!form) return;
+    const values = [
+        ['inline-edit-description', draft.description],
+        ['inline-edit-category', draft.category],
+        ['inline-edit-est-duration-hours', draft.durationHours],
+        ['inline-edit-est-duration-minutes', draft.durationMinutes]
+    ];
+    values.forEach(([name, value]) => {
+        const field = form.querySelector(`[name="${name}"]`);
+        if (field && value !== undefined) field.value = value;
+    });
+    form.querySelectorAll('[name="inline-edit-priority"]').forEach((radio) => {
+        radio.checked = radio.value === draft.priority;
+    });
+
+    restoreFormInteractionState(form, draft.interactionState);
+}
+
+function renderMoveMenu(movement, movementDisabled) {
+    const upDisabled = movementDisabled || !movement?.canMoveUp;
+    const downDisabled = movementDisabled || !movement?.canMoveDown;
+    const itemClasses =
+        'unscheduled-task-actions-menu-item grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300';
+    const disabledClasses = ' opacity-50 cursor-not-allowed';
+
+    const moveButton = (kind, label, icon, disabled) => `
+        <button class="${itemClasses}${disabled ? disabledClasses : ''}" type="button" role="menuitem" data-move-kind="${kind}" ${disabled ? 'disabled' : ''}>
+            <i class="fa-solid ${icon} text-slate-400 text-center" aria-hidden="true"></i>
+            <span>${label}</span>
+        </button>`;
+
+    return `
+        <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
+            ${moveButton('up', 'Move up', 'fa-arrow-up', upDisabled)}
+            ${moveButton('down', 'Move down', 'fa-arrow-down', downDisabled)}
+            ${moveButton('top', 'Move to top', 'fa-angles-up', upDisabled)}
+            ${moveButton('bottom', 'Move to bottom', 'fa-angles-down', downDisabled)}
+        </div>`;
+}
+
+function renderUnscheduledTaskActionsMenu(task, actionState, options) {
     const actionMenuExpanded = task.confirmingDelete ? 'true' : 'false';
     const actionMenuHidden = task.confirmingDelete ? '' : ' hidden';
+    const actionMenuTransitionClass = task.confirmingDelete
+        ? 'action-menu-content--open'
+        : 'action-menu-content--closed';
     const openMenuActionsClass = task.confirmingDelete ? ' z-50' : '';
     const menuTriggerDisabledAttr = actionState.menuTriggerDisabled ? 'disabled' : '';
     const menuTriggerDisabledClasses = actionState.menuTriggerDisabled
@@ -84,7 +212,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
             <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
-            <div class="unscheduled-task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
+            <div class="unscheduled-task-actions-menu action-menu-content ${actionMenuTransitionClass} absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
                 <div class="unscheduled-task-actions-menu-group">
                     <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
                         <i class="fa-solid fa-stopwatch text-indigo-300 text-center" aria-hidden="true"></i>
@@ -101,6 +229,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
                         <span>Edit task</span>
                     </button>
                 </div>
+                ${options.mode === 'manual' ? renderMoveMenu(options.movement, options.movementDisabled) : ''}
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
                     <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
                         <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-rose-400 text-center" aria-hidden="true"></i>
@@ -120,9 +249,10 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
  * @param {boolean} isCompleted - Whether the task is completed
  * @returns {string} HTML string for the display view
  */
-function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted) {
-    const runningActivity = getRunningActivity();
+function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, options) {
+    const { mode, movement, runningActivity } = options;
     const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
+    const movementDisabled = isMovementDisabled(task, options);
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
@@ -137,9 +267,16 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
     const inProgressBadge = isLinkedToRunningTimer
         ? '<span class="unscheduled-in-progress-badge inline-flex items-center px-2 py-0.5 rounded-full text-[10px] tracking-normal bg-slate-700/70 text-sky-200 border border-slate-500/40">In progress</span>'
         : '';
+    const dragHandle =
+        mode === 'manual'
+            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" aria-haspopup="menu" aria-expanded="false" ${movementDisabled ? 'disabled' : ''}>
+                <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+            </button>`
+            : '';
 
     return `
         <div class="flex items-start space-x-3 min-w-0 flex-1">
+            ${dragHandle}
             <label class="task-checkbox-unscheduled mt-0.5 ${completedClass}" title="${completedTitle}">
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
@@ -155,7 +292,11 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
                 </div>
             </div>
         </div>
-        ${renderUnscheduledTaskActionsMenu(task, actionState)}
+        ${renderUnscheduledTaskActionsMenu(task, actionState, {
+            mode,
+            movement,
+            movementDisabled
+        })}
     `;
 }
 
@@ -256,10 +397,10 @@ function createInlineEditFormHTML(task) {
  * @param {Object} task - The task object
  * @returns {HTMLDivElement} The task card element
  */
-function createUnscheduledTaskCard(task) {
+function createUnscheduledTaskCard(task, options = {}) {
     const priorityClasses = getPriorityClasses(task.priority);
     const isCompleted = task.status === 'completed';
-    const isLinkedToRunningTimer = getRunningActivity()?.sourceTaskId === task.id;
+    const isLinkedToRunningTimer = options.runningActivity?.sourceTaskId === task.id;
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
@@ -276,7 +417,8 @@ function createUnscheduledTaskCard(task) {
         task,
         priorityClasses,
         durationText,
-        isCompleted
+        isCompleted,
+        options
     );
     taskCard.appendChild(taskDisplayPart);
 
@@ -286,6 +428,7 @@ function createUnscheduledTaskCard(task) {
         'inline-edit-unscheduled-form hidden mt-3 pt-3 border-t border-gray-700 w-full';
     editFormContainer.innerHTML = createInlineEditFormHTML(task);
     taskCard.appendChild(editFormContainer);
+    taskCard[CARD_RENDER_KEY] = createCardRenderKey(task, options);
 
     return taskCard;
 }
@@ -298,31 +441,57 @@ const EMPTY_STATE_MESSAGE =
 /**
  * Renders all unscheduled tasks
  * @param {Array} unscheduledTasks - Array of unscheduled tasks
- * @param {Object} eventCallbacks - Event callbacks for task actions
- * @param {Function} setGlobalCallbacks - Function to set global callbacks
+ * @param {Object} options - Display-only rendering options
  */
-export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks, setGlobalCallbacks) {
-    setGlobalCallbacks(eventCallbacks);
-
+export function renderUnscheduledTasks(unscheduledTasks, options = {}) {
+    const {
+        mode = 'priority',
+        movementByTaskId = new Map(),
+        runningActivity = null
+    } = options || {};
     const unscheduledTaskList = getUnscheduledTaskListElement();
-    if (!unscheduledTaskList) {
-        logger.error('Unscheduled task list element not found.');
-        return;
-    }
-
-    unscheduledTaskList.innerHTML = '';
+    if (!unscheduledTaskList) return;
 
     if (unscheduledTasks.length === 0) {
+        unscheduledTaskList.replaceChildren();
         unscheduledTaskList.innerHTML = EMPTY_STATE_MESSAGE;
         return;
     }
 
-    unscheduledTasks.forEach((task) => {
-        const taskCard = createUnscheduledTaskCard(task);
-        unscheduledTaskList.appendChild(taskCard);
+    const inlineEditDrafts = captureInlineEditDrafts(unscheduledTaskList);
+    const existingCardsById = new Map(
+        [...unscheduledTaskList.querySelectorAll('.task-card[data-task-id]')].map((card) => [
+            card.dataset.taskId,
+            card
+        ])
+    );
+    const retainedCards = new Set();
 
-        if (task.isEditingInline) {
-            toggleUnscheduledTaskInlineEdit(task.id, true, task);
+    unscheduledTasks.forEach((task, index) => {
+        const cardOptions = {
+            mode,
+            movement: movementByTaskId.get(task.id),
+            runningActivity
+        };
+        const existingCard = existingCardsById.get(task.id);
+        const renderKey = createCardRenderKey(task, cardOptions);
+        const taskCard =
+            existingCard?.[CARD_RENDER_KEY] === renderKey
+                ? existingCard
+                : createUnscheduledTaskCard(task, cardOptions);
+        const cardAtPosition = unscheduledTaskList.children[index] || null;
+        if (cardAtPosition !== taskCard) {
+            unscheduledTaskList.insertBefore(taskCard, cardAtPosition);
         }
+        retainedCards.add(taskCard);
+        syncMovementControls(taskCard, task, cardOptions);
+
+        if (taskCard !== existingCard && task.isEditingInline) {
+            toggleUnscheduledTaskInlineEdit(task.id, true, task);
+            applyInlineEditDraft(taskCard, inlineEditDrafts.get(task.id));
+        }
+    });
+    [...unscheduledTaskList.children].forEach((child) => {
+        if (!retainedCards.has(child)) child.remove();
     });
 }

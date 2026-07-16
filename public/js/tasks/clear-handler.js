@@ -13,6 +13,7 @@ import {
     getClearTasksDropdownMenuElement,
     getClearAllOptionElement,
     getClearCompletedOptionElement,
+    refreshUI,
     toggleClearTasksDropdown,
     closeClearTasksDropdown
 } from '../dom-renderer.js';
@@ -43,7 +44,7 @@ export function initializeClearTasksHandlers() {
                     'teal'
                 )
             ) {
-                const result = deleteAllScheduledTasks();
+                const result = await deleteAllScheduledTasks();
                 if (result.success) {
                     showToast(result.message || 'All scheduled tasks have been cleared.', {
                         theme: 'rose'
@@ -51,6 +52,7 @@ export function initializeClearTasksHandlers() {
                     onScheduledTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                    refreshUI();
                 }
             }
         });
@@ -84,12 +86,13 @@ export function initializeClearTasksHandlers() {
                     'red'
                 )
             ) {
-                const result = deleteAllTasks();
+                const result = await deleteAllTasks();
                 if (result.success) {
                     showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
                     onAllTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to delete all tasks.', 'red');
+                    refreshUI();
                 }
             }
             closeClearTasksDropdown();
@@ -115,7 +118,7 @@ export function initializeClearTasksHandlers() {
                     'indigo'
                 )
             ) {
-                const result = deleteCompletedTasks();
+                const result = await deleteCompletedTasks();
                 if (result.success) {
                     showToast(result.message || 'All completed tasks have been cleared.', {
                         theme: 'rose'
@@ -123,6 +126,7 @@ export function initializeClearTasksHandlers() {
                     onCompletedTasksCleared();
                 } else {
                     showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
+                    refreshUI();
                 }
             }
             closeClearTasksDropdown();

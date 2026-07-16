@@ -5,10 +5,13 @@
 // This file contains tests for DOM interactions in dom-renderer.js
 // These tests focus on UI elements and event handlers, ensuring callbacks are invoked.
 
+jest.mock('../public/js/tasks/unscheduled-list.js', () => ({
+    renderUnscheduledList: jest.fn()
+}));
+
 import {
     renderDateTime,
     renderTasks,
-    renderUnscheduledTasks,
     updateStartTimeField,
     initializePageEventListeners,
     resetEventDelegation,
@@ -18,7 +21,8 @@ import {
 } from '../public/js/dom-renderer.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/tasks/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
-import { resetActivityState, updateActivityState } from '../public/js/activities/manager.js';
+import * as activityManager from '../public/js/activities/manager.js';
+import { renderUnscheduledList } from '../public/js/tasks/unscheduled-list.js';
 import {
     convertTo12HourTime,
     timeToDateTime,
@@ -31,9 +35,8 @@ import {
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 import { getSuggestedStartTime, updateTaskState } from '../public/js/tasks/manager.js';
@@ -145,7 +148,7 @@ describe('DOM Handler Interaction Tests', () => {
         jest.useRealTimers();
         jest.clearAllMocks();
         resetEventDelegation();
-        resetActivityState();
+        activityManager.resetActivityState();
         disableStartTimeAutoUpdate();
         document.body.innerHTML = '';
     });
@@ -1013,311 +1016,6 @@ describe('DOM Handler Interaction Tests', () => {
         });
     });
 
-    describe('Unscheduled Task List Event Handling', () => {
-        let mockUnscheduledTaskCallbacks;
-
-        beforeEach(() => {
-            mockUnscheduledTaskCallbacks = {
-                onToggleCompleteUnscheduledTask: jest.fn(),
-                onEditUnscheduledTask: jest.fn(),
-                onDeleteUnscheduledTask: jest.fn(),
-                onScheduleUnscheduledTask: jest.fn(),
-                onStartTimerFromUnscheduledTask: jest.fn(),
-                onSaveUnscheduledTaskEdit: jest.fn(),
-                onCancelUnscheduledTaskEdit: jest.fn()
-            };
-        });
-
-        function setupUnscheduledTask(taskId, isCompleted = false) {
-            const unscheduledTaskList = document.getElementById('unscheduled-task-list');
-            unscheduledTaskList.innerHTML = `
-                <div class="task-card" data-task-id="${taskId}" data-task-name="Test Task" data-task-est-duration="1h">
-                    <div class="task-display-view">
-                        <label class="task-checkbox-unscheduled">
-                            <i class="fa-regular ${isCompleted ? 'fa-check-square' : 'fa-square'}"></i>
-                        </label>
-                        <span>Test Task</span>
-                        <div class="unscheduled-task-actions">
-                            <button class="btn-unscheduled-task-actions-menu" aria-expanded="false">Actions</button>
-                            <div class="unscheduled-task-actions-menu" hidden>
-                                <button class="btn-start-unscheduled-timer" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Start Timer</button>
-                                <button class="btn-schedule-task" data-task-id="${taskId}" ${isCompleted ? 'disabled' : ''}>Schedule</button>
-                                <button class="btn-edit-unscheduled" data-task-id="${taskId}">Edit</button>
-                                <button class="btn-delete-unscheduled" data-task-id="${taskId}">Delete</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="inline-edit-unscheduled-form hidden">
-                        <form>
-                            <input name="inline-edit-description" value="Test Task" />
-                            <input type="number" name="inline-edit-est-duration-minutes" value="0" />
-                            <button type="button" class="btn-save-inline-edit">Save</button>
-                            <button type="button" class="btn-cancel-inline-edit">Cancel</button>
-                        </form>
-                    </div>
-                </div>
-            `;
-
-            // Update task state
-            const task = {
-                id: taskId,
-                type: 'unscheduled',
-                description: 'Test Task',
-                priority: 'medium',
-                estDuration: 60,
-                status: isCompleted ? 'completed' : 'incomplete'
-            };
-            updateTaskState([task]);
-
-            // Import and call the initialization function
-            const {
-                initializeUnscheduledTaskListEventListeners
-            } = require('../public/js/dom-renderer.js');
-            initializeUnscheduledTaskListEventListeners(mockUnscheduledTaskCallbacks);
-        }
-
-        test('actions trigger opens and closes the unscheduled task actions menu', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
-            const menu = document.querySelector('.unscheduled-task-actions-menu');
-
-            expect(menu.hidden).toBe(true);
-
-            trigger.click();
-
-            expect(trigger.getAttribute('aria-expanded')).toBe('true');
-            expect(menu.hidden).toBe(false);
-            expect(menu.classList.contains('action-menu-content')).toBe(true);
-            expect(menu.classList.contains('action-menu-content--open')).toBe(true);
-            expect(menu.classList.contains('action-menu-content--closed')).toBe(false);
-            expect(trigger.closest('[data-task-id]').className).toContain('z-40');
-            expect(trigger.closest('.unscheduled-task-actions').className).toContain('z-50');
-
-            trigger.click();
-
-            expect(trigger.getAttribute('aria-expanded')).toBe('false');
-            expect(menu.hidden).toBe(true);
-            expect(menu.classList.contains('action-menu-content')).toBe(true);
-            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
-            expect(menu.classList.contains('action-menu-content--open')).toBe(false);
-            expect(trigger.closest('[data-task-id]').className).not.toContain('z-40');
-            expect(trigger.closest('.unscheduled-task-actions').className).not.toContain('z-50');
-        });
-
-        test('opening the unscheduled actions menu does not auto-focus the first action', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
-            const firstMenuItem = document.querySelector(
-                '.unscheduled-task-actions-menu [role="menuitem"]'
-            );
-            trigger.focus();
-
-            trigger.click();
-
-            expect(document.activeElement).toBe(trigger);
-            expect(document.activeElement).not.toBe(firstMenuItem);
-        });
-
-        test('outside click and Escape close an open unscheduled task actions menu', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
-            const menu = document.querySelector('.unscheduled-task-actions-menu');
-
-            trigger.click();
-            expect(menu.hidden).toBe(false);
-
-            document.body.click();
-            expect(trigger.getAttribute('aria-expanded')).toBe('false');
-            expect(menu.hidden).toBe(true);
-            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
-
-            trigger.click();
-            expect(menu.hidden).toBe(false);
-
-            document
-                .getElementById('unscheduled-task-list')
-                .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-            expect(trigger.getAttribute('aria-expanded')).toBe('false');
-            expect(menu.hidden).toBe(true);
-            expect(menu.classList.contains('action-menu-content--closed')).toBe(true);
-        });
-
-        test('schedule button calls onScheduleUnscheduledTask', () => {
-            setupUnscheduledTask('unsched-1');
-
-            document.querySelector('.btn-unscheduled-task-actions-menu').click();
-            const scheduleBtn = document.querySelector('.btn-schedule-task');
-            scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onScheduleUnscheduledTask).toHaveBeenCalledWith(
-                'unsched-1',
-                'Test Task',
-                '1h'
-            );
-        });
-
-        test('start timer button calls onStartTimerFromUnscheduledTask', () => {
-            setupUnscheduledTask('unsched-1');
-
-            document.querySelector('.btn-unscheduled-task-actions-menu').click();
-            const startTimerBtn = document.querySelector('.btn-start-unscheduled-timer');
-            startTimerBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(
-                mockUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask
-            ).toHaveBeenCalledWith('unsched-1');
-            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
-        });
-
-        test('schedule button does not call callback for completed task', () => {
-            setupUnscheduledTask('unsched-1', true);
-
-            document.querySelector('.btn-unscheduled-task-actions-menu').click();
-            const scheduleBtn = document.querySelector('.btn-schedule-task');
-            scheduleBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onScheduleUnscheduledTask).not.toHaveBeenCalled();
-        });
-
-        test('completed task actions menu can still open and delete the task', () => {
-            setupUnscheduledTask('unsched-1', true);
-
-            const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
-            const menu = document.querySelector('.unscheduled-task-actions-menu');
-            trigger.click();
-
-            expect(trigger.getAttribute('aria-expanded')).toBe('true');
-            expect(menu.hidden).toBe(false);
-
-            const deleteBtn = document.querySelector('.btn-delete-unscheduled');
-            deleteBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onDeleteUnscheduledTask).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-            expect(menu.hidden).toBe(true);
-        });
-
-        test('edit button calls onEditUnscheduledTask', () => {
-            setupUnscheduledTask('unsched-1');
-
-            document.querySelector('.btn-unscheduled-task-actions-menu').click();
-            const editBtn = document.querySelector('.btn-edit-unscheduled');
-            editBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onEditUnscheduledTask).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
-        });
-
-        test('delete button calls onDeleteUnscheduledTask', () => {
-            setupUnscheduledTask('unsched-1');
-
-            document.querySelector('.btn-unscheduled-task-actions-menu').click();
-            const deleteBtn = document.querySelector('.btn-delete-unscheduled');
-            deleteBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onDeleteUnscheduledTask).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-            expect(document.querySelector('.unscheduled-task-actions-menu').hidden).toBe(true);
-        });
-
-        test('checkbox calls onToggleCompleteUnscheduledTask', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const checkbox = document.querySelector('.task-checkbox-unscheduled');
-            checkbox.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(
-                mockUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask
-            ).toHaveBeenCalledWith('unsched-1');
-        });
-
-        test('save button calls onSaveUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const saveBtn = document.querySelector('.btn-save-inline-edit');
-            saveBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-        });
-
-        test('cancel button calls onCancelUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const cancelBtn = document.querySelector('.btn-cancel-inline-edit');
-            cancelBtn.dispatchEvent(new Event('click', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-        });
-
-        test('Enter key on inline edit input calls onSaveUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
-            const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                bubbles: true,
-                cancelable: true
-            });
-            input.dispatchEvent(enterEvent);
-
-            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-        });
-
-        test('Enter key on inline edit description input calls onSaveUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const input = document.querySelector('input[name="inline-edit-description"]');
-            const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                bubbles: true,
-                cancelable: true
-            });
-            input.dispatchEvent(enterEvent);
-
-            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-        });
-
-        test('non-Enter key on inline edit input does not call onSaveUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const input = document.querySelector('input[name="inline-edit-est-duration-minutes"]');
-            const tabEvent = new KeyboardEvent('keydown', {
-                key: 'Tab',
-                bubbles: true,
-                cancelable: true
-            });
-            input.dispatchEvent(tabEvent);
-
-            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).not.toHaveBeenCalled();
-        });
-
-        test('form submit calls onSaveUnscheduledTaskEdit', () => {
-            setupUnscheduledTask('unsched-1');
-
-            const form = document.querySelector('.inline-edit-unscheduled-form form');
-            form.dispatchEvent(new Event('submit', { bubbles: true }));
-
-            expect(mockUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit).toHaveBeenCalledWith(
-                'unsched-1'
-            );
-        });
-    });
-
     describe('Task Type Toggle', () => {
         beforeEach(() => {
             // Initialize the task type toggle which sets up the event listeners
@@ -1475,7 +1173,7 @@ describe('DOM Handler Interaction Tests', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-1',
                     description: 'Standup',
@@ -1513,7 +1211,7 @@ describe('DOM Handler Interaction Tests', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-3',
                     description: 'Review',
@@ -1538,13 +1236,19 @@ describe('DOM Handler Interaction Tests', () => {
     });
 
     describe('refreshUI', () => {
+        test('renders Unscheduled through the list seam without a callback object', () => {
+            renderTasks([], { onCompleteTask: jest.fn() });
+
+            refreshUI();
+
+            expect(renderUnscheduledList).toHaveBeenCalledTimes(1);
+        });
+
         test('renders both task lists and updates start time field', () => {
             // Set up callbacks first via a render call so globals are stored
             const scheduledCallbacks = { onCompleteTask: jest.fn() };
-            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
 
             renderTasks([], scheduledCallbacks);
-            renderUnscheduledTasks([], unscheduledCallbacks);
 
             // Now call refreshUI - it should render without errors using stored callbacks
             expect(() => refreshUI()).not.toThrow();
@@ -1560,11 +1264,9 @@ describe('DOM Handler Interaction Tests', () => {
 
         test('works with tasks in state', () => {
             const scheduledCallbacks = { onCompleteTask: jest.fn() };
-            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
 
             // Initialize callbacks via render
             renderTasks([], scheduledCallbacks);
-            renderUnscheduledTasks([], unscheduledCallbacks);
 
             // Add a task to state
             const today = new Date().toISOString().split('T')[0];
@@ -1591,14 +1293,12 @@ describe('DOM Handler Interaction Tests', () => {
 
         test('renders only today scheduled tasks from state', () => {
             const scheduledCallbacks = { onCompleteTask: jest.fn() };
-            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
             const today = extractDateFromDateTime(new Date());
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayDate = extractDateFromDateTime(yesterday);
 
             renderTasks([], scheduledCallbacks);
-            renderUnscheduledTasks([], unscheduledCallbacks);
 
             updateTaskState([
                 {
@@ -1639,12 +1339,10 @@ describe('DOM Handler Interaction Tests', () => {
             jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
 
             const scheduledCallbacks = { onCompleteTask: jest.fn() };
-            const unscheduledCallbacks = { onScheduleUnscheduledTask: jest.fn() };
 
             renderTasks([], scheduledCallbacks);
-            renderUnscheduledTasks([], unscheduledCallbacks);
 
-            updateActivityState([
+            activityManager.updateActivityState([
                 {
                     id: 'activity-1',
                     description: 'Deep work',

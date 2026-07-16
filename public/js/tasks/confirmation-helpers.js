@@ -41,7 +41,7 @@ export async function handleRescheduleConfirmation(
                 'teal'
             ));
         if (userConfirmed) {
-            const confirmResult = confirmCallback({
+            const confirmResult = await confirmCallback({
                 taskIndex: opResult.taskIndex,
                 updatedTaskObject: opResult.updatedTaskObject
             });

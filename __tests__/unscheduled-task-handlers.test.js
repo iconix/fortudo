@@ -10,8 +10,7 @@ import {
     handleConfirmScheduleTask,
     handleSaveUnscheduledTaskEdit,
     handleCancelUnscheduledTaskEdit,
-    handleToggleCompleteUnscheduledTask,
-    createUnscheduledTaskCallbacks
+    handleToggleCompleteUnscheduledTask
 } from '../public/js/tasks/unscheduled-handlers.js';
 import { updateTaskState, getTaskState, getTaskById } from '../public/js/tasks/manager.js';
 import * as taskManager from '../public/js/tasks/manager.js';
@@ -20,9 +19,8 @@ import * as taskManager from '../public/js/tasks/manager.js';
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
@@ -38,13 +36,11 @@ jest.mock('../public/js/modal-manager.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
@@ -126,20 +122,6 @@ describe('Unscheduled Task Handlers', () => {
         `;
         updateTaskState([]);
         jest.clearAllMocks();
-    });
-
-    describe('createUnscheduledTaskCallbacks', () => {
-        test('returns object with all expected callback properties', () => {
-            const callbacks = createUnscheduledTaskCallbacks();
-            expect(callbacks).toHaveProperty('onScheduleUnscheduledTask');
-            expect(callbacks).toHaveProperty('onStartTimerFromUnscheduledTask');
-            expect(callbacks).toHaveProperty('onEditUnscheduledTask');
-            expect(callbacks).toHaveProperty('onDeleteUnscheduledTask');
-            expect(callbacks).toHaveProperty('onConfirmScheduleTask');
-            expect(callbacks).toHaveProperty('onSaveUnscheduledTaskEdit');
-            expect(callbacks).toHaveProperty('onCancelUnscheduledTaskEdit');
-            expect(callbacks).toHaveProperty('onToggleCompleteUnscheduledTask');
-        });
     });
 
     describe('handleScheduleUnscheduledTask', () => {
@@ -454,11 +436,11 @@ describe('Unscheduled Task Handlers', () => {
     });
 
     describe('handleToggleCompleteUnscheduledTask', () => {
-        test('toggles completion and refreshes UI', () => {
+        test('toggles completion and refreshes UI', async () => {
             const task = createUnscheduledTask();
             updateTaskState([task]);
 
-            handleToggleCompleteUnscheduledTask(task.id);
+            await handleToggleCompleteUnscheduledTask(task.id);
 
             expect(getTaskById(task.id).status).toBe('completed');
             expect(onTaskEdited).toHaveBeenCalledWith({
@@ -467,8 +449,8 @@ describe('Unscheduled Task Handlers', () => {
             expect(refreshUI).not.toHaveBeenCalled();
         });
 
-        test('shows alert on failure', () => {
-            handleToggleCompleteUnscheduledTask('nonexistent');
+        test('shows alert on failure', async () => {
+            await handleToggleCompleteUnscheduledTask('nonexistent');
             expect(showAlert).toHaveBeenCalled();
         });
     });

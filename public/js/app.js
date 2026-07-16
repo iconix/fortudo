@@ -1,12 +1,16 @@
 // Orchestrator: public/js/app.js
 import {
-    updateTaskState,
+    updateTaskStateFromStorage,
     getTaskState,
     resetAllConfirmingDeleteFlags,
-    getSortedUnscheduledTasks,
+    getUnscheduledView,
+    moveUnscheduledTask,
     getTodaysScheduledTasks,
     deleteCompletedUnscheduledTasks,
-    rolloverPriorDayScheduledTasks
+    rolloverPriorDayScheduledTasks,
+    waitForUnscheduledMoveSettlement,
+    refreshUnscheduledSequenceState,
+    hydrateUnscheduledSequenceState
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -21,15 +25,13 @@ import {
 import { refreshActiveTaskColor, refreshCurrentGapHighlight } from './tasks/scheduled-renderer.js';
 import {
     renderTasks,
-    renderUnscheduledTasks,
     refreshUI as refreshDomUI,
     getSuggestedFormStartTime,
     updateStartTimeField,
     initializePageEventListeners,
     refreshStartTimeField,
     initializeTaskTypeToggle,
-    startRealTimeClock,
-    initializeUnscheduledTaskListEventListeners
+    startRealTimeClock
 } from './dom-renderer.js';
 import {
     loadActivitiesState,
@@ -67,13 +69,23 @@ import { maybeShowWhatsNew } from './whats-new.js';
 import { refreshTaskCategoryDropdownUI } from './settings/taxonomy-settings.js';
 import { logger } from './utils.js';
 import { createScheduledTaskCallbacks } from './tasks/scheduled-handlers.js';
-import { createUnscheduledTaskCallbacks } from './tasks/unscheduled-handlers.js';
+import { createUnscheduledTaskActions } from './tasks/unscheduled-handlers.js';
+import {
+    mountUnscheduledList,
+    renderUnscheduledList,
+    destroyUnscheduledList
+} from './tasks/unscheduled-list.js';
 import { handleAddTaskProcess } from './tasks/add-handler.js';
 import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { showToast } from './toast-manager.js';
 import { getActiveRoom } from './room-manager.js';
-import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
+import {
+    onSyncStatusChange,
+    onSyncDataChange,
+    triggerSync,
+    waitForIdleSync
+} from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 import { registerServiceWorker } from './sw-register.js';
@@ -106,13 +118,10 @@ function getStorageRoomCode(roomCode) {
 }
 
 async function loadTasksIntoState() {
+    await waitForUnscheduledMoveSettlement();
     const loadedTasks = await loadTasks();
-    loadedTasks.forEach((task) => {
-        if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
-            task.isEditingInline = false;
-        }
-    });
-    updateTaskState(loadedTasks, { persist: false });
+    updateTaskStateFromStorage(loadedTasks);
+    await refreshUnscheduledSequenceState();
 }
 
 async function loadAppState() {
@@ -128,6 +137,7 @@ async function loadAppState() {
  * @param {string} roomCode
  */
 async function initAndBootApp(roomCode) {
+    destroyUnscheduledList();
     if (roomSessionLifecycle) {
         roomSessionLifecycle.stop();
         roomSessionLifecycle = null;
@@ -135,6 +145,8 @@ async function initAndBootApp(roomCode) {
     if (appLifecycleAbortController) {
         appLifecycleAbortController.abort();
     }
+    await waitForUnscheduledMoveSettlement();
+    hydrateUnscheduledSequenceState(null);
     appLifecycleAbortController = new AbortController();
     const { signal } = appLifecycleAbortController;
 
@@ -159,13 +171,13 @@ async function initAndBootApp(roomCode) {
     await loadAppState();
     await loadTaxonomy();
 
-    // Create callback objects
+    // Create each UI action set once per room session.
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();
-    const unscheduledTaskEventCallbacks = createUnscheduledTaskCallbacks();
+    const unscheduledActions = createUnscheduledTaskActions();
     refreshTaskDisplays = () => {
         const todaysScheduledTasks = getTodaysScheduledTasks();
         renderTasks(todaysScheduledTasks, scheduledTaskEventCallbacks);
-        renderUnscheduledTasks(getSortedUnscheduledTasks(), unscheduledTaskEventCallbacks);
+        renderUnscheduledList();
         renderTodayActivities(isActivitiesEnabled());
         refreshActiveTaskColor(todaysScheduledTasks);
         refreshCurrentGapHighlight();
@@ -218,6 +230,7 @@ async function initAndBootApp(roomCode) {
         rolloverPriorDayScheduledTasks,
         showToast,
         onSyncStatusChange,
+        onSyncDataChange,
         updateSyncStatusUI,
         triggerSync,
         logger
@@ -295,8 +308,14 @@ async function initAndBootApp(roomCode) {
         renderInsights
     });
     startRealTimeClock();
-    initializeUnscheduledTaskListEventListeners(unscheduledTaskEventCallbacks);
-    initializeModalEventListeners(unscheduledTaskEventCallbacks);
+    mountUnscheduledList({
+        readView: getUnscheduledView,
+        moveTask: moveUnscheduledTask,
+        actions: unscheduledActions,
+        getRunningActivity,
+        showError: showToast
+    });
+    initializeModalEventListeners(unscheduledActions);
     initializeClearTasksHandlers();
     roomSessionLifecycle.start({ signal });
     await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();

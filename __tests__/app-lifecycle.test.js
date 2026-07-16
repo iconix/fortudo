@@ -38,6 +38,7 @@ describe('app room/session lifecycle', () => {
             syncTimerFormState: jest.fn(),
             refreshTaskDisplays: jest.fn(),
             onSyncStatusChange: jest.fn(() => jest.fn()),
+            onSyncDataChange: jest.fn(() => jest.fn()),
             updateSyncStatusUI: jest.fn(),
             triggerSync: jest.fn(async () => {}),
             logger: {
@@ -100,7 +101,7 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
     });
 
-    test('refreshes running timer display after every synced storage refresh', async () => {
+    test('does not refresh storage again for a later no-op synced event', async () => {
         let syncStatusCallback;
         const { deps, lifecycle } = createLifecycle({
             onSyncStatusChange: jest.fn((callback) => {
@@ -126,9 +127,46 @@ describe('app room/session lifecycle', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
         expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
-        expect(deps.syncRunningTimerDisplay).toHaveBeenCalledTimes(1);
+        expect(deps.syncRunningTimerDisplay).not.toHaveBeenCalled();
+    });
+
+    test('refreshes storage when sync reports pulled data after the initial sync', async () => {
+        let syncStatusCallback;
+        let syncDataCallback;
+        const { deps, lifecycle } = createLifecycle({
+            onSyncStatusChange: jest.fn((callback) => {
+                syncStatusCallback = callback;
+                return jest.fn();
+            }),
+            onSyncDataChange: jest.fn((callback) => {
+                syncDataCallback = callback;
+                return jest.fn();
+            })
+        });
+
+        const abortController = new AbortController();
+        lifecycle.start({ signal: abortController.signal });
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        deps.loadAppState.mockClear();
+        deps.syncRestoredRunningTimer.mockClear();
+        deps.syncRunningTimerDisplay.mockClear();
+
+        syncStatusCallback('synced');
+        syncDataCallback();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
         expect(deps.syncRunningTimerDisplay).toHaveBeenCalledWith(true);
     });
 
@@ -253,9 +291,7 @@ describe('app room/session lifecycle', () => {
         deps.syncTimerFormState.mockClear();
         deps.refreshTaskDisplays.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
         await Promise.resolve();
 
         expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
@@ -281,9 +317,7 @@ describe('app room/session lifecycle', () => {
         deps.loadAppState.mockClear();
         deps.refreshUI.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
 
         expect(deps.deleteCompletedUnscheduledTasks).toHaveBeenCalledTimes(1);
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
@@ -305,9 +339,7 @@ describe('app room/session lifecycle', () => {
         deps.loadAppState.mockClear();
         deps.refreshUI.mockClear();
 
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1000);
 
         expect(deps.rolloverPriorDayScheduledTasks).toHaveBeenCalledTimes(1);
         expect(deps.loadAppState).toHaveBeenCalledTimes(1);
@@ -318,5 +350,31 @@ describe('app room/session lifecycle', () => {
                 theme: 'teal'
             }
         );
+    });
+
+    test('stops rollover and refreshes durable state when cleanup persistence fails', async () => {
+        jest.setSystemTime(new Date('2026-04-21T23:59:59'));
+        const { deps, lifecycle } = createLifecycle({
+            deleteCompletedUnscheduledTasks: jest.fn(async () => ({
+                success: false,
+                persistenceFailed: true,
+                stateReconciled: true,
+                reason: 'Tasks were reloaded from local storage.'
+            }))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        deps.loadAppState.mockClear();
+        deps.refreshUI.mockClear();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(deps.rolloverPriorDayScheduledTasks).not.toHaveBeenCalled();
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.refreshUI).toHaveBeenCalledTimes(1);
+        expect(deps.showToast).toHaveBeenCalledWith('Tasks were reloaded from local storage.', {
+            theme: 'rose'
+        });
     });
 });

@@ -90,7 +90,7 @@ export function handleEditUnscheduledTask(taskId) {
 
 export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
-    const result = deleteUnscheduledTask(taskId);
+    const result = await deleteUnscheduledTask(taskId);
     if (result.success) {
         showToast(result.message || 'Task deleted.', { theme: 'rose' });
         onTaskDeleted({
@@ -110,12 +110,12 @@ export async function handleConfirmScheduleTask(
     duration,
     reschedulePreApproved = false
 ) {
-    const result = scheduleUnscheduledTask(taskId, startTime, duration);
+    const result = await scheduleUnscheduledTask(taskId, startTime, duration);
     if (result.requiresConfirmation) {
         const userConfirmed =
             reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
         if (userConfirmed && result.context) {
-            const confirmResult = confirmScheduleUnscheduledTask(
+            const confirmResult = await confirmScheduleUnscheduledTask(
                 result.context.unscheduledTaskId,
                 result.context.scheduledTaskData
             );
@@ -145,12 +145,13 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     }
     const updatedData = getUnscheduledTaskInlineFormData(taskId);
     if (!updatedData) return;
-    const result = updateUnscheduledTask(taskId, updatedData);
+    const result = await updateUnscheduledTask(taskId, updatedData);
     if (result.success) {
         setTaskInlineEditing(taskId, false);
         onTaskEdited({ task: result.task });
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
+        refreshUI();
     }
 }
 
@@ -164,9 +165,9 @@ export function handleCancelUnscheduledTaskEdit(taskId) {
     }
 }
 
-export function handleToggleCompleteUnscheduledTask(taskId) {
+export async function handleToggleCompleteUnscheduledTask(taskId) {
     logger.debug(`Toggling complete status for unscheduled task: ${taskId}`);
-    const result = toggleUnscheduledTaskCompleteState(taskId);
+    const result = await toggleUnscheduledTaskCompleteState(taskId);
     if (result && result.success) {
         onTaskEdited({ task: result.task });
     } else {
@@ -174,22 +175,23 @@ export function handleToggleCompleteUnscheduledTask(taskId) {
             result.reason || 'Could not update task completion status.',
             getThemeForTaskId(taskId)
         );
+        refreshUI();
     }
 }
 
 /**
- * Create the unscheduled task callbacks object mapping on* names to handle* functions
- * @returns {Object} Callback object for unscheduled task event delegation
+ * Create the named business actions consumed by the Unscheduled list UI.
+ * @returns {Object} Named Unscheduled task actions
  */
-export function createUnscheduledTaskCallbacks() {
+export function createUnscheduledTaskActions() {
     return {
-        onScheduleUnscheduledTask: handleScheduleUnscheduledTask,
-        onStartTimerFromUnscheduledTask: handleStartTimerFromUnscheduledTask,
-        onEditUnscheduledTask: handleEditUnscheduledTask,
-        onDeleteUnscheduledTask: handleDeleteUnscheduledTask,
-        onConfirmScheduleTask: handleConfirmScheduleTask,
-        onSaveUnscheduledTaskEdit: handleSaveUnscheduledTaskEdit,
-        onCancelUnscheduledTaskEdit: handleCancelUnscheduledTaskEdit,
-        onToggleCompleteUnscheduledTask: handleToggleCompleteUnscheduledTask
+        schedule: handleScheduleUnscheduledTask,
+        startTimer: handleStartTimerFromUnscheduledTask,
+        edit: handleEditUnscheduledTask,
+        delete: handleDeleteUnscheduledTask,
+        confirmSchedule: handleConfirmScheduleTask,
+        saveEdit: handleSaveUnscheduledTaskEdit,
+        cancelEdit: handleCancelUnscheduledTaskEdit,
+        toggleComplete: handleToggleCompleteUnscheduledTask
     };
 }
