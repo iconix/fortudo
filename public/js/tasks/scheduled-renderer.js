@@ -14,6 +14,10 @@ import {
 } from './form-utils.js';
 import { renderCategorySelectRow, syncCategoryColorDot } from '../category-form-utils.js';
 import {
+    captureFormInteractionState,
+    restoreFormInteractionState
+} from './form-interaction-state.js';
+import {
     getSelectableCategoryOptions,
     renderCategoryBadge
 } from '../taxonomy/taxonomy-selectors.js';
@@ -324,7 +328,8 @@ function captureScheduledEditDrafts(taskListElement) {
             startTime: form.querySelector('input[name="start-time"]')?.value,
             durationHours: form.querySelector('input[name="duration-hours"]')?.value,
             durationMinutes: form.querySelector('input[name="duration-minutes"]')?.value,
-            category: form.querySelector('select[name="category"]')?.value
+            category: form.querySelector('select[name="category"]')?.value,
+            interactionState: captureFormInteractionState(form)
         });
     });
 
@@ -355,6 +360,7 @@ function applyScheduledEditDrafts(taskListElement, drafts) {
                 field.value = value;
             }
         });
+        restoreFormInteractionState(form, draft.interactionState);
     });
 }
 

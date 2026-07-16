@@ -16,12 +16,14 @@ export function createRoomSessionLifecycle({
     rolloverPriorDayScheduledTasks,
     showToast,
     onSyncStatusChange,
+    onSyncDataChange,
     updateSyncStatusUI,
     triggerSync,
     logger
 }) {
     let refreshFromStoragePromise = null;
     let unsubscribeSyncStatus = null;
+    let unsubscribeSyncDataChange = null;
     let activeTaskColorInterval = null;
     let midnightTimerStopInFlight = false;
     let lastObservedDate = extractDateFromDateTime(new Date());
@@ -202,14 +204,14 @@ export function createRoomSessionLifecycle({
     function start({ signal }) {
         unsubscribeSyncStatus = onSyncStatusChange((status) => {
             updateSyncStatusUI(status);
-            if (status === 'synced') {
-                const restoreRunningTimer = shouldRestoreRunningTimerAfterInitialSync;
+            if (status === 'synced' && shouldRestoreRunningTimerAfterInitialSync) {
                 shouldRestoreRunningTimerAfterInitialSync = false;
-                refreshFromStorage({ restoreRunningTimer }).catch((err) => {
+                refreshFromStorage({ restoreRunningTimer: true }).catch((err) => {
                     logger.error('Failed to refresh tasks after sync:', err);
                 });
             }
         });
+        unsubscribeSyncDataChange = onSyncDataChange?.(refreshFromExternalChange) || null;
 
         document.addEventListener(
             'visibilitychange',
@@ -239,6 +241,10 @@ export function createRoomSessionLifecycle({
         if (unsubscribeSyncStatus) {
             unsubscribeSyncStatus();
             unsubscribeSyncStatus = null;
+        }
+        if (unsubscribeSyncDataChange) {
+            unsubscribeSyncDataChange();
+            unsubscribeSyncDataChange = null;
         }
         if (activeTaskColorInterval) {
             clearInterval(activeTaskColorInterval);

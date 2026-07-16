@@ -2,9 +2,15 @@ import { calculateHoursAndMinutes } from '../utils.js';
 import { toggleUnscheduledTaskInlineEdit } from './form-utils.js';
 import { renderCategorySelectRow } from '../category-form-utils.js';
 import {
+    captureFormInteractionState,
+    restoreFormInteractionState
+} from './form-interaction-state.js';
+import {
     getSelectableCategoryOptions,
     renderCategoryBadge
 } from '../taxonomy/taxonomy-selectors.js';
+
+const CARD_RENDER_KEY = Symbol('unscheduledTaskRenderKey');
 
 // --- DOM Element Getters ---
 export function getUnscheduledTaskListElement() {
@@ -68,6 +74,95 @@ export function getPriorityClasses(priority) {
 
 function getDurationText(estDuration) {
     return calculateHoursAndMinutes(estDuration, true).text;
+}
+
+function createCardRenderKey(task, options) {
+    return JSON.stringify({
+        id: task.id,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        estDuration: task.estDuration,
+        category: task.category || null,
+        categoryBadge: renderCategoryBadge(task.category),
+        confirmingDelete: Boolean(task.confirmingDelete),
+        isEditingInline: Boolean(task.isEditingInline),
+        mode: options.mode,
+        linkedToRunningTimer: options.runningActivity?.sourceTaskId === task.id
+    });
+}
+
+function isMovementDisabled(task, options) {
+    const movement = options.movement;
+    const isLinkedToRunningTimer = options.runningActivity?.sourceTaskId === task.id;
+    const hasAvailableMovement = Boolean(movement && (movement.canMoveUp || movement.canMoveDown));
+    return task.isEditingInline || isLinkedToRunningTimer || !hasAvailableMovement;
+}
+
+function setMovementControlDisabled(control, disabled) {
+    if (!(control instanceof HTMLButtonElement)) return;
+    control.disabled = disabled;
+    control.classList.toggle('opacity-50', disabled);
+    control.classList.toggle('cursor-not-allowed', disabled);
+}
+
+function syncMovementControls(taskCard, task, options) {
+    if (options.mode !== 'manual') return;
+
+    const movementDisabled = isMovementDisabled(task, options);
+    setMovementControlDisabled(
+        taskCard.querySelector('.unscheduled-drag-handle'),
+        movementDisabled
+    );
+    taskCard.querySelectorAll('[data-move-kind]').forEach((button) => {
+        const isUpCommand = button.dataset.moveKind === 'up' || button.dataset.moveKind === 'top';
+        const directionUnavailable = isUpCommand
+            ? !options.movement?.canMoveUp
+            : !options.movement?.canMoveDown;
+        setMovementControlDisabled(button, movementDisabled || directionUnavailable);
+    });
+}
+
+function captureInlineEditDrafts(taskList) {
+    const drafts = new Map();
+    taskList.querySelectorAll('.task-card[data-task-id]').forEach((card) => {
+        const editor = card.querySelector('.inline-edit-unscheduled-form');
+        if (!editor || editor.classList.contains('hidden')) return;
+
+        const form = editor.querySelector('form');
+        if (!form) return;
+        drafts.set(card.dataset.taskId, {
+            description: form.querySelector('[name="inline-edit-description"]')?.value,
+            category: form.querySelector('[name="inline-edit-category"]')?.value,
+            priority: form.querySelector('[name="inline-edit-priority"]:checked')?.value,
+            durationHours: form.querySelector('[name="inline-edit-est-duration-hours"]')?.value,
+            durationMinutes: form.querySelector('[name="inline-edit-est-duration-minutes"]')?.value,
+            interactionState: captureFormInteractionState(form)
+        });
+    });
+    return drafts;
+}
+
+function applyInlineEditDraft(card, draft) {
+    if (!draft) return;
+
+    const form = card.querySelector('.inline-edit-unscheduled-form form');
+    if (!form) return;
+    const values = [
+        ['inline-edit-description', draft.description],
+        ['inline-edit-category', draft.category],
+        ['inline-edit-est-duration-hours', draft.durationHours],
+        ['inline-edit-est-duration-minutes', draft.durationMinutes]
+    ];
+    values.forEach(([name, value]) => {
+        const field = form.querySelector(`[name="${name}"]`);
+        if (field && value !== undefined) field.value = value;
+    });
+    form.querySelectorAll('[name="inline-edit-priority"]').forEach((radio) => {
+        radio.checked = radio.value === draft.priority;
+    });
+
+    restoreFormInteractionState(form, draft.interactionState);
 }
 
 function renderMoveMenu(movement, movementDisabled) {
@@ -157,9 +252,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState, options) {
 function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted, options) {
     const { mode, movement, runningActivity } = options;
     const isLinkedToRunningTimer = runningActivity?.sourceTaskId === task.id;
-    const hasAvailableMovement = Boolean(movement && (movement.canMoveUp || movement.canMoveDown));
-    const movementDisabled =
-        task.isEditingInline || isLinkedToRunningTimer || !hasAvailableMovement;
+    const movementDisabled = isMovementDisabled(task, options);
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
@@ -335,6 +428,7 @@ function createUnscheduledTaskCard(task, options = {}) {
         'inline-edit-unscheduled-form hidden mt-3 pt-3 border-t border-gray-700 w-full';
     editFormContainer.innerHTML = createInlineEditFormHTML(task);
     taskCard.appendChild(editFormContainer);
+    taskCard[CARD_RENDER_KEY] = createCardRenderKey(task, options);
 
     return taskCard;
 }
@@ -358,23 +452,46 @@ export function renderUnscheduledTasks(unscheduledTasks, options = {}) {
     const unscheduledTaskList = getUnscheduledTaskListElement();
     if (!unscheduledTaskList) return;
 
-    unscheduledTaskList.replaceChildren();
-
     if (unscheduledTasks.length === 0) {
+        unscheduledTaskList.replaceChildren();
         unscheduledTaskList.innerHTML = EMPTY_STATE_MESSAGE;
         return;
     }
 
-    unscheduledTasks.forEach((task) => {
-        const taskCard = createUnscheduledTaskCard(task, {
+    const inlineEditDrafts = captureInlineEditDrafts(unscheduledTaskList);
+    const existingCardsById = new Map(
+        [...unscheduledTaskList.querySelectorAll('.task-card[data-task-id]')].map((card) => [
+            card.dataset.taskId,
+            card
+        ])
+    );
+    const retainedCards = new Set();
+
+    unscheduledTasks.forEach((task, index) => {
+        const cardOptions = {
             mode,
             movement: movementByTaskId.get(task.id),
             runningActivity
-        });
-        unscheduledTaskList.appendChild(taskCard);
-
-        if (task.isEditingInline) {
-            toggleUnscheduledTaskInlineEdit(task.id, true, task);
+        };
+        const existingCard = existingCardsById.get(task.id);
+        const renderKey = createCardRenderKey(task, cardOptions);
+        const taskCard =
+            existingCard?.[CARD_RENDER_KEY] === renderKey
+                ? existingCard
+                : createUnscheduledTaskCard(task, cardOptions);
+        const cardAtPosition = unscheduledTaskList.children[index] || null;
+        if (cardAtPosition !== taskCard) {
+            unscheduledTaskList.insertBefore(taskCard, cardAtPosition);
         }
+        retainedCards.add(taskCard);
+        syncMovementControls(taskCard, task, cardOptions);
+
+        if (taskCard !== existingCard && task.isEditingInline) {
+            toggleUnscheduledTaskInlineEdit(task.id, true, task);
+            applyInlineEditDraft(taskCard, inlineEditDrafts.get(task.id));
+        }
+    });
+    [...unscheduledTaskList.children].forEach((child) => {
+        if (!retainedCards.has(child)) child.remove();
     });
 }

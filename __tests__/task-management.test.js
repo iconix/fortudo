@@ -8,6 +8,7 @@
 import {
     getTaskState,
     updateTaskState,
+    updateTaskStateFromStorage,
     addTask,
     scheduleUnscheduledTask,
     updateTask,
@@ -113,6 +114,41 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('authoritative task persistence', () => {
+        test('storage refresh preserves transient edit state for tasks that still exist', () => {
+            updateTaskState([
+                {
+                    id: 'editing-task',
+                    type: 'unscheduled',
+                    description: 'Before remote refresh',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: null,
+                    isEditingInline: true,
+                    confirmingDelete: true
+                }
+            ]);
+
+            updateTaskStateFromStorage([
+                {
+                    id: 'editing-task',
+                    type: 'unscheduled',
+                    description: 'After remote refresh',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: null
+                }
+            ]);
+
+            expect(getTaskState()).toEqual([
+                expect.objectContaining({
+                    id: 'editing-task',
+                    description: 'After remote refresh',
+                    isEditingInline: true,
+                    confirmingDelete: true
+                })
+            ]);
+        });
+
         test('does not resolve add success or place sequence state before the task write settles', async () => {
             let finishTaskWrite;
             mockPutTasks.mockImplementation(

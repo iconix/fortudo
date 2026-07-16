@@ -38,6 +38,7 @@ describe('app room/session lifecycle', () => {
             syncTimerFormState: jest.fn(),
             refreshTaskDisplays: jest.fn(),
             onSyncStatusChange: jest.fn(() => jest.fn()),
+            onSyncDataChange: jest.fn(() => jest.fn()),
             updateSyncStatusUI: jest.fn(),
             triggerSync: jest.fn(async () => {}),
             logger: {
@@ -100,7 +101,7 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
     });
 
-    test('refreshes running timer display after every synced storage refresh', async () => {
+    test('does not refresh storage again for a later no-op synced event', async () => {
         let syncStatusCallback;
         const { deps, lifecycle } = createLifecycle({
             onSyncStatusChange: jest.fn((callback) => {
@@ -126,9 +127,46 @@ describe('app room/session lifecycle', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
         expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
-        expect(deps.syncRunningTimerDisplay).toHaveBeenCalledTimes(1);
+        expect(deps.syncRunningTimerDisplay).not.toHaveBeenCalled();
+    });
+
+    test('refreshes storage when sync reports pulled data after the initial sync', async () => {
+        let syncStatusCallback;
+        let syncDataCallback;
+        const { deps, lifecycle } = createLifecycle({
+            onSyncStatusChange: jest.fn((callback) => {
+                syncStatusCallback = callback;
+                return jest.fn();
+            }),
+            onSyncDataChange: jest.fn((callback) => {
+                syncDataCallback = callback;
+                return jest.fn();
+            })
+        });
+
+        const abortController = new AbortController();
+        lifecycle.start({ signal: abortController.signal });
+
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        deps.loadAppState.mockClear();
+        deps.syncRestoredRunningTimer.mockClear();
+        deps.syncRunningTimerDisplay.mockClear();
+
+        syncStatusCallback('synced');
+        syncDataCallback();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(1);
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
         expect(deps.syncRunningTimerDisplay).toHaveBeenCalledWith(true);
     });
 

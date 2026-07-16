@@ -1,6 +1,6 @@
 // Orchestrator: public/js/app.js
 import {
-    updateTaskState,
+    updateTaskStateFromStorage,
     getTaskState,
     resetAllConfirmingDeleteFlags,
     getUnscheduledView,
@@ -80,7 +80,12 @@ import { initializeClearTasksHandlers } from './tasks/clear-handler.js';
 import { showRoomEntryScreen, showMainApp, updateSyncStatusUI } from './room-renderer.js';
 import { showToast } from './toast-manager.js';
 import { getActiveRoom } from './room-manager.js';
-import { onSyncStatusChange, triggerSync, waitForIdleSync } from './sync-manager.js';
+import {
+    onSyncStatusChange,
+    onSyncDataChange,
+    triggerSync,
+    waitForIdleSync
+} from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 import { registerServiceWorker } from './sw-register.js';
@@ -115,12 +120,7 @@ function getStorageRoomCode(roomCode) {
 async function loadTasksIntoState() {
     await waitForUnscheduledMoveSettlement();
     const loadedTasks = await loadTasks();
-    loadedTasks.forEach((task) => {
-        if (Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) {
-            task.isEditingInline = false;
-        }
-    });
-    updateTaskState(loadedTasks);
+    updateTaskStateFromStorage(loadedTasks);
     await refreshUnscheduledSequenceState();
 }
 
@@ -230,6 +230,7 @@ async function initAndBootApp(roomCode) {
         rolloverPriorDayScheduledTasks,
         showToast,
         onSyncStatusChange,
+        onSyncDataChange,
         updateSyncStatusUI,
         triggerSync,
         logger

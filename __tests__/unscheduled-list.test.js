@@ -388,6 +388,87 @@ describe('Unscheduled list UI interface', () => {
         expect(trigger.closest('.unscheduled-task-actions').classList).not.toContain('z-50');
     });
 
+    test('preserves an unchanged card, open menu, and focused action across a list refresh', () => {
+        let currentView = view([task('editing-target')]);
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => currentView)
+            })
+        );
+        const originalCard = cardById('editing-target');
+        const trigger = originalCard.querySelector('.btn-unscheduled-task-actions-menu');
+        trigger.click();
+        const editAction = originalCard.querySelector('.btn-edit-unscheduled');
+        editAction.focus();
+
+        currentView = view([task('new-sibling'), task('editing-target')]);
+        renderUnscheduledList();
+
+        const refreshedCard = cardById('editing-target');
+        expect(refreshedCard).toBe(originalCard);
+        expect(refreshedCard.querySelector('.unscheduled-task-actions-menu').hidden).toBe(false);
+        expect(document.activeElement).toBe(editAction);
+    });
+
+    test('preserves an unsaved inline draft across an incidental list refresh', () => {
+        const editingTask = task('editing-target', { isEditingInline: true });
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => view([editingTask]))
+            })
+        );
+        const originalCard = cardById('editing-target');
+        const description = originalCard.querySelector('input[name="inline-edit-description"]');
+        description.value = 'Unsaved draft';
+        description.focus();
+
+        renderUnscheduledList();
+
+        const refreshedCard = cardById('editing-target');
+        expect(refreshedCard).toBe(originalCard);
+        expect(refreshedCard.querySelector('input[name="inline-edit-description"]').value).toBe(
+            'Unsaved draft'
+        );
+        expect(document.activeElement).toBe(description);
+    });
+
+    test('preserves an unsaved inline draft when refreshed task data changes', () => {
+        let currentView = view([
+            task('editing-target', {
+                description: 'Original persisted text',
+                isEditingInline: true
+            })
+        ]);
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => currentView)
+            })
+        );
+        const description = cardById('editing-target').querySelector(
+            'input[name="inline-edit-description"]'
+        );
+        description.value = 'Unsaved local draft';
+        description.focus();
+        description.setSelectionRange(4, 9, 'forward');
+
+        currentView = view([
+            task('editing-target', {
+                description: 'Remotely refreshed text',
+                isEditingInline: true
+            })
+        ]);
+        renderUnscheduledList();
+
+        const refreshedDescription = cardById('editing-target').querySelector(
+            'input[name="inline-edit-description"]'
+        );
+        expect(refreshedDescription.value).toBe('Unsaved local draft');
+        expect(document.activeElement).toBe(refreshedDescription);
+        expect(refreshedDescription.selectionStart).toBe(4);
+        expect(refreshedDescription.selectionEnd).toBe(9);
+        expect(refreshedDescription.selectionDirection).toBe('forward');
+    });
+
     test('an outside click closes an open action menu', () => {
         renderWith();
         const trigger = document.querySelector('.btn-unscheduled-task-actions-menu');
@@ -800,7 +881,7 @@ describe('Unscheduled list UI interface', () => {
             },
             'Order could not be recovered from storage. Reload Fortudo before making more changes.'
         ]
-    ])('rerenders after settlement reports %s', async (_label, settlementResult, message) => {
+    ])('reconciles after settlement reports %s', async (_label, settlementResult, message) => {
         useManualMode();
         const settlement = deferred();
         const settledTasks = [task('first'), task('last'), task('moving')];
@@ -836,7 +917,7 @@ describe('Unscheduled list UI interface', () => {
         const settledTrigger = document.querySelector(
             '[data-task-id="moving"] .btn-unscheduled-task-actions-menu'
         );
-        expect(settledTrigger).not.toBe(optimisticTrigger);
+        expect(settledTrigger).toBe(optimisticTrigger);
         expect(document.activeElement).toBe(settledTrigger);
         expect(document.getElementById('unscheduled-order-status').textContent).toBe(message);
         expect(options.showError).toHaveBeenCalledWith(message, { theme: 'rose' });

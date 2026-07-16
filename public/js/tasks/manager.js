@@ -163,6 +163,29 @@ export function updateTaskState(newTasks) {
     replaceTaskState(newTasks, { markDurable: true });
 }
 
+/**
+ * Replace durable task data while retaining UI-only state for tasks that still exist.
+ * External refreshes must not dismiss an active editor or confirmation on an unchanged task.
+ * @param {Array<Object>} newTasks - Tasks loaded from local storage after replication
+ */
+export function updateTaskStateFromStorage(newTasks) {
+    const transientStateById = new Map(
+        tasks.map((task) => [
+            task.id,
+            {
+                editing: task.editing,
+                confirmingDelete: task.confirmingDelete,
+                isEditingInline: task.isEditingInline
+            }
+        ])
+    );
+    const mergedTasks = (newTasks || []).map((task) => {
+        const transientState = transientStateById.get(task.id);
+        return transientState ? { ...task, ...transientState } : task;
+    });
+    replaceTaskState(mergedTasks, { markDurable: true });
+}
+
 // ============================================================================
 // CACHE MANAGEMENT
 // ============================================================================
