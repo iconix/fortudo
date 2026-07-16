@@ -75,7 +75,7 @@ If any are missing, stop and ask — do not regenerate assets.
 
 - **Primary buttons** (Add Task / Log Activity / Enter Room): replace `bg-gradient-to-r from-teal-500 to-teal-400 hover:...` with tint+ style: `bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40`. (Solid `bg-violet-600` is the approved louder alternate.)
 - **Active tab:** `bg-teal-500/20 text-teal-200 border-teal-400/40` → `bg-violet-500/20 text-violet-200 border-violet-400/40`. Check JS for class toggling, not just HTML.
-- **Type coding (form ↔ sections):** Scheduled stays teal-400; Activities stays sky-400; Unscheduled `text-indigo-400` → `text-slate-400` (indigo retired: collides with violet). Selected type radio/chip should tint with its type color (match the priority selector's `peer-checked` pattern). Optional: matching left-border accent on task rows.
+- **Type coding (form ↔ sections):** Scheduled stays teal-400; Activities stays sky-400; Unscheduled moves from indigo to the neutral slate family (indigo retired: collides with violet). Selected type radio/chip should tint with its type color (match the priority selector's `peer-checked` pattern). The final Unscheduled display treatment is **Unified crisp**: slate-300 for the section heading, task-row left rail, checkbox, and overflow/actions trigger.
 - **Do not touch:** priority badges (rose/amber/teal), sky timer, card/section slate backgrounds.
 
 ### 4. Tailwind rebuild — critical gotcha
@@ -104,6 +104,7 @@ Retire, or repoint at `public/icons/icon.svg` (rasterize SVG instead of screensh
 - Rebase the existing Android/PWA worktree onto `origin/main` before applying the rebrand so its prior mobile fixes remain in scope.
 - Delete the emoji-based `scripts/generate_icons.py`. The committed `public/icons/icon.svg` is the canonical source for raster icons; README regeneration guidance should point to a general SVG rasterizer such as `rsvg-convert`.
 - Keep the old generator reference in `docs/plans/implementation/2026-07-07-pwa.md` as a historical record.
+- Post-implementation visual review selected **Unified crisp** for Unscheduled Tasks. The initial slate-400/slate-500 treatment read too much like an inactive scheduled state. Unscheduled work should carry equal visual importance, so its heading, row rail, checkbox, and overflow/actions trigger use slate-300 consistently. Priority badges, category colors, and the neutral Unscheduled form-chip treatment remain unchanged.
 
 ## Verification
 

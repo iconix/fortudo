@@ -89,7 +89,7 @@ describe('unscheduled task renderer', () => {
         expect(description.textContent).toBe(longUrl);
     });
 
-    test('uses the unscheduled slate accent on task rows', () => {
+    test('uses the unified crisp unscheduled accent on task rows and controls', () => {
         renderUnscheduledTasks(
             [
                 {
@@ -106,8 +106,12 @@ describe('unscheduled task renderer', () => {
         );
 
         const taskCard = document.querySelector('.task-card');
+        const checkboxIcon = document.querySelector('.task-checkbox-unscheduled i');
+        const actionsTrigger = document.querySelector('.btn-unscheduled-task-actions-menu');
         expect(taskCard.className).toContain('border-l-4');
-        expect(taskCard.className).toContain('border-l-slate-400');
+        expect(taskCard.className).toContain('border-l-slate-300');
+        expect(checkboxIcon.className).toContain('text-slate-300');
+        expect(actionsTrigger.className).toContain('text-slate-300');
     });
 
     test('keeps edit and delete actions available for completed unscheduled tasks', () => {

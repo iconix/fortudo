@@ -71,6 +71,12 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).toContain('peer-checked:border-sky-400/40');
     });
 
+    test('gives the unscheduled section the unified crisp slate treatment', () => {
+        expect(indexHtml).toMatch(
+            /text-lg sm:text-xl font-normal text-slate-300 pl-2 flex items-center[\s\S]*?Unscheduled Tasks/
+        );
+    });
+
     test('retires indigo from visible app styling', () => {
         const publicJavaScript = readJavaScriptTree(path.join(repoRoot, 'public', 'js')).join('\n');
         expect(`${indexHtml}\n${publicJavaScript}`).not.toMatch(/indigo-/);

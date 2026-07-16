@@ -81,7 +81,7 @@ function renderUnscheduledTaskActionsMenu(task, actionState) {
 
     return `
         <div class="unscheduled-task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
-            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
+            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-300 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
             <div class="unscheduled-task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
@@ -126,7 +126,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted)
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
-    const checkIcon = isCompleted ? 'fa-check-square text-slate-400' : 'fa-square text-slate-500';
+    const checkIcon = isCompleted ? 'fa-check-square text-slate-300' : 'fa-square text-slate-300';
     const textStrike = isCompleted ? 'line-through opacity-70' : '';
     const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
     const actionState = {
@@ -263,7 +263,7 @@ function createUnscheduledTaskCard(task) {
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
-    taskCard.className = `task-card relative bg-gray-800 bg-opacity-60 ${priorityClasses.border} border-l-4 border-l-slate-400 p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${task.confirmingDelete ? 'z-40 ' : ''}${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
+    taskCard.className = `task-card relative bg-gray-800 bg-opacity-60 ${priorityClasses.border} border-l-4 border-l-slate-300 p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${task.confirmingDelete ? 'z-40 ' : ''}${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
     taskCard.dataset.taskId = task.id;
     taskCard.dataset.taskName = task.description;
     taskCard.dataset.taskEstDuration = durationText;
