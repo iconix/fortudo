@@ -16,14 +16,14 @@
 | Slate 100  | `#f1f5f9` | Wordmark "fortu" on dark                     |
 
 Violet is the accent everywhere (per decision 2026-07-15: no darker violet on light backgrounds; logo text is WCAG-exempt).
-Origin: the violet echoes the 💜 in "For Cristell 💜".
+Origin: the violet echoes the heart in "For Cristell". The dedication uses a custom **Jelly heart** with a violet-300 → violet-400 → violet-500 body, a soft violet-50 highlight, and a subtle 3-second breathing motion (static under reduced motion). It replaces the platform-dependent purple-heart emoji.
 
 ## Mark
 
 - Base: Material Design Icons `arm-flex` glyph (Apache 2.0, Pictogrammers), check knocked out of the bicep.
 - Source of truth: `fortudo-mark.svg` (transparent, masked knockout) and `fortudo-icon-512.svg` (full-bleed tile).
 - Size ladder is hand-tuned: 32px uses a thicker/larger check; 16px drops the check entirely.
-- 💪🏾 emoji: retired from brand surfaces; lives on as easter egg (all-tasks-done state) and in the dedication line.
+- 💪🏾 emoji: retired from brand surfaces; lives on as an easter egg in the all-tasks-done state.
 
 ## Icon files (in public/icons/)
 

@@ -45,6 +45,48 @@
     transition: transform 0.5s ease;
 }
 
+.dedication-heart {
+    display: inline-flex;
+    margin-left: 0.25rem;
+    vertical-align: -0.18em;
+    transform-origin: 50% 60%;
+    animation: dedication-heart-breathe 3s ease-in-out infinite;
+}
+
+.dedication-heart__svg {
+    width: 1.15em;
+    height: 1.15em;
+    overflow: visible;
+    filter: drop-shadow(0 1px 2px rgb(139 92 246 / 0.3));
+}
+
+.dedication-heart-stop--light {
+    stop-color: rgb(196 181 253);
+}
+
+.dedication-heart-stop--base {
+    stop-color: rgb(167 139 250);
+}
+
+.dedication-heart-stop--dark {
+    stop-color: rgb(139 92 246);
+}
+
+.dedication-heart__highlight {
+    fill: rgb(237 233 254 / 0.65);
+}
+
+@keyframes dedication-heart-breathe {
+    0%,
+    100% {
+        transform: rotate(-3deg) scale(1);
+    }
+
+    50% {
+        transform: rotate(-1deg) scale(1.06);
+    }
+}
+
 .settings-scroll-area {
     max-height: calc(80vh - 5.5rem);
     overflow-y: auto;
@@ -365,6 +407,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .dedication-heart {
+        animation: none;
+        transform: rotate(-2deg);
+    }
+
     .task-card {
         transition: none;
     }

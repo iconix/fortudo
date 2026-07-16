@@ -53,4 +53,28 @@ describe('custom CSS polish hooks', () => {
             /@media \(min-width:\s*640px\)[\s\S]*?\.settings-scroll-area::-webkit-scrollbar\s*\{[^}]*width:\s*10px;/s
         );
     });
+
+    test('styles the Jelly heart with brand violets and reduced-motion support', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(
+            /\.dedication-heart\s*\{[^}]*animation:\s*dedication-heart-breathe 3s ease-in-out infinite;/s
+        );
+        expect(css).toMatch(
+            /\.dedication-heart-stop--light\s*\{[^}]*stop-color:\s*rgb\(196 181 253\);/s
+        );
+        expect(css).toMatch(
+            /\.dedication-heart-stop--base\s*\{[^}]*stop-color:\s*rgb\(167 139 250\);/s
+        );
+        expect(css).toMatch(
+            /\.dedication-heart-stop--dark\s*\{[^}]*stop-color:\s*rgb\(139 92 246\);/s
+        );
+        expect(css).toContain('@keyframes dedication-heart-breathe');
+        expect(css).toMatch(
+            /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.dedication-heart\s*\{[^}]*animation:\s*none;/s
+        );
+    });
 });

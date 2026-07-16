@@ -80,10 +80,19 @@ describe('Fortudo brand system', () => {
         expect(indexHtml.match(/mr-0\.5 sm:mr-1/g)).toHaveLength(3);
     });
 
-    test('keeps the dedication name and heart together on narrow screens', () => {
+    test('renders the branded Jelly dedication heart without orphaning it', () => {
+        const brandGuide = read('docs/BRAND.md');
+
         expect(indexHtml).toMatch(
-            /<span class="whitespace-nowrap">For Cristell<span[\s\S]*?animate-pulse[\s\S]*?<\/span><\/span>/
+            /<span class="whitespace-nowrap">For Cristell<span class="dedication-heart"[\s\S]*?data-dedication-heart[\s\S]*?<\/svg>[\s\S]*?<\/span><\/span>/
         );
+        expect(indexHtml).toContain('aria-label="Purple heart"');
+        expect(indexHtml).toContain('fill="url(#dedication-heart-gradient)"');
+        expect(indexHtml).toContain('class="dedication-heart-stop--light"');
+        expect(indexHtml).toContain('class="dedication-heart-stop--base"');
+        expect(indexHtml).toContain('class="dedication-heart-stop--dark"');
+        expect(indexHtml).not.toContain('💜');
+        expect(brandGuide).toContain('Jelly heart');
     });
 
     test('uses compact settings dialog spacing on mobile', () => {
