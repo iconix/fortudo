@@ -1,6 +1,8 @@
 const DRAG_THRESHOLD = 4;
 const EDGE_THRESHOLD = 32;
 const EDGE_SCROLL_AMOUNT = 24;
+const NEIGHBOR_MOVE_DURATION = 160;
+const NEIGHBOR_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
 function closestHandle(target) {
     return target instanceof Element ? target.closest('.unscheduled-drag-handle') : null;
@@ -29,6 +31,68 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
         return next?.dataset.taskId || null;
     }
 
+    function prefersReducedMotion() {
+        return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    }
+
+    function captureNeighborPositions() {
+        return new Map(
+            [...root.querySelectorAll('.task-card:not(.unscheduled-task--dragging)')].map(
+                (card) => [card, card.getBoundingClientRect().top]
+            )
+        );
+    }
+
+    function cancelNeighborAnimations(interaction) {
+        interaction.neighborAnimations?.forEach((animation) => {
+            try {
+                animation.cancel();
+            } catch {
+                // The animation may already have completed or been replaced.
+            }
+        });
+        interaction.neighborAnimations?.clear();
+    }
+
+    function animateNeighborMovement(interaction, previousPositions) {
+        if (prefersReducedMotion()) return;
+
+        previousPositions.forEach((previousTop, card) => {
+            const delta = previousTop - card.getBoundingClientRect().top;
+            if (Math.abs(delta) < 0.5 || typeof card.animate !== 'function') return;
+
+            const animation = card.animate(
+                [{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }],
+                { duration: NEIGHBOR_MOVE_DURATION, easing: NEIGHBOR_MOVE_EASING }
+            );
+            interaction.neighborAnimations.add(animation);
+            if (animation.finished?.then) {
+                animation.finished
+                    .catch(() => {})
+                    .finally(() => interaction.neighborAnimations.delete(animation));
+            }
+        });
+    }
+
+    function placeholderBeforeId(interaction) {
+        return interaction.placeholder?.nextElementSibling?.dataset.taskId || null;
+    }
+
+    function movePlaceholder(beforeId) {
+        if (!active?.placeholder || placeholderBeforeId(active) === beforeId) return;
+
+        cancelNeighborAnimations(active);
+        const previousPositions = captureNeighborPositions();
+        const target = beforeId ? findCard(root, beforeId) : null;
+        root.insertBefore(active.placeholder, target?.parentElement === root ? target : null);
+        animateNeighborMovement(active, previousPositions);
+    }
+
+    function positionDraggedCard(clientY) {
+        if (!active?.dragging) return;
+        active.card.style.top = `${clientY - active.pointerOffsetY}px`;
+    }
+
     function clearClickSuppression() {
         if (suppressionTimer !== null) window.clearTimeout(suppressionTimer);
         suppressionTimer = null;
@@ -46,10 +110,22 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
 
         const interaction = active;
         active = null;
+        cancelNeighborAnimations(interaction);
+        if (interaction.placeholder) {
+            const originalNextSibling =
+                interaction.originalNextSibling?.parentElement === root
+                    ? interaction.originalNextSibling
+                    : null;
+            root.insertBefore(interaction.card, originalNextSibling);
+            interaction.placeholder.remove();
+        }
+        interaction.card.style.removeProperty('left');
+        interaction.card.style.removeProperty('top');
+        interaction.card.style.removeProperty('width');
+        interaction.card.style.removeProperty('height');
         interaction.card.classList.remove('unscheduled-task--dragging');
-        root.querySelector('.unscheduled-drop-marker')?.remove();
         try {
-            interaction.handle.releasePointerCapture?.(interaction.pointerId);
+            root.releasePointerCapture?.(interaction.pointerId);
         } catch {
             // Capture can already be released by the browser after cancellation.
         }
@@ -58,16 +134,25 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
 
     function startDragging() {
         if (active.dragging) return;
-        active.dragging = true;
-        active.card.classList.add('unscheduled-task--dragging');
-    }
 
-    function renderDropMarker(beforeId) {
-        root.querySelector('.unscheduled-drop-marker')?.remove();
-        const marker = document.createElement('div');
-        marker.className = 'unscheduled-drop-marker';
-        marker.setAttribute('aria-hidden', 'true');
-        root.insertBefore(marker, beforeId ? findCard(root, beforeId) || null : null);
+        const rect = active.card.getBoundingClientRect();
+        const placeholder = document.createElement('div');
+        placeholder.className = 'unscheduled-drag-placeholder';
+        placeholder.style.height = `${rect.height}px`;
+        placeholder.style.width = `${rect.width}px`;
+        active.originalNextSibling = active.card.nextElementSibling;
+        root.insertBefore(placeholder, active.card);
+        placeholder.append(active.card);
+
+        active.dragging = true;
+        active.placeholder = placeholder;
+        active.beforeId = active.originalNextSibling?.dataset.taskId || null;
+        active.neighborAnimations = new Set();
+        active.card.classList.add('unscheduled-task--dragging');
+        active.card.style.left = `${rect.left}px`;
+        active.card.style.top = `${rect.top}px`;
+        active.card.style.width = `${rect.width}px`;
+        active.card.style.height = `${rect.height}px`;
     }
 
     function autoScroll(clientY) {
@@ -92,10 +177,11 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
             taskId: card.dataset.taskId,
             startX: event.clientX,
             startY: event.clientY,
+            pointerOffsetY: event.clientY - card.getBoundingClientRect().top,
             beforeId: null,
             dragging: false
         };
-        handle.setPointerCapture?.(event.pointerId);
+        root.setPointerCapture?.(event.pointerId);
         onActiveChange(true);
     }
 
@@ -107,8 +193,10 @@ export function createUnscheduledListDrag({ root, onActiveChange, onDrop }) {
 
         event.preventDefault();
         startDragging();
-        active.beforeId = insertionBeforeId(event.clientY);
-        renderDropMarker(active.beforeId);
+        positionDraggedCard(event.clientY);
+        const beforeId = insertionBeforeId(event.clientY);
+        movePlaceholder(beforeId);
+        active.beforeId = beforeId;
         autoScroll(event.clientY);
     }
 

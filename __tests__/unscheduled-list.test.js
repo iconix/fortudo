@@ -133,6 +133,23 @@ function setCardRects(cards, height = 40, gap = 10) {
     });
 }
 
+function setFlowCardRects(root, cards, height = 40, gap = 10) {
+    cards.forEach((card) => {
+        card.getBoundingClientRect = () => {
+            const flowNode = card.closest('.unscheduled-drag-placeholder') || card;
+            const top = [...root.children].indexOf(flowNode) * (height + gap);
+            return {
+                top,
+                bottom: top + height,
+                height,
+                left: 0,
+                right: 300,
+                width: 300
+            };
+        };
+    });
+}
+
 function cardById(taskId) {
     return [...document.querySelectorAll('#unscheduled-task-list .task-card')].find(
         (card) => card.dataset.taskId === taskId
@@ -155,6 +172,7 @@ describe('Unscheduled list UI interface', () => {
         installDom();
         localStorage.clear();
         window.scrollBy = jest.fn();
+        window.matchMedia = jest.fn(() => ({ matches: false }));
     });
 
     afterEach(() => destroyUnscheduledList());
@@ -972,26 +990,28 @@ describe('Unscheduled list UI interface', () => {
         const cards = [...root.querySelectorAll('.task-card')];
         setCardRects(cards);
         const handle = cardById(sourceId).querySelector('.unscheduled-drag-handle');
-        handle.setPointerCapture = jest.fn();
-        handle.releasePointerCapture = jest.fn();
+        root.setPointerCapture = jest.fn();
+        root.releasePointerCapture = jest.fn();
         const scrollBy = jest.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
         pointer('pointerdown', handle, { pointerId: 7, clientX: 10, clientY: 110 });
-        expect(handle.setPointerCapture).toHaveBeenCalledWith(7);
+        expect(root.setPointerCapture).toHaveBeenCalledWith(7);
         pointer('pointermove', root, { pointerId: 7, clientX: 10, clientY: 5 });
 
-        const marker = root.querySelector('.unscheduled-drop-marker');
-        expect(marker).not.toBeNull();
-        expect(marker.nextElementSibling.dataset.taskId).toBe(targetId);
+        const placeholder = root.querySelector('.unscheduled-drag-placeholder');
+        expect(placeholder).not.toBeNull();
+        expect(placeholder.querySelector('.task-card').dataset.taskId).toBe(sourceId);
+        expect(placeholder.nextElementSibling.dataset.taskId).toBe(targetId);
+        expect(placeholder.style.height).toBe('40px');
         expect(cardById(sourceId).classList).toContain('unscheduled-task--dragging');
         expect(scrollBy).toHaveBeenCalledWith({ top: -24, behavior: 'auto' });
 
         pointer('pointerup', root, { pointerId: 7, clientX: 10, clientY: 5 });
 
-        expect(handle.releasePointerCapture).toHaveBeenCalledWith(7);
+        expect(root.releasePointerCapture).toHaveBeenCalledWith(7);
         expect(options.moveTask).toHaveBeenCalledTimes(1);
         expect(taskOrder()).toEqual([sourceId, targetId, 'middle']);
-        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
         expect(document.activeElement).toBe(
             cardById(sourceId).querySelector('.unscheduled-drag-handle')
         );
@@ -1002,6 +1022,83 @@ describe('Unscheduled list UI interface', () => {
 
         settlement.resolve({ success: true });
         scrollBy.mockRestore();
+    });
+
+    test('the grabbed card follows the pointer while the placeholder bumps neighbors', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')])),
+            moveTask: jest.fn(() => ({ success: true, changed: false }))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const cards = [...root.querySelectorAll('.task-card')];
+        setFlowCardRects(root, cards);
+        const movingCard = cardById('moving');
+        const handle = movingCard.querySelector('.unscheduled-drag-handle');
+        const lastCard = cardById('last');
+        const neighborAnimation = {
+            cancel: jest.fn(),
+            finished: new Promise(() => {})
+        };
+        lastCard.animate = jest.fn(() => neighborAnimation);
+
+        pointer('pointerdown', handle, { pointerId: 19, clientX: 10, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 19, clientX: 30, clientY: 130 });
+
+        const placeholder = root.querySelector('.unscheduled-drag-placeholder');
+        expect(placeholder).not.toBeNull();
+        expect(placeholder.style.height).toBe('40px');
+        expect(placeholder.style.width).toBe('300px');
+        expect(movingCard.parentElement).toBe(placeholder);
+        expect(movingCard.style.left).toBe('0px');
+        expect(movingCard.style.top).toBe('120px');
+        expect(movingCard.style.width).toBe('300px');
+        expect(movingCard.style.height).toBe('40px');
+        expect(taskOrder()).toEqual(['first', 'last', 'moving']);
+        expect(lastCard.animate).toHaveBeenCalledWith(
+            [{ transform: 'translateY(50px)' }, { transform: 'translateY(0)' }],
+            { duration: 160, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+        );
+
+        pointer('pointerup', root, { pointerId: 19, clientX: 30, clientY: 130 });
+
+        expect(options.moveTask).toHaveBeenCalledWith('moving', {
+            kind: 'before',
+            taskId: null
+        });
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
+        expect(movingCard.style.left).toBe('');
+        expect(movingCard.style.top).toBe('');
+        expect(movingCard.style.width).toBe('');
+        expect(movingCard.style.height).toBe('');
+        expect(taskOrder()).toEqual(['first', 'moving', 'last']);
+        expect(neighborAnimation.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    test('reduced motion keeps live placeholder reordering but skips neighbor animation', () => {
+        useManualMode();
+        window.matchMedia.mockReturnValue({ matches: true });
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        const cards = [...root.querySelectorAll('.task-card')];
+        setFlowCardRects(root, cards);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        const lastCard = cardById('last');
+        lastCard.animate = jest.fn();
+
+        pointer('pointerdown', handle, { pointerId: 20, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 20, clientY: 130 });
+
+        expect(taskOrder()).toEqual(['first', 'last', 'moving']);
+        expect(lastCard.animate).not.toHaveBeenCalled();
+
+        pointer('pointercancel', root, { pointerId: 20, clientY: 130 });
+        expect(taskOrder()).toEqual(['first', 'moving', 'last']);
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
     });
 
     test('auto-scrolls at both viewport edges while dragging', () => {
@@ -1036,7 +1133,7 @@ describe('Unscheduled list UI interface', () => {
         const root = document.getElementById('unscheduled-task-list');
         const card = cardById('only');
         const handle = card.querySelector('.unscheduled-drag-handle');
-        handle.setPointerCapture = jest.fn();
+        root.setPointerCapture = jest.fn();
 
         pointer('pointerdown', card, { pointerId: 2, clientY: 10 });
         pointer('pointermove', root, { pointerId: 2, clientY: 50 });
@@ -1044,9 +1141,9 @@ describe('Unscheduled list UI interface', () => {
         pointer('pointerdown', handle, { pointerId: 3, clientY: 10 });
 
         expect(handle.disabled).toBe(true);
-        expect(handle.setPointerCapture).not.toHaveBeenCalled();
+        expect(root.setPointerCapture).not.toHaveBeenCalled();
         expect(card.classList).not.toContain('unscheduled-task--dragging');
-        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
         expect(options.moveTask).not.toHaveBeenCalled();
     });
 
@@ -1061,13 +1158,13 @@ describe('Unscheduled list UI interface', () => {
         renderWith(options);
         const root = document.getElementById('unscheduled-task-list');
         const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
-        handle.setPointerCapture = jest.fn();
+        root.setPointerCapture = jest.fn();
 
         pointer('pointerdown', handle, { pointerId: 16, clientY: 60, ...pointerState });
         pointer('pointermove', root, { pointerId: 16, clientY: 5, ...pointerState });
         pointer('pointerup', root, { pointerId: 16, clientY: 5, ...pointerState });
 
-        expect(handle.setPointerCapture).not.toHaveBeenCalled();
+        expect(root.setPointerCapture).not.toHaveBeenCalled();
         expect(cardById('moving').classList).not.toContain('unscheduled-task--dragging');
         expect(options.moveTask).not.toHaveBeenCalled();
     });
@@ -1114,7 +1211,7 @@ describe('Unscheduled list UI interface', () => {
             const root = document.getElementById('unscheduled-task-list');
             setCardRects([...root.querySelectorAll('.task-card')]);
             const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
-            handle.releasePointerCapture = jest.fn();
+            root.releasePointerCapture = jest.fn();
 
             pointer('pointerdown', handle, { pointerId: 12, clientY: 60 });
             pointer('pointermove', root, { pointerId: 12, clientY: 5 });
@@ -1134,13 +1231,42 @@ describe('Unscheduled list UI interface', () => {
                 destroyUnscheduledList();
             }
 
-            expect(handle.releasePointerCapture).toHaveBeenCalledWith(12);
+            expect(root.releasePointerCapture).toHaveBeenCalledWith(12);
             expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
-            expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+            expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
             pointer('pointerup', root, { pointerId: 12, clientY: 5 });
             expect(options.moveTask).not.toHaveBeenCalled();
         }
     );
+
+    test('keeps capture on the stationary list root while the placeholder moves', () => {
+        useManualMode();
+        const options = createOptions({
+            readView: jest.fn(() => view([task('first'), task('moving'), task('last')]))
+        });
+        renderWith(options);
+        const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
+        const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
+        root.setPointerCapture = jest.fn();
+        root.releasePointerCapture = jest.fn();
+
+        pointer('pointerdown', handle, { pointerId: 21, clientY: 60 });
+        pointer('pointermove', root, { pointerId: 21, clientY: 5 });
+        pointer('pointermove', root, { pointerId: 21, clientY: 130 });
+
+        expect(root.setPointerCapture).toHaveBeenCalledTimes(1);
+        expect(root.setPointerCapture).toHaveBeenCalledWith(21);
+        expect(document.querySelector('.unscheduled-drag-placeholder')).not.toBeNull();
+        expect(cardById('moving').classList).toContain('unscheduled-task--dragging');
+
+        pointer('pointercancel', root, { pointerId: 21, clientY: 130 });
+
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
+        expect(cardById('moving').classList).not.toContain('unscheduled-task--dragging');
+        expect(root.releasePointerCapture).toHaveBeenCalledWith(21);
+        expect(options.moveTask).not.toHaveBeenCalled();
+    });
 
     test('lost pointer capture cancels safely, applies the latest view, and restores focus', () => {
         useManualMode();
@@ -1154,24 +1280,24 @@ describe('Unscheduled list UI interface', () => {
         const root = document.getElementById('unscheduled-task-list');
         setCardRects([...root.querySelectorAll('.task-card')]);
         const handle = cardById('moving').querySelector('.unscheduled-drag-handle');
-        handle.releasePointerCapture = jest.fn(() => {
+        root.releasePointerCapture = jest.fn(() => {
             const nestedLost = new Event('lostpointercapture', { bubbles: true });
             Object.defineProperty(nestedLost, 'pointerId', { value: 17 });
-            handle.dispatchEvent(nestedLost);
+            root.dispatchEvent(nestedLost);
         });
 
         pointer('pointerdown', handle, { pointerId: 17, clientY: 60 });
         pointer('pointermove', root, { pointerId: 17, clientY: 5 });
         renderUnscheduledList();
-        expect(taskOrder()).toEqual(['first', 'moving', 'last']);
+        expect(taskOrder()).toEqual(['moving', 'first', 'last']);
 
         const lostCapture = new Event('lostpointercapture', { bubbles: true });
         Object.defineProperty(lostCapture, 'pointerId', { value: 17 });
-        handle.dispatchEvent(lostCapture);
+        root.dispatchEvent(lostCapture);
 
-        expect(handle.releasePointerCapture).toHaveBeenCalledTimes(1);
+        expect(root.releasePointerCapture).toHaveBeenCalledTimes(1);
         expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
-        expect(document.querySelector('.unscheduled-drop-marker')).toBeNull();
+        expect(document.querySelector('.unscheduled-drag-placeholder')).toBeNull();
         expect(taskOrder()).toEqual(['first', 'moving', 'remote', 'last']);
         expect(document.activeElement).toBe(
             cardById('moving').querySelector('.unscheduled-drag-handle')
@@ -1191,6 +1317,7 @@ describe('Unscheduled list UI interface', () => {
         const options = createOptions({ readView });
         renderWith(options);
         const root = document.getElementById('unscheduled-task-list');
+        setCardRects([...root.querySelectorAll('.task-card')]);
         const handle = cardById('a').querySelector('.unscheduled-drag-handle');
 
         pointer('pointerdown', handle, { pointerId: 3, clientY: 10 });
@@ -1214,7 +1341,7 @@ describe('Unscheduled list UI interface', () => {
         renderWith(options);
         const root = document.getElementById('unscheduled-task-list');
         const handle = cardById('a').querySelector('.unscheduled-drag-handle');
-        handle.releasePointerCapture = jest.fn();
+        root.releasePointerCapture = jest.fn();
 
         pointer('pointerdown', handle, { pointerId: 4, clientY: 10 });
         pointer('pointermove', root, { pointerId: 4, clientY: 50 });
@@ -1223,7 +1350,7 @@ describe('Unscheduled list UI interface', () => {
 
         expect(taskOrder()).toEqual(['b']);
         expect(document.querySelector('.unscheduled-task--dragging')).toBeNull();
-        expect(handle.releasePointerCapture).toHaveBeenCalledWith(4);
+        expect(root.releasePointerCapture).toHaveBeenCalledWith(4);
         expect(options.moveTask).not.toHaveBeenCalled();
         expect(document.activeElement).toBe(
             document.querySelector('[data-unscheduled-mode="manual"]')

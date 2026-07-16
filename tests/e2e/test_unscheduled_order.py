@@ -106,12 +106,15 @@ def add_new_unscheduled_task(page: Page, description: str, est_minutes: int) -> 
 
 def drag_task_before(page: Page, source_description: str, target_description: str) -> None:
     """Use the real pointer handle to place one task immediately before another."""
-    source_handle = card_for(page, source_description).locator(".unscheduled-drag-handle")
+    source_card = card_for(page, source_description)
+    source_handle = source_card.locator(".unscheduled-drag-handle")
     target_card = card_for(page, target_description)
     source_handle.evaluate("node => node.scrollIntoView({ block: 'center' })")
+    source_card_box = source_card.bounding_box()
     source_box = source_handle.bounding_box()
     target_box = target_card.bounding_box()
     assert source_box is not None, f"Missing drag handle bounds for {source_description}"
+    assert source_card_box is not None, f"Missing task-card bounds for {source_description}"
     assert target_box is not None, f"Missing task-card bounds for {target_description}"
 
     source_x = source_box["x"] + source_box["width"] / 2
@@ -121,8 +124,57 @@ def drag_task_before(page: Page, source_description: str, target_description: st
     page.mouse.move(source_x, source_y)
     page.mouse.down()
     page.mouse.move(source_x, source_y + 8, steps=2)
+    page.wait_for_timeout(250)
+    placeholder = page.locator(".unscheduled-drag-placeholder")
+    assert placeholder.count() == 1
+    placeholder_box = placeholder.bounding_box()
+    active_card_box = source_card.bounding_box()
+    assert placeholder_box is not None
+    assert active_card_box is not None
+    assert abs(placeholder_box["height"] - source_card_box["height"]) < 1
+    assert abs(active_card_box["y"] - (source_card_box["y"] + 8)) < 4
+    drag_treatment = source_card.evaluate(
+        """node => {
+            const cardStyle = getComputedStyle(node);
+            const handleStyle = getComputedStyle(
+                node.querySelector('.unscheduled-drag-handle')
+            );
+            return {
+                opacity: cardStyle.opacity,
+                position: cardStyle.position,
+                transform: cardStyle.transform,
+                backgroundImage: cardStyle.backgroundImage,
+                boxShadow: cardStyle.boxShadow,
+                outlineColor: cardStyle.outlineColor,
+                outlineStyle: cardStyle.outlineStyle,
+                outlineWidth: cardStyle.outlineWidth,
+                zIndex: cardStyle.zIndex,
+                handleBackgroundColor: handleStyle.backgroundColor,
+                handleBoxShadow: handleStyle.boxShadow,
+                handleCursor: handleStyle.cursor
+            };
+        }"""
+    )
+    assert drag_treatment["opacity"] == "1"
+    assert drag_treatment["position"] == "fixed"
+    assert drag_treatment["transform"] != "none"
+    assert drag_treatment["backgroundImage"] == "none"
+    assert drag_treatment["boxShadow"] != "none"
+    assert drag_treatment["outlineColor"] == "rgba(129, 140, 248, 0.85)"
+    assert drag_treatment["outlineStyle"] == "solid"
+    assert drag_treatment["outlineWidth"] == "2px"
+    assert drag_treatment["zIndex"] == "20"
+    assert drag_treatment["handleBackgroundColor"] == "rgba(79, 70, 229, 0.22)"
+    assert drag_treatment["handleBoxShadow"] != "none"
+    assert drag_treatment["handleCursor"] == "grabbing"
     page.mouse.move(target_x, target_y, steps=8)
+    assert placeholder.count() == 1
+    live_order = task_order(page)
+    source_index = live_order.index(source_description)
+    target_index = live_order.index(target_description)
+    assert source_index + 1 == target_index
     page.mouse.up()
+    assert page.locator(".unscheduled-drag-placeholder").count() == 0
 
 
 def test_unscheduled_manual_order_is_flexible_durable_and_shared():
