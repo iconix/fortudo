@@ -54,6 +54,18 @@ describe('custom CSS polish hooks', () => {
         );
     });
 
+    test('uses a neutral keyboard-only focus outline for buttons', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(/button:focus\s*\{[^}]*outline:\s*none;/s);
+        expect(css).toMatch(
+            /button:focus-visible\s*\{[^}]*outline:\s*2px solid rgb\(148 163 184 \/ 0\.85\);[^}]*outline-offset:\s*2px;/s
+        );
+    });
+
     test('styles the Jelly heart with brand violets and reduced-motion support', () => {
         const css = fs.readFileSync(
             path.join(__dirname, '..', 'public', 'css', 'custom.css'),

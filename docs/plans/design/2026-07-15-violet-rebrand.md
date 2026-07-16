@@ -109,6 +109,7 @@ Retire, or repoint at `public/icons/icon.svg` (rasterize SVG instead of screensh
 - The Settings scrollbar uses a restrained violet thumb rather than the former teal accent because Settings is an interaction context, not a scheduled-task context.
 - The tagline is sentence-cased when paired with the custom Jelly dedication heart.
 - `og-image.png` is intentionally excluded from the offline app-shell precache. SVG assets remain precached, and their text line endings are normalized before hashing so the committed cache stamp is reproducible across Windows and Linux checkouts.
+- A post-review restraint pass reserves visible violet surfaces for identity and primary actions. Active Tasks/Insights tabs move to a neutral slate fill with violet text/border; the Settings scrollbar moves to slate; taxonomy Add actions are neutral until hover/focus; the Activities switch uses semantic sky; and browser-default button outlines are replaced with a neutral keyboard-only focus outline.
 
 ## Verification
 

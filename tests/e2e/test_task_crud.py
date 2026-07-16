@@ -172,7 +172,7 @@ def test_task_crud_flow():
         # TEST 3: Add an unscheduled task
         # =========================================================================
         print("\nTEST 3: Add an unscheduled task", flush=True)
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         page.fill('input[name="description"]', "Fix login bug")
         page.evaluate('document.querySelector(\'input[name="priority"][value="high"]\').click()')
@@ -219,7 +219,7 @@ def test_task_crud_flow():
         # TEST 5: Delete a scheduled task (two-click confirmation)
         # =========================================================================
         print("\nTEST 5: Delete a scheduled task", flush=True)
-        page.locator("#scheduled").click()
+        page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
 
         delete_buttons = page.locator("#scheduled-task-list .btn-delete")

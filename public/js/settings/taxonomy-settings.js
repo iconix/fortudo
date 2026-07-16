@@ -34,7 +34,7 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
                     <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
                 </div>
-                <button id="add-group-btn" type="button" class="shrink-0 text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-group-btn" type="button" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -50,7 +50,7 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
                     <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
                 </div>
-                <button id="add-category-btn" type="button" class="shrink-0 text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-category-btn" type="button" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>

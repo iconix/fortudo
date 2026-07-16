@@ -100,7 +100,7 @@ describe('activity view shell', () => {
         expect(getActiveActivitiesView()).toBe('insights');
     });
 
-    test('uses violet styling for whichever view is active', () => {
+    test('uses a neutral fill with violet accents for whichever view is active', () => {
         setupDOM();
 
         initializeActivitiesViewToggle({
@@ -112,14 +112,17 @@ describe('activity view shell', () => {
         const tasksButton = document.getElementById('view-toggle-tasks');
         const insightsButton = document.getElementById('view-toggle-insights');
 
-        expect(tasksButton.className).toContain('bg-violet-500/20');
+        expect(tasksButton.className).toContain('bg-slate-700/70');
         expect(tasksButton.className).toContain('text-violet-200');
 
         insightsButton.click();
 
-        expect(insightsButton.className).toContain('bg-violet-500/20');
+        expect(insightsButton.className).toContain('bg-slate-700/70');
         expect(insightsButton.className).toContain('border-violet-400/40');
-        expect(tasksButton.className).not.toContain('bg-violet-500/20');
+        expect(tasksButton.className).not.toContain('bg-slate-700/70');
+        expect(`${tasksButton.className} ${insightsButton.className}`).not.toContain(
+            'bg-violet-500/20'
+        );
     });
 
     test('hides clear actions and closes dropdown while insights is active', () => {

@@ -1,5 +1,5 @@
 const ACTIVE_BUTTON_CLASSES = [
-    'bg-violet-500/20',
+    'bg-slate-700/70',
     'text-violet-200',
     'border',
     'border-violet-400/40'

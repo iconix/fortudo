@@ -237,6 +237,18 @@ describe('App.js Callback Functions', () => {
         clearLocalStorage();
     });
 
+    test('updates the copyright footer year when the app starts', async () => {
+        await setupAppWithTasks([]);
+        document.body.insertAdjacentHTML('beforeend', '<span id="copyright-year">1999</span>');
+
+        document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.getElementById('copyright-year').textContent).toBe(
+            String(new Date().getFullYear())
+        );
+    });
+
     describe('onDeleteTask callback', () => {
         const setupTasksForDelete = async () => {
             const tasks = [

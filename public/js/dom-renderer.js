@@ -114,6 +114,17 @@ export function renderDateTime() {
         });
 }
 
+/**
+ * Keep the copyright range current without requiring an annual markup edit.
+ * @param {Date} now
+ */
+export function renderCopyrightYear(now = new Date()) {
+    const yearElement = document.getElementById('copyright-year');
+    if (yearElement) {
+        yearElement.textContent = String(now.getFullYear());
+    }
+}
+
 export function startRealTimeClock() {
     renderDateTime();
     setInterval(renderDateTime, 1000);

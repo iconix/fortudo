@@ -9,6 +9,16 @@
     min-width: 0;
     overflow-wrap: anywhere;
 }
+
+button:focus {
+    outline: none;
+}
+
+button:focus-visible {
+    outline: 2px solid rgb(148 163 184 / 0.85);
+    outline-offset: 2px;
+}
+
 .drag-handle {
     cursor: grab;
 }
@@ -94,7 +104,7 @@
     padding-right: 0.375rem;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: rgba(139, 92, 246, 0.55) rgba(51, 65, 85, 0.35);
+    scrollbar-color: rgba(100, 116, 139, 0.7) rgba(51, 65, 85, 0.35);
 }
 
 .settings-scroll-area::-webkit-scrollbar {
@@ -107,13 +117,13 @@
 }
 
 .settings-scroll-area::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.72);
+    background: rgba(100, 116, 139, 0.72);
     border-radius: 9999px;
     border: 2px solid rgba(30, 41, 59, 0.9);
 }
 
 .settings-scroll-area::-webkit-scrollbar-thumb:hover {
-    background: rgba(167, 139, 250, 0.86);
+    background: rgba(148, 163, 184, 0.86);
 }
 
 @media (min-width: 640px) {

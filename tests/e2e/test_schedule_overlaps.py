@@ -334,7 +334,7 @@ def test_schedule_overlaps_flow():
              f"Warning text: '{warning_text_after}'")
         check("Button text restores to Add Task", "Add Task" in btn_text_after,
              f"Button text: '{btn_text_after}'")
-        check("Button restores teal styling", "teal" in btn_class_after,
+        check("Button restores violet styling", "violet" in btn_class_after,
              f"Button classes: '{btn_class_after[:100]}'")
 
         screenshot(page, "05_warning_cleared")

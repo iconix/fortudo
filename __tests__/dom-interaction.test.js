@@ -14,7 +14,8 @@ import {
     resetEventDelegation,
     refreshStartTimeField,
     disableStartTimeAutoUpdate,
-    refreshUI
+    refreshUI,
+    renderCopyrightYear
 } from '../public/js/dom-renderer.js';
 import { getTaskFormElement, focusTaskDescriptionInput } from '../public/js/tasks/form-utils.js';
 import { showAlert, askConfirmation } from '../public/js/modal-manager.js';
@@ -177,6 +178,20 @@ describe('DOM Handler Interaction Tests', () => {
             );
 
             jest.useRealTimers();
+        });
+    });
+
+    describe('renderCopyrightYear', () => {
+        test('updates the footer with the supplied year', () => {
+            document.body.insertAdjacentHTML('beforeend', '<span id="copyright-year">2026</span>');
+
+            renderCopyrightYear(new Date(2031, 0, 1));
+
+            expect(document.getElementById('copyright-year').textContent).toBe('2031');
+        });
+
+        test('does nothing when the footer year is absent', () => {
+            expect(() => renderCopyrightYear(new Date(2031, 0, 1))).not.toThrow();
         });
     });
 

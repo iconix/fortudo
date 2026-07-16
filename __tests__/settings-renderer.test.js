@@ -236,6 +236,24 @@ describe('settings-renderer', () => {
             ).toBe(true);
         });
 
+        test('uses activity sky for the switch and neutral add actions', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
+
+            const switchTrack = document
+                .querySelector('label[for="activities-toggle"]')
+                .parentElement.nextElementSibling.querySelector('div');
+            const addGroupButton = document.getElementById('add-group-btn');
+            const addCategoryButton = document.getElementById('add-category-btn');
+
+            expect(switchTrack.className).toContain('peer-checked:bg-sky-500');
+            expect(switchTrack.className).not.toContain('peer-checked:bg-violet-500');
+            [addGroupButton, addCategoryButton].forEach((button) => {
+                expect(button.className).toContain('text-slate-300');
+                expect(button.className).toContain('hover:text-violet-300');
+                expect(button.className).not.toContain('text-violet-400');
+            });
+        });
+
         test('category add form uses a compact group slash category row with placeholders', async () => {
             await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
 

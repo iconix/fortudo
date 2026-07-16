@@ -29,6 +29,7 @@ import {
     refreshStartTimeField,
     initializeTaskTypeToggle,
     startRealTimeClock,
+    renderCopyrightYear,
     initializeUnscheduledTaskListEventListeners
 } from './dom-renderer.js';
 import {
@@ -334,6 +335,8 @@ async function initAndBootApp(roomCode) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    renderCopyrightYear();
+
     registerServiceWorker({
         onUpdateAvailable: (activate) => {
             showToast('New version available', {

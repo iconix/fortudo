@@ -46,7 +46,7 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).not.toContain('Fortu-do');
     });
 
-    test('uses violet for primary actions and the active task view', () => {
+    test('uses violet for primary actions and active-view accents', () => {
         const primaryClasses =
             'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40';
         const domRenderer = read('public/js/dom-renderer.js');
@@ -55,11 +55,12 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).toContain(primaryClasses);
         expect(domRenderer).toContain(primaryClasses);
         expect(indexHtml).toContain(
-            'bg-violet-500/20 px-3 py-1.5 text-sm text-violet-200 border border-violet-400/40'
+            'bg-slate-700/70 px-3 py-1.5 text-sm text-violet-200 border border-violet-400/40'
         );
-        expect(viewToggle).toContain("'bg-violet-500/20'");
+        expect(viewToggle).toContain("'bg-slate-700/70'");
         expect(viewToggle).toContain("'text-violet-200'");
         expect(viewToggle).toContain("'border-violet-400/40'");
+        expect(viewToggle).not.toContain("'bg-violet-500/20'");
     });
 
     test('uses flat semantic tints for action buttons throughout the app', () => {
@@ -81,15 +82,33 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).not.toContain('A Daily Time-Blocking To-Do App.');
     });
 
-    test('uses a restrained violet settings scrollbar', () => {
+    test('uses a neutral slate settings scrollbar', () => {
         const customCss = read('public/css/custom.css');
 
         expect(customCss).toContain(
-            'scrollbar-color: rgba(139, 92, 246, 0.55) rgba(51, 65, 85, 0.35);'
+            'scrollbar-color: rgba(100, 116, 139, 0.7) rgba(51, 65, 85, 0.35);'
         );
-        expect(customCss).toContain('background: rgba(139, 92, 246, 0.72);');
-        expect(customCss).toContain('background: rgba(167, 139, 250, 0.86);');
-        expect(customCss).not.toMatch(/settings-scroll-area[\s\S]*?rgba\(20, 184, 166/);
+        expect(customCss).toContain('background: rgba(100, 116, 139, 0.72);');
+        expect(customCss).toContain('background: rgba(148, 163, 184, 0.86);');
+        expect(customCss).not.toMatch(/settings-scroll-area[\s\S]*?rgba\(139, 92, 246/);
+    });
+
+    test('keeps Settings utilities neutral until interaction', () => {
+        const settingsRenderer = read('public/js/settings-renderer.js');
+        const taxonomySettings = read('public/js/settings/taxonomy-settings.js');
+
+        expect(settingsRenderer).toContain('peer-checked:bg-sky-500');
+        expect(settingsRenderer).not.toContain('peer-checked:bg-violet-500');
+        expect(taxonomySettings.match(/text-slate-300 hover:text-violet-300/g)).toHaveLength(2);
+    });
+
+    test('replaces browser-default button outlines with neutral keyboard focus', () => {
+        const customCss = read('public/css/custom.css');
+
+        expect(customCss).toMatch(/button:focus\s*\{[^}]*outline:\s*none;/s);
+        expect(customCss).toMatch(
+            /button:focus-visible\s*\{[^}]*outline:\s*2px solid rgb\(148 163 184 \/ 0\.85\);[^}]*outline-offset:\s*2px;/s
+        );
     });
 
     test('connects each selected task type to its semantic color', () => {
