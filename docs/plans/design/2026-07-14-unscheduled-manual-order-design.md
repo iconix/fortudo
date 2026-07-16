@@ -96,30 +96,39 @@ efficient. Announce the task's new position through an accessible live region.
 
 ## Data Model and Ordering Rules
 
-Add an optional non-negative numeric `manualOrder` field to unscheduled tasks. Scheduled tasks do
-not use this field.
+Store order in one room-level config document, separate from task documents:
 
-- Lower values render first in My order.
-- When no tasks have `manualOrder`, existing tasks initially appear in the same sequence as the
-  current Priority view. Merely viewing My order does not write task data.
-- If ranked and unranked tasks are mixed, place unranked incomplete tasks after the last ranked
-  incomplete task and unranked completed tasks at the end. Use the Priority sequence within each
-  unranked group, then normalize on the next order mutation.
-- The first reorder operation normalizes the displayed sequence into explicit manual-order values
-  before applying the move.
-- New and newly unscheduled tasks receive a value that places them after the last incomplete task.
-  Later completed tasks shift as needed so their relative manual sequence remains intact.
-- Completing, reopening, or editing a task does not change its manual-order value.
-- Scheduling or deleting a task removes it from the sequence; remaining gaps are valid and do not
-  require immediate normalization.
-- Invalid or duplicate values use stable task ID as a final tie-breaker. This prevents tasks from
-  disappearing or rendering nondeterministically while data is repaired or synchronized.
+```js
+{
+    id: 'config-unscheduled-sequence',
+    docType: 'config',
+    schemaVersion: 1,
+    orderedTaskIds: ['task-gamma', 'task-alpha', 'task-beta']
+}
+```
+
+- Task edits and reorder operations write different PouchDB documents. Reordering must never add
+  or update an order field on task documents.
+- The stored identifiers define My order. Projection deduplicates identifiers, ignores deleted or
+  scheduled tasks, and cannot recreate a task from a stale identifier.
+- Unlisted incomplete tasks are inserted after the last listed incomplete task; unlisted completed
+  tasks are appended. Priority order plus stable task ID orders each unlisted group.
+- New and newly unscheduled tasks are placed after the last incomplete task by one sequence-document
+  transaction. Multi-task lifecycle operations preserve caller order in one transaction.
+- Completing, reopening, or editing a task does not change the sequence document.
+- Scheduling or deleting a task may leave a harmless stale identifier. The next sequence mutation
+  writes the reconciled identifier list.
+- For migration only, an absent or invalid sequence document projects legacy numeric `manualOrder`
+  values using the original rules. The first sequence mutation materializes that projection into
+  the config document without rewriting or removing legacy fields. Old production code ignores the
+  new config document, so rollback remains safe.
 
 The **Unscheduled sequence module** owns Priority and My order projection, lifecycle placement,
 movement, normalization, and the persistence transaction for sequence changes. Its interface is
 the test surface for all sequence invariants and rollback behavior. The task manager remains the
-canonical owner of the full task collection and supplies narrow state and persistence adapters to
-the sequence module; callers do not learn rank math or PouchDB write details.
+canonical owner of the full task collection and supplies narrow task and sequence-state adapters.
+A sequence repository isolates config persistence and CouchDB conflict cleanup; callers do not
+learn ordering math, revisions, or PouchDB details.
 
 The **Unscheduled list UI module** owns the remembered display mode, list rendering, ordering
 affordances, delegated list events, accessible feedback, drag state, and deferred rerendering.
@@ -136,17 +145,17 @@ Unscheduled-list controls.
 ### Unscheduled sequence interface
 
 `public/js/tasks/unscheduled-sequence.js` is a deep domain module created with narrow adapters for
-reading and replacing manager-owned task state, persisting changed task documents, and reloading
-durable local state. Its logical interface has three operations:
+reading tasks, reading and replacing manager-owned sequence state, persisting one sequence
+document, and reloading durable sequence state. Its logical interface has five operations:
 
 - `project(mode)` returns the ordered Unscheduled tasks plus movement metadata for the selected
   `priority` or `manual` mode. Projection never writes.
-- `place(taskId)` applies lifecycle placement when a task enters the Unscheduled list and returns
-  the placed task plus the tasks whose order fields changed. The manager persists those changes
-  through the existing add or unschedule mutation; this operation does not redefine those
-  mutations' error contracts.
+- `place(taskId)` applies lifecycle placement when one task enters the Unscheduled list.
+- `placeMany(taskIds)` applies an ordered multi-task lifecycle placement in one write.
 - `move(taskId, destination)` applies an explicit user reorder and owns its optimistic state,
-  batch persistence, compensation, rollback, and durable-state recovery.
+  single-document persistence, rollback, and durable-state recovery.
+- `hydrate(sequenceDocument)` replaces local sequence state after room load or synchronization
+  without writing.
 
 Move destinations express intent rather than array arithmetic: up, down, top, bottom, or before a
 specific task ID, with a null before-ID meaning the end. Pointer drops translate to the ID that
@@ -187,26 +196,24 @@ render.
 
 ## Persistence and Synchronization
 
-- Persist changed manual-order fields through a non-destructive PouchDB batch adapter owned by the
-  existing storage module.
-- The sequence module snapshots affected manual-order fields, updates manager-owned memory for an
-  immediate UI response, and settles the batch write in the background.
-- The batch adapter inspects every PouchDB result because a bulk write can partially succeed. The
-  sequence module owns compensation for successful rows and restores the prior in-memory sequence
-  when the transaction fails.
-- If local persistence fails, rerender the restored sequence and show an error toast.
-- If compensating persistence also fails, reload tasks from local PouchDB, rerender the durable
-  state, and show a stronger error toast. In this exceptional path, matching durable storage takes
-  precedence over preserving the optimistic visual sequence.
-- If that durable reload also fails, keep the restored in-memory snapshot, resolve the sequence
-  operation as a recovery failure, and tell the user to reload Fortudo before making more changes.
-- Transactional persistence and rollback apply to explicit reorder operations. Lifecycle
-  placement remains part of the existing add or unschedule persistence path so this feature does
-  not redefine every task mutation's asynchronous contract.
+- Persist each placement or move as one update to `config-unscheduled-sequence`. Task persistence
+  remains owned by the task manager and is independent of the order transaction.
+- The sequence module snapshots the prior sequence document, replaces manager-owned sequence state
+  for an immediate UI response, and settles the config write in the background.
+- If local persistence fails, reload only the durable sequence document. A successful reload
+  replaces optimistic sequence state without touching task fields; if reload also fails, restore
+  the prior in-memory sequence and report a recovery failure.
+- App room loads and post-sync refreshes wait for any accepted local sequence write, load the
+  sequence through its repository, and hydrate both tasks and order before rendering.
+- Concurrent task edit and reorder operations cannot create sibling task revisions because they
+  target different documents.
+- Concurrent reorders may create siblings only on the sequence config. The repository preserves
+  CouchDB's deterministic current winner, advances it, tombstones every losing revision in one
+  bulk request, and re-reads/retries because CouchDB bulk operations are non-atomic.
+- Conflict cleanup never promotes a caller's stale snapshot over the latest winner. Cleanup is
+  complete only when a fresh read reports no losing revisions.
 - Continue surfacing remote state through the existing passive sync indicator; do not add a
   reorder-specific success or conflict dialog.
-- PouchDB's existing task-level conflict policy applies. A deterministic tie-breaker keeps the
-  list renderable if concurrent device changes temporarily produce duplicate positions.
 
 ## Accessibility
 
@@ -234,14 +241,13 @@ render.
 
 ### Unscheduled sequence interface tests
 
-- Priority and My order projection, including missing, duplicate, and invalid values
-- Initial fallback to the current Priority sequence without persistence
+- Priority and My order projection, including missing, duplicate, stale, and invalid identifiers
+- Legacy `manualOrder` fallback without persistence and first-mutation materialization
 - Identity-based move destinations and movement boundaries
 - New-task and newly-unscheduled-task placement after the last incomplete task
 - Completion, reopening, editing, scheduling, and deletion stability
-- Optimistic position metadata, successful settlement, partial batch failure, compensation,
-  in-memory rollback, durable reload when compensation also fails, and non-rejecting recovery
-  failure when durable reload is unavailable
+- Optimistic position metadata, one-document persistence, durable sequence reload after failure,
+  in-memory rollback when reload fails, and non-rejecting recovery failure
 
 ### Unscheduled list UI interface tests
 
@@ -260,8 +266,10 @@ render.
 
 - Manager add and unschedule operations delegate lifecycle placement while preserving their
   existing result contracts
-- The PouchDB batch adapter updates revisions, reports per-document partial failures, and supports
-  compensation writes
+- Config storage reports conflict leaves, advances the latest winner, tombstones losing revisions,
+  retries non-atomic races, and rejects non-conflict bulk failures
+- Reorder versus task edit, concurrent reorders, add versus reorder, and delete/schedule versus
+  reorder preserve task fields and converge to a valid sequence
 - App and broader DOM refresh paths call the same list render seam
 - Existing tests are removed only after a traceability review maps each protected behavior to a
   passing replacement interface, adapter, integration, or end-to-end test
@@ -274,7 +282,8 @@ render.
 - Switch to Priority, then return to My order and confirm the sequence is unchanged
 - Complete a task and confirm it remains in its manual position
 - Add a task and confirm it appears after the last incomplete task
-- Verify the sequence after room synchronization
+- Run two isolated preview clients through reorder-versus-edit and concurrent-reorder races;
+  confirm task edits survive, all clients converge, and Cloudant has no remaining conflicts
 
 The feature is accepted when both modes remain predictable, manual order survives persistence and
 sync, and every reorder operation is available without requiring a drag gesture.

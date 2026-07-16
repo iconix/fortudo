@@ -8,7 +8,9 @@ import {
     getTodaysScheduledTasks,
     deleteCompletedUnscheduledTasks,
     rolloverPriorDayScheduledTasks,
-    waitForUnscheduledMoveSettlement
+    waitForUnscheduledMoveSettlement,
+    refreshUnscheduledSequenceState,
+    hydrateUnscheduledSequenceState
 } from './tasks/manager.js';
 import { initializeModalEventListeners } from './modal-manager.js';
 import {
@@ -119,6 +121,7 @@ async function loadTasksIntoState() {
         }
     });
     updateTaskState(loadedTasks, { persist: false });
+    await refreshUnscheduledSequenceState();
 }
 
 async function loadAppState() {
@@ -143,6 +146,7 @@ async function initAndBootApp(roomCode) {
         appLifecycleAbortController.abort();
     }
     await waitForUnscheduledMoveSettlement();
+    hydrateUnscheduledSequenceState(null);
     appLifecycleAbortController = new AbortController();
     const { signal } = appLifecycleAbortController;
 

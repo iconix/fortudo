@@ -9,13 +9,7 @@ import {
     extractDateFromDateTime,
     convertTo12HourTime
 } from '../utils.js';
-import {
-    putTask,
-    putTasks,
-    loadTasks,
-    deleteTask as deleteTaskFromStorage,
-    saveTasks
-} from '../storage.js';
+import { putTask, deleteTask as deleteTaskFromStorage, saveTasks } from '../storage.js';
 
 // Import from new modules
 import {
@@ -31,6 +25,10 @@ import {
 
 import { isValidTaskData, isScheduledTask } from './validators.js';
 import { createUnscheduledSequence } from './unscheduled-sequence.js';
+import {
+    loadUnscheduledSequenceDocument,
+    persistUnscheduledSequenceDocument
+} from './unscheduled-sequence-repository.js';
 
 /**
  * @typedef {Object} BaseTaskProps
@@ -250,38 +248,61 @@ const stripUIFlags = (task) => {
 };
 
 let unscheduledSequence = null;
+let unscheduledSequenceDocument = null;
 let unscheduledMoveSettlement = Promise.resolve();
 
-function replaceTaskCollection(nextTasks) {
-    tasks = nextTasks;
-    reorganizeTaskArray();
-    invalidateTaskCaches();
+function replaceUnscheduledSequenceDocument(nextSequenceDocument) {
+    unscheduledSequenceDocument = nextSequenceDocument;
 }
 
 function getUnscheduledSequence() {
     if (!unscheduledSequence) {
         unscheduledSequence = createUnscheduledSequence({
             readTasks: () => tasks,
-            replaceTasks: replaceTaskCollection,
-            persistTasks: (changedTasks) => putTasks(changedTasks.map(stripUIFlags)),
-            reloadTasks: async () => {
-                const loadedTasks = await loadTasks();
-                return loadedTasks.map((task) => {
-                    if (!Object.prototype.hasOwnProperty.call(task, 'isEditingInline')) return task;
-                    return { ...task, isEditingInline: false };
-                });
-            }
+            readSequence: () => unscheduledSequenceDocument,
+            replaceSequence: replaceUnscheduledSequenceDocument,
+            persistSequence: persistUnscheduledSequenceDocument,
+            reloadSequence: loadUnscheduledSequenceDocument
         });
     }
     return unscheduledSequence;
 }
 
+function trackUnscheduledSequenceSettlement(operation) {
+    if (!operation?.success || !operation.changed || !operation.settled) return operation;
+
+    unscheduledMoveSettlement = operation.settled.then(
+        () => undefined,
+        () => undefined
+    );
+    return operation;
+}
+
 function enterUnscheduledSequence(task) {
-    const placement = getUnscheduledSequence().place(task.id);
+    const placement = trackUnscheduledSequenceSettlement(getUnscheduledSequence().place(task.id));
     return {
         task: placement.success ? placement.task : task,
-        changedTasks: placement.success ? placement.changedTasks : [task]
+        changedTasks: [task]
     };
+}
+
+/**
+ * Hydrate sequence state after room load or replication, resolving conflict leaves first.
+ * @returns {Promise<Object|null>} Loaded sequence document
+ */
+export async function refreshUnscheduledSequenceState() {
+    await waitForUnscheduledMoveSettlement();
+    const sequenceDocument = await loadUnscheduledSequenceDocument();
+    getUnscheduledSequence().hydrate(sequenceDocument);
+    return sequenceDocument;
+}
+
+/**
+ * Replace in-memory sequence state without persistence.
+ * @param {Object|null} sequenceDocument - Sequence state to project
+ */
+export function hydrateUnscheduledSequenceState(sequenceDocument) {
+    getUnscheduledSequence().hydrate(sequenceDocument);
 }
 
 export function getUnscheduledView(mode = 'priority') {
@@ -293,65 +314,11 @@ export function getSortedUnscheduledTasks() {
 }
 
 export function moveUnscheduledTask(taskId, destination) {
-    const priorOrders = new Map(
-        tasks
-            .filter((task) => task.type === 'unscheduled')
-            .map((task) => [
-                task.id,
-                {
-                    hadValue: Object.prototype.hasOwnProperty.call(task, 'manualOrder'),
-                    value: task.manualOrder
-                }
-            ])
-    );
-    const operation = getUnscheduledSequence().move(taskId, destination);
-    if (!operation.success || !operation.changed) return operation;
-
-    const optimisticOrders = new Map();
-    for (const task of tasks) {
-        if (task.type !== 'unscheduled') continue;
-        const prior = priorOrders.get(task.id);
-        if (!prior || !prior.hadValue || prior.value !== task.manualOrder) {
-            optimisticOrders.set(task.id, task.manualOrder);
-        }
-    }
-
-    const settled = operation.settled
-        .then((result) => {
-            if (result?.success) {
-                let changed = false;
-                const reconciledTasks = tasks.map((task) => {
-                    if (
-                        task.type !== 'unscheduled' ||
-                        !optimisticOrders.has(task.id) ||
-                        task.manualOrder === optimisticOrders.get(task.id)
-                    ) {
-                        return task;
-                    }
-                    changed = true;
-                    return { ...task, manualOrder: optimisticOrders.get(task.id) };
-                });
-                if (changed) replaceTaskCollection(reconciledTasks);
-            }
-            return result;
-        })
-        .catch((error) => ({
-            success: false,
-            code: 'reconciliation-failed',
-            reason: error instanceof Error ? error.message : String(error),
-            rolledBack: false,
-            reloaded: false,
-            recoveryFailed: true
-        }));
-    unscheduledMoveSettlement = settled.then(
-        () => undefined,
-        () => undefined
-    );
-    return { ...operation, settled };
+    return trackUnscheduledSequenceSettlement(getUnscheduledSequence().move(taskId, destination));
 }
 
 /**
- * Wait for the currently accepted Unscheduled move to finish reconciliation or recovery.
+ * Wait for the currently accepted Unscheduled sequence write to finish or recover.
  * @returns {Promise<void>} A promise that never rejects.
  */
 export function waitForUnscheduledMoveSettlement() {
@@ -1444,10 +1411,7 @@ export function rolloverPriorDayScheduledTasks(now = new Date()) {
     }
 
     updateTaskState(nextTasks, { persist: false });
-    for (const movedTaskId of movedTaskIds) {
-        const movedTask = getTaskById(movedTaskId);
-        if (movedTask) enterUnscheduledSequence(movedTask);
-    }
+    trackUnscheduledSequenceSettlement(getUnscheduledSequence().placeMany(movedTaskIds));
     saveTasks(tasks.map(stripUIFlags));
     const taskWord = movedTaskIds.length === 1 ? 'task' : 'tasks';
     const message = `${movedTaskIds.length} unfinished scheduled ${taskWord} moved to backlog.`;

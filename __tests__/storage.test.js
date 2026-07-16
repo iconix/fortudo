@@ -31,6 +31,8 @@ import {
     loadTasks,
     loadActivities,
     loadConfig,
+    loadConfigWithConflicts,
+    resolveConfigConflicts,
     saveTasks,
     getDb,
     destroyStorage
@@ -142,6 +144,221 @@ describe('Storage - PouchDB', () => {
             const tasks = await loadTasks();
             expect(tasks).toHaveLength(1);
             expect(tasks[0].description).toBe('Updated');
+        });
+    });
+
+    describe('config conflicts', () => {
+        test('loads a config winner and reports its losing revisions without exposing Pouch metadata', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const database = getDb();
+            const getSpy = jest.spyOn(database, 'get').mockResolvedValueOnce({
+                _id: 'config-unscheduled-sequence',
+                _rev: '3-winner',
+                _conflicts: ['2-loser-a', '2-loser-b'],
+                docType: 'config',
+                schemaVersion: 1,
+                orderedTaskIds: ['gamma', 'alpha', 'beta']
+            });
+
+            try {
+                await expect(
+                    loadConfigWithConflicts('config-unscheduled-sequence')
+                ).resolves.toEqual({
+                    config: {
+                        id: 'config-unscheduled-sequence',
+                        docType: 'config',
+                        schemaVersion: 1,
+                        orderedTaskIds: ['gamma', 'alpha', 'beta']
+                    },
+                    conflictRevisions: ['2-loser-a', '2-loser-b']
+                });
+            } finally {
+                getSpy.mockRestore();
+            }
+        });
+
+        test('returns an empty conflict result for a missing config', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+            await expect(loadConfigWithConflicts('config-missing')).resolves.toEqual({
+                config: null,
+                conflictRevisions: []
+            });
+        });
+
+        test('resolves real sibling revisions in PouchDB without changing the winning value', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const id = 'config-unscheduled-sequence';
+            await putConfig({ id, schemaVersion: 1, orderedTaskIds: ['alpha', 'beta'] });
+            const database = getDb();
+            const base = await database.get(id);
+            const baseRevisionHash = base._rev.split('-')[1];
+            await database.put({ ...base, orderedTaskIds: ['alpha', 'beta', 'gamma'] });
+            const injectedWinnerRevision = '2-ffffffffffffffffffffffffffffffff';
+            await database.bulkDocs(
+                [
+                    {
+                        _id: id,
+                        _rev: injectedWinnerRevision,
+                        _revisions: {
+                            start: 2,
+                            ids: ['ffffffffffffffffffffffffffffffff', baseRevisionHash]
+                        },
+                        docType: 'config',
+                        schemaVersion: 1,
+                        orderedTaskIds: ['gamma', 'beta', 'alpha']
+                    }
+                ],
+                { new_edits: false }
+            );
+
+            await expect(loadConfigWithConflicts(id)).resolves.toMatchObject({
+                config: expect.objectContaining({
+                    id,
+                    orderedTaskIds: ['gamma', 'beta', 'alpha']
+                }),
+                conflictRevisions: [expect.stringMatching(/^2-/)]
+            });
+            await expect(resolveConfigConflicts(id)).resolves.toEqual({
+                id,
+                docType: 'config',
+                schemaVersion: 1,
+                orderedTaskIds: ['gamma', 'beta', 'alpha']
+            });
+
+            const resolved = await database.get(id, { conflicts: true });
+            expect(resolved.orderedTaskIds).toEqual(['gamma', 'beta', 'alpha']);
+            expect(resolved._conflicts).toBeUndefined();
+        });
+
+        test('advances the current winner and tombstones every losing config revision', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const database = getDb();
+            const winner = {
+                _id: 'config-unscheduled-sequence',
+                _rev: '3-winner',
+                _conflicts: ['2-loser-a', '2-loser-b'],
+                docType: 'config',
+                schemaVersion: 1,
+                orderedTaskIds: ['gamma', 'alpha', 'beta']
+            };
+            const getSpy = jest
+                .spyOn(database, 'get')
+                .mockResolvedValueOnce(winner)
+                .mockResolvedValueOnce({
+                    ...winner,
+                    _rev: '4-resolved',
+                    _conflicts: []
+                });
+            const bulkSpy = jest.spyOn(database, 'bulkDocs').mockResolvedValueOnce([
+                { ok: true, id: winner._id, rev: '4-resolved' },
+                { ok: true, id: winner._id, rev: '3-deleted-a' },
+                { ok: true, id: winner._id, rev: '3-deleted-b' }
+            ]);
+
+            try {
+                await expect(resolveConfigConflicts(winner._id)).resolves.toEqual({
+                    id: winner._id,
+                    docType: 'config',
+                    schemaVersion: 1,
+                    orderedTaskIds: ['gamma', 'alpha', 'beta']
+                });
+                expect(bulkSpy).toHaveBeenCalledWith([
+                    {
+                        _id: winner._id,
+                        _rev: '3-winner',
+                        docType: 'config',
+                        schemaVersion: 1,
+                        orderedTaskIds: ['gamma', 'alpha', 'beta']
+                    },
+                    { _id: winner._id, _rev: '2-loser-a', _deleted: true },
+                    { _id: winner._id, _rev: '2-loser-b', _deleted: true }
+                ]);
+                expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
+            } finally {
+                getSpy.mockRestore();
+                bulkSpy.mockRestore();
+            }
+        });
+
+        test('re-reads and retries when a non-atomic conflict cleanup races another writer', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const database = getDb();
+            const id = 'config-unscheduled-sequence';
+            const firstWinner = {
+                _id: id,
+                _rev: '3-first',
+                _conflicts: ['2-loser'],
+                docType: 'config',
+                orderedTaskIds: ['alpha', 'beta']
+            };
+            const newerWinner = {
+                _id: id,
+                _rev: '4-newer',
+                _conflicts: ['2-loser'],
+                docType: 'config',
+                orderedTaskIds: ['beta', 'alpha']
+            };
+            const getSpy = jest
+                .spyOn(database, 'get')
+                .mockResolvedValueOnce(firstWinner)
+                .mockResolvedValueOnce(newerWinner)
+                .mockResolvedValueOnce({ ...newerWinner, _rev: '5-resolved', _conflicts: [] });
+            const bulkSpy = jest
+                .spyOn(database, 'bulkDocs')
+                .mockResolvedValueOnce([
+                    { id, error: true, name: 'conflict', status: 409 },
+                    { ok: true, id, rev: '3-deleted' }
+                ])
+                .mockResolvedValueOnce([
+                    { ok: true, id, rev: '5-resolved' },
+                    { ok: true, id, rev: '3-deleted-again' }
+                ]);
+
+            try {
+                await expect(resolveConfigConflicts(id)).resolves.toEqual({
+                    id,
+                    docType: 'config',
+                    orderedTaskIds: ['beta', 'alpha']
+                });
+                expect(bulkSpy).toHaveBeenCalledTimes(2);
+                expect(bulkSpy.mock.calls[1][0][0]).toEqual({
+                    _id: id,
+                    _rev: '4-newer',
+                    docType: 'config',
+                    orderedTaskIds: ['beta', 'alpha']
+                });
+                expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
+            } finally {
+                getSpy.mockRestore();
+                bulkSpy.mockRestore();
+            }
+        });
+
+        test('fails conflict cleanup on a non-conflict bulk error', async () => {
+            await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            const database = getDb();
+            const id = 'config-unscheduled-sequence';
+            const getSpy = jest.spyOn(database, 'get').mockResolvedValueOnce({
+                _id: id,
+                _rev: '2-winner',
+                _conflicts: ['2-loser'],
+                docType: 'config',
+                orderedTaskIds: []
+            });
+            const bulkSpy = jest.spyOn(database, 'bulkDocs').mockResolvedValueOnce([
+                { id, error: true, name: 'forbidden', status: 403 },
+                { ok: true, id, rev: '3-deleted' }
+            ]);
+
+            try {
+                await expect(resolveConfigConflicts(id)).rejects.toThrow(
+                    'Config conflict cleanup failed.'
+                );
+            } finally {
+                getSpy.mockRestore();
+                bulkSpy.mockRestore();
+            }
         });
     });
 

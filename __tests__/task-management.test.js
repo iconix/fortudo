@@ -31,10 +31,11 @@ import {
     getTaskById,
     getTaskIndex,
     getTodaysScheduledTasks,
-    getSortedUnscheduledTasks,
     getUnscheduledView,
     moveUnscheduledTask,
     waitForUnscheduledMoveSettlement,
+    refreshUnscheduledSequenceState,
+    hydrateUnscheduledSequenceState,
     setTaskInlineEditing,
     resetAllInlineEditingFlags,
     consumeUnscheduledTask,
@@ -62,6 +63,11 @@ jest.mock('../public/js/storage.js', () => ({
     loadTasks: jest.fn(() => [])
 }));
 
+jest.mock('../public/js/tasks/unscheduled-sequence-repository.js', () => ({
+    loadUnscheduledSequenceDocument: jest.fn(() => Promise.resolve(null)),
+    persistUnscheduledSequenceDocument: jest.fn(() => Promise.resolve())
+}));
+
 // Import the mocked storage functions
 import {
     saveTasks,
@@ -70,12 +76,18 @@ import {
     loadTasks,
     deleteTask as deleteTaskFromStorage
 } from '../public/js/storage.js';
+import {
+    loadUnscheduledSequenceDocument,
+    persistUnscheduledSequenceDocument
+} from '../public/js/tasks/unscheduled-sequence-repository.js';
 
 const mockSaveTasks = jest.mocked(saveTasks);
 const mockPutTask = jest.mocked(putTask);
 const mockPutTasks = jest.mocked(putTasks);
 const mockLoadTasks = jest.mocked(loadTasks);
 const mockDeleteTaskFromStorage = jest.mocked(deleteTaskFromStorage);
+const mockLoadUnscheduledSequenceDocument = jest.mocked(loadUnscheduledSequenceDocument);
+const mockPersistUnscheduledSequenceDocument = jest.mocked(persistUnscheduledSequenceDocument);
 
 // Mock localStorage before any other imports
 const localStorageMock = {
@@ -91,6 +103,7 @@ Object.defineProperty(window, 'localStorage', {
 describe('Task Management Functions (task-manager.js)', () => {
     beforeEach(() => {
         updateTaskState([]);
+        hydrateUnscheduledSequenceState(null);
         mockSaveTasks.mockClear();
         mockPutTask.mockClear();
         mockPutTasks.mockReset();
@@ -98,6 +111,10 @@ describe('Task Management Functions (task-manager.js)', () => {
         mockLoadTasks.mockReset();
         mockLoadTasks.mockResolvedValue([]);
         mockDeleteTaskFromStorage.mockClear();
+        mockLoadUnscheduledSequenceDocument.mockReset();
+        mockLoadUnscheduledSequenceDocument.mockResolvedValue(null);
+        mockPersistUnscheduledSequenceDocument.mockReset();
+        mockPersistUnscheduledSequenceDocument.mockResolvedValue();
     });
 
     afterEach(() => {
@@ -2199,7 +2216,15 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
         }
 
-        test('getUnscheduledView delegates both display modes without persisting', () => {
+        function sequenceDocument(orderedTaskIds) {
+            return {
+                id: 'config-unscheduled-sequence',
+                schemaVersion: 1,
+                orderedTaskIds
+            };
+        }
+
+        test('getUnscheduledView delegates display modes without persisting', () => {
             updateTaskState(
                 [
                     rankedTask('manual-first', 0, { priority: 'low' }),
@@ -2207,12 +2232,9 @@ describe('Task Management Functions (task-manager.js)', () => {
                 ],
                 { persist: false }
             );
+            hydrateUnscheduledSequenceState(sequenceDocument(['manual-first', 'priority-first']));
 
             expect(getUnscheduledView('priority').tasks.map((task) => task.id)).toEqual([
-                'priority-first',
-                'manual-first'
-            ]);
-            expect(getUnscheduledView().tasks.map((task) => task.id)).toEqual([
                 'priority-first',
                 'manual-first'
             ]);
@@ -2220,140 +2242,101 @@ describe('Task Management Functions (task-manager.js)', () => {
                 'manual-first',
                 'priority-first'
             ]);
-            expect(getSortedUnscheduledTasks().map((task) => task.id)).toEqual([
-                'priority-first',
-                'manual-first'
-            ]);
-            expect(mockPutTasks).not.toHaveBeenCalled();
-            expect(mockLoadTasks).not.toHaveBeenCalled();
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
         });
 
-        test('moveUnscheduledTask persists stripped changed documents', async () => {
+        test('move persists one sequence document and leaves task docs untouched', async () => {
             updateTaskState(
                 [
-                    rankedTask('a', 0, {
-                        editing: true,
-                        confirmingDelete: true,
-                        isEditingInline: false
-                    }),
-                    rankedTask('b', 1, {
-                        editing: true,
-                        confirmingDelete: true,
-                        isEditingInline: false
-                    })
+                    rankedTask('a', 0, { remoteField: 'keep-a' }),
+                    rankedTask('b', 1, { remoteField: 'keep-b' }),
+                    rankedTask('c', 2, { remoteField: 'keep-c' })
                 ],
                 { persist: false }
             );
-            mockPutTasks.mockResolvedValueOnce({ succeededIds: ['a', 'b'] });
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b', 'c']));
+            const before = JSON.parse(JSON.stringify(getTaskState()));
 
-            const operation = moveUnscheduledTask('b', { kind: 'top' });
+            const operation = moveUnscheduledTask('c', { kind: 'top' });
 
             expect(operation).toMatchObject({
                 success: true,
                 changed: true,
-                taskId: 'b',
-                position: 1,
-                total: 2
+                taskId: 'c',
+                position: 1
             });
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
-            await expect(operation.settled).resolves.toEqual({ success: true });
-            expect(mockPutTasks).toHaveBeenCalledTimes(1);
-            expect(mockPutTasks).toHaveBeenCalledWith([
-                expect.objectContaining({ id: 'a', manualOrder: 1 }),
-                expect.objectContaining({ id: 'b', manualOrder: 0 })
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'c',
+                'a',
+                'b'
             ]);
-            for (const persistedTask of mockPutTasks.mock.calls[0][0]) {
-                expect(persistedTask).not.toHaveProperty('editing');
-                expect(persistedTask).not.toHaveProperty('confirmingDelete');
-                expect(persistedTask).not.toHaveProperty('isEditingInline');
-            }
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['c', 'a', 'b'])
+            );
+            expect(getTaskState()).toEqual(before);
+            expect(mockPutTask).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
+            await expect(operation.settled).resolves.toEqual({ success: true });
         });
 
-        test('successful move settlement reconciles optimistic ranks onto refreshed manager docs', async () => {
+        test('a concurrent task refresh survives while a sequence write settles', async () => {
             const write = createDeferred();
-            mockPutTasks.mockReturnValueOnce(write.promise);
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
             updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
 
             const operation = moveUnscheduledTask('b', { kind: 'top' });
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
-
             updateTaskState(
                 [
-                    rankedTask('a', 0, { description: 'Refreshed A', remoteField: 'kept-a' }),
-                    rankedTask('b', 1, { description: 'Refreshed B', remoteField: 'kept-b' })
+                    rankedTask('a', 0, {
+                        description: 'Edited on another client',
+                        remoteField: 'preserved'
+                    }),
+                    rankedTask('b', 1)
                 ],
                 { persist: false }
             );
-            write.resolve({ succeededIds: ['a', 'b'] });
+            write.resolve();
 
             await expect(operation.settled).resolves.toEqual({ success: true });
-            expect(getTaskState()).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        id: 'a',
-                        description: 'Refreshed A',
-                        remoteField: 'kept-a',
-                        manualOrder: 1
-                    }),
-                    expect.objectContaining({
-                        id: 'b',
-                        description: 'Refreshed B',
-                        remoteField: 'kept-b',
-                        manualOrder: 0
-                    })
-                ])
+            expect(getTaskById('a')).toEqual(
+                expect.objectContaining({
+                    description: 'Edited on another client',
+                    remoteField: 'preserved',
+                    manualOrder: 0
+                })
             );
             expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
         });
 
-        test('failed move settlement restores prior ranks without clobbering refreshed manager docs', async () => {
-            const write = createDeferred();
-            mockPutTasks.mockReturnValueOnce(write.promise);
+        test('failed persistence reloads order without clobbering task fields', async () => {
             updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
+            mockPersistUnscheduledSequenceDocument.mockRejectedValueOnce(
+                new Error('Sequence write failed.')
+            );
+            mockLoadUnscheduledSequenceDocument.mockResolvedValueOnce(sequenceDocument(['a', 'b']));
 
             const operation = moveUnscheduledTask('b', { kind: 'top' });
-            const wait = waitForUnscheduledMoveSettlement();
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
+            getTaskById('a').description = 'Concurrent task edit';
 
-            updateTaskState(
-                [
-                    rankedTask('a', 0, { description: 'Refreshed A', remoteField: 'kept-a' }),
-                    rankedTask('b', 1, { description: 'Refreshed B', remoteField: 'kept-b' })
-                ],
-                { persist: false }
-            );
-            write.reject(new Error('Write failed.'));
-
-            await expect(operation.settled).resolves.toMatchObject({
+            await expect(operation.settled).resolves.toEqual({
                 success: false,
-                rolledBack: true,
-                reloaded: false
+                code: 'persist-failed',
+                reason: 'Sequence write failed.',
+                rolledBack: false,
+                reloaded: true,
+                recoveryFailed: false
             });
-            await expect(wait).resolves.toBeUndefined();
-            expect(getTaskState()).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        id: 'a',
-                        description: 'Refreshed A',
-                        remoteField: 'kept-a',
-                        manualOrder: 0
-                    }),
-                    expect.objectContaining({
-                        id: 'b',
-                        description: 'Refreshed B',
-                        remoteField: 'kept-b',
-                        manualOrder: 1
-                    })
-                ])
-            );
+            expect(getTaskById('a').description).toBe('Concurrent task edit');
             expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['a', 'b']);
         });
 
-        test('waitForUnscheduledMoveSettlement waits for the accepted reconciled move', async () => {
-            expect(waitForUnscheduledMoveSettlement).toEqual(expect.any(Function));
+        test('waitForUnscheduledMoveSettlement waits for the sequence transaction', async () => {
             const write = createDeferred();
-            mockPutTasks.mockReturnValueOnce(write.promise);
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
             updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
 
             const operation = moveUnscheduledTask('b', { kind: 'top' });
             let waitResolved = false;
@@ -2363,97 +2346,44 @@ describe('Task Management Functions (task-manager.js)', () => {
             await Promise.resolve();
             expect(waitResolved).toBe(false);
 
-            write.resolve({ succeededIds: ['a', 'b'] });
-            await expect(operation.settled).resolves.toEqual({ success: true });
-            await expect(wait).resolves.toBeUndefined();
+            write.resolve();
+            await operation.settled;
+            await wait;
             expect(waitResolved).toBe(true);
         });
 
-        test('move settlement resolves a structured failure if manager reconciliation throws', async () => {
+        test('refresh waits for a local write then hydrates the replicated winner', async () => {
             const write = createDeferred();
-            mockPutTasks.mockReturnValueOnce(write.promise);
-            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
-            const operation = moveUnscheduledTask('b', { kind: 'top' });
-            const wait = waitForUnscheduledMoveSettlement();
-            const refreshedA = rankedTask('a', 0);
-            Object.defineProperty(refreshedA, 'manualOrder', {
-                get() {
-                    throw new Error('Reconciliation read failed.');
-                }
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1), rankedTask('c', 2)], {
+                persist: false
             });
-            updateTaskState([refreshedA, rankedTask('b', 1)], { persist: false });
-
-            write.resolve({ succeededIds: ['a', 'b'] });
-
-            await expect(operation.settled).resolves.toMatchObject({
-                success: false,
-                code: 'reconciliation-failed',
-                reason: 'Reconciliation read failed.',
-                recoveryFailed: true
-            });
-            await expect(wait).resolves.toBeUndefined();
-        });
-
-        test('moveUnscheduledTask reloads durable manager state after compensation fails', async () => {
-            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)], { persist: false });
-            const durableScheduled = createTaskWithDateTime({
-                description: 'Durable scheduled',
-                startTime: '09:00',
-                duration: 30,
-                status: 'incomplete',
-                editing: false,
-                confirmingDelete: false
-            });
-            const durableTasks = [
-                rankedTask('a', 1, { description: 'Durable A', isEditingInline: true }),
-                rankedTask('b', 0, { description: 'Durable B' }),
-                durableScheduled
-            ];
-            mockPutTasks
-                .mockRejectedValueOnce(
-                    Object.assign(new Error('Partial write failed.'), { succeededIds: ['a'] })
-                )
-                .mockRejectedValueOnce(new Error('Compensation failed.'));
-            mockLoadTasks.mockResolvedValueOnce(durableTasks);
-
-            const operation = moveUnscheduledTask('b', { kind: 'top' });
-
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
-            await expect(operation.settled).resolves.toMatchObject({
-                success: false,
-                rolledBack: false,
-                reloaded: true,
-                recoveryFailed: false
-            });
-            expect(mockPutTasks).toHaveBeenCalledTimes(2);
-            expect(mockLoadTasks).toHaveBeenCalledTimes(1);
-            expect(getTaskState().map((task) => task.id)).toEqual([durableScheduled.id, 'a', 'b']);
-            expect(getTaskState()).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        id: 'a',
-                        description: 'Durable A',
-                        manualOrder: 1,
-                        isEditingInline: false
-                    }),
-                    expect.objectContaining({ id: 'b', description: 'Durable B', manualOrder: 0 })
-                ])
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b', 'c']));
+            const operation = moveUnscheduledTask('c', { kind: 'top' });
+            mockLoadUnscheduledSequenceDocument.mockResolvedValueOnce(
+                sequenceDocument(['b', 'c', 'a'])
             );
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
+
+            const refresh = refreshUnscheduledSequenceState();
+            await Promise.resolve();
+            expect(mockLoadUnscheduledSequenceDocument).not.toHaveBeenCalled();
+
+            write.resolve();
+            await operation.settled;
+            await expect(refresh).resolves.toEqual(sequenceDocument(['b', 'c', 'a']));
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'b',
+                'c',
+                'a'
+            ]);
         });
 
-        test('addTask places after the last incomplete task and persists every changed rank', () => {
+        test('add writes the new task once and places it through the sequence document', async () => {
             updateTaskState(
-                [
-                    rankedTask('incomplete', 0),
-                    rankedTask('completed', 1, {
-                        status: 'completed',
-                        editing: true,
-                        confirmingDelete: true
-                    })
-                ],
+                [rankedTask('incomplete', 0), rankedTask('completed', 1, { status: 'completed' })],
                 { persist: false }
             );
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
 
             const result = addTask({
                 taskType: 'unscheduled',
@@ -2463,27 +2393,28 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
 
             expect(result).toMatchObject({ success: true, taskId: result.task.id });
-            expect(result.task.manualOrder).toBe(1);
+            expect(result.task).not.toHaveProperty('manualOrder');
             expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
                 'incomplete',
                 result.task.id,
                 'completed'
             ]);
-            expect(mockPutTask).toHaveBeenCalledTimes(2);
-            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
-                'completed',
-                result.task.id
-            ]);
-            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('editing');
-            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('confirmingDelete');
-            expect(mockPutTasks).not.toHaveBeenCalled();
+            expect(mockPutTask).toHaveBeenCalledTimes(1);
+            expect(mockPutTask).toHaveBeenCalledWith(
+                expect.objectContaining({ id: result.task.id, description: 'Added' })
+            );
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', result.task.id, 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
         });
 
-        test('confirmAddTaskAndReschedule places an unscheduled task through lifecycle persistence', () => {
+        test('confirmed add places a task without rewriting its peers', async () => {
             updateTaskState(
                 [rankedTask('incomplete', 0), rankedTask('completed', 1, { status: 'completed' })],
                 { persist: false }
             );
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
             const proposedTask = rankedTask('confirmed', undefined, {
                 description: 'Confirmed',
                 editing: true,
@@ -2496,24 +2427,19 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toMatchObject({
                 success: true,
                 taskId: 'confirmed',
-                task: expect.objectContaining({ id: 'confirmed', manualOrder: 1 })
+                task: expect.objectContaining({ id: 'confirmed' })
             });
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
-                'incomplete',
-                'confirmed',
-                'completed'
-            ]);
-            expect(mockPutTask).toHaveBeenCalledTimes(2);
-            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
-                'completed',
-                'confirmed'
-            ]);
-            expect(mockPutTask.mock.calls[1][0]).not.toHaveProperty('editing');
-            expect(mockPutTask.mock.calls[1][0]).not.toHaveProperty('confirmingDelete');
-            expect(mockPutTasks).not.toHaveBeenCalled();
+            expect(result.task).not.toHaveProperty('manualOrder');
+            expect(mockPutTask).toHaveBeenCalledTimes(1);
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('editing');
+            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('confirmingDelete');
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', 'confirmed', 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
         });
 
-        test('unscheduleTask places the converted task through lifecycle persistence', () => {
+        test('unschedule persists only the converted task plus its placement', async () => {
             const scheduled = createTaskWithDateTime({
                 description: 'Convert',
                 startTime: '10:00',
@@ -2530,38 +2456,45 @@ describe('Task Management Functions (task-manager.js)', () => {
                 ],
                 { persist: false }
             );
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
 
             const result = unscheduleTask(scheduled.id);
 
             expect(result).toMatchObject({
                 success: true,
                 taskId: scheduled.id,
-                task: expect.objectContaining({
-                    id: scheduled.id,
-                    type: 'unscheduled',
-                    manualOrder: 1
-                })
+                task: expect.objectContaining({ id: scheduled.id, type: 'unscheduled' })
             });
-            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
-                'incomplete',
-                scheduled.id,
-                'completed'
-            ]);
-            expect(mockPutTask).toHaveBeenCalledTimes(2);
-            expect(mockPutTask.mock.calls.map(([task]) => task.id)).toEqual([
-                scheduled.id,
-                'completed'
-            ]);
-            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('editing');
-            expect(mockPutTask.mock.calls[0][0]).not.toHaveProperty('confirmingDelete');
-            expect(mockPutTasks).not.toHaveBeenCalled();
+            expect(result.task).not.toHaveProperty('manualOrder');
+            expect(mockPutTask).toHaveBeenCalledTimes(1);
+            expect(mockPutTask).toHaveBeenCalledWith(
+                expect.objectContaining({ id: scheduled.id, type: 'unscheduled' })
+            );
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', scheduled.id, 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
         });
 
-        test('completion and reopening preserve manualOrder', () => {
-            updateTaskState([rankedTask('ranked', 4)], { persist: false });
+        test('completion and reopening preserve position without a sequence write', () => {
+            updateTaskState([rankedTask('a', 0), rankedTask('ranked', 1), rankedTask('b', 2)], {
+                persist: false
+            });
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'ranked', 'b']));
 
-            expect(toggleUnscheduledTaskCompleteState('ranked').task.manualOrder).toBe(4);
-            expect(toggleUnscheduledTaskCompleteState('ranked').task.manualOrder).toBe(4);
+            expect(toggleUnscheduledTaskCompleteState('ranked').success).toBe(true);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'a',
+                'ranked',
+                'b'
+            ]);
+            expect(toggleUnscheduledTaskCompleteState('ranked').success).toBe(true);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'a',
+                'ranked',
+                'b'
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
         });
     });
 
@@ -2969,7 +2902,23 @@ describe('Task Management Functions (task-manager.js)', () => {
                 staleLaterTask.id,
                 existingCompleted.id
             ]);
-            expect(manualTasks.map((task) => task.manualOrder)).toEqual([0, 1, 2, 3]);
+            expect(manualTasks.map((task) => task.manualOrder)).toEqual([
+                0,
+                undefined,
+                undefined,
+                1
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledTimes(1);
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith({
+                id: 'config-unscheduled-sequence',
+                schemaVersion: 1,
+                orderedTaskIds: [
+                    existingIncomplete.id,
+                    staleEarlyTask.id,
+                    staleLaterTask.id,
+                    existingCompleted.id
+                ]
+            });
             expect(manualTasks.at(-1)).toEqual(
                 expect.objectContaining({ id: existingCompleted.id, status: 'completed' })
             );

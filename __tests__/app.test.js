@@ -32,7 +32,11 @@ jest.mock('../public/js/storage.js', () => ({
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => []),
     loadActivities: jest.fn(() => []),
-    loadConfig: jest.fn(() => Promise.resolve(null))
+    loadConfig: jest.fn(() => Promise.resolve(null)),
+    loadConfigWithConflicts: jest.fn(() =>
+        Promise.resolve({ config: null, conflictRevisions: [] })
+    ),
+    resolveConfigConflicts: jest.fn(() => Promise.resolve(null))
 }));
 
 jest.mock('../public/js/tasks/unscheduled-list.js', () => ({
@@ -976,7 +980,7 @@ describe('App.js Callback Functions', () => {
             const moveWrite = new Promise((resolve) => {
                 resolveMoveWrite = resolve;
             });
-            mockPutTasks.mockReturnValueOnce(moveWrite);
+            mockPutConfig.mockReturnValueOnce(moveWrite);
             updateTaskState(
                 [
                     {
@@ -1011,7 +1015,7 @@ describe('App.js Callback Functions', () => {
             expect(mockPrepareStorage).not.toHaveBeenCalled();
             expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
 
-            resolveMoveWrite({ succeededIds: ['unscheduled-a', 'unscheduled-b'] });
+            resolveMoveWrite();
             await operation.settled;
             await bootPromise;
             await new Promise((resolve) => setTimeout(resolve, 0));

@@ -421,6 +421,120 @@ export async function loadConfig(configId) {
     return loadTypedDocById(configId, isConfigDoc, DOC_TYPES.CONFIG);
 }
 
+function normalizeConfigWinner(doc) {
+    const normalized = normalizeStoredDoc(doc);
+    delete normalized._conflicts;
+    return normalized;
+}
+
+/**
+ * Load a config document together with any losing CouchDB revision leaves.
+ * PouchDB metadata remains internal to the persistence layer.
+ * @param {string} configId - Config document id
+ * @returns {Promise<{config: Object|null, conflictRevisions: string[]}>}
+ */
+export async function loadConfigWithConflicts(configId) {
+    ensureStorageInitialized();
+    const revisionSnapshot = new Map(configRevMap);
+
+    try {
+        const doc = await db.get(configId, { conflicts: true });
+        if (!isConfigDoc(doc)) {
+            refreshOneTrackedRevision(DOC_TYPES.CONFIG, configId, null, revisionSnapshot);
+            return { config: null, conflictRevisions: [] };
+        }
+
+        refreshOneTrackedRevision(DOC_TYPES.CONFIG, configId, doc._rev, revisionSnapshot);
+        return {
+            config: normalizeConfigWinner(doc),
+            conflictRevisions: Array.isArray(doc._conflicts) ? [...doc._conflicts] : []
+        };
+    } catch (err) {
+        if (err.status === 404) {
+            refreshOneTrackedRevision(DOC_TYPES.CONFIG, configId, null, revisionSnapshot);
+            return { config: null, conflictRevisions: [] };
+        }
+        throw err;
+    }
+}
+
+function isConflictResult(result) {
+    return result?.name === 'conflict' || result?.status === 409;
+}
+
+/**
+ * Preserve the latest winning config revision and tombstone all losing leaves.
+ * The read/write loop is required because CouchDB bulk writes are not atomic.
+ * @param {string} configId - Config document id
+ * @param {number} [maxAttempts=5] - Maximum cleanup attempts
+ * @returns {Promise<Object|null>} Latest conflict-free config winner
+ */
+export async function resolveConfigConflicts(configId, maxAttempts = 5) {
+    ensureStorageInitialized();
+    let wroteDocuments = false;
+
+    try {
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            let winner;
+            try {
+                winner = await db.get(configId, { conflicts: true });
+            } catch (err) {
+                if (err.status === 404) {
+                    configRevMap.delete(configId);
+                    return null;
+                }
+                throw err;
+            }
+
+            if (!isConfigDoc(winner)) {
+                configRevMap.delete(configId);
+                return null;
+            }
+
+            const conflictRevisions = Array.isArray(winner._conflicts) ? winner._conflicts : [];
+            if (conflictRevisions.length === 0) {
+                configRevMap.set(configId, winner._rev);
+                return normalizeConfigWinner(winner);
+            }
+
+            const successor = { ...winner };
+            delete successor._conflicts;
+            const documents = [
+                successor,
+                ...conflictRevisions.map((revision) => ({
+                    _id: configId,
+                    _rev: revision,
+                    _deleted: true
+                }))
+            ];
+            const results = await db.bulkDocs(documents);
+            if (results.some((result) => result.ok)) {
+                wroteDocuments = true;
+            }
+
+            const nonConflictFailure = results.find(
+                (result) => !result.ok && !isConflictResult(result)
+            );
+            if (nonConflictFailure) {
+                const error = new Error('Config conflict cleanup failed.');
+                error.failure = nonConflictFailure;
+                throw error;
+            }
+
+            const winnerResult = results[0];
+            if (winnerResult?.ok && configRevMap.get(configId) === winner._rev) {
+                configRevMap.set(configId, winnerResult.rev);
+            }
+        }
+
+        throw new Error('Config conflict cleanup did not converge.');
+    } finally {
+        if (wroteDocuments) {
+            debouncedSync();
+        }
+    }
+}
+
 /**
  * Bulk replace all tasks. Deletes existing docs and inserts new ones.
  * Used for init/clear-all operations.

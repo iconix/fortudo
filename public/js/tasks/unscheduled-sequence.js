@@ -1,6 +1,9 @@
 const PRIORITY_RANK = Object.freeze({ high: 0, medium: 1, low: 2 });
 const VALID_MODES = new Set(['priority', 'manual']);
 
+export const UNSCHEDULED_SEQUENCE_CONFIG_ID = 'config-unscheduled-sequence';
+export const UNSCHEDULED_SEQUENCE_SCHEMA_VERSION = 1;
+
 function compareIds(left, right) {
     return String(left.id).localeCompare(String(right.id));
 }
@@ -29,7 +32,7 @@ function projectPriority(tasks) {
     return tasks.filter((task) => task.type === 'unscheduled').sort(comparePriority);
 }
 
-function projectManual(tasks) {
+function projectLegacyManual(tasks) {
     const unscheduled = tasks.filter((task) => task.type === 'unscheduled');
     const ranked = unscheduled.filter(hasValidManualOrder).sort((left, right) => {
         const rank = left.manualOrder - right.manualOrder;
@@ -56,6 +59,51 @@ function projectManual(tasks) {
     ];
 }
 
+function isValidSequenceDocument(sequenceDocument) {
+    return (
+        sequenceDocument?.id === UNSCHEDULED_SEQUENCE_CONFIG_ID &&
+        sequenceDocument.schemaVersion === UNSCHEDULED_SEQUENCE_SCHEMA_VERSION &&
+        Array.isArray(sequenceDocument.orderedTaskIds)
+    );
+}
+
+function projectDocumentManual(tasks, sequenceDocument) {
+    const unscheduled = tasks.filter((task) => task.type === 'unscheduled');
+    const tasksById = new Map(unscheduled.map((task) => [task.id, task]));
+    const included = new Set();
+    const stored = [];
+
+    for (const taskId of sequenceDocument.orderedTaskIds) {
+        if (included.has(taskId) || !tasksById.has(taskId)) continue;
+        included.add(taskId);
+        stored.push(tasksById.get(taskId));
+    }
+
+    const unlistedIncomplete = unscheduled
+        .filter((task) => !included.has(task.id) && task.status !== 'completed')
+        .sort((left, right) => comparePriority(left, right) || compareIds(left, right));
+    const unlistedCompleted = unscheduled
+        .filter((task) => !included.has(task.id) && task.status === 'completed')
+        .sort((left, right) => comparePriority(left, right) || compareIds(left, right));
+    const lastIncomplete = stored.reduce(
+        (last, task, index) => (task.status === 'completed' ? last : index),
+        -1
+    );
+
+    return [
+        ...stored.slice(0, lastIncomplete + 1),
+        ...unlistedIncomplete,
+        ...stored.slice(lastIncomplete + 1),
+        ...unlistedCompleted
+    ];
+}
+
+function projectManual(tasks, sequenceDocument) {
+    return isValidSequenceDocument(sequenceDocument)
+        ? projectDocumentManual(tasks, sequenceDocument)
+        : projectLegacyManual(tasks);
+}
+
 function movementFor(tasks, mode) {
     return new Map(
         tasks.map((task, index) => [
@@ -70,24 +118,20 @@ function movementFor(tasks, mode) {
     );
 }
 
-function replaceOrderFields(allTasks, ordered) {
-    const orderById = new Map(ordered.map((task, index) => [task.id, index]));
-    const changedTasks = [];
-    const nextTasks = allTasks.map((task) => {
-        if (
-            task.type !== 'unscheduled' ||
-            !orderById.has(task.id) ||
-            task.manualOrder === orderById.get(task.id)
-        ) {
-            return task;
-        }
+function createSequenceDocument(orderedTasks) {
+    return {
+        id: UNSCHEDULED_SEQUENCE_CONFIG_ID,
+        schemaVersion: UNSCHEDULED_SEQUENCE_SCHEMA_VERSION,
+        orderedTaskIds: orderedTasks.map((task) => task.id)
+    };
+}
 
-        const changed = { ...task, manualOrder: orderById.get(task.id) };
-        changedTasks.push(changed);
-        return changed;
-    });
-
-    return { nextTasks, changedTasks };
+function hasSameOrderedIds(sequenceDocument, orderedTaskIds) {
+    return (
+        isValidSequenceDocument(sequenceDocument) &&
+        sequenceDocument.orderedTaskIds.length === orderedTaskIds.length &&
+        sequenceDocument.orderedTaskIds.every((taskId, index) => taskId === orderedTaskIds[index])
+    );
 }
 
 function resolveDestination(ordered, sourceIndex, destination) {
@@ -112,46 +156,31 @@ function resolveDestination(ordered, sourceIndex, destination) {
     }
 }
 
-function snapshotManualOrder(tasks) {
-    return new Map(
-        tasks.map((task) => [
-            task.id,
-            {
-                hadValue: Object.prototype.hasOwnProperty.call(task, 'manualOrder'),
-                value: task.manualOrder
-            }
-        ])
-    );
-}
-
-function restoreManualOrder(tasks, snapshot, changedIds) {
-    return tasks.map((task) => {
-        if (!changedIds.has(task.id) || !snapshot.has(task.id)) return task;
-
-        const restored = { ...task };
-        const prior = snapshot.get(task.id);
-        if (prior.hadValue) restored.manualOrder = prior.value;
-        else delete restored.manualOrder;
-        return restored;
-    });
-}
-
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
 
 /**
- * Create the ordering interface for the manager-owned Unscheduled task sequence.
- * @param {Object} adapters - Task-state and persistence adapters.
- * @returns {Object} Projection, placement, and movement operations.
+ * Create the ordering interface for the room-level Unscheduled task sequence.
+ * Task documents are read-only inputs; only the sequence document is persisted.
+ * @param {Object} adapters - Task, sequence-state, and persistence adapters
+ * @returns {Object} Projection, placement, hydration, and movement operations
  */
-export function createUnscheduledSequence({ readTasks, replaceTasks, persistTasks, reloadTasks }) {
-    let moveInFlight = false;
+export function createUnscheduledSequence({
+    readTasks,
+    readSequence,
+    replaceSequence,
+    persistSequence,
+    reloadSequence
+}) {
+    let writeInFlight = false;
 
     function project(mode = 'priority') {
         const validMode = VALID_MODES.has(mode) ? mode : 'priority';
         const ordered =
-            validMode === 'manual' ? projectManual(readTasks()) : projectPriority(readTasks());
+            validMode === 'manual'
+                ? projectManual(readTasks(), readSequence())
+                : projectPriority(readTasks());
 
         return {
             tasks: ordered,
@@ -159,56 +188,106 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
         };
     }
 
-    function place(taskId) {
+    function settleSequenceWrite(nextSequence, priorSequence) {
+        writeInFlight = true;
+        replaceSequence(nextSequence);
+
+        return (async () => {
+            try {
+                await persistSequence(nextSequence);
+                return { success: true };
+            } catch (persistError) {
+                try {
+                    const durableSequence = await reloadSequence();
+                    replaceSequence(durableSequence);
+                    return {
+                        success: false,
+                        code: 'persist-failed',
+                        reason: errorMessage(persistError),
+                        rolledBack: false,
+                        reloaded: true,
+                        recoveryFailed: false
+                    };
+                } catch (reloadError) {
+                    replaceSequence(priorSequence);
+                    return {
+                        success: false,
+                        code: 'persist-failed',
+                        reason: errorMessage(reloadError),
+                        rolledBack: true,
+                        reloaded: false,
+                        recoveryFailed: true
+                    };
+                }
+            }
+        })()
+            .catch((recoveryError) => {
+                replaceSequence(priorSequence);
+                return {
+                    success: false,
+                    code: 'persist-failed',
+                    reason: errorMessage(recoveryError),
+                    rolledBack: true,
+                    reloaded: false,
+                    recoveryFailed: true
+                };
+            })
+            .finally(() => {
+                writeInFlight = false;
+            });
+    }
+
+    function placeMany(taskIds) {
+        if (writeInFlight) return { success: false, code: 'unavailable' };
+
         const allTasks = readTasks();
-        const task = allTasks.find((item) => item.id === taskId);
-        if (!task || task.type !== 'unscheduled') {
-            return { success: false, code: 'not-unscheduled', changedTasks: [] };
+        const uniqueTaskIds = [...new Set(taskIds)];
+        const tasksToPlace = uniqueTaskIds.map((taskId) =>
+            allTasks.find((item) => item.id === taskId)
+        );
+        if (tasksToPlace.some((task) => !task || task.type !== 'unscheduled')) {
+            return { success: false, code: 'not-unscheduled' };
         }
 
-        const ordered = projectManual(allTasks).filter((item) => item.id !== taskId);
+        const placedIds = new Set(uniqueTaskIds);
+        const ordered = projectManual(allTasks, readSequence()).filter(
+            (item) => !placedIds.has(item.id)
+        );
         const insertionIndex = ordered.reduce(
             (last, item, index) => (item.status === 'completed' ? last : index + 1),
             0
         );
-        ordered.splice(insertionIndex, 0, task);
+        ordered.splice(insertionIndex, 0, ...tasksToPlace);
 
-        const replacement = replaceOrderFields(allTasks, ordered);
-        replaceTasks(replacement.nextTasks);
+        const priorSequence = readSequence();
+        const nextSequence = createSequenceDocument(ordered);
+        if (hasSameOrderedIds(priorSequence, nextSequence.orderedTaskIds)) {
+            return {
+                success: true,
+                changed: false,
+                task: tasksToPlace[0],
+                taskId: uniqueTaskIds.length === 1 ? uniqueTaskIds[0] : undefined,
+                taskIds: uniqueTaskIds,
+                settled: Promise.resolve({ success: true })
+            };
+        }
 
         return {
             success: true,
-            task: replacement.nextTasks.find((item) => item.id === taskId),
-            changedTasks: replacement.changedTasks
+            changed: true,
+            task: tasksToPlace[0],
+            taskId: uniqueTaskIds.length === 1 ? uniqueTaskIds[0] : undefined,
+            taskIds: uniqueTaskIds,
+            settled: settleSequenceWrite(nextSequence, priorSequence)
         };
     }
 
-    async function reloadDurableState(recoveryError) {
-        try {
-            const durableTasks = await reloadTasks();
-            replaceTasks(durableTasks);
-            return {
-                success: false,
-                code: 'persist-failed',
-                reason: errorMessage(recoveryError),
-                rolledBack: false,
-                reloaded: true,
-                recoveryFailed: false
-            };
-        } catch (reloadError) {
-            return {
-                success: false,
-                code: 'persist-failed',
-                reason: errorMessage(reloadError),
-                rolledBack: true,
-                reloaded: false,
-                recoveryFailed: true
-            };
-        }
+    function place(taskId) {
+        return placeMany([taskId]);
     }
 
     function move(taskId, destination) {
-        if (moveInFlight) return { success: false, code: 'unavailable' };
+        if (writeInFlight) return { success: false, code: 'unavailable' };
 
         const currentTasks = readTasks();
         const source = currentTasks.find((task) => task.id === taskId);
@@ -216,7 +295,7 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
         if (source.type !== 'unscheduled') return { success: false, code: 'not-unscheduled' };
         if (source.isEditingInline) return { success: false, code: 'unavailable' };
 
-        const ordered = projectManual(currentTasks);
+        const ordered = projectManual(currentTasks, readSequence());
         const sourceIndex = ordered.findIndex((task) => task.id === taskId);
         const destinationIndex = resolveDestination(ordered, sourceIndex, destination);
         if (destinationIndex === null) {
@@ -233,66 +312,11 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
             };
         }
 
-        const before = snapshotManualOrder(currentTasks);
         const moved = [...ordered];
         const [moving] = moved.splice(sourceIndex, 1);
         moved.splice(destinationIndex, 0, moving);
-        const replacement = replaceOrderFields(currentTasks, moved);
-        replaceTasks(replacement.nextTasks);
-        const changedIds = new Set(replacement.changedTasks.map((task) => task.id));
-        moveInFlight = true;
-
-        const settled = (async () => {
-            try {
-                await persistTasks(replacement.changedTasks);
-                return { success: true };
-            } catch (persistError) {
-                const restoredTasks = restoreManualOrder(readTasks(), before, changedIds);
-                replaceTasks(restoredTasks);
-                const restoredById = new Map(restoredTasks.map((task) => [task.id, task]));
-                const succeededIds = Array.isArray(persistError?.succeededIds)
-                    ? persistError.succeededIds
-                    : [];
-
-                if (succeededIds.length > 0) {
-                    const uniqueSucceededIds = [...new Set(succeededIds)];
-                    const canCompensateEveryWrite = uniqueSucceededIds.every(
-                        (id) => changedIds.has(id) && restoredById.has(id)
-                    );
-                    if (!canCompensateEveryWrite) {
-                        return reloadDurableState(
-                            new Error('Successful task writes could not all be compensated.')
-                        );
-                    }
-
-                    try {
-                        const compensation = uniqueSucceededIds.map((id) => restoredById.get(id));
-                        await persistTasks(compensation);
-                    } catch (compensationError) {
-                        return reloadDurableState(compensationError);
-                    }
-                }
-
-                return {
-                    success: false,
-                    code: 'persist-failed',
-                    reason: errorMessage(persistError),
-                    rolledBack: true,
-                    reloaded: false
-                };
-            }
-        })()
-            .catch((recoveryError) => ({
-                success: false,
-                code: 'persist-failed',
-                reason: errorMessage(recoveryError),
-                rolledBack: false,
-                reloaded: false,
-                recoveryFailed: true
-            }))
-            .finally(() => {
-                moveInFlight = false;
-            });
+        const priorSequence = readSequence();
+        const nextSequence = createSequenceDocument(moved);
 
         return {
             success: true,
@@ -300,13 +324,13 @@ export function createUnscheduledSequence({ readTasks, replaceTasks, persistTask
             taskId,
             position: destinationIndex + 1,
             total: moved.length,
-            settled
+            settled: settleSequenceWrite(nextSequence, priorSequence)
         };
     }
 
-    return {
-        project,
-        place,
-        move
-    };
+    function hydrate(sequenceDocument) {
+        replaceSequence(sequenceDocument);
+    }
+
+    return { project, place, placeMany, move, hydrate };
 }

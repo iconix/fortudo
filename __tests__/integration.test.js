@@ -33,7 +33,11 @@ jest.mock('../public/js/storage.js', () => ({
     putConfig: jest.fn(() => Promise.resolve()),
     deleteTask: jest.fn(),
     loadTasks: jest.fn(() => []),
-    loadConfig: jest.fn(() => Promise.resolve(null))
+    loadConfig: jest.fn(() => Promise.resolve(null)),
+    loadConfigWithConflicts: jest.fn(() =>
+        Promise.resolve({ config: null, conflictRevisions: [] })
+    ),
+    resolveConfigConflicts: jest.fn(() => Promise.resolve(null))
 }));
 
 // Mock sync-manager.js to prevent real sync operations

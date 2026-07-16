@@ -128,6 +128,24 @@ class CouchDbHelpersTests(unittest.TestCase):
         )
         self.assertEqual(request.get_method(), "GET")
 
+    @patch("scripts.preview_smoke.remote.urlopen")
+    def test_fetch_remote_docs_can_request_conflict_metadata(self, mock_urlopen):
+        mock_response = mock_urlopen.return_value.__enter__.return_value
+        mock_response.read.return_value = b'{"rows":[]}'
+
+        fetch_remote_docs(
+            "https://user:pass@example.cloudant.com",
+            "fortudo-preview-smoke-alpha",
+            include_conflicts=True,
+        )
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.cloudant.com/fortudo-preview-smoke-alpha/"
+            "_all_docs?include_docs=true&conflicts=true",
+        )
+
 
 class SummarizeDocsTests(unittest.TestCase):
     def test_groups_task_legacy_and_non_task_docs(self):

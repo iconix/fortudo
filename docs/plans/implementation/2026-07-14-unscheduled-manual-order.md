@@ -8,6 +8,32 @@
 
 **Tech Stack:** Vanilla JavaScript ES modules, PouchDB 9, Jest 30 with jsdom, Tailwind CSS 3 plus 'public/css/custom.css', Python/Playwright E2E, Firebase-hosted PWA precache generation.
 
+## Architecture Correction — 2026-07-15
+
+The implementation below records the original per-task-rank plan and is retained as execution
+history. A two-client Cloudant probe showed that rewriting task documents during reorder can lose a
+concurrent task edit. The following correction supersedes every step that writes, compensates, or
+normalizes `manualOrder` on task documents:
+
+- Store `orderedTaskIds` in the single room-level config document
+  `config-unscheduled-sequence`; do not dual-write task ranks.
+- Keep `manualOrder` read-only as an absent-document migration fallback. The first sequence
+  mutation materializes legacy projection without rewriting legacy task documents.
+- Make `unscheduled-sequence.js` own projection, placement, optimistic replacement, one-document
+  persistence settlement, reload, and rollback through `project`, `place`, `placeMany`, `move`, and
+  `hydrate`.
+- Add `unscheduled-sequence-repository.js` as the narrow config persistence seam. Storage exposes
+  conflict-aware config reads and a retrying resolver that advances the latest CouchDB winner and
+  tombstones all losing leaves.
+- Hydrate the sequence alongside tasks on room load and post-sync refresh, after any accepted local
+  sequence transaction settles.
+- Replace obsolete per-task rank transaction tests with sequence-document, task-edit isolation,
+  lifecycle placement, conflict cleanup, and two-isolated-client Cloudant acceptance coverage.
+- Treat concurrent reorder resolution as deterministic winner selection for order only. Task data
+  is never part of that conflict surface.
+
+This correction preserves all approved list UI and interaction work in the remainder of the plan.
+
 ## Global Constraints
 
 - Preserve Priority as the initial mode for browsers without a valid saved preference.

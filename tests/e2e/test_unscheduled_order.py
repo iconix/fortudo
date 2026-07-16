@@ -58,15 +58,25 @@ def wait_for_order(page: Page, expected: list[str]) -> None:
 
 
 def persisted_manual_order(page: Page) -> list[str] | None:
-    """Return the durable manual order once every Unscheduled task has a rank."""
-    tasks = [
-        doc
-        for doc in read_docs(page, ROOM_CODE)
+    """Return the durable order from the room-level sequence document."""
+    docs = read_docs(page, ROOM_CODE)
+    tasks_by_id = {
+        doc.get("_id"): doc
+        for doc in docs
         if doc.get("docType") == "task" and doc.get("type") == "unscheduled"
-    ]
-    if not tasks or any(not isinstance(task.get("manualOrder"), (int, float)) for task in tasks):
+    }
+    sequence = next(
+        (doc for doc in docs if doc.get("_id") == "config-unscheduled-sequence"),
+        None,
+    )
+    ordered_ids = sequence.get("orderedTaskIds") if sequence else None
+    if not tasks_by_id or not isinstance(ordered_ids, list):
         return None
-    return [task["description"] for task in sorted(tasks, key=lambda task: task["manualOrder"])]
+    if set(ordered_ids) != set(tasks_by_id):
+        return None
+    if any("manualOrder" in task for task in tasks_by_id.values()):
+        raise AssertionError("New ordering writes must not add manualOrder to task documents")
+    return [tasks_by_id[task_id]["description"] for task_id in ordered_ids]
 
 
 def wait_for_persisted_order(page: Page, expected: list[str]) -> None:
