@@ -40,7 +40,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     "Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected.",
                     undefined,
-                    'teal'
+                    'rose'
                 )
             ) {
                 const result = deleteAllScheduledTasks();
@@ -50,7 +50,7 @@ export function initializeClearTasksHandlers() {
                     });
                     onScheduledTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'rose');
                 }
             }
         });
@@ -81,7 +81,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     'Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.',
                     undefined,
-                    'red'
+                    'rose'
                 )
             ) {
                 const result = deleteAllTasks();
@@ -89,7 +89,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
                     onAllTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to delete all tasks.', 'red');
+                    showAlert(result.reason || 'Failed to delete all tasks.', 'rose');
                 }
             }
             closeClearTasksDropdown();
@@ -122,7 +122,7 @@ export function initializeClearTasksHandlers() {
                     });
                     onCompletedTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
+                    showAlert(result.reason || 'Failed to clear completed tasks.', 'rose');
                 }
             }
             closeClearTasksDropdown();

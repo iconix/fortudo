@@ -105,6 +105,10 @@ Retire, or repoint at `public/icons/icon.svg` (rasterize SVG instead of screensh
 - Delete the emoji-based `scripts/generate_icons.py`. The committed `public/icons/icon.svg` is the canonical source for raster icons; README regeneration guidance should point to a general SVG rasterizer such as `rsvg-convert`.
 - Keep the old generator reference in `docs/plans/implementation/2026-07-07-pwa.md` as a historical record.
 - Post-implementation visual review selected **Unified crisp** for Unscheduled Tasks. The initial slate-400/slate-500 treatment read too much like an inactive scheduled state. Unscheduled work should carry equal visual importance, so its heading, row rail, checkbox, and overflow/actions trigger use slate-300 consistently. Priority badges, category colors, and the neutral Unscheduled form-chip treatment remain unchanged.
+- PR #97 design review extended the flat tint+ rule to every CTA, including schedule/timer controls, inline edit saves, and dynamically themed modal actions. Type actions retain teal/slate/sky, overlap actions use amber, destructive confirmations use rose, and CTA gradients are fully retired.
+- The Settings scrollbar uses a restrained violet thumb rather than the former teal accent because Settings is an interaction context, not a scheduled-task context.
+- The tagline is sentence-cased when paired with the custom Jelly dedication heart.
+- `og-image.png` is intentionally excluded from the offline app-shell precache. SVG assets remain precached, and their text line endings are normalized before hashing so the committed cache stamp is reproducible across Windows and Linux checkouts.
 
 ## Verification
 

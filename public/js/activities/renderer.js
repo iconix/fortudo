@@ -288,7 +288,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
                 <button type="button" class="btn-cancel-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100">
                     <i class="fa-solid fa-xmark mr-2"></i>Cancel
                 </button>
-                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 text-white">
+                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40">
                     <i class="fa-solid fa-check mr-2"></i>Save
                 </button>
             </div>

@@ -10,7 +10,7 @@ const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
 const OUTPUT = join(PUBLIC_DIR, 'sw-precache.js');
 const SW_FILE = join(PUBLIC_DIR, 'sw.js');
 const STAMP = /^\/\/ precache-version: \w+$/m;
-const TEXT_EXTENSIONS = new Set(['.css', '.html', '.js', '.webmanifest']);
+const TEXT_EXTENSIONS = new Set(['.css', '.html', '.js', '.svg', '.webmanifest']);
 
 // Never precache: the SW itself + its imports (browser-managed), CI-rewritten
 // config (seeded at install + network-first at runtime; excluded from the
@@ -20,7 +20,8 @@ const EXCLUDE = new Set([
     'sw-precache.js',
     'js/config.js',
     'js/config.example.js',
-    'layout-mockups.html'
+    'layout-mockups.html',
+    'og-image.png'
 ]);
 
 function walk(dir) {

@@ -99,7 +99,7 @@ export function renderEditTaskHTML(task, index) {
                     <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300">
+                    <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40">
                         <i class="fa-solid fa-check mr-2"></i>Save
                     </button>
                 </div>
@@ -473,10 +473,10 @@ export function renderTasks(
                 saveBtn.innerHTML =
                     '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
                 saveBtn.className = saveBtn.className
-                    .replace(/from-teal-500/g, 'from-amber-500')
-                    .replace(/to-teal-400/g, 'to-amber-400')
-                    .replace(/hover:from-teal-400/g, 'hover:from-amber-400')
-                    .replace(/hover:to-teal-300/g, 'hover:to-amber-300');
+                    .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
+                    .replace(/border-teal-400\/60/g, 'border-amber-400/60')
+                    .replace(/text-teal-200/g, 'text-amber-200')
+                    .replace(/hover:bg-teal-500\/40/g, 'hover:bg-amber-500/40');
             }
         }
 

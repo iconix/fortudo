@@ -605,7 +605,9 @@ describe('Scheduled Task Renderer Tests', () => {
             const list = getScheduledTaskListElement();
             const saveBtn = list.querySelector('.btn-save-edit');
             expect(saveBtn).not.toBeNull();
-            expect(saveBtn.className).toContain('from-amber-500');
+            expect(saveBtn.className).toContain('bg-amber-500/30');
+            expect(saveBtn.className).toContain('border-amber-400/60');
+            expect(saveBtn.className).not.toContain('bg-gradient-to-r');
             expect(saveBtn.textContent).toContain('Reschedule');
         });
 

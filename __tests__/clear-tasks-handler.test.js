@@ -160,7 +160,11 @@ describe('Clear Tasks Handler', () => {
             clearScheduleButton.click();
             await new Promise((r) => setTimeout(r, 0));
 
-            expect(askConfirmation).toHaveBeenCalled();
+            expect(askConfirmation).toHaveBeenCalledWith(
+                expect.stringContaining("clear all tasks from Today's Schedule"),
+                undefined,
+                'rose'
+            );
             expect(getTaskState()).toHaveLength(0);
             expect(showToast).toHaveBeenCalledWith('1 scheduled tasks deleted.', {
                 theme: 'rose'
@@ -197,7 +201,11 @@ describe('Clear Tasks Handler', () => {
             clearAllOption.click();
             await new Promise((r) => setTimeout(r, 0));
 
-            expect(askConfirmation).toHaveBeenCalled();
+            expect(askConfirmation).toHaveBeenCalledWith(
+                expect.stringContaining('delete ALL tasks'),
+                undefined,
+                'rose'
+            );
             expect(getTaskState()).toHaveLength(0);
             expect(showToast).toHaveBeenCalledWith('1 tasks deleted.', { theme: 'rose' });
             expect(onAllTasksCleared).toHaveBeenCalled();

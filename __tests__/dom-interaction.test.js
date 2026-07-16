@@ -556,7 +556,9 @@ describe('DOM Handler Interaction Tests', () => {
             expect(warningEl.textContent).toContain('overlaps');
 
             const saveBtn = editForm.querySelector('.btn-save-edit');
-            expect(saveBtn.className).toContain('from-amber-500');
+            expect(saveBtn.className).toContain('bg-amber-500/30');
+            expect(saveBtn.className).toContain('border-amber-400/60');
+            expect(saveBtn.className).not.toContain('bg-gradient-to-r');
         });
 
         test('input event on edit form clears overlap warning when no overlap', () => {
@@ -600,7 +602,9 @@ describe('DOM Handler Interaction Tests', () => {
             expect(warningEl.textContent).toBe('');
 
             const saveBtn = editForm.querySelector('.btn-save-edit');
-            expect(saveBtn.className).toContain('from-teal-500');
+            expect(saveBtn.className).toContain('bg-teal-500/30');
+            expect(saveBtn.className).toContain('border-teal-400/60');
+            expect(saveBtn.className).not.toContain('bg-gradient-to-r');
         });
     });
 

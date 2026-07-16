@@ -334,6 +334,37 @@ describe('Modal Manager Tests', () => {
                 okBtn.click();
             });
 
+            test.each([
+                [
+                    'teal',
+                    'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40'
+                ],
+                ['sky', 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40'],
+                [
+                    'amber',
+                    'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40'
+                ],
+                [
+                    'slate',
+                    'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40'
+                ],
+                [
+                    'rose',
+                    'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'
+                ]
+            ])('showCustomConfirm applies the flat %s action theme', async (theme, classes) => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message', undefined, theme);
+                const okBtn = document.getElementById('ok-custom-confirm-modal');
+
+                classes.split(' ').forEach((className) => {
+                    expect(okBtn.classList.contains(className)).toBe(true);
+                });
+                expect(okBtn.classList.contains('bg-gradient-to-r')).toBe(false);
+
+                okBtn.click();
+                await expect(resultPromise).resolves.toBe(true);
+            });
+
             test('askConfirmation uses "Confirmation" as title', async () => {
                 askConfirmation('Are you sure?');
 

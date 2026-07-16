@@ -51,21 +51,25 @@ function setModalTheme(modal, title, button, theme = 'violet') {
         violet: 'text-violet-400',
         slate: 'text-slate-300',
         teal: 'text-teal-400',
-        sky: 'text-sky-400'
+        sky: 'text-sky-400',
+        amber: 'text-amber-400',
+        rose: 'text-rose-400'
     };
     const buttonClasses = {
-        violet: 'from-violet-500 to-violet-400 hover:from-violet-400 hover:to-violet-300',
-        slate: 'from-slate-500 to-slate-400 hover:from-slate-400 hover:to-slate-300',
-        teal: 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
-        sky: 'from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300'
+        violet: 'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40',
+        slate: 'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40',
+        teal: 'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
+        sky: 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40',
+        amber: 'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40',
+        rose: 'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'
     };
     // Update title color
     if (title) {
         title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.violet}`;
     }
-    // Update button gradient
+    // Update button tint
     if (button) {
-        button.className = `bg-gradient-to-r ${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
+        button.className = `${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg font-normal transition-colors`;
     }
 }
 
@@ -295,10 +299,10 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
                 overlapButtonHTML:
                     '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
                 overlapButtonClasses: modalScheduleBtn.className
-                    .replace(/from-teal-500\/90/g, 'from-amber-500')
-                    .replace(/to-teal-400\/90/g, 'to-amber-400')
-                    .replace(/hover:from-teal-400\/90/g, 'hover:from-amber-400')
-                    .replace(/hover:to-teal-300\/90/g, 'hover:to-amber-300')
+                    .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
+                    .replace(/border-teal-400\/60/g, 'border-amber-400/60')
+                    .replace(/text-teal-200/g, 'text-amber-200')
+                    .replace(/hover:bg-teal-500\/40/g, 'hover:bg-amber-500/40')
             }
         );
     }
@@ -508,7 +512,7 @@ export function showAlert(message, theme = 'violet') {
  * Show a confirmation dialog with customizable button labels
  * @param {string} message - The message to display
  * @param {{ok: string, cancel: string}=} buttonLabels - Optional custom labels for the buttons
- * @param {string=} theme - The theme to use ('violet', 'slate', 'teal', or 'sky')
+ * @param {string=} theme - The semantic theme for the confirmation action
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
 export function askConfirmation(message, buttonLabels, theme = 'violet') {

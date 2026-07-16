@@ -62,6 +62,36 @@ describe('Fortudo brand system', () => {
         expect(viewToggle).toContain("'border-violet-400/40'");
     });
 
+    test('uses flat semantic tints for action buttons throughout the app', () => {
+        const publicJavaScript = readJavaScriptTree(path.join(repoRoot, 'public', 'js')).join('\n');
+        const appStyling = `${indexHtml}\n${publicJavaScript}`;
+
+        expect(appStyling).not.toMatch(/bg-gradient-to-r/);
+        [
+            'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
+            'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40',
+            'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40',
+            'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40',
+            'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'
+        ].forEach((semanticTint) => expect(appStyling).toContain(semanticTint));
+    });
+
+    test('uses sentence case for the in-app tagline', () => {
+        expect(indexHtml).toContain('A daily time-blocking to-do app.');
+        expect(indexHtml).not.toContain('A Daily Time-Blocking To-Do App.');
+    });
+
+    test('uses a restrained violet settings scrollbar', () => {
+        const customCss = read('public/css/custom.css');
+
+        expect(customCss).toContain(
+            'scrollbar-color: rgba(139, 92, 246, 0.55) rgba(51, 65, 85, 0.35);'
+        );
+        expect(customCss).toContain('background: rgba(139, 92, 246, 0.72);');
+        expect(customCss).toContain('background: rgba(167, 139, 250, 0.86);');
+        expect(customCss).not.toMatch(/settings-scroll-area[\s\S]*?rgba\(20, 184, 166/);
+    });
+
     test('connects each selected task type to its semantic color', () => {
         expect(indexHtml).toContain('peer-checked:bg-teal-500/20');
         expect(indexHtml).toContain('peer-checked:border-teal-400/40');
