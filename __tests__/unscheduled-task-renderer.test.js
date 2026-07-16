@@ -65,6 +65,30 @@ describe('unscheduled task renderer', () => {
         );
     });
 
+    test('wraps a long URL inside its own shrinkable description element', () => {
+        const longUrl =
+            'https://www.geoffreylitt.com/2026/07/02/understanding-is-the-new-bottleneck.html';
+
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-url',
+                    type: 'unscheduled',
+                    description: longUrl,
+                    priority: 'medium',
+                    estDuration: 20,
+                    status: 'incomplete'
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const description = document.querySelector('.task-description');
+        expect(description).not.toBeNull();
+        expect(description.textContent).toBe(longUrl);
+    });
+
     test('keeps edit and delete actions available for completed unscheduled tasks', () => {
         renderUnscheduledTasks(
             [

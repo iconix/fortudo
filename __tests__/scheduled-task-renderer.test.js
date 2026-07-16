@@ -219,6 +219,22 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(badge.textContent).toBe('work/deep');
         });
 
+        test('wraps a long URL inside its own shrinkable description element', () => {
+            const longUrl =
+                'https://www.geoffreylitt.com/2026/07/02/understanding-is-the-new-bottleneck.html';
+            const tasks = [
+                createTask('url', '10:00', 60, {
+                    description: longUrl
+                })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const description = document.querySelector('.task-description');
+            expect(description).not.toBeNull();
+            expect(description.textContent).toBe(longUrl);
+        });
+
         test('renders actions menu with do-now only for incomplete non-active scheduled tasks', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));

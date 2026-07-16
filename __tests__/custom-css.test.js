@@ -18,4 +18,15 @@ describe('custom CSS polish hooks', () => {
         expect(css).toContain('[data-timeline-block-id]');
         expect(css).toContain('.settings-reload-prompt');
     });
+
+    test('allows long task descriptions such as URLs to wrap anywhere', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(
+            /\.task-description\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/s
+        );
+    });
 });
