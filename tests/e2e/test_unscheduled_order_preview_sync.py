@@ -10,12 +10,15 @@ import pytest
 from playwright.sync_api import Page, sync_playwright
 
 from scripts.e2e_helpers import (
+    add_unscheduled_task,
     clear_room_storage,
+    delete_unscheduled_task_via_ui,
     enter_room,
     launch_browser,
     read_docs,
     request_manual_sync,
     seed_docs,
+    wait_for_task_doc,
     wait_for_main_app,
     wait_until,
 )
@@ -38,6 +41,7 @@ def task_doc(task_id: str, description: str) -> dict:
         "status": "incomplete",
         "priority": "medium",
         "estDuration": 30,
+        "acceptanceSentinel": f"preserve-{task_id}",
     }
 
 
@@ -123,6 +127,22 @@ def wait_for_local_order(
         ) from error
 
 
+def assert_clients_render_exact_task_set(
+    page_a: Page,
+    page_b: Page,
+    expected_task_ids: set[str],
+) -> list[str] | bool:
+    order_a = visible_ids(page_a)
+    order_b = visible_ids(page_b)
+    if (
+        order_a == order_b
+        and len(order_a) == len(expected_task_ids)
+        and set(order_a) == expected_task_ids
+    ):
+        return order_a
+    return False
+
+
 def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflicts():
     preview_url = os.environ.get("FORTUDO_PREVIEW_URL")
     if not preview_url:
@@ -141,7 +161,17 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
     browser = None
     try:
         with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
+            if os.environ.get("FORTUDO_E2E_BYPASS_CORS") == "1":
+                launch_options = {
+                    "headless": True,
+                    "args": ["--disable-web-security"],
+                }
+                channel = os.environ.get("E2E_BROWSER_CHANNEL", "chromium")
+                if channel != "chromium":
+                    launch_options["channel"] = channel
+                browser = playwright.chromium.launch(**launch_options)
+            else:
+                browser = launch_browser(playwright)
             context_a = browser.new_context()
             context_b = browser.new_context()
             page_a = context_a.new_page()
@@ -339,6 +369,136 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
                 "both clients to render the conflict-free sequence winner",
                 timeout_s=30,
             )
+
+            # Add on one client while the other reorders the prior sequence.
+            context_a.set_offline(True)
+            context_b.set_offline(True)
+            add_description = "Delta added on client A"
+            add_unscheduled_task(page_a, add_description, 25)
+            added_task = wait_for_task_doc(page_a, room_code, add_description)
+            added_id = added_task["id"]
+            wait_until(
+                lambda: added_id
+                in local_doc(page_a, room_code, SEQUENCE_ID).get("orderedTaskIds", []),
+                "client A to place its added task in the sequence",
+            )
+
+            prior_order_b = visible_ids(page_b)
+            reorder_id = prior_order_b[-1]
+            move_to_top(page_b, reorder_id)
+            wait_for_local_order(
+                page_b,
+                room_code,
+                [reorder_id, *prior_order_b[:-1]],
+                "client B reorder concurrent with client A add",
+            )
+            context_a.set_offline(False)
+            context_b.set_offline(False)
+
+            expected_after_add = {*winning_ids, added_id}
+
+            def add_and_reorder_converged():
+                request_both_sync(page_a, page_b)
+                docs = fetch_remote_docs(
+                    couchdb_url, remote_db_name, include_conflicts=True
+                )
+                task_docs = [doc for doc in docs if doc.get("docType") == "task"]
+                sequence = next(
+                    (doc for doc in docs if doc.get("_id") == SEQUENCE_ID), None
+                )
+                remote_task_ids = {doc.get("_id") for doc in task_docs}
+                if (
+                    remote_task_ids == expected_after_add
+                    and sum(doc.get("description") == add_description for doc in task_docs)
+                    == 1
+                    and sequence
+                    and not sequence.get("_conflicts")
+                    and not any(doc.get("_conflicts") for doc in task_docs)
+                ):
+                    return docs
+                return False
+
+            added_remote_docs = wait_until(
+                add_and_reorder_converged,
+                "add and concurrent reorder to converge without task conflicts",
+                timeout_s=45,
+            )
+            wait_until(
+                lambda: assert_clients_render_exact_task_set(
+                    page_a, page_b, expected_after_add
+                ),
+                "both clients to render every task exactly once after add versus reorder",
+                timeout_s=45,
+            )
+
+            added_remote_tasks = {
+                doc["_id"]: doc
+                for doc in added_remote_docs
+                if doc.get("docType") == "task"
+            }
+            assert added_remote_tasks["task-alpha"]["description"] == "Alpha edited on client B"
+            for task_id in ("task-alpha", "task-beta", "task-gamma"):
+                assert added_remote_tasks[task_id]["acceptanceSentinel"] == (
+                    f"preserve-{task_id}"
+                )
+            assert all("manualOrder" not in task for task in added_remote_tasks.values())
+
+            # Delete on one client while the other reorders a stale sequence containing that task.
+            context_a.set_offline(True)
+            context_b.set_offline(True)
+            prior_delete_order = visible_ids(page_b)
+            deleted_id = prior_delete_order[-1]
+            delete_unscheduled_task_via_ui(page_a, deleted_id)
+            wait_until(
+                lambda: local_doc(page_a, room_code, deleted_id) is None,
+                "client A offline task deletion",
+            )
+            move_to_top(page_b, deleted_id)
+            wait_for_local_order(
+                page_b,
+                room_code,
+                [deleted_id, *prior_delete_order[:-1]],
+                "client B reorder containing the concurrently deleted task",
+            )
+            context_a.set_offline(False)
+            context_b.set_offline(False)
+
+            expected_after_delete = expected_after_add - {deleted_id}
+
+            def delete_and_reorder_converged():
+                request_both_sync(page_a, page_b)
+                docs = fetch_remote_docs(
+                    couchdb_url, remote_db_name, include_conflicts=True
+                )
+                task_docs = [doc for doc in docs if doc.get("docType") == "task"]
+                sequence = next(
+                    (doc for doc in docs if doc.get("_id") == SEQUENCE_ID), None
+                )
+                if (
+                    {doc.get("_id") for doc in task_docs} == expected_after_delete
+                    and sequence
+                    and not sequence.get("_conflicts")
+                    and not any(doc.get("_conflicts") for doc in task_docs)
+                ):
+                    return docs
+                return False
+
+            deleted_remote_docs = wait_until(
+                delete_and_reorder_converged,
+                "delete and stale reorder to converge without resurrection",
+                timeout_s=45,
+            )
+            wait_until(
+                lambda: assert_clients_render_exact_task_set(
+                    page_a, page_b, expected_after_delete
+                ),
+                "both clients to omit the deleted task and render every survivor once",
+                timeout_s=45,
+            )
+            assert all(doc.get("_id") != deleted_id for doc in deleted_remote_docs)
+            for page in (page_a, page_b):
+                local_sequence = local_doc_with_conflicts(page, room_code, SEQUENCE_ID)
+                assert local_sequence and not local_sequence.get("_conflicts")
     finally:
         try:
             if browser is not None and browser.is_connected():

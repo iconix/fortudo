@@ -2580,8 +2580,9 @@ git commit -m "test: verify unscheduled manual ordering"
 ### Deployment-preview note
 
 The two-client Cloudant data-safety scenario passed against the SHA-specific Firebase deployment
-with browser CORS enforcement explicitly bypassed: task edit versus reorder and concurrent reorder
-both converged, and no conflict leaves remained. A normal browser run against that immutable
-hostname correctly remains a deployment-infrastructure gate because Cloudant does not currently
-allow the newly generated Firebase origin. The older preview URL is CORS-allowed but serves the
-pre-correction task-rank build, so it is not valid evidence for this architecture.
+with browser CORS enforcement explicitly bypassed: task edit versus reorder, concurrent reorder,
+add versus reorder, and delete versus stale reorder all converged; sentinel fields survived, the
+deleted task was not resurrected, and no conflict leaves remained. A normal browser run against
+that immutable hostname correctly remains a deployment-infrastructure gate because Cloudant does
+not currently allow the newly generated Firebase origin. The older preview URL is CORS-allowed but
+serves the pre-correction task-rank build, so it is not valid evidence for this architecture.

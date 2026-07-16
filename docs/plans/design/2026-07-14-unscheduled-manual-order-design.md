@@ -282,8 +282,9 @@ render.
 - Switch to Priority, then return to My order and confirm the sequence is unchanged
 - Complete a task and confirm it remains in its manual position
 - Add a task and confirm it appears after the last incomplete task
-- Run two isolated preview clients through reorder-versus-edit and concurrent-reorder races;
-  confirm task edits survive, all clients converge, and Cloudant has no remaining conflicts
+- Run two isolated preview clients through reorder-versus-edit, concurrent-reorder,
+  add-versus-reorder, and delete-versus-reorder races; confirm explicit task mutations survive,
+  deleted tasks are not resurrected, all clients converge, and Cloudant has no remaining conflicts
 
 The feature is accepted when both modes remain predictable, manual order survives persistence and
 sync, and every reorder operation is available without requiring a drag gesture.
