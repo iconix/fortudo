@@ -86,6 +86,17 @@ def local_doc_with_conflicts(page: Page, room_code: str, doc_id: str) -> dict | 
     )
 
 
+def manager_task_ids(page: Page) -> list[str]:
+    return page.evaluate(
+        """
+        async () => {
+            const manager = await import('/js/tasks/manager.js');
+            return manager.getTaskState().map((task) => task.id);
+        }
+        """
+    )
+
+
 def move_to_top(page: Page, task_id: str) -> None:
     card = card_for(page, task_id)
     card.locator(".btn-unscheduled-task-actions-menu").click()
@@ -100,6 +111,62 @@ def edit_description(page: Page, task_id: str, description: str) -> None:
     card.locator(".btn-edit-unscheduled").click()
     card.locator('input[name="inline-edit-description"]').fill(description)
     card.locator(".btn-save-inline-edit").click()
+
+
+def begin_inline_edit_draft(
+    page: Page,
+    task_id: str,
+    draft: str,
+    selection_start: int,
+    selection_end: int,
+) -> None:
+    card = card_for(page, task_id)
+    card.locator(".btn-unscheduled-task-actions-menu").click()
+    card.locator(".btn-edit-unscheduled").click()
+    description_input = card.locator('input[name="inline-edit-description"]')
+    description_input.fill(draft)
+    description_input.evaluate(
+        """
+        (input, selection) => {
+            input.focus();
+            input.setSelectionRange(selection.start, selection.end);
+        }
+        """,
+        {"start": selection_start, "end": selection_end},
+    )
+
+
+def inline_edit_state(page: Page, task_id: str) -> dict:
+    return page.evaluate(
+        """
+        (taskId) => {
+            const card = [...document.querySelectorAll('.task-card[data-task-id]')].find(
+                (candidate) => candidate.dataset.taskId === taskId
+            );
+            const editor = card?.querySelector('.inline-edit-unscheduled-form');
+            const input = editor?.querySelector('input[name="inline-edit-description"]');
+            return {
+                visible: !!editor && !editor.classList.contains('hidden'),
+                value: input?.value ?? null,
+                focused: document.activeElement === input,
+                selectionStart: input?.selectionStart ?? null,
+                selectionEnd: input?.selectionEnd ?? null
+            };
+        }
+        """,
+        task_id,
+    )
+
+
+def trigger_background_sync(page: Page) -> None:
+    page.evaluate(
+        """
+        async () => {
+            const syncManager = await import('/js/sync-manager.js');
+            await syncManager.triggerSync();
+        }
+        """
+    )
 
 
 def request_both_sync(page_a: Page, page_b: Page) -> None:
@@ -141,6 +208,31 @@ def assert_clients_render_exact_task_set(
     ):
         return order_a
     return False
+
+
+def wait_for_stable_client_task_set(
+    page_a: Page,
+    page_b: Page,
+    expected_task_ids: set[str],
+    description: str,
+    *,
+    stable_s: float = 0.75,
+    timeout_s: float = 45,
+) -> list[str]:
+    stable_since: float | None = None
+
+    def stable_task_set() -> list[str] | bool:
+        nonlocal stable_since
+        order = assert_clients_render_exact_task_set(page_a, page_b, expected_task_ids)
+        if not order:
+            stable_since = None
+            return False
+        if stable_since is None:
+            stable_since = time.monotonic()
+            return False
+        return order if time.monotonic() - stable_since >= stable_s else False
+
+    return wait_until(stable_task_set, description, timeout_s=timeout_s, interval_s=0.1)
 
 
 def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflicts():
@@ -250,6 +342,61 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             wait_for_main_app(page_b)
             page_a.get_by_role("button", name="My order", exact=True).click()
             page_b.get_by_role("button", name="My order", exact=True).click()
+
+            # Keep an active draft, focus, and caret intact while another client updates a task.
+            draft_description = "Beta draft survives remote refresh"
+            draft_selection = (5, 16)
+            begin_inline_edit_draft(
+                page_a,
+                "task-beta",
+                draft_description,
+                *draft_selection,
+            )
+            remote_refresh_description = "Gamma changed on client B"
+            edit_description(page_b, "task-gamma", remote_refresh_description)
+
+            expected_draft_state = {
+                "visible": True,
+                "value": draft_description,
+                "focused": True,
+                "selectionStart": draft_selection[0],
+                "selectionEnd": draft_selection[1],
+            }
+
+            def remote_edit_pulled_without_disturbing_draft():
+                trigger_background_sync(page_b)
+                trigger_background_sync(page_a)
+                gamma = local_doc(page_a, room_code, "task-gamma") or {}
+                return (
+                    gamma.get("description") == remote_refresh_description
+                    and inline_edit_state(page_a, "task-beta") == expected_draft_state
+                )
+
+            wait_until(
+                remote_edit_pulled_without_disturbing_draft,
+                "client A to preserve its focused inline draft through a remote task refresh",
+                timeout_s=30,
+            )
+            card_for(page_a, "task-beta").locator(".btn-save-inline-edit").click()
+
+            def saved_draft_converged():
+                trigger_background_sync(page_a)
+                trigger_background_sync(page_b)
+                docs = fetch_remote_docs(couchdb_url, remote_db_name, include_conflicts=True)
+                beta = next((doc for doc in docs if doc.get("_id") == "task-beta"), {})
+                local_beta_b = local_doc(page_b, room_code, "task-beta") or {}
+                return (
+                    beta.get("description") == draft_description
+                    and not beta.get("_conflicts")
+                    and local_beta_b.get("description") == draft_description
+                    and draft_description in (card_for(page_b, "task-beta").text_content() or "")
+                )
+
+            wait_until(
+                saved_draft_converged,
+                "the preserved inline draft to save and converge on both clients",
+                timeout_s=30,
+            )
 
             context_a.set_offline(True)
             context_b.set_offline(True)
@@ -423,12 +570,11 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
                 "add and concurrent reorder to converge without task conflicts",
                 timeout_s=45,
             )
-            wait_until(
-                lambda: assert_clients_render_exact_task_set(
-                    page_a, page_b, expected_after_add
-                ),
+            wait_for_stable_client_task_set(
+                page_a,
+                page_b,
+                expected_after_add,
                 "both clients to render every task exactly once after add versus reorder",
-                timeout_s=45,
             )
 
             added_remote_tasks = {
@@ -446,9 +592,55 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             # Delete on one client while the other reorders a stale sequence containing that task.
             context_a.set_offline(True)
             context_b.set_offline(True)
+            wait_for_stable_client_task_set(
+                page_a,
+                page_b,
+                expected_after_add,
+                "both clients to retain every task after entering offline mode",
+                stable_s=1.0,
+            )
             prior_delete_order = visible_ids(page_b)
             deleted_id = prior_delete_order[-1]
-            delete_unscheduled_task_via_ui(page_a, deleted_id)
+            offline_order_a = visible_ids(page_a)
+            if deleted_id not in offline_order_a:
+                local_ids_a = {
+                    doc.get("_id")
+                    for doc in read_docs(page_a, room_code)
+                    if doc.get("docType") == "task"
+                }
+                raise AssertionError(
+                    "Client A lost the delete target while going offline; "
+                    f"target={deleted_id!r}, visible_a={offline_order_a!r}, "
+                    f"visible_b={prior_delete_order!r}, local_task_ids_a={local_ids_a!r}"
+                )
+            try:
+                delete_unscheduled_task_via_ui(page_a, deleted_id)
+            except TimeoutError as error:
+                local_ids_a = [
+                    doc.get("_id")
+                    for doc in read_docs(page_a, room_code)
+                    if doc.get("docType") == "task"
+                ]
+                local_ids_b = [
+                    doc.get("_id")
+                    for doc in read_docs(page_b, room_code)
+                    if doc.get("docType") == "task"
+                ]
+                remote_ids = [
+                    doc.get("_id")
+                    for doc in fetch_remote_docs(
+                        couchdb_url, remote_db_name, include_conflicts=True
+                    )
+                    if doc.get("docType") == "task"
+                ]
+                raise AssertionError(
+                    "Client A could not open the delete target after entering offline mode; "
+                    f"target={deleted_id!r}, visible_a={visible_ids(page_a)!r}, "
+                    f"manager_ids_a={manager_task_ids(page_a)!r}, "
+                    f"local_task_ids_a={local_ids_a!r}, visible_b={visible_ids(page_b)!r}, "
+                    f"manager_ids_b={manager_task_ids(page_b)!r}, "
+                    f"local_task_ids_b={local_ids_b!r}, remote_task_ids={remote_ids!r}"
+                ) from error
             wait_until(
                 lambda: local_doc(page_a, room_code, deleted_id) is None,
                 "client A offline task deletion",
