@@ -29,12 +29,12 @@ export function resetTaxonomySettingsViewState() {
 export function renderTaxonomyManagementContent() {
     return `
         <section class="space-y-3">
-            <div class="flex items-center justify-between">
-                <div>
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
                     <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
                 </div>
-                <button id="add-group-btn" type="button" class="text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-group-btn" type="button" class="shrink-0 text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -45,12 +45,12 @@ export function renderTaxonomyManagementContent() {
         </section>
 
         <section class="space-y-3">
-            <div class="flex items-center justify-between">
-                <div>
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
                     <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
                 </div>
-                <button id="add-category-btn" type="button" class="text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-category-btn" type="button" class="shrink-0 text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -114,10 +114,10 @@ function renderGroupsList() {
                         <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${group.color}"></span>
                         <div class="min-w-0">
                             <div class="text-sm text-slate-200">${escapeHtml(group.label)}</div>
-                            <div class="text-xs text-slate-400">${escapeHtml(group.key)} · ${escapeHtml(group.colorFamily)}</div>
+                            <div class="text-xs text-slate-400 break-words">${escapeHtml(group.key)} · ${escapeHtml(group.colorFamily)}</div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-1">
+                    <div class="flex shrink-0 items-center gap-1">
                         <button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}">
                             <i class="fa-solid fa-pen"></i>
                         </button>
@@ -210,7 +210,7 @@ function renderCategoriesList() {
 
             return `
                 <div class="space-y-2">
-                    <div class="text-xs uppercase tracking-wide text-slate-500">${escapeHtml(group.label)}</div>
+                    <div class="text-xs uppercase tracking-wide text-slate-400 sm:text-slate-500">${escapeHtml(group.label)}</div>
                     <div class="space-y-2">
                         ${childCategories.map((category) => renderCategoryRow(category, group)).join('')}
                     </div>
@@ -237,10 +237,10 @@ function renderCategoryRow(category, group) {
                 <span class="category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${category.color}"></span>
                 <div class="min-w-0">
                     <div class="text-sm text-slate-200">${escapeHtml(category.label)}</div>
-                    <div class="text-xs text-slate-400">${escapeHtml(group.label)} · ${escapeHtml(category.key)}</div>
+                    <div class="text-xs text-slate-400 break-words">${escapeHtml(group.label)} · ${escapeHtml(category.key)}</div>
                 </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex shrink-0 items-center gap-1 sm:gap-2">
                 <span class="text-[11px] px-2 py-0.5 rounded-full border ${linkTheme}">${linkState}</span>
                 <button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}">
                     <i class="fa-solid fa-pen"></i>
@@ -306,7 +306,7 @@ function renderAddCategoryForm() {
                 </select>
                 <span
                     data-category-path-separator
-                    class="text-slate-500 text-lg leading-none shrink-0"
+                    class="text-slate-400 sm:text-slate-500 text-lg leading-none shrink-0"
                     aria-hidden="true"
                 >/</span>
                 <input

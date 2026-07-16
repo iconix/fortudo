@@ -383,7 +383,7 @@ export function showGapTaskPicker(
 
     if (unscheduledTasks.length === 0) {
         gapTaskPickerList.innerHTML =
-            '<p class="text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
+            '<p class="text-slate-400 sm:text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
     } else {
         gapTaskPickerList.innerHTML = unscheduledTasks
             .map((task) => {

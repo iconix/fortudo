@@ -38,4 +38,19 @@ describe('custom CSS polish hooks', () => {
 
         expect(css).toMatch(/\.view-panel--hidden\s*\{[^}]*display:\s*none;/s);
     });
+
+    test('reserves a compact mobile scrollbar gutter in settings', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(
+            /\.settings-scroll-area\s*\{[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/s
+        );
+        expect(css).toMatch(/\.settings-scroll-area::-webkit-scrollbar\s*\{[^}]*width:\s*6px;/s);
+        expect(css).toMatch(
+            /@media \(min-width:\s*640px\)[\s\S]*?\.settings-scroll-area::-webkit-scrollbar\s*\{[^}]*width:\s*10px;/s
+        );
+    });
 });

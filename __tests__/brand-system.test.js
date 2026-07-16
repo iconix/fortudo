@@ -71,6 +71,43 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).toContain('peer-checked:border-sky-400/40');
     });
 
+    test('keeps all task-type controls on one compact mobile row', () => {
+        expect(indexHtml).toContain(
+            'data-task-type-toggle class="flex gap-1.5 sm:flex-wrap sm:gap-2 mb-2"'
+        );
+        expect(indexHtml.match(/min-w-0 flex-1 sm:flex-none/g)).toHaveLength(3);
+        expect(indexHtml.match(/w-full justify-center[^"]*px-1 sm:px-3/g)).toHaveLength(3);
+        expect(indexHtml.match(/mr-0\.5 sm:mr-1/g)).toHaveLength(3);
+    });
+
+    test('keeps the dedication name and heart together on narrow screens', () => {
+        expect(indexHtml).toMatch(
+            /<span class="whitespace-nowrap">For Cristell<span[\s\S]*?animate-pulse[\s\S]*?<\/span><\/span>/
+        );
+    });
+
+    test('uses compact settings dialog spacing on mobile', () => {
+        expect(indexHtml).toContain(
+            'bg-slate-800 border border-slate-700 p-4 sm:p-6 rounded-lg max-w-md w-full mx-3 sm:mx-4 max-h-[80vh] overflow-hidden'
+        );
+    });
+
+    test('raises mobile helper and idle-status contrast without changing desktop tone', () => {
+        const roomRenderer = read('public/js/room-renderer.js');
+        const activityRenderer = read('public/js/activities/renderer.js');
+        const insightsRenderer = read('public/js/activities/insights-renderer.js');
+
+        expect(indexHtml).toMatch(/id="sync-status-text" class="text-slate-400 sm:text-slate-500"/);
+        expect(indexHtml).toMatch(
+            /<footer class="text-sm pt-6 pb-4 text-slate-400 sm:text-slate-500">/
+        );
+        expect(roomRenderer).toContain("color: 'text-slate-400 sm:text-slate-500'");
+        expect(activityRenderer).toContain(
+            'py-6 text-slate-400 sm:text-slate-500 text-sm italic px-2'
+        );
+        expect(insightsRenderer).toContain('text-xs text-slate-400 sm:text-slate-500');
+    });
+
     test('gives the unscheduled section the unified crisp slate treatment', () => {
         expect(indexHtml).toMatch(
             /text-lg sm:text-xl font-normal text-slate-300 pl-2 flex items-center[\s\S]*?Unscheduled Tasks/

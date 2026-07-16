@@ -36,6 +36,7 @@ Origin: the violet echoes the 💜 in "For Cristell 💜".
 ## In-app color scheme (rebrand, 2026-07-15)
 
 - **Violet = brand + interaction only:** header lockup, active tab (`bg-violet-500/20 text-violet-200 border-violet-400/40`), primary buttons: tint+ style — `bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40` (gradient dropped; solid `bg-violet-600` is the approved louder alternate).
+- **Toast hierarchy:** non-urgent default/slate, violet, teal, and sky toasts use a quiet `bg-slate-800/95` overlay with a semantic 400/60 border (slate uses 500/60) and 200 text. This keeps update and informational notices legible without outranking primary actions. Amber and rose retain denser 900/90 surfaces and 700 borders for warnings and errors.
 - **Semantic colors unchanged:** priority badges stay High=rose / Med=amber / Low=teal; activity timer stays sky-300.
 - **Type coding (form <-> sections):** Scheduled = teal-400, Activities = sky-400, and Unscheduled uses the neutral slate family (was indigo; slate = "not yet placed"). Indigo is retired because it collided with violet.
 - **Unscheduled = Unified crisp:** Unscheduled work is equal in importance to scheduled work, not an inactive state. Use slate-300 consistently for its section heading, task-row left rail, checkbox, and overflow/actions trigger. The Unscheduled form chip remains a neutral slate selection treatment, while priority and category colors keep their existing semantic meaning.

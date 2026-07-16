@@ -82,10 +82,8 @@
                     </h1>
                     <div class="flex items-center justify-center gap-3">
                         <h2 class="lg:text-lg text-slate-400">
-                            A Daily Time-Blocking To-Do App. For Cristell<span
-                                class="not-italic pl-1 animate-pulse"
-                                >💜</span
-                            >
+                            A Daily Time-Blocking To-Do App.
+                            <span class="whitespace-nowrap">For Cristell<span class="not-italic pl-1 animate-pulse">💜</span></span>
                         </h2>
                     </div>
                     <div class="mt-2 flex items-center justify-center gap-2">
@@ -103,8 +101,13 @@
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs hover:bg-slate-700/50 transition-colors"
                             title="Sync now"
                         >
-                            <i id="sync-status-icon" class="fa-solid fa-cloud text-slate-500"></i>
-                            <span id="sync-status-text" class="text-slate-500">Local</span>
+                            <i
+                                id="sync-status-icon"
+                                class="fa-solid fa-cloud text-slate-400 sm:text-slate-500"
+                            ></i>
+                            <span id="sync-status-text" class="text-slate-400 sm:text-slate-500"
+                                >Local</span
+                            >
                         </button>
                         <button
                             id="settings-gear-btn"
@@ -113,7 +116,7 @@
                             title="Settings"
                         >
                             <i
-                                class="fa-solid fa-gear text-slate-500 hover:text-slate-300 transition-colors"
+                                class="fa-solid fa-gear text-slate-400 sm:text-slate-500 hover:text-slate-300 transition-colors"
                             ></i>
                         </button>
                     </div>
@@ -146,8 +149,8 @@
                         id="task-form"
                         class="mb-4 sm:mb-8 p-3 sm:p-4 rounded-lg bg-slate-800/80 border border-slate-700 mx-2 text-left space-y-2 sm:space-y-3"
                     >
-                        <div class="flex flex-wrap gap-2 mb-2">
-                            <label>
+                        <div data-task-type-toggle class="flex gap-1.5 sm:flex-wrap sm:gap-2 mb-2">
+                            <label class="min-w-0 flex-1 sm:flex-none">
                                 <input
                                     id="scheduled"
                                     type="radio"
@@ -157,15 +160,15 @@
                                     checked
                                 />
                                 <span
-                                    class="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-400 peer-checked:bg-teal-500/20 peer-checked:border-teal-400/40 peer-checked:text-teal-200"
+                                    class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-400 peer-checked:bg-teal-500/20 peer-checked:border-teal-400/40 peer-checked:text-teal-200"
                                 >
                                     <i
-                                        class="fa-regular fa-calendar-check mr-1 text-teal-400/75"
+                                        class="fa-regular fa-calendar-check mr-0.5 sm:mr-1 text-teal-400/75"
                                     ></i
                                     >Scheduled
                                 </span>
                             </label>
-                            <label>
+                            <label class="min-w-0 flex-1 sm:flex-none">
                                 <input
                                     id="unscheduled"
                                     type="radio"
@@ -174,14 +177,17 @@
                                     class="sr-only peer"
                                 />
                                 <span
-                                    class="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-checked:bg-slate-500/20 peer-checked:border-slate-400/40 peer-checked:text-slate-200"
+                                    class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-checked:bg-slate-500/20 peer-checked:border-slate-400/40 peer-checked:text-slate-200"
                                 >
-                                    <i class="fa-solid fa-list-ul mr-1 text-slate-400"></i
+                                    <i class="fa-solid fa-list-ul mr-0.5 sm:mr-1 text-slate-400"></i
                                     >Unscheduled
                                 </span>
                             </label>
-                            <div id="activity-toggle-option" class="hidden">
-                                <label>
+                            <div
+                                id="activity-toggle-option"
+                                class="hidden min-w-0 flex-1 sm:flex-none"
+                            >
+                                <label class="block">
                                     <input
                                         id="activity"
                                         type="radio"
@@ -190,9 +196,9 @@
                                         class="sr-only peer"
                                     />
                                     <span
-                                        class="inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-400 peer-checked:bg-sky-500/20 peer-checked:border-sky-400/40 peer-checked:text-sky-200"
+                                        class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-400 peer-checked:bg-sky-500/20 peer-checked:border-sky-400/40 peer-checked:text-sky-200"
                                     >
-                                        <i class="fa-regular fa-clock mr-1 text-sky-400/75"></i
+                                        <i class="fa-regular fa-clock mr-0.5 sm:mr-1 text-sky-400/75"></i
                                         >Activity
                                     </span>
                                 </label>
@@ -460,7 +466,7 @@
                                     >
                                         Next Activity
                                     </div>
-                                    <div class="text-xs text-slate-500">
+                                    <div class="text-xs text-slate-400 sm:text-slate-500">
                                         Starts immediately when you click
                                         <span class="text-slate-300">Start Timer</span>
                                     </div>
@@ -621,7 +627,7 @@
                         </div>
                     </div>
                 </div>
-                <footer class="text-sm pt-6 pb-4 text-slate-500">
+                <footer class="text-sm pt-6 pb-4 text-slate-400 sm:text-slate-500">
                     © 2023-2025 R-F Incorporated.
                 </footer>
                 <div
@@ -629,7 +635,7 @@
                     class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
                 >
                     <div
-                        class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full mx-4 max-h-[80vh] overflow-hidden"
+                        class="bg-slate-800 border border-slate-700 p-4 sm:p-6 rounded-lg max-w-md w-full mx-3 sm:mx-4 max-h-[80vh] overflow-hidden"
                     >
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-xl font-normal text-slate-200 flex items-center gap-2">

@@ -48,13 +48,15 @@
 .settings-scroll-area {
     max-height: calc(80vh - 5.5rem);
     overflow-y: auto;
-    padding-right: 0.25rem;
+    overflow-x: hidden;
+    padding-right: 0.375rem;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: rgba(20, 184, 166, 0.55) rgba(51, 65, 85, 0.35);
 }
 
 .settings-scroll-area::-webkit-scrollbar {
-    width: 10px;
+    width: 6px;
 }
 
 .settings-scroll-area::-webkit-scrollbar-track {
@@ -70,6 +72,16 @@
 
 .settings-scroll-area::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, rgba(94, 234, 212, 0.95), rgba(45, 212, 191, 0.8));
+}
+
+@media (min-width: 640px) {
+    .settings-scroll-area {
+        padding-right: 0.25rem;
+    }
+
+    .settings-scroll-area::-webkit-scrollbar {
+        width: 10px;
+    }
 }
 
 .scrollbar-hidden {

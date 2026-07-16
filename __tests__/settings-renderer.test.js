@@ -469,6 +469,24 @@ describe('settings-renderer', () => {
             );
         });
 
+        test('taxonomy controls reserve room for mobile actions and wrap long metadata', async () => {
+            await renderEnabledSettings();
+
+            const addGroupButton = document.getElementById('add-group-btn');
+            const addCategoryButton = document.getElementById('add-category-btn');
+            const groupRow = document.querySelector('[data-group-key="work"]');
+            const categoryRow = document.querySelector('[data-category-key="work/deep"]');
+
+            expect(addGroupButton.parentElement.className).toContain('items-start');
+            expect(addGroupButton.parentElement.className).toContain('gap-3');
+            expect(addGroupButton.className).toContain('shrink-0');
+            expect(addCategoryButton.className).toContain('shrink-0');
+            expect(groupRow.lastElementChild.className).toContain('shrink-0');
+            expect(categoryRow.lastElementChild.className).toContain('shrink-0');
+            expect(groupRow.querySelector('.text-xs').className).toContain('break-words');
+            expect(categoryRow.querySelector('.text-xs').className).toContain('break-words');
+        });
+
         test('saving a group edit preserves an open category add draft', async () => {
             await renderEnabledSettings();
 

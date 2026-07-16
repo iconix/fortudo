@@ -819,6 +819,9 @@ describe('activity insights renderer', () => {
         Object.defineProperty(window.HTMLElement.prototype, 'offsetLeft', {
             configurable: true,
             get() {
+                if (this.matches?.('[data-trend-day-strip]')) {
+                    return 32;
+                }
                 return this.getAttribute?.('data-trend-day') === '2026-06-15' ? 500 : 0;
             }
         });
@@ -834,7 +837,7 @@ describe('activity insights renderer', () => {
             const strip = document.querySelector('[data-trend-day-strip]');
 
             expect(scrollIntoView).not.toHaveBeenCalled();
-            expect(strip.scrollLeft).toBe(450);
+            expect(strip.scrollLeft).toBe(418);
         } finally {
             window.requestAnimationFrame = originalRequestAnimationFrame;
             window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

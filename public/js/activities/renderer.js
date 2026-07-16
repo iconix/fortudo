@@ -244,7 +244,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
                <span class="activity-source-link italic cursor-default" data-source-task-id="${escapeHtml(activity.sourceTaskId || '')}" title="Auto-logged from task">
                    <i class="fa-solid fa-link mr-0.5"></i>auto
                </span>
-               <span class="text-slate-500">Edited copy of a completed task</span>
+               <span class="text-slate-400 sm:text-slate-500">Edited copy of a completed task</span>
            </div>`
         : '';
     const activityIssues = getActivityIssuesForId(options.activityIssuesById, activity.id);
@@ -359,7 +359,7 @@ export function renderActivities(activities, container, options = {}) {
             : 'No activities tracked today. Log one or complete a scheduled task.';
         targetContainer.innerHTML = `
             ${summaryHtml}
-            <div class="py-6 text-slate-500 text-sm italic px-2">
+            <div class="py-6 text-slate-400 sm:text-slate-500 text-sm italic px-2">
                 <i class="fa-regular fa-clock mr-1"></i>
                 ${emptyStateMessage}
             </div>`;

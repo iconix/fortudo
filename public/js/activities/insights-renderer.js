@@ -170,7 +170,7 @@ function renderTimelineBlock(block, type, viewport) {
 function renderTimelineTicks(viewport) {
     const midpoint = Math.round((viewport.startMinutes + viewport.endMinutes) / 2);
 
-    return `<div class="grid grid-cols-3 pl-[5.25rem] pr-1 pb-2 text-[10px] text-slate-500">
+    return `<div class="grid grid-cols-3 pl-[5.25rem] pr-1 pb-2 text-[10px] text-slate-400 sm:text-slate-500">
         <span>${escapeHtml(formatMinutesAsTime(viewport.startMinutes))}</span>
         <span class="hidden text-center sm:block">${escapeHtml(formatMinutesAsTime(midpoint))}</span>
         <span class="col-start-3 text-right">${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}</span>
@@ -194,7 +194,7 @@ function renderSelectedTimelineBlockDetail(blocks) {
         blocks.find((block) => block.id);
 
     if (!selectedBlock) {
-        return `<div class="mt-3 rounded border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-500">
+        return `<div class="mt-3 rounded border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400 sm:text-slate-500">
             No timeline blocks for this day.
         </div>`;
     }
@@ -229,7 +229,7 @@ function renderTimeline(model) {
                     ${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}
                 </div>
             </div>
-            <div class="text-xs text-slate-500">Tap any block for details</div>
+            <div class="text-xs text-slate-400 sm:text-slate-500">Tap any block for details</div>
         </div>
         ${renderTimelineTicks(viewport)}
         <div class="space-y-3">
@@ -586,7 +586,7 @@ function renderTrendDayCard(day, selectedDate) {
         <div class="mt-2 text-sm font-semibold text-slate-100">
             ${escapeHtml(calculateHoursAndMinutes(minutes))}
         </div>
-        <div class="text-[11px] text-slate-500">
+        <div class="text-[11px] text-slate-400 sm:text-slate-500">
             ${escapeHtml((day.categorySegments || []).length)} categories
         </div>
     </button>`;
@@ -633,8 +633,9 @@ function scrollSelectedTrendDayIntoView(trendsContainer) {
             return;
         }
 
+        const selectedDayLeft = selectedDay.offsetLeft - trendDayStrip.offsetLeft;
         const centeredScrollLeft =
-            selectedDay.offsetLeft - (trendDayStrip.clientWidth - selectedDay.offsetWidth) / 2;
+            selectedDayLeft - (trendDayStrip.clientWidth - selectedDay.offsetWidth) / 2;
 
         trendDayStrip.scrollLeft = Math.max(0, centeredScrollLeft);
     };
@@ -665,7 +666,7 @@ export function renderTrends(trendModel = {}, { selectedDate = null, now = new D
                 <h2 class="text-sm font-semibold text-slate-100">Trends</h2>
                 <p class="mt-1 text-xs text-slate-400">Click a day to inspect its timeline and activity log.</p>
             </div>
-            <div class="text-xs text-slate-500">
+            <div class="text-xs text-slate-400 sm:text-slate-500">
                 ${escapeHtml(dateRange.startDate)} - ${escapeHtml(dateRange.endDate)}
             </div>
         </div>
