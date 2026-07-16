@@ -59,13 +59,13 @@ export function renderSettingsContent(options = {}) {
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="activities-toggle" class="sr-only peer" ${enabled ? 'checked' : ''} />
-                    <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
+                    <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-500"></div>
                 </label>
             </div>
 
             <div id="reload-prompt" class="settings-reload-prompt hidden bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm">
                 <p class="text-slate-300 mb-2" id="reload-prompt-message"></p>
-                <button id="reload-apply-btn" type="button" class="bg-teal-500 hover:bg-teal-400 text-white px-4 py-1.5 rounded-lg text-sm transition-colors">
+                <button id="reload-apply-btn" type="button" class="bg-violet-500 hover:bg-violet-400 text-white px-4 py-1.5 rounded-lg text-sm transition-colors">
                     Reload to Apply
                 </button>
             </div>

@@ -34,7 +34,7 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
                     <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
                 </div>
-                <button id="add-group-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-group-btn" type="button" class="text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -50,7 +50,7 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
                     <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
                 </div>
-                <button id="add-category-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-category-btn" type="button" class="text-violet-400 hover:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -141,7 +141,7 @@ function renderGroupEditor(group) {
                     type="text"
                     name="edit-group-label"
                     value="${escapeAttribute(group.label)}"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
@@ -149,13 +149,13 @@ function renderGroupEditor(group) {
                 <select
                     id="edit-group-family-${escapeHtml(group.key)}"
                     name="edit-group-family"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     ${renderColorFamilyOptions(group.colorFamily)}
                 </select>
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-group bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -172,7 +172,7 @@ function renderAddGroupForm() {
                     type="text"
                     name="group-label"
                     placeholder="Group name"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
@@ -180,13 +180,13 @@ function renderAddGroupForm() {
                 <select
                     id="group-family"
                     name="group-family"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     ${renderColorFamilyOptions('blue')}
                 </select>
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" id="cancel-add-group" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -263,7 +263,7 @@ function renderCategoryEditor(category) {
                     type="text"
                     name="edit-category-label"
                     value="${escapeAttribute(category.label)}"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
@@ -277,7 +277,7 @@ function renderCategoryEditor(category) {
                 />
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-category bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -294,7 +294,7 @@ function renderAddCategoryForm() {
                     id="parent-group"
                     name="parent-group"
                     aria-label="Parent group"
-                    class="bg-slate-700 p-2 rounded-lg min-w-[9rem] flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[9rem] flex-1 border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     <option value="">Group</option>
                     ${groups
@@ -315,9 +315,9 @@ function renderAddCategoryForm() {
                     name="category-label"
                     aria-label="Category name"
                     placeholder="Category name"
-                    class="bg-slate-700 p-2 rounded-lg min-w-[11rem] flex-[2] border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[11rem] flex-[2] border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-2 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-2 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" id="cancel-add-category" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-2 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>

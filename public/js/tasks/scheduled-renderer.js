@@ -151,7 +151,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             </div>`
         : '';
 
-    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${task.id}">
+    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${task.id}">
         <div class="celebration-container hidden">
             <span class="celebration-emoji">🎉</span>
             <span class="celebration-emoji">🌟</span>

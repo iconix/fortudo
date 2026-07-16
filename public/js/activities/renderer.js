@@ -251,7 +251,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
     const issueClasses = activityIssues.length > 0 ? ' bg-amber-950/30 border-amber-500/50' : '';
     const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 shadow-md space-y-3${issueClasses}" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
+    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 border-l-4 border-l-sky-400 shadow-md space-y-3${issueClasses}" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
         ${provenanceHtml}
         <div class="flex flex-col sm:flex-row gap-3">
             <div class="relative sm:flex-[1.8]">
@@ -324,7 +324,7 @@ function renderActivityItem(activity, options = {}) {
             : ' bg-slate-800/60 border-slate-700/50 hover:border-sky-700/30';
     const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors${issueClasses}" data-activity-id="${escapeHtml(activity.id)}">
+    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg border border-l-4 border-l-sky-400 transition-colors${issueClasses}" data-activity-id="${escapeHtml(activity.id)}">
         <div class="flex-grow min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm text-slate-200 truncate">${escapeHtml(activity.description)}</span>

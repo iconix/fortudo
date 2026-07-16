@@ -103,7 +103,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const completedTasksExist = getTaskState().some((task) => task.status === 'completed');
             if (!completedTasksExist) {
-                showToast('There are no completed tasks to clear.', { theme: 'indigo' });
+                showToast('There are no completed tasks to clear.', { theme: 'slate' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -112,7 +112,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     'Are you sure you want to clear all completed tasks? This will remove them from both scheduled and unscheduled lists.',
                     undefined,
-                    'indigo'
+                    'slate'
                 )
             ) {
                 const result = deleteCompletedTasks();

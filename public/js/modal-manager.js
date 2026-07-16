@@ -46,24 +46,26 @@ let cleanupCustomAlertEscape = null;
 let resolveCustomAlert = null;
 
 // --- Helper Functions ---
-function setModalTheme(modal, title, button, theme = 'indigo') {
+function setModalTheme(modal, title, button, theme = 'violet') {
     const titleClasses = {
-        indigo: 'text-indigo-400',
+        violet: 'text-violet-400',
+        slate: 'text-slate-300',
         teal: 'text-teal-400',
         sky: 'text-sky-400'
     };
     const buttonClasses = {
-        indigo: 'from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
+        violet: 'from-violet-500 to-violet-400 hover:from-violet-400 hover:to-violet-300',
+        slate: 'from-slate-500 to-slate-400 hover:from-slate-400 hover:to-slate-300',
         teal: 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
         sky: 'from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300'
     };
     // Update title color
     if (title) {
-        title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.indigo}`;
+        title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.violet}`;
     }
     // Update button gradient
     if (button) {
-        button.className = `bg-gradient-to-r ${buttonClasses[theme] || buttonClasses.indigo} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
+        button.className = `bg-gradient-to-r ${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
     }
 }
 
@@ -89,7 +91,7 @@ export function hideCustomAlert() {
     resolveCustomAlert = null;
 }
 
-export function showCustomAlert(title, message, theme = 'indigo') {
+export function showCustomAlert(title, message, theme = 'violet') {
     if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
         hideCustomAlert();
         customAlertTitle.textContent = title;
@@ -128,7 +130,7 @@ export function showCustomConfirm(
     title,
     message,
     buttonLabels = { ok: 'OK', cancel: 'Cancel' },
-    theme = 'indigo'
+    theme = 'violet'
 ) {
     const okBtnElement = document.getElementById('ok-custom-confirm-modal');
     const cancelBtnElement = document.getElementById('cancel-custom-confirm-modal');
@@ -293,10 +295,10 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
                 overlapButtonHTML:
                     '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
                 overlapButtonClasses: modalScheduleBtn.className
-                    .replace(/from-indigo-500\/90/g, 'from-amber-500')
-                    .replace(/to-indigo-400\/90/g, 'to-amber-400')
-                    .replace(/hover:from-indigo-400\/90/g, 'hover:from-amber-400')
-                    .replace(/hover:to-indigo-300\/90/g, 'hover:to-amber-300')
+                    .replace(/from-teal-500\/90/g, 'from-amber-500')
+                    .replace(/to-teal-400\/90/g, 'to-amber-400')
+                    .replace(/hover:from-teal-400\/90/g, 'hover:from-amber-400')
+                    .replace(/hover:to-teal-300\/90/g, 'hover:to-amber-300')
             }
         );
     }
@@ -498,7 +500,7 @@ export function showActivityEditModal(currentDescription = '') {
 }
 
 // --- Convenience Wrappers ---
-export function showAlert(message, theme = 'indigo') {
+export function showAlert(message, theme = 'violet') {
     return showCustomAlert('Alert', message, theme);
 }
 
@@ -506,9 +508,9 @@ export function showAlert(message, theme = 'indigo') {
  * Show a confirmation dialog with customizable button labels
  * @param {string} message - The message to display
  * @param {{ok: string, cancel: string}=} buttonLabels - Optional custom labels for the buttons
- * @param {string=} theme - The theme to use ('indigo' or 'teal')
+ * @param {string=} theme - The theme to use ('violet', 'slate', 'teal', or 'sky')
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
-export function askConfirmation(message, buttonLabels, theme = 'indigo') {
+export function askConfirmation(message, buttonLabels, theme = 'violet') {
     return showCustomConfirm('Confirmation', message, buttonLabels, theme);
 }

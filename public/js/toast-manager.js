@@ -2,7 +2,8 @@ let container = null;
 
 const THEME_CLASSES = {
     teal: 'bg-teal-900/90 border-teal-700 text-teal-200',
-    indigo: 'bg-indigo-900/90 border-indigo-700 text-indigo-200',
+    slate: 'bg-slate-800/90 border-slate-600 text-slate-200',
+    violet: 'bg-violet-900/90 border-violet-700 text-violet-200',
     sky: 'bg-sky-900/90 border-sky-700 text-sky-200',
     amber: 'bg-amber-900/90 border-amber-700 text-amber-200',
     rose: 'bg-rose-900/90 border-rose-700 text-rose-200',
@@ -32,7 +33,7 @@ export function getToastContainer() {
  * @param {string} message - The message to display
  * @param {Object} [options]
  * @param {number} [options.duration=3500] - Auto-dismiss after this many ms (ignored when action is set)
- * @param {string} [options.theme='default'] - Color theme: teal, indigo, sky, amber, rose, default
+ * @param {string} [options.theme='default'] - Color theme: violet, slate, teal, sky, amber, rose, default
  * @param {{label: string, onClick: Function}} [options.action] - Renders a button; toast stays until clicked
  */
 export function showToast(message, options = {}) {

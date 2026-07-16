@@ -36,19 +36,20 @@ let pageEventListenersAbortController = null;
 const FORM_INPUT_BASE_CLASSES =
     'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
 const FORM_SUBMIT_BUTTON_BASE_CLASSES =
-    'shrink-0 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
+    'shrink-0 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center';
 const INPUT_FOCUS_CLASS_BY_THEME = {
     teal: 'focus:border-teal-400',
-    indigo: 'focus:border-indigo-400',
+    slate: 'focus:border-slate-400',
     sky: 'focus:border-sky-400'
 };
+const PRIMARY_BUTTON_CLASSES =
+    'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40';
 const TASK_FORM_MODE_CONFIG = {
     scheduled: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
-        submitButtonClasses:
-            'bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
+        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
         descriptionPlaceholder: 'Describe your task...',
         inputTheme: 'teal'
@@ -57,18 +58,16 @@ const TASK_FORM_MODE_CONFIG = {
         showTimeInputs: false,
         showPriorityInput: true,
         requireStartTime: false,
-        submitButtonClasses:
-            'bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
+        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
         descriptionPlaceholder: 'Describe your task...',
-        inputTheme: 'indigo'
+        inputTheme: 'slate'
     },
     activity: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
-        submitButtonClasses:
-            'bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300',
+        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
         submitButtonHtml: '<i class="fa-regular fa-clock mr-2"></i>Log Activity',
         descriptionPlaceholder: 'What did you work on?',
         inputTheme: 'sky'

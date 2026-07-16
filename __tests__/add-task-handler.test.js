@@ -164,7 +164,7 @@ describe('Add Task Handler', () => {
             await handleAddTaskProcess(mockFormElement, taskData);
 
             expect(showToast).toHaveBeenCalledWith('Task added successfully.', {
-                theme: 'indigo'
+                theme: 'slate'
             });
         });
 

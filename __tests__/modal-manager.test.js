@@ -255,11 +255,11 @@ describe('Modal Manager Tests', () => {
                 await expect(resultPromise).resolves.toBeUndefined();
             });
 
-            test('showCustomAlert applies indigo theme by default', () => {
+            test('showCustomAlert applies violet theme by default', () => {
                 showCustomAlert('Title', 'Message');
 
                 const title = document.getElementById('custom-alert-title');
-                expect(title.className).toContain('text-indigo-400');
+                expect(title.className).toContain('text-violet-400');
             });
 
             test('showCustomAlert applies teal theme when specified', () => {

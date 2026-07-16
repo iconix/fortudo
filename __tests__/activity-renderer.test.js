@@ -329,6 +329,8 @@ describe('activity renderer', () => {
         expect(issueText.textContent).toContain('Duplicate auto-logged task activity');
         expect(issueText.textContent).toContain('Activity data issue');
         expect(cleanRow.className).not.toContain('border-amber');
+        expect(cleanRow.className).toContain('border-l-4');
+        expect(cleanRow.className).toContain('border-l-sky-400');
         expect(cleanRow.querySelector('[data-activity-data-issue]')).toBeNull();
     });
 

@@ -199,7 +199,7 @@ describe('Form Utils Tests', () => {
             expect(result).toBeNull();
             expect(showAlert).toHaveBeenCalledWith(
                 expect.stringContaining('valid numbers'),
-                'indigo'
+                'slate'
             );
         });
 
@@ -214,7 +214,7 @@ describe('Form Utils Tests', () => {
             const result = extractTaskFormData(form);
 
             expect(result).toBeNull();
-            expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'indigo');
+            expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'slate');
         });
 
         test('rejects activity mode when extracting task creation data', () => {
@@ -649,7 +649,7 @@ describe('Form Utils Tests', () => {
                 expect(result).toBeNull();
                 expect(showAlert).toHaveBeenCalledWith(
                     'Selected category is no longer available.',
-                    'indigo'
+                    'slate'
                 );
             });
 
@@ -664,7 +664,7 @@ describe('Form Utils Tests', () => {
                 expect(result).toBeNull();
                 expect(showAlert).toHaveBeenCalledWith(
                     'Task description cannot be empty.',
-                    'indigo'
+                    'slate'
                 );
             });
 

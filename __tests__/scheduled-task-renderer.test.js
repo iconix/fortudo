@@ -235,6 +235,19 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(description.textContent).toBe(longUrl);
         });
 
+        test('uses the scheduled teal accent on task rows', () => {
+            renderTasks(
+                [createTask('accent', '10:00', 30)],
+                mockCallbacks,
+                mockInitListeners,
+                null
+            );
+
+            const taskCard = document.querySelector('[data-task-id="accent"]');
+            expect(taskCard.className).toContain('border-l-4');
+            expect(taskCard.className).toContain('border-l-teal-400');
+        });
+
         test('renders actions menu with do-now only for incomplete non-active scheduled tasks', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));

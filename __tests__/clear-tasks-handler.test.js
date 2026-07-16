@@ -230,7 +230,7 @@ describe('Clear Tasks Handler', () => {
             await new Promise((r) => setTimeout(r, 0));
 
             expect(showToast).toHaveBeenCalledWith('There are no completed tasks to clear.', {
-                theme: 'indigo'
+                theme: 'slate'
             });
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });

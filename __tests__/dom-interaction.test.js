@@ -1413,9 +1413,9 @@ describe('DOM Handler Interaction Tests', () => {
             expect(startTimeInput.hasAttribute('required')).toBe(false);
             expect(addTaskButton.textContent).toContain('Add Task');
             expect(descriptionInput.getAttribute('placeholder')).toBe('Describe your task...');
-            expect(descriptionInput.classList.contains('focus:border-indigo-400')).toBe(true);
-            expect(durationHoursInput.classList.contains('focus:border-indigo-400')).toBe(true);
-            expect(durationMinutesInput.classList.contains('focus:border-indigo-400')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-slate-400')).toBe(true);
+            expect(durationHoursInput.classList.contains('focus:border-slate-400')).toBe(true);
+            expect(durationMinutesInput.classList.contains('focus:border-slate-400')).toBe(true);
         });
 
         test('can submit form multiple times in unscheduled mode without validation error', () => {

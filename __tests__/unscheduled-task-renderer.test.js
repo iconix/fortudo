@@ -89,6 +89,27 @@ describe('unscheduled task renderer', () => {
         expect(description.textContent).toBe(longUrl);
     });
 
+    test('uses the unscheduled slate accent on task rows', () => {
+        renderUnscheduledTasks(
+            [
+                {
+                    id: 'unsched-accent',
+                    type: 'unscheduled',
+                    description: 'Backlog task',
+                    priority: 'medium',
+                    estDuration: 20,
+                    status: 'incomplete'
+                }
+            ],
+            {},
+            jest.fn()
+        );
+
+        const taskCard = document.querySelector('.task-card');
+        expect(taskCard.className).toContain('border-l-4');
+        expect(taskCard.className).toContain('border-l-slate-400');
+    });
+
     test('keeps edit and delete actions available for completed unscheduled tasks', () => {
         renderUnscheduledTasks(
             [
