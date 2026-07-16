@@ -299,6 +299,7 @@
 }
 
 .view-panel--hidden {
+    display: none;
     opacity: 0;
     visibility: hidden;
     position: absolute;

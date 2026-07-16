@@ -29,4 +29,13 @@ describe('custom CSS polish hooks', () => {
             /\.task-description\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/s
         );
     });
+
+    test('removes inactive view panels from the scrollable layout', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(/\.view-panel--hidden\s*\{[^}]*display:\s*none;/s);
+    });
 });
