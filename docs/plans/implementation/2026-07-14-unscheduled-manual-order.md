@@ -2556,20 +2556,32 @@ git commit -m "test: verify unscheduled manual ordering"
 
 ## Final Acceptance Checklist
 
-- [ ] Priority remains the default for missing or invalid local preference.
-- [ ] My order/Priority selection is remembered only in the browser.
-- [ ] Manual sequence syncs as task fields through the room.
-- [ ] Completed tasks remain checked, in place, and movable in My order.
-- [ ] New and newly unscheduled tasks appear after the last incomplete task.
-- [ ] Menu moves and handle dragging use the same identity-based sequence operation.
-- [ ] Whole-card dragging is impossible.
-- [ ] Existing schedule, timer, edit, delete, completion, and inline-edit actions still work.
-- [ ] Remote renders are deferred during drag and the latest render runs afterward.
-- [ ] Partial batch failure compensates successful rows and restores memory.
-- [ ] Failed compensation reloads durable local state and reports the stronger error.
-- [ ] App and DOM renderer know neither mode state nor drag state.
-- [ ] No test imports private comparator, mode, renderer callback, or drag helpers.
-- [ ] Every removed test has a named replacement through a surviving interface or adapter.
-- [ ] Focus and live announcements work for menu and pointer movement.
-- [ ] PWA precache includes all new modules.
-- [ ] Lint, format, Jest coverage, and E2E verification pass.
+- [x] Priority remains the default for missing or invalid local preference.
+- [x] My order/Priority selection is remembered only in the browser.
+- [x] Manual order syncs through the room-level `config-unscheduled-sequence` document; reorder
+      writes never mutate task documents.
+- [x] Completed tasks remain checked, in place, and movable in My order.
+- [x] New and newly unscheduled tasks appear after the last incomplete task.
+- [x] Menu moves and handle dragging use the same identity-based sequence operation.
+- [x] Whole-card dragging is impossible.
+- [x] Existing schedule, timer, edit, delete, completion, and inline-edit actions still work.
+- [x] Remote renders are deferred during drag and the latest render runs afterward.
+- [x] A failed sequence write reloads only durable sequence state; if reload also fails, prior
+      in-memory sequence state is restored without touching task fields.
+- [x] Concurrent sequence revisions preserve CouchDB's deterministic winner and tombstone losing
+      leaves; task edits remain outside that conflict surface.
+- [x] App and DOM renderer know neither mode state nor drag state.
+- [x] No test imports private comparator, mode, renderer callback, or drag helpers.
+- [x] Every removed test has a named replacement through a surviving interface or adapter.
+- [x] Focus and live announcements work for menu and pointer movement.
+- [x] PWA precache includes all new modules.
+- [x] Lint, format, Jest coverage, and local/CI E2E verification pass.
+
+### Deployment-preview note
+
+The two-client Cloudant data-safety scenario passed against the SHA-specific Firebase deployment
+with browser CORS enforcement explicitly bypassed: task edit versus reorder and concurrent reorder
+both converged, and no conflict leaves remained. A normal browser run against that immutable
+hostname correctly remains a deployment-infrastructure gate because Cloudant does not currently
+allow the newly generated Firebase origin. The older preview URL is CORS-allowed but serves the
+pre-correction task-rank build, so it is not valid evidence for this architecture.
