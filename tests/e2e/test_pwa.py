@@ -20,7 +20,7 @@ def wait_for_service_worker(page: Page) -> None:
     )
 
 
-def test_manifest_is_served_and_valid() -> None:
+def test_manifest_is_served_and_valid(app_server) -> None:
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(playwright)
         try:
@@ -36,7 +36,7 @@ def test_manifest_is_served_and_valid() -> None:
             browser.close()
 
 
-def test_service_worker_registers_and_precaches() -> None:
+def test_service_worker_registers_and_precaches(app_server) -> None:
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(playwright)
         try:
@@ -56,7 +56,7 @@ def test_service_worker_registers_and_precaches() -> None:
             browser.close()
 
 
-def test_app_boots_offline_after_first_visit() -> None:
+def test_app_boots_offline_after_first_visit(app_server) -> None:
     room_code = "pwa-offline"
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(playwright)

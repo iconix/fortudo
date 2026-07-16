@@ -27,7 +27,7 @@ ROOM_CODE = "insights-mobile"
 
 
 @pytest.mark.parametrize("viewport_width", [375, 768])
-def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
+def test_mobile_insights_has_no_horizontal_overflow(app_server, viewport_width: int):
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(
             playwright,
@@ -82,7 +82,7 @@ def test_mobile_insights_has_no_horizontal_overflow(viewport_width: int):
             browser.close()
 
 
-def test_insights_selected_day_scopes_details():
+def test_insights_selected_day_scopes_details(app_server):
     room_code = "insights-selected-day-scope"
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(

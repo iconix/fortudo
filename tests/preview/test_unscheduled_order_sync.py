@@ -1,4 +1,4 @@
-"""Cloudant acceptance coverage for cross-client Unscheduled ordering conflicts."""
+"""Deployed-preview acceptance coverage for cross-client Unscheduled ordering conflicts."""
 
 from __future__ import annotations
 

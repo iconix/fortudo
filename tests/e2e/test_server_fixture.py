@@ -7,7 +7,7 @@ import http.client
 from tests.e2e.helpers import HOST, PORT
 
 
-def test_app_server_serves_index():
+def test_app_server_serves_index(app_server):
     conn = http.client.HTTPConnection(HOST, PORT, timeout=5)
     conn.request("GET", "/")
     response = conn.getresponse()

@@ -11,7 +11,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlparse, urlsplit
 
 ACTIVITY_SMOKE_FAILURES_KEY = "fortudo-smoke-activity-failures"
@@ -1483,7 +1483,6 @@ def clear_all_tasks_via_ui(
     confirm_button = page.locator("#ok-custom-confirm-modal")
     confirm_modal = page.locator("#custom-confirm-modal")
 
-    last_option_error: Exception | None = None
     option_became_visible = False
     for attempt in range(attempts):
         trigger.scroll_into_view_if_needed()
@@ -1492,8 +1491,7 @@ def clear_all_tasks_via_ui(
             option.wait_for(state="visible", timeout=option_timeout_ms)
             option_became_visible = True
             break
-        except Exception as error:
-            last_option_error = error
+        except Exception:
             if retry_delay_ms > 0:
                 page.wait_for_timeout(retry_delay_ms)
 

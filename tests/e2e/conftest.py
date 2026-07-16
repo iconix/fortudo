@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import http.client
-import os
 import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
-from tests.e2e.helpers import HOST, PORT, REPO_ROOT
+from tests.e2e.helpers import BASE_URL, HOST, PORT, REPO_ROOT
 
 PUBLIC_DIR = REPO_ROOT / "public"
 
@@ -41,17 +39,12 @@ def wait_for_server(port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def app_server():
-    """Serve the app for E2E tests unless explicit server reuse is requested."""
-    reuse_existing = os.environ.get("FORTUDO_E2E_REUSE_SERVER") == "1"
+    """Serve this worktree's app for local browser tests."""
     if is_port_in_use(PORT):
-        if reuse_existing and wait_for_server(PORT):
-            yield
-            return
         raise RuntimeError(
-            f"Port {PORT} is already in use. Stop that server or set "
-            "FORTUDO_E2E_REUSE_SERVER=1 to intentionally reuse it."
+            f"Port {PORT} is already in use. Choose another port with FORTUDO_E2E_PORT."
         )
 
     process = subprocess.Popen(
@@ -64,7 +57,7 @@ def app_server():
         if not wait_for_server(PORT):
             process.kill()
             raise RuntimeError(f"Server failed to start on port {PORT}.")
-        yield
+        yield BASE_URL
     finally:
         process.terminate()
         try:

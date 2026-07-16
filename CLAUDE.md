@@ -26,13 +26,17 @@ See `docs/plans/README.md` for the current convention. Do not create new plans u
 
 ```bash
 # Testing
-npm test                    # Run Jest test suite
-npm test:watch              # Run tests in watch mode
-npm test:coverage           # Generate coverage report (80% threshold (75% for branches) enforced)
+npm test                    # Run Jest unit/integration suite
+npm run test:coverage       # Jest coverage (90% statements/lines/functions, 79% branches)
+npm run test:python         # Python helper unit and repository guard tests
+npm run test:e2e            # Local Playwright E2E with an auto-started dynamic server
+npm run test:preview        # Deployed-preview acceptance (requires preview environment)
+npm run verify              # Run every pre-merge lint and test gate
 
 # Linting & Formatting
 npm run lint                # Run ESLint
 npm run lint:fix            # Fix ESLint issues
+npm run lint:python         # Run locked Ruff checks for Python
 npm run format              # Format with Prettier
 npm run check               # Run lint + format:check (CI validation)
 
@@ -71,7 +75,17 @@ The app uses a modular architecture in `public/js/`:
 
 ### Test Structure
 
-Tests are in `__tests__/` with a shared `test-utils.js` for mocks and helpers. Jest runs with jsdom environment. Each module has a corresponding test file.
+Test responsibilities are intentionally separated:
+
+- `__tests__/` contains Jest/jsdom unit and integration coverage for JavaScript modules.
+- Root `tests/test_*.py` files cover Python helpers and repository artifact/workflow guards.
+- `tests/e2e/` contains local Playwright browser scenarios and explicitly requests the
+  session app-server fixture.
+- `tests/preview/` contains deployed Firebase/Cloudant acceptance coverage and never
+  receives the local app-server fixture.
+
+Python 3.12, pytest, Playwright, and Ruff are pinned by `pyproject.toml` and `uv.lock`.
+Use the npm scripts above rather than ad hoc `pip install` or `uv run --with` commands.
 
 ## Code Style
 
@@ -90,7 +104,7 @@ When fixing bugs or adding features, follow strict TDD:
 1. **Write failing tests first** - Cover both the detection/trigger AND the execution/handler
 2. **Test all new functions** - Every new function needs unit tests, not just integration coverage
 3. **Test error paths** - Include tests for edge cases (not found, invalid input, wrong state)
-4. **Run coverage check before committing** - `npm test -- --coverage` must pass 80% threshold (75% for branches)
+4. **Run the relevant focused checks during red/green** - Run `npm run verify` before push or merge; Jest coverage must remain at 90% for statements, lines, and functions and 79% for branches.
 
 Example for a confirmation flow:
 
@@ -105,7 +119,9 @@ Example for a confirmation flow:
 5. truncateCompletedTask() returns error when new end time invalid
 ```
 
-**The pre-commit hook enforces both lint/format and coverage checks.** Commits will fail if coverage drops below 80% (75% for branches).
+**The pre-commit hook is staged-file aware.** It runs JavaScript formatting/lint plus
+related Jest tests, or Python lint plus non-browser tests, depending on what is staged.
+The complete coverage and browser suite remains the explicit `npm run verify` pre-push/CI gate.
 
 ## Working in Git Worktrees
 
@@ -125,10 +141,13 @@ cd .worktrees/schedule-tasks-in-gaps && npx http-server ./public -p 9847
 
 **ESLint needs `root: true`.** Without it, ESLint traverses up and finds the main repo's config + `node_modules`, causing "couldn't determine plugin uniquely" errors. Each worktree's `.eslintrc.js` must have `root: true`.
 
-**E2E tests use port 9847.** All Playwright test files (`test_*.py`) expect the app on `http://127.0.0.1:9847`. Before running E2E tests, start a server from within the worktree:
+**E2E tests start their own worktree-scoped server.** The fixture selects an available
+local port by default, so do not start a server manually. For headed debugging, request
+a stable free port explicitly:
 
 ```bash
-cd .worktrees/<branch> && npx http-server ./public -p 9847 -c-1
+FORTUDO_E2E_PORT=9847 E2E_BROWSER_CHANNEL=chrome npm run test:e2e
 ```
 
-**Verify what's being served.** If tests fail on element visibility or show unexpected UI, `curl -s http://127.0.0.1:<port>/ | head -15` to confirm the right `index.html` is being served.
+Deployed-preview tests live in `tests/preview/` and never depend on the local server or
+port. Do not use a server-reuse flag; it can accidentally exercise another worktree.

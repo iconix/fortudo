@@ -31,33 +31,51 @@ does not prevent the app from working offline.
 
 ## testing
 
-Three layers, each with a distinct job:
+Install the locked Python environment and Playwright browser once per checkout:
 
-**Unit (Jest, `__tests__/`)** - pre-merge, runs in CI:
+```bash
+uv sync --locked
+uv run --locked playwright install chromium
+```
+
+The test suite has four explicit layers:
+
+**JavaScript unit and integration (`__tests__/`)** - Jest/jsdom coverage for app modules:
 
 ```bash
 npm test
 ```
 
-**E2E (pytest + Playwright, `tests/`)** - pre-merge, runs in CI against a local
-server on `127.0.0.1:9847` started by a session fixture. New browser-level
-coverage goes here by default. `tests/e2e/test_pwa.py` covers the manifest,
-installability, service-worker lifecycle, and offline behavior:
+**Python unit and guard tests (`tests/test_*.py`)** - helper units, workflow contracts,
+and generated/vendor artifact guards:
 
 ```bash
-uv run --with pytest --with playwright python -m pytest tests -q
-
-# headed debugging with system Chrome
-E2E_BROWSER_CHANNEL=chrome uv run --with pytest --with playwright python -m pytest tests/e2e -q
+npm run test:python
 ```
 
-**Preview smoke (`scripts.preview_smoke`)** - post-deploy, run manually against a
-Firebase preview URL. The preview smoke package owns deployed-environment
-concerns such as CouchDB sync, room reset, and cross-room scenarios:
+**Local browser E2E (`tests/e2e/`)** - Playwright scenarios against this checkout.
+An explicit session fixture starts the app on an available local port, so no manual
+server is needed. Set `FORTUDO_E2E_PORT` only when a stable debugging port is useful:
 
 ```bash
-uv run --with pytest python -m pytest tests/test_preview_smoke_helpers.py
-uv run --with playwright python -m scripts.preview_smoke <preview-url> --channel chrome
+npm run test:e2e
+
+# headed debugging with system Chrome
+E2E_BROWSER_CHANNEL=chrome FORTUDO_E2E_PORT=9847 npm run test:e2e
+```
+
+**Deployed-preview acceptance (`tests/preview/` and `scripts.preview_smoke`)** - remote
+Firebase/Cloudant behavior. These tests never start or reuse the local E2E server:
+
+```bash
+FORTUDO_PREVIEW_URL=<preview-url> npm run test:preview
+uv run --locked python -m scripts.preview_smoke <preview-url> --channel chrome
+```
+
+Run every pre-merge gate with:
+
+```bash
+npm run verify
 ```
 
 ## roadmap

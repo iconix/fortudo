@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import socket
 from pathlib import Path
 
 from scripts.e2e_helpers import (
@@ -13,9 +15,25 @@ from scripts.e2e_helpers import (
     wait_for_main_app,
 )
 
-PORT = 9847
 HOST = "127.0.0.1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def choose_port() -> int:
+    """Return the configured E2E port or reserve an available local port."""
+    configured_port = os.environ.get("FORTUDO_E2E_PORT")
+    if configured_port:
+        port = int(configured_port)
+        if not 1 <= port <= 65535:
+            raise ValueError("FORTUDO_E2E_PORT must be between 1 and 65535")
+        return port
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((HOST, 0))
+        return int(sock.getsockname()[1])
+
+
+PORT = choose_port()
 BASE_URL = f"http://{HOST}:{PORT}"
 
 

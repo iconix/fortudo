@@ -79,7 +79,6 @@ test_screenshots/
 __pycache__/
 .pytest_cache/
 .venv/
-uv.lock
 
 # macOS metadata
 .DS_Store
