@@ -85,7 +85,9 @@ def local_doc_with_conflicts(page: Page, room_code: str, doc_id: str) -> dict | 
 def move_to_top(page: Page, task_id: str) -> None:
     card = card_for(page, task_id)
     card.locator(".btn-unscheduled-task-actions-menu").click()
-    card.locator('[data-move-kind="top"]').click()
+    menu = card.locator(".unscheduled-task-actions-menu")
+    menu.wait_for(state="visible", timeout=5000)
+    menu.locator('[data-move-kind="top"]').click()
 
 
 def edit_description(page: Page, task_id: str, description: str) -> None:
@@ -99,6 +101,26 @@ def edit_description(page: Page, task_id: str, description: str) -> None:
 def request_both_sync(page_a: Page, page_b: Page) -> None:
     request_manual_sync(page_a)
     request_manual_sync(page_b)
+
+
+def wait_for_local_order(
+    page: Page,
+    room_code: str,
+    expected: list[str],
+    description: str,
+) -> None:
+    try:
+        wait_until(
+            lambda: local_doc(page, room_code, SEQUENCE_ID).get("orderedTaskIds")
+            == expected,
+            description,
+        )
+    except TimeoutError as error:
+        sequence = local_doc(page, room_code, SEQUENCE_ID)
+        raise AssertionError(
+            f"Timed out waiting for {description}; sequence={sequence!r}, "
+            f"visible={visible_ids(page)!r}"
+        ) from error
 
 
 def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflicts():
@@ -124,6 +146,27 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             context_b = browser.new_context()
             page_a = context_a.new_page()
             page_b = context_b.new_page()
+            sync_diagnostics: list[str] = []
+            page_a.on(
+                "console",
+                lambda message: sync_diagnostics.append(f"console: {message.text}")
+                if message.type == "error"
+                else None,
+            )
+            page_a.on(
+                "requestfailed",
+                lambda request: sync_diagnostics.append(
+                    f"request failed: {request.method} {request.url} {request.failure}"
+                ),
+            )
+            page_a.on(
+                "response",
+                lambda response: sync_diagnostics.append(
+                    f"response: {response.status} {response.request.method} {response.url}"
+                )
+                if response.status >= 400
+                else None,
+            )
 
             page_a.goto(preview_url, wait_until="load")
             page_a.evaluate("localStorage.clear()")
@@ -139,13 +182,24 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
                 ],
             )
             enter_room(page_a, room_code)
+            seeded_ids = {"task-alpha", "task-beta", "task-gamma", SEQUENCE_ID}
 
             def initial_remote_ready():
                 request_manual_sync(page_a)
                 docs = fetch_remote_docs(couchdb_url, remote_db_name)
-                return docs if len(docs) == 4 else False
+                remote_ids = {doc.get("_id") for doc in docs}
+                return docs if seeded_ids.issubset(remote_ids) else False
 
-            wait_until(initial_remote_ready, "initial preview documents to reach Cloudant")
+            try:
+                wait_until(initial_remote_ready, "initial preview documents to reach Cloudant")
+            except TimeoutError as error:
+                sync_status = (
+                    page_a.locator("#sync-status-text").text_content() or "missing"
+                ).strip()
+                raise AssertionError(
+                    f"Initial Cloudant sync did not settle; status={sync_status!r}, "
+                    f"diagnostics={sync_diagnostics[-20:]!r}"
+                ) from error
 
             page_b.goto(preview_url, wait_until="load")
             page_b.evaluate("localStorage.clear()")
@@ -154,9 +208,10 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
 
             def client_b_ready():
                 request_manual_sync(page_b)
+                local_ids = {doc.get("_id") for doc in read_docs(page_b, room_code)}
                 return (
                     local_doc(page_b, room_code, SEQUENCE_ID)
-                    if len(read_docs(page_b, room_code)) == 4
+                    if seeded_ids.issubset(local_ids)
                     else False
                 )
 
@@ -170,9 +225,10 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             context_b.set_offline(True)
             move_to_top(page_a, "task-gamma")
             edit_description(page_b, "task-alpha", "Alpha edited on client B")
-            wait_until(
-                lambda: local_doc(page_a, room_code, SEQUENCE_ID).get("orderedTaskIds")
-                == ["task-gamma", "task-alpha", "task-beta"],
+            wait_for_local_order(
+                page_a,
+                room_code,
+                ["task-gamma", "task-alpha", "task-beta"],
                 "offline reorder persistence",
             )
             wait_until(
@@ -220,14 +276,16 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             context_b.set_offline(True)
             move_to_top(page_a, "task-alpha")
             move_to_top(page_b, "task-beta")
-            wait_until(
-                lambda: local_doc(page_a, room_code, SEQUENCE_ID).get("orderedTaskIds")
-                == ["task-alpha", "task-gamma", "task-beta"],
+            wait_for_local_order(
+                page_a,
+                room_code,
+                ["task-alpha", "task-gamma", "task-beta"],
                 "client A concurrent order",
             )
-            wait_until(
-                lambda: local_doc(page_b, room_code, SEQUENCE_ID).get("orderedTaskIds")
-                == ["task-beta", "task-gamma", "task-alpha"],
+            wait_for_local_order(
+                page_b,
+                room_code,
+                ["task-beta", "task-gamma", "task-alpha"],
                 "client B concurrent order",
             )
             context_a.set_offline(False)
@@ -282,6 +340,10 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
                 timeout_s=30,
             )
     finally:
-        if browser is not None:
-            browser.close()
-        delete_remote_database(couchdb_url, remote_db_name)
+        try:
+            if browser is not None and browser.is_connected():
+                browser.close()
+        except Exception:
+            pass
+        finally:
+            delete_remote_database(couchdb_url, remote_db_name)
