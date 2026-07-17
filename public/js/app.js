@@ -341,6 +341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         onUpdateAvailable: (activate) => {
             showToast('New version available', {
                 theme: 'violet',
+                dedupeKey: 'app-update',
                 action: { label: 'Reload', onClick: activate }
             });
         }

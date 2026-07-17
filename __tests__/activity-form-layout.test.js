@@ -42,4 +42,21 @@ describe('activity form layout', () => {
         expect(indexHtml).toContain('id="timer-action-group"');
         expect(indexHtml).toContain('class="flex flex-col gap-3 sm:flex-row sm:justify-end"');
     });
+
+    test('activity mode rethemes the shared time controls from teal to sky', () => {
+        const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+        const customCss = fs.readFileSync(
+            path.join(process.cwd(), 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(indexHtml.match(/task-form-time-icon/g)).toHaveLength(2);
+        expect(indexHtml).toMatch(/id="end-time-hint"[^>]*task-form-time-hint/s);
+        expect(customCss).toMatch(
+            /#task-form\.task-form--activity \.task-form-time-icon\s*\{[^}]*rgb\(56 189 248 \/ 0\.75\)/s
+        );
+        expect(customCss).toMatch(
+            /#task-form\.task-form--activity \.task-form-time-hint\s*\{[^}]*rgb\(56 189 248 \/ 0\.7\)/s
+        );
+    });
 });

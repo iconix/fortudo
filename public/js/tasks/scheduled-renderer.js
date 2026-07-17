@@ -51,18 +51,18 @@ export function renderEditTaskHTML(task, index) {
         options: getSelectableCategoryOptions(),
         dotClass: 'scheduled-edit-category-dot',
         selectClass:
-            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
+            'bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
     });
 
     return `
-        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-gray-700 bg-gray-800 bg-opacity-70 shadow-lg text-left space-y-4">
+        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-70 shadow-lg text-left space-y-4">
             <input type="hidden" name="task-type" value="scheduled">
 
             <!-- Description Row -->
             <div class="relative">
                 <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                 <input type="text" name="description" value="${task.description}" placeholder="What needs to be done?"
-                    class="bg-gray-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+                    class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
             </div>
 
             <!-- Category Row -->
@@ -74,7 +74,7 @@ export function renderEditTaskHTML(task, index) {
                 <div class="relative">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                     <input type="time" name="start-time" value="${displayStartTime}"
-                        class="bg-gray-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+                        class="bg-slate-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
                 </div>
 
                 <!-- Duration -->
@@ -83,12 +83,12 @@ export function renderEditTaskHTML(task, index) {
                         <div class="relative flex-1">
                             <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                             <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
-                                class="bg-gray-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                                class="bg-slate-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
-                        <span class="text-gray-400 text-lg">:</span>
+                        <span class="text-slate-400 text-lg">:</span>
                         <div class="relative flex-1">
                             <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
-                                class="bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
+                                class="bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
                         <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
                     </div>
@@ -96,7 +96,7 @@ export function renderEditTaskHTML(task, index) {
 
                 <!-- Action Buttons -->
                 <div class="flex items-center gap-2 sm:ml-auto">
-                    <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600" data-task-id="${task.id}" data-task-index="${index}">
+                    <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
                     <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40">
@@ -391,7 +391,7 @@ export function renderTasks(
 
     if (scheduledTasks.length === 0) {
         taskListElement.innerHTML =
-            '<p class="text-gray-500 text-sm italic px-2">No scheduled tasks yet. Add some using the form above or schedule a task from below!</p>';
+            '<p class="text-slate-500 text-sm italic px-2">No scheduled tasks yet. Add some using the form above or schedule a task from below!</p>';
         return updatedCallbacks;
     }
 

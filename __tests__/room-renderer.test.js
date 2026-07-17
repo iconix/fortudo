@@ -137,7 +137,7 @@ describe('Room Renderer', () => {
             const text = document.getElementById('sync-status-text');
             const indicator = document.getElementById('sync-status-indicator');
             expect(icon.className).toContain('fa-rotate');
-            expect(icon.className).toContain('text-blue-400');
+            expect(icon.className).toContain('text-sky-400');
             expect(text.textContent).toBe('Syncing');
             expect(indicator.disabled).toBe(true);
         });
@@ -147,7 +147,7 @@ describe('Room Renderer', () => {
             const text = document.getElementById('sync-status-text');
             const indicator = document.getElementById('sync-status-indicator');
             expect(text.textContent).toBe('Synced');
-            expect(text.className).toContain('text-teal-400');
+            expect(text.className).toContain('text-emerald-400');
             expect(indicator.disabled).toBe(false);
         });
 
@@ -155,7 +155,7 @@ describe('Room Renderer', () => {
             updateSyncStatusUI('error');
             const text = document.getElementById('sync-status-text');
             expect(text.textContent).toBe('Error');
-            expect(text.className).toContain('text-red-400');
+            expect(text.className).toContain('text-rose-400');
         });
 
         test('falls back to idle for unknown status', () => {

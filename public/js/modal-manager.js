@@ -397,13 +397,13 @@ export function showGapTaskPicker(
                 const fits = task.estDuration && task.estDuration <= durationMinutes;
                 const fitIndicator = task.estDuration
                     ? fits
-                        ? '<span class="text-teal-400 text-xs whitespace-nowrap">Fits</span>'
+                        ? '<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>'
                         : '<span class="text-amber-300 text-xs whitespace-nowrap">Too long</span>'
                     : '';
                 const priorityColors = {
                     high: 'text-rose-400',
                     medium: 'text-amber-400',
-                    low: 'text-teal-400'
+                    low: 'text-emerald-400'
                 };
                 const priorityColor = priorityColors[task.priority] || 'text-slate-400';
                 return `<div class="gap-task-option flex items-center justify-between p-3 rounded-lg border border-slate-600 hover:border-teal-400 hover:bg-slate-700/50 cursor-pointer transition-all" data-task-id="${task.id}">

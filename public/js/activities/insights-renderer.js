@@ -148,7 +148,7 @@ function renderTimelineBlock(block, type, viewport) {
     const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
     const selected = block.id === selectedTimelineBlockId;
     const selectedClasses = selected
-        ? ' outline outline-2 outline-offset-2 outline-cyan-300 shadow-cyan-300/40'
+        ? ' outline outline-2 outline-offset-2 outline-sky-300 shadow-sky-300/40'
         : '';
     const visibleLabelClass = 'block truncate whitespace-nowrap';
     const visibleLabelHtml = compact
@@ -203,7 +203,7 @@ function renderSelectedTimelineBlockDetail(blocks) {
     const timeRange = `${formatTime(selectedBlock.startDateTime)} - ${formatTime(selectedBlock.endDateTime)}`;
 
     return `<div data-selected-timeline-block
-        class="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-900/70 bg-cyan-950/20 px-3 py-2 text-sm text-cyan-100">
+        class="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-900/70 bg-sky-950/20 px-3 py-2 text-sm text-sky-100">
         <span class="text-slate-400">Selected block:</span>
         <span class="font-semibold text-white">${escapeHtml(label)}</span>
         <span>${escapeHtml(timeRange)}</span>
@@ -223,7 +223,7 @@ function renderTimeline(model) {
     timelineContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/80 p-4">
         <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h3 class="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-300">Plan vs Actual</h3>
+                <h3 class="text-sm font-semibold uppercase tracking-[0.16em] text-sky-300">Plan vs Actual</h3>
                 <div data-timeline-range class="mt-1 text-xs text-slate-400">
                     Focused range: ${escapeHtml(formatMinutesAsTime(viewport.startMinutes))} -
                     ${escapeHtml(formatMinutesAsTime(viewport.endMinutes))}
@@ -522,7 +522,7 @@ function renderSelectedDayContext(selectedDate) {
     }
 
     contextContainer.innerHTML = `<section class="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-3">
-        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-300">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300">
             Selected day
         </div>
         <div class="mt-1 text-lg font-semibold text-slate-100">
@@ -569,7 +569,7 @@ function renderTrendDayCard(day, selectedDate) {
         data-selected="${selected ? 'true' : 'false'}"
         class="min-h-[7rem] snap-start rounded-lg border p-2 text-left ${
             selected
-                ? 'border-cyan-400 bg-cyan-950/40 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45)]'
+                ? 'border-sky-400 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.45)]'
                 : 'border-slate-700 bg-slate-950/80 hover:bg-slate-900'
         }">
         <div class="flex items-center justify-between text-[11px] font-semibold uppercase text-sky-300">

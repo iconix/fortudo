@@ -22,23 +22,6 @@ button:focus-visible {
 .drag-handle {
     cursor: grab;
 }
-.glassmorphism {
-    background: rgba(31, 41, 55, 0.7);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-@keyframes pulse-green {
-    0%,
-    100% {
-        color: rgb(13, 148, 136);
-    } /* teal-600 */
-    50% {
-        color: rgb(20, 184, 166);
-    } /* teal-500 */
-}
-.pulse-animation {
-    animation: pulse-green 2s infinite;
-}
 .priority-badge {
     position: relative;
     overflow: hidden;
@@ -147,6 +130,14 @@ button:focus-visible {
 
 #activity-action-group {
     display: contents;
+}
+
+#task-form.task-form--activity .task-form-time-icon {
+    color: rgb(56 189 248 / 0.75);
+}
+
+#task-form.task-form--activity .task-form-time-hint {
+    color: rgb(56 189 248 / 0.7);
 }
 
 #task-form.task-form--activity #time-inputs {
@@ -432,10 +423,6 @@ button:focus-visible {
 
     .priority-badge::before {
         transition: none;
-    }
-
-    .pulse-animation {
-        animation: none;
     }
 
     .celebration-emoji,

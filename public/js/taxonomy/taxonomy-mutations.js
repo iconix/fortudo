@@ -132,7 +132,18 @@ export async function updateCategory(key, updates) {
         category.label = updates.label.trim();
     }
 
-    if (updates.color !== undefined) {
+    if (updates.linkToGroupFamily === true) {
+        const group = state.groups.find((entry) => entry.key === category.groupKey);
+        if (!group) {
+            throw new Error(`Group "${category.groupKey}" not found`);
+        }
+
+        const linkedIndex = state.categories
+            .filter((entry) => entry.groupKey === category.groupKey)
+            .findIndex((entry) => entry.key === category.key);
+        category.color = pickLinkedChildColor(group.colorFamily, linkedIndex);
+        category.isLinkedToGroupFamily = true;
+    } else if (updates.color !== undefined) {
         const group = state.groups.find((entry) => entry.key === category.groupKey);
         category.color = updates.color;
         category.isLinkedToGroupFamily =

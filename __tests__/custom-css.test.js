@@ -19,6 +19,17 @@ describe('custom CSS polish hooks', () => {
         expect(css).toContain('.settings-reload-prompt');
     });
 
+    test('does not retain unused pre-rebrand visual hooks', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).not.toContain('.glassmorphism');
+        expect(css).not.toContain('@keyframes pulse-green');
+        expect(css).not.toContain('.pulse-animation');
+    });
+
     test('allows long task descriptions such as URLs to wrap anywhere', () => {
         const css = fs.readFileSync(
             path.join(__dirname, '..', 'public', 'css', 'custom.css'),

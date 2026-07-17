@@ -116,6 +116,16 @@ describe('taxonomy-mutations', () => {
         expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
     });
 
+    test('updateCategory can deliberately relink a custom child to its group family', async () => {
+        await initAndLoadTaxonomy();
+
+        await updateCategory('work/deep', { color: '#22c55e' });
+        await updateCategory('work/deep', { linkToGroupFamily: true });
+
+        expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
+        expect(COLOR_FAMILIES.blue).toContain(getCategoryByKey('work/deep').color);
+    });
+
     test('addCategory validates inputs and can create compatibility groups', async () => {
         await initAndLoadTaxonomy();
 

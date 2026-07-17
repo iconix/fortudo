@@ -385,7 +385,7 @@ describe('activity insights renderer', () => {
         expect(detail.textContent).toContain('10:39 AM - 10:48 AM');
         expect(detail.textContent).toContain('9m');
         expect(selectedBlock.dataset.selected).toBe('true');
-        expect(selectedBlock.className).toContain('shadow-cyan');
+        expect(selectedBlock.className).toContain('shadow-sky');
     });
 
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {

@@ -21,13 +21,30 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     )
 }));
 
-import { renderUnscheduledTasks } from '../public/js/tasks/unscheduled-renderer.js';
+import {
+    getPriorityClasses,
+    renderUnscheduledTasks
+} from '../public/js/tasks/unscheduled-renderer.js';
 import { getRunningActivity } from '../public/js/activities/manager.js';
 
 describe('unscheduled task renderer', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         document.body.innerHTML = '<div id="unscheduled-task-list"></div>';
+    });
+
+    test('uses the canonical emerald family for low-priority badges', () => {
+        const classes = getPriorityClasses('low');
+
+        expect(classes).toEqual(
+            expect.objectContaining({
+                border: 'border-emerald-400',
+                bg: 'bg-emerald-400 bg-opacity-20',
+                text: 'text-emerald-300',
+                focusRing: 'emerald-400'
+            })
+        );
+        expect(classes).not.toHaveProperty('checkbox');
     });
 
     test('renders an actions menu with start timer for incomplete unscheduled tasks', () => {

@@ -36,14 +36,30 @@ export function getToastContainer() {
  * @param {Object} [options]
  * @param {number} [options.duration=3500] - Auto-dismiss after this many ms (ignored when action is set)
  * @param {string} [options.theme='default'] - Color theme: violet, slate, teal, sky, amber, rose, default
+ * @param {string|null} [options.dedupeKey=null] - Replaces an existing toast with the same key
  * @param {{label: string, onClick: Function}} [options.action] - Renders a button; toast stays until clicked
  */
 export function showToast(message, options = {}) {
-    const { duration = DEFAULT_DURATION, theme = 'default', action = null } = options;
+    const {
+        duration = DEFAULT_DURATION,
+        theme = 'default',
+        dedupeKey = null,
+        action = null
+    } = options;
     const toastContainer = getToastContainer();
+
+    if (dedupeKey) {
+        Array.from(toastContainer.children)
+            .find((element) => element.dataset.toastKey === dedupeKey)
+            ?.remove();
+    }
+
     const toast = document.createElement('div');
     const themeClasses = THEME_CLASSES[theme] || THEME_CLASSES.default;
 
+    if (dedupeKey) {
+        toast.dataset.toastKey = dedupeKey;
+    }
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
     toast.setAttribute('aria-atomic', 'true');

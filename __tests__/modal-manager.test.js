@@ -668,8 +668,30 @@ describe('Modal Manager Tests', () => {
 
                 // task-1 (30m) fits in 60m gap
                 expect(options[0].textContent).toContain('Fits');
+                expect(options[0].querySelector('.text-emerald-400')).not.toBeNull();
+                expect(options[0].querySelector('.text-teal-400')).toBeNull();
                 // task-2 (120m) does not fit in 60m gap
                 expect(options[1].textContent).toContain('Too long');
+            });
+
+            test('showGapTaskPicker uses emerald for Low priority', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const lowPriority = document.querySelector(
+                    '.gap-task-option[data-task-id="task-3"] .text-teal-400'
+                );
+                expect(lowPriority).toBeNull();
+                expect(
+                    document.querySelector(
+                        '.gap-task-option[data-task-id="task-3"] .text-emerald-400'
+                    )
+                ).not.toBeNull();
             });
 
             test('clicking a task calls onTaskSelected and hides modal', () => {

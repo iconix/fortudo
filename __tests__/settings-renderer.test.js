@@ -125,6 +125,10 @@ async function openInlineCategoryEditor(key) {
 
 async function saveEditedCategoryColor(key, color) {
     const editForm = await openInlineCategoryEditor(key);
+    editForm.querySelector('[name="edit-category-color-mode"]').value = 'custom';
+    editForm
+        .querySelector('[name="edit-category-color-mode"]')
+        .dispatchEvent(new Event('change', { bubbles: true }));
     editForm.querySelector('[name="edit-category-color"]').value = color;
     await submitForm(editForm);
 }
@@ -460,7 +464,7 @@ describe('settings-renderer', () => {
             expect(getCategoryByKey('work/meetings').color).toBe(COLOR_FAMILIES.amber[1]);
         });
 
-        test('group color family options use common color names', async () => {
+        test('group color family options use familiar user-facing color names', async () => {
             await renderEnabledSettings();
             await clickAndWait(document.getElementById('add-group-btn'));
 
@@ -474,6 +478,75 @@ describe('settings-renderer', () => {
             expect(options).not.toContain('Amber');
             expect(options).not.toContain('Rose');
             expect(options).not.toContain('Violet');
+        });
+
+        test('taxonomy settings use product language instead of data-model terminology', async () => {
+            await renderEnabledSettings();
+
+            const content = document.getElementById('taxonomy-management-section').textContent;
+            expect(content).toContain('Top-level choices for organizing tasks and activities.');
+            expect(content).toContain('Optional subcategories organized within a group.');
+            expect(content).not.toContain('Standalone selectable');
+            expect(content).not.toContain('Child categories linked');
+
+            const groupForm = await openInlineGroupEditor('work');
+            expect(groupForm.querySelector('label[for^="edit-group-family-"]').textContent).toBe(
+                'Group color'
+            );
+        });
+
+        test('group metadata shows only the user-facing color name', async () => {
+            await renderEnabledSettings();
+
+            const workMetadata = document.querySelector('[data-group-key="work"] .text-xs');
+            const personalMetadata = document.querySelector('[data-group-key="personal"] .text-xs');
+            const breakMetadata = document.querySelector('[data-group-key="break"] .text-xs');
+
+            expect(workMetadata.textContent).toBe('Blue');
+            expect(personalMetadata.textContent).toBe('Red');
+            expect(breakMetadata.textContent).toBe('Green');
+            expect(personalMetadata.textContent).not.toContain('personal');
+            expect(personalMetadata.textContent).not.toContain('rose');
+        });
+
+        test('category metadata describes color behavior without exposing internal keys', async () => {
+            await renderEnabledSettings();
+
+            const deepWorkRow = document.querySelector('[data-category-key="work/deep"]');
+            expect(deepWorkRow.querySelector('.text-xs').textContent).toBe('Follows Work color');
+            expect(deepWorkRow.textContent).not.toContain('work/deep');
+            expect(deepWorkRow.textContent).not.toContain('Linked');
+        });
+
+        test('taxonomy action buttons have specific accessible names', async () => {
+            await renderEnabledSettings();
+
+            expect(document.getElementById('add-group-btn').getAttribute('aria-label')).toBe(
+                'Add group'
+            );
+            expect(document.getElementById('add-category-btn').getAttribute('aria-label')).toBe(
+                'Add category'
+            );
+            expect(
+                document
+                    .querySelector('.btn-edit-group[data-key="work"]')
+                    .getAttribute('aria-label')
+            ).toBe('Edit Work group');
+            expect(
+                document
+                    .querySelector('.btn-delete-group[data-key="work"]')
+                    .getAttribute('aria-label')
+            ).toBe('Delete Work group');
+            expect(
+                document
+                    .querySelector('.btn-edit-category[data-key="work/deep"]')
+                    .getAttribute('aria-label')
+            ).toBe('Edit Deep Work category');
+            expect(
+                document
+                    .querySelector('.btn-delete-category[data-key="work/deep"]')
+                    .getAttribute('aria-label')
+            ).toBe('Delete Deep Work category');
         });
 
         test('taxonomy group and category rows keep names left aligned', async () => {
@@ -534,6 +607,10 @@ describe('settings-renderer', () => {
             const categoryEditForm = await openInlineCategoryEditor('work/deep');
             categoryEditForm.querySelector('[name="edit-category-label"]').value =
                 'Draft Deep Work';
+            categoryEditForm.querySelector('[name="edit-category-color-mode"]').value = 'custom';
+            categoryEditForm
+                .querySelector('[name="edit-category-color-mode"]')
+                .dispatchEvent(new Event('change', { bubbles: true }));
             categoryEditForm.querySelector('[name="edit-category-color"]').value = '#22c55e';
 
             const groupEditForm = await openInlineGroupEditor('work');
@@ -550,6 +627,14 @@ describe('settings-renderer', () => {
             expect(
                 refreshedCategoryEditForm.querySelector('[name="edit-category-color"]').value
             ).toBe('#22c55e');
+            expect(
+                refreshedCategoryEditForm.querySelector('[name="edit-category-color-mode"]').value
+            ).toBe('custom');
+            expect(
+                refreshedCategoryEditForm
+                    .querySelector('[data-custom-color-field]')
+                    .classList.contains('hidden')
+            ).toBe(false);
         });
 
         test('category add form requires a parent group', async () => {
@@ -621,17 +706,42 @@ describe('settings-renderer', () => {
             await saveEditedCategoryColor('work/deep', '#22c55e');
 
             expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(false);
-            expect(document.getElementById('categories-list').textContent).toContain('Unlinked');
+            expect(document.getElementById('categories-list').textContent).toContain(
+                'Custom color'
+            );
         });
 
-        test('editing child color back into family relinks the child', async () => {
+        test('category editor explicitly switches between following group and custom colors', async () => {
+            await renderEnabledSettings();
+
+            const linkedForm = await openInlineCategoryEditor('work/deep');
+            const modeSelect = linkedForm.querySelector('[name="edit-category-color-mode"]');
+            const customColorField = linkedForm.querySelector('[data-custom-color-field]');
+
+            expect(modeSelect.value).toBe('follow');
+            expect(modeSelect.options[0].textContent).toBe('Follow Work color');
+            expect(customColorField.classList).toContain('hidden');
+
+            modeSelect.value = 'custom';
+            modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(customColorField.classList).not.toContain('hidden');
+            expect(linkedForm.querySelector('[name="edit-category-color"]').disabled).toBe(false);
+        });
+
+        test('choosing Follow group color deliberately relinks a custom category', async () => {
             await renderEnabledSettings();
 
             await saveEditedCategoryColor('work/deep', '#22c55e');
-            await saveEditedCategoryColor('work/deep', COLOR_FAMILIES.blue[0]);
+
+            const customForm = await openInlineCategoryEditor('work/deep');
+            customForm.querySelector('[name="edit-category-color-mode"]').value = 'follow';
+            await submitForm(customForm);
 
             expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
-            expect(document.getElementById('categories-list').textContent).toContain('Linked');
+            expect(COLOR_FAMILIES.blue).toContain(getCategoryByKey('work/deep').color);
+            expect(document.getElementById('categories-list').textContent).toContain(
+                'Follows Work color'
+            );
         });
 
         test('cancel edit restores the category row', async () => {

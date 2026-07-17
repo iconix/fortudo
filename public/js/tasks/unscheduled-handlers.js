@@ -84,7 +84,7 @@ export function handleEditUnscheduledTask(taskId) {
         refreshUI();
     } else {
         logger.error(`Unscheduled task not found for editing: ${taskId}`);
-        showAlert('Could not find the task to edit.', 'teal');
+        showAlert('Could not find the task to edit.', 'rose');
     }
 }
 
@@ -97,7 +97,7 @@ export async function handleDeleteUnscheduledTask(taskId) {
             task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
         });
     } else if (!result.requiresConfirmation && result.reason) {
-        showAlert(result.reason, 'teal');
+        showAlert(result.reason, 'rose');
         refreshUI();
     } else {
         refreshUI();

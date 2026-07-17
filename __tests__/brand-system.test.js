@@ -133,7 +133,7 @@ describe('Fortudo brand system', () => {
         const brandGuide = read('docs/BRAND.md');
 
         expect(indexHtml).toMatch(
-            /<span class="whitespace-nowrap">For Cristell<span class="dedication-heart"[\s\S]*?data-dedication-heart[\s\S]*?<\/svg>[\s\S]*?<\/span><\/span>/
+            /<span class="whitespace-nowrap"\s*>\s*For Cristell\s*<span\s+class="dedication-heart"[\s\S]*?data-dedication-heart[\s\S]*?<\/svg>[\s\S]*?<\/span>\s*<\/span>/
         );
         expect(indexHtml).toContain('aria-label="Purple heart"');
         expect(indexHtml).toContain('fill="url(#dedication-heart-gradient)"');
@@ -148,6 +148,11 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).toContain(
             'bg-slate-800 border border-slate-700 p-4 sm:p-6 rounded-lg max-w-md w-full mx-3 sm:mx-4 max-h-[80vh] overflow-hidden'
         );
+    });
+
+    test('names icon-only Settings controls for assistive technology', () => {
+        expect(indexHtml).toMatch(/id="settings-gear-btn"[\s\S]*?aria-label="Open settings"/);
+        expect(indexHtml).toMatch(/id="close-settings-modal"[\s\S]*?aria-label="Close settings"/);
     });
 
     test('raises mobile helper and idle-status contrast without changing desktop tone', () => {
@@ -175,6 +180,52 @@ describe('Fortudo brand system', () => {
     test('retires indigo from visible app styling', () => {
         const publicJavaScript = readJavaScriptTree(path.join(repoRoot, 'public', 'js')).join('\n');
         expect(`${indexHtml}\n${publicJavaScript}`).not.toMatch(/indigo-/);
+    });
+
+    test('uses the canonical semantic color families instead of near-neighbor aliases', () => {
+        const publicJavaScript = readJavaScriptTree(path.join(repoRoot, 'public', 'js')).join('\n');
+        const appStyling = `${indexHtml}\n${publicJavaScript}`;
+
+        expect(appStyling).not.toMatch(/\b(?:gray|cyan|blue|red)-\d/);
+        expect(indexHtml).toContain('fa-circle-info text-teal-300/75');
+    });
+
+    test('keeps Low priority emerald and distinct from Scheduled teal everywhere', () => {
+        const unscheduledRenderer = read('public/js/tasks/unscheduled-renderer.js');
+        const modalManager = read('public/js/modal-manager.js');
+
+        expect(indexHtml).toContain(
+            'peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/70'
+        );
+        expect(indexHtml).toContain('fa-solid fa-minus text-emerald-400');
+        expect(unscheduledRenderer).toContain("border: 'border-emerald-400'");
+        expect(unscheduledRenderer).toContain('peer-checked:bg-emerald-500');
+        expect(unscheduledRenderer).toContain('fa-minus text-emerald-400');
+        expect(modalManager).toContain("low: 'text-emerald-400'");
+    });
+
+    test('uses emerald for positive readiness and documents the complete semantic palette', () => {
+        const roomRenderer = read('public/js/room-renderer.js');
+        const modalManager = read('public/js/modal-manager.js');
+        const brandGuide = read('docs/BRAND.md');
+
+        expect(roomRenderer).toMatch(
+            /synced:\s*\{[^}]*color: 'text-emerald-400'[^}]*label: 'Synced'/s
+        );
+        expect(modalManager).toContain(
+            '\'<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>\''
+        );
+        expect(brandGuide).toMatch(/\| Emerald\s+\| Low priority; positive\/safe outcomes\s+\|/);
+        expect(brandGuide).toMatch(/\| Synced\s+\| Emerald \|/);
+        expect(brandGuide).toContain('Category colors are a separate data-identity namespace');
+        expect(brandGuide).toContain('Blue, Green, Orange, Red, Purple, and Gray');
+        expect(brandGuide).toContain('Internal taxonomy keys never appear in visible labels');
+    });
+
+    test('deduplicates repeated app-update toasts', () => {
+        const app = read('public/js/app.js');
+
+        expect(app).toContain("dedupeKey: 'app-update'");
     });
 
     test('documents the canonical SVG icon source and removes the emoji generator', () => {
