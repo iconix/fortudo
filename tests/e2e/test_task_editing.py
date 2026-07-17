@@ -200,13 +200,13 @@ def test_task_editing_flow(app_server):
 
         submit_btn = page.locator('#task-form button[type="submit"]')
         btn_class = submit_btn.get_attribute("class") or ""
-        check("Default button has violet theme", "violet" in btn_class,
+        check("Default button has scheduled teal theme", "teal" in btn_class,
              f"Classes: {btn_class[:80]}")
 
         page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         btn_class_unsched = submit_btn.get_attribute("class") or ""
-        check("Unscheduled button keeps violet theme", "violet" in btn_class_unsched,
+        check("Unscheduled button uses indigo theme", "indigo" in btn_class_unsched,
              f"Classes: {btn_class_unsched[:80]}")
 
         desc_input = page.locator('input[name="description"]')
@@ -217,7 +217,7 @@ def test_task_editing_flow(app_server):
         page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
         btn_class_sched = submit_btn.get_attribute("class") or ""
-        check("Back to scheduled - violet theme restored", "violet" in btn_class_sched,
+        check("Back to scheduled - teal theme restored", "teal" in btn_class_sched,
              f"Classes: {btn_class_sched[:80]}")
 
         screenshot(page, "01_form_toggle")

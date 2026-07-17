@@ -428,23 +428,23 @@ button:focus-visible {
     pointer-events: none;
     transition: none;
     transform: translateY(-2px) scale(1.006);
-    outline: 2px solid rgb(232 121 249 / 0.85);
+    outline: 2px solid rgb(129 140 248 / 0.85);
     outline-offset: 0;
     box-shadow: 0 10px 24px rgb(2 6 23 / 0.5);
     z-index: 20;
 }
 
 .unscheduled-task--dragging .unscheduled-drag-handle {
-    color: rgb(240 171 252);
-    background-color: rgb(217 70 239 / 0.16);
-    box-shadow: inset 0 0 0 1px rgb(232 121 249 / 0.5);
+    color: rgb(165 180 252);
+    background-color: rgb(79 70 229 / 0.16);
+    box-shadow: inset 0 0 0 1px rgb(129 140 248 / 0.5);
     cursor: grabbing;
 }
 
 .unscheduled-drag-placeholder {
     border-radius: 0.5rem;
-    background-color: rgb(232 121 249 / 0.06);
-    box-shadow: inset 0 0 0 1px rgb(232 121 249 / 0.3);
+    background-color: rgb(129 140 248 / 0.06);
+    box-shadow: inset 0 0 0 1px rgb(129 140 248 / 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {

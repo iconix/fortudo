@@ -276,10 +276,10 @@ async function initAndBootApp(roomCode) {
                     overlapButtonHTML:
                         '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
                     overlapButtonClasses: addTaskBtn.className
-                        .replace(/bg-violet-500\/30/g, 'bg-amber-500/30')
-                        .replace(/border-violet-400\/60/g, 'border-amber-400/60')
-                        .replace(/text-violet-200/g, 'text-amber-200')
-                        .replace(/hover:bg-violet-500\/40/g, 'hover:bg-amber-500/40')
+                        .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
+                        .replace(/border-teal-400\/60/g, 'border-amber-400/60')
+                        .replace(/text-teal-200/g, 'text-amber-200')
+                        .replace(/hover:bg-teal-500\/40/g, 'hover:bg-amber-500/40')
                 }
             );
         }

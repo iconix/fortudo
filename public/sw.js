@@ -3,7 +3,7 @@
    The stamp line below is rewritten by that script so this file's bytes
    change on every deploy (update detection). */
 /* global PRECACHE_VERSION, PRECACHE_URLS */
-// precache-version: cd1881977e7a
+// precache-version: df76ebb575f9
 importScripts('sw-precache.js');
 
 const CACHE_NAME = `fortudo-shell-${PRECACHE_VERSION}`;
