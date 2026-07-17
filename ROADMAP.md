@@ -47,6 +47,10 @@ Historical and planned repo tasks for Fortudo.
 
 - [ ] (vNext) add `completedAt` to unscheduled tasks so completed backlog items can be day-scoped and included in historical Insights instead of only being ephemeral cleanup state
 - [ ] (vNext) add an in-app install call-to-action so PWA installation is discoverable, including Chrome's install prompt and Safari's Share → Add to Home Screen guidance
+- [ ] (vNext, post-rollout) functionally decouple Organization settings from Activity tracking
+  - keep shared groups and categories visible and editable when Activity tracking is disabled
+  - limit the Activity tracking toggle to activity logging, timers, and Insights
+  - update the reload messaging and feature-gating tests to reflect the independent settings domains
 - [ ] (vNext) automatically convert scheduled tasks to unscheduled when rescheduling pushes them past midnight
   - use the same scheduled-to-unscheduled conversion contract as day rollover so both paths behave the same
   - convert the task into an unscheduled task with `estDuration` copied from scheduled `duration` and default `priority` of `medium` unless a better preserved value exists by then

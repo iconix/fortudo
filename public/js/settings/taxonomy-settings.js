@@ -34,7 +34,7 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
                     <p class="text-xs text-slate-400">Top-level task categories.</p>
                 </div>
-                <button id="add-group-btn" type="button" aria-label="Add group" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-group-btn" type="button" aria-label="Add group" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -50,11 +50,11 @@ export function renderTaxonomyManagementContent() {
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
                     <p class="text-xs text-slate-400">Optional categories within a group.</p>
                 </div>
-                <button id="add-category-btn" type="button" aria-label="Add category" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-category-btn" type="button" aria-label="Add category" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
-            <div id="categories-list" class="space-y-3">
+            <div id="categories-list" class="space-y-5">
                 ${renderCategoriesList()}
             </div>
             ${renderAddCategoryForm()}
@@ -218,14 +218,14 @@ function renderCategoriesList() {
 
             return `
                 <div data-category-group-key="${escapeHtml(group.key)}" class="space-y-2">
-                    <div data-category-group-heading class="space-y-1 px-1 text-left">
-                        <div class="flex items-center gap-2 text-sm font-medium text-slate-300">
+                    <div data-category-group-heading class="flex min-w-0 items-center gap-2 px-1 text-left">
+                        <div class="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-300">
                             <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: ${group.color}" aria-hidden="true"></span>
-                            <span>${escapeHtml(group.label)}</span>
+                            <span class="truncate">${escapeHtml(group.label)}</span>
                         </div>
-                        <div data-category-color-default class="pl-[1.125rem] text-xs text-slate-400 break-words">
+                        <span data-category-color-default class="min-w-0 truncate text-[10px] font-normal leading-none text-slate-500">
                             ${escapeHtml(colorFamilyLabel)} tones by default
-                        </div>
+                        </span>
                     </div>
                     <div class="space-y-2">
                         ${childCategories.map((category) => renderCategoryRow(category, group)).join('')}

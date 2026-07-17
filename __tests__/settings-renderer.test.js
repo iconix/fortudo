@@ -219,6 +219,32 @@ describe('settings-renderer', () => {
             expect(document.getElementById('categories-list')).not.toBeNull();
         });
 
+        test('visually separates Activity tracking from shared Organization settings', async () => {
+            await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
+
+            const activitySection = document.querySelector(
+                '[data-settings-domain="activity-tracking"]'
+            );
+            const organizationSection = document.querySelector(
+                '[data-settings-domain="organization"]'
+            );
+
+            expect(activitySection.textContent).toContain('Activity tracking');
+            expect(activitySection.textContent).toContain('Track time spent and view insights');
+            expect(organizationSection.textContent).toContain('Organization');
+            expect(organizationSection.textContent).toContain(
+                'Groups and categories shared by tasks and activities.'
+            );
+            expect(organizationSection.className).toContain('border-t');
+            expect(
+                activitySection.querySelector('label[for="activities-toggle"]').className
+            ).toContain('text-base');
+            expect(organizationSection.querySelector('h4').className).toContain('text-base');
+            expect(
+                organizationSection.querySelector('[data-taxonomy-section="groups"] h4').className
+            ).toContain('text-sm');
+        });
+
         test('left aligns Settings sections and nested category group headings', async () => {
             await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
 
@@ -257,7 +283,7 @@ describe('settings-renderer', () => {
             ).toBe(true);
         });
 
-        test('uses activity sky for the switch and neutral add actions', async () => {
+        test('uses activity sky for the switch and brand violet for shared add actions', async () => {
             await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
 
             const switchTrack = document
@@ -269,9 +295,9 @@ describe('settings-renderer', () => {
             expect(switchTrack.className).toContain('peer-checked:bg-sky-500');
             expect(switchTrack.className).not.toContain('peer-checked:bg-violet-500');
             [addGroupButton, addCategoryButton].forEach((button) => {
-                expect(button.className).toContain('text-slate-300');
-                expect(button.className).toContain('hover:text-violet-300');
-                expect(button.className).not.toContain('text-violet-400');
+                expect(button.className).toContain('text-violet-300');
+                expect(button.className).toContain('hover:text-violet-200');
+                expect(button.className).not.toContain('text-sky-300');
             });
         });
 
@@ -534,14 +560,21 @@ describe('settings-renderer', () => {
         test('shows the default tone family once per group instead of on every category', async () => {
             await renderEnabledSettings();
 
+            const categoriesList = document.getElementById('categories-list');
             const workCategoryGroup = document.querySelector('[data-category-group-key="work"]');
             const colorDefaultNotes = workCategoryGroup.querySelectorAll(
                 '[data-category-color-default]'
             );
             const deepWorkRow = document.querySelector('[data-category-key="work/deep"]');
 
+            expect(categoriesList.className).toContain('space-y-5');
             expect(colorDefaultNotes).toHaveLength(1);
             expect(colorDefaultNotes[0].textContent).toContain('Blue tones by default');
+            expect(colorDefaultNotes[0].parentElement).toBe(
+                workCategoryGroup.querySelector('[data-category-group-heading]')
+            );
+            expect(colorDefaultNotes[0].parentElement.className).toContain('flex');
+            expect(colorDefaultNotes[0].className).toContain('text-slate-500');
             expect(colorDefaultNotes[0].querySelector('.fa-link')).toBeNull();
             expect(deepWorkRow.querySelector('[data-custom-color-label]')).toBeNull();
             expect(deepWorkRow.textContent).not.toContain('Inherits');
@@ -591,7 +624,7 @@ describe('settings-renderer', () => {
             );
         });
 
-        test('taxonomy controls reserve room for mobile actions and wrap long metadata', async () => {
+        test('taxonomy controls reserve room for mobile actions and truncate inline metadata', async () => {
             await renderEnabledSettings();
 
             const addGroupButton = document.getElementById('add-group-btn');
@@ -606,7 +639,7 @@ describe('settings-renderer', () => {
             expect(groupRow.lastElementChild.className).toContain('shrink-0');
             expect(categoryRow.lastElementChild.className).toContain('shrink-0');
             expect(document.querySelector('[data-category-color-default]').className).toContain(
-                'break-words'
+                'truncate'
             );
         });
 

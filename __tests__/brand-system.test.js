@@ -94,13 +94,13 @@ describe('Fortudo brand system', () => {
         expect(customCss).not.toMatch(/settings-scroll-area[\s\S]*?rgba\(139, 92, 246/);
     });
 
-    test('keeps Settings utilities neutral until interaction', () => {
+    test('uses brand violet for shared Settings utilities', () => {
         const settingsRenderer = read('public/js/settings-renderer.js');
         const taxonomySettings = read('public/js/settings/taxonomy-settings.js');
 
         expect(settingsRenderer).toContain('peer-checked:bg-sky-500');
         expect(settingsRenderer).not.toContain('peer-checked:bg-violet-500');
-        expect(taxonomySettings.match(/text-slate-300 hover:text-violet-300/g)).toHaveLength(2);
+        expect(taxonomySettings.match(/text-violet-300 hover:text-violet-200/g)).toHaveLength(2);
     });
 
     test('replaces browser-default button outlines with neutral keyboard focus', () => {
