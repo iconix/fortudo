@@ -382,7 +382,7 @@ function createInlineEditFormHTML(task) {
                     <button type="button" class="btn-cancel-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="button" class="btn-save-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40 text-sm sm:text-base flex-1 sm:flex-none justify-center">
+                    <button type="button" class="btn-save-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                         <i class="fa-regular fa-save mr-2"></i>Save
                     </button>
                 </div>

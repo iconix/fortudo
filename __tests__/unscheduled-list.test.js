@@ -325,6 +325,18 @@ describe('Unscheduled list UI interface', () => {
         expect(actions.cancelEdit).toHaveBeenCalledWith('a');
     });
 
+    test('uses indigo Tint+ styling for the unscheduled inline-save action', () => {
+        renderWith();
+
+        const saveButton = document.querySelector('.btn-save-inline-edit');
+
+        expect(saveButton.className).toContain('bg-indigo-500/30');
+        expect(saveButton.className).toContain('border-indigo-400/60');
+        expect(saveButton.className).toContain('text-indigo-200');
+        expect(saveButton.className).toContain('hover:bg-indigo-500/40');
+        expect(saveButton.className).not.toContain('violet');
+    });
+
     test('does not route disabled task actions', () => {
         const options = createOptions({
             readView: jest.fn(() => view([task('done', { status: 'completed' })]))

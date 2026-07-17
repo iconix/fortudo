@@ -301,6 +301,19 @@ describe('settings-renderer', () => {
             });
         });
 
+        test('uses violet Tint+ styling for the reload-to-apply action', async () => {
+            await renderDisabledSettings();
+
+            const reloadButton = document.getElementById('reload-apply-btn');
+
+            expect(reloadButton.className).toContain('bg-violet-500/30');
+            expect(reloadButton.className).toContain('border-violet-400/60');
+            expect(reloadButton.className).toContain('text-violet-200');
+            expect(reloadButton.className).toContain('hover:bg-violet-500/40');
+            expect(reloadButton.classList.contains('bg-violet-500')).toBe(false);
+            expect(reloadButton.classList.contains('text-white')).toBe(false);
+        });
+
         test('category add form uses a compact group slash category row with placeholders', async () => {
             await renderEnabledSettings({ onTaxonomyChanged: jest.fn() });
 

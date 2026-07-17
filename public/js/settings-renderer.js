@@ -65,7 +65,7 @@ export function renderSettingsContent(options = {}) {
 
             <div id="reload-prompt" class="settings-reload-prompt hidden bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm">
                 <p class="text-slate-300 mb-2" id="reload-prompt-message"></p>
-                <button id="reload-apply-btn" type="button" class="bg-violet-500 hover:bg-violet-400 text-white px-4 py-1.5 rounded-lg text-sm transition-colors">
+                <button id="reload-apply-btn" type="button" class="bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40 px-4 py-1.5 rounded-lg text-sm transition-colors">
                     Reload to Apply
                 </button>
             </div>
