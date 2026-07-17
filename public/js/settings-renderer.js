@@ -53,7 +53,7 @@ export function renderSettingsContent(options = {}) {
     container.innerHTML = `
         <div class="space-y-6">
             <div class="flex items-center justify-between">
-                <div>
+                <div data-activities-setting-copy class="min-w-0 text-left">
                     <label for="activities-toggle" class="text-slate-200 font-medium">Enable Activities</label>
                     <p class="text-xs text-slate-400 mt-0.5">Track time spent and view insights</p>
                 </div>

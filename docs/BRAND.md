@@ -61,7 +61,7 @@ Origin: the violet echoes the heart in "For Cristell". The dedication uses a cus
 
 Completion remains contextual: completed rows use strike-through and reduced opacity while retaining their type accent—teal for Scheduled and indigo for Unscheduled.
 
-Category colors are a separate data-identity namespace, not UI-state semantics. Their user-facing names are Blue, Green, Orange, Red, Purple, and Gray; their dot/badge shape and label distinguish them from priority and status colors. Internally, Orange, Red, and Purple retain the persisted `amber`, `rose`, and `violet` keys for compatibility. Internal taxonomy keys never appear in visible labels. Settings describes whether a category follows its group color or uses a custom color, and offers that choice explicitly rather than exposing linked-state implementation terms. Defaults are Work=Blue, Personal=Red, and Break=Green.
+Category colors are a separate data-identity namespace, not UI-state semantics. Their user-facing names are Blue, Green, Orange, Red, Purple, and Gray; their dot/badge shape and label distinguish them from priority and status colors. Internally, Orange, Red, and Purple retain the persisted `amber`, `rose`, and `violet` keys for compatibility. Internal taxonomy keys never appear in visible labels. Settings keeps group cards compact, names their color dots accessibly, and states each category group's tone family once as the default rather than repeating a relationship on every row. Categories with an independent color are the visible exception and carry a quiet inline `custom color` label, without a badge surface, so every row retains the same height. Defaults are Work=Blue, Personal=Red, and Break=Green.
 
 ### Application rules
 

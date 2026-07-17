@@ -28,11 +28,11 @@ export function resetTaxonomySettingsViewState() {
 
 export function renderTaxonomyManagementContent() {
     return `
-        <section class="space-y-3">
-            <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
+        <section data-taxonomy-section="groups" class="space-y-3 text-left">
+            <div class="flex items-start justify-between gap-3 text-left">
+                <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
-                    <p class="text-xs text-slate-400">Top-level choices for organizing tasks and activities.</p>
+                    <p class="text-xs text-slate-400">Top-level task categories.</p>
                 </div>
                 <button id="add-group-btn" type="button" aria-label="Add group" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
@@ -44,11 +44,11 @@ export function renderTaxonomyManagementContent() {
             ${renderAddGroupForm()}
         </section>
 
-        <section class="space-y-3">
-            <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
+        <section data-taxonomy-section="categories" class="space-y-3 text-left">
+            <div class="flex items-start justify-between gap-3 text-left">
+                <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
-                    <p class="text-xs text-slate-400">Optional subcategories organized within a group.</p>
+                    <p class="text-xs text-slate-400">Optional categories within a group.</p>
                 </div>
                 <button id="add-category-btn" type="button" aria-label="Add category" class="shrink-0 text-slate-300 hover:text-violet-300 focus-visible:text-violet-300 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
@@ -108,14 +108,20 @@ function renderGroupsList() {
                 return renderGroupEditor(group);
             }
 
+            const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+
             return `
                 <div data-group-key="${escapeHtml(group.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
                     <div class="flex items-center gap-3 min-w-0">
-                        <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${group.color}"></span>
-                        <div class="min-w-0">
-                            <div class="text-sm text-slate-200">${escapeHtml(group.label)}</div>
-                            <div class="text-xs text-slate-400 break-words">${escapeHtml(getColorFamilyLabel(group.colorFamily))}</div>
-                        </div>
+                        <span
+                            data-group-color-dot
+                            role="img"
+                            aria-label="${escapeAttribute(colorFamilyLabel)} group color"
+                            title="${escapeAttribute(colorFamilyLabel)}"
+                            class="w-3 h-3 rounded-full shrink-0"
+                            style="background-color: ${group.color}"
+                        ></span>
+                        <div class="min-w-0 text-sm text-slate-200">${escapeHtml(group.label)}</div>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
                         <button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Edit ${escapeAttribute(group.label)} group">
@@ -208,9 +214,19 @@ function renderCategoriesList() {
                 return '';
             }
 
+            const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+
             return `
-                <div class="space-y-2">
-                    <div class="text-xs uppercase tracking-wide text-slate-400 sm:text-slate-500">${escapeHtml(group.label)}</div>
+                <div data-category-group-key="${escapeHtml(group.key)}" class="space-y-2">
+                    <div data-category-group-heading class="space-y-1 px-1 text-left">
+                        <div class="flex items-center gap-2 text-sm font-medium text-slate-300">
+                            <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: ${group.color}" aria-hidden="true"></span>
+                            <span>${escapeHtml(group.label)}</span>
+                        </div>
+                        <div data-category-color-default class="pl-[1.125rem] text-xs text-slate-400 break-words">
+                            ${escapeHtml(colorFamilyLabel)} tones by default
+                        </div>
+                    </div>
                     <div class="space-y-2">
                         ${childCategories.map((category) => renderCategoryRow(category, group)).join('')}
                     </div>
@@ -226,17 +242,27 @@ function renderCategoryRow(category, group) {
         return renderCategoryEditor(category, group);
     }
 
-    const colorBehavior = category.isLinkedToGroupFamily
-        ? `Follows ${group.label} color`
-        : 'Custom color';
+    const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+    const colorDotLabel = category.isLinkedToGroupFamily
+        ? `${colorFamilyLabel} tone`
+        : `Custom color ${category.color}`;
+    const customColorLabel = category.isLinkedToGroupFamily
+        ? ''
+        : `<span data-custom-color-label class="shrink-0 text-[10px] font-normal leading-none text-slate-500">custom color</span>`;
 
     return `
         <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
             <div class="flex items-center gap-3 min-w-0">
-                <span class="category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${category.color}"></span>
-                <div class="min-w-0">
-                    <div class="text-sm text-slate-200">${escapeHtml(category.label)}</div>
-                    <div class="text-xs text-slate-400 break-words">${escapeHtml(colorBehavior)}</div>
+                <span
+                    class="category-dot w-3 h-3 rounded-full shrink-0"
+                    style="background-color: ${category.color}"
+                    role="img"
+                    aria-label="${escapeAttribute(colorDotLabel)}"
+                    title="${escapeAttribute(colorDotLabel)}"
+                ></span>
+                <div class="flex min-w-0 items-center gap-2">
+                    <div class="truncate text-sm text-slate-200">${escapeHtml(category.label)}</div>
+                    ${customColorLabel}
                 </div>
             </div>
             <div class="flex shrink-0 items-center gap-1">
@@ -253,6 +279,7 @@ function renderCategoryRow(category, group) {
 
 function renderCategoryEditor(category, group) {
     const colorMode = category.isLinkedToGroupFamily ? 'follow' : 'custom';
+    const toneLabel = getColorFamilyLabel(group.colorFamily).toLowerCase();
 
     return `
         <form class="edit-category-form space-y-3 py-3 px-3 rounded-lg border border-slate-600 bg-slate-700/30" data-key="${escapeHtml(category.key)}">
@@ -273,7 +300,7 @@ function renderCategoryEditor(category, group) {
                     name="edit-category-color-mode"
                     class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
-                    <option value="follow" ${colorMode === 'follow' ? 'selected' : ''}>Follow ${escapeHtml(group.label)} color</option>
+                    <option value="follow" ${colorMode === 'follow' ? 'selected' : ''}>Inherit ${escapeHtml(toneLabel)} tones from ${escapeHtml(group.label)}</option>
                     <option value="custom" ${colorMode === 'custom' ? 'selected' : ''}>Custom color</option>
                 </select>
             </div>
