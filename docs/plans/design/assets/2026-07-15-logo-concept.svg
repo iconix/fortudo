@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300">
+<rect width="760" height="300" fill="#ffffff"/>
+<g transform="translate(20,20)">
+<rect width="200" height="200" rx="44" fill="#1e293b"/>
+<g transform="translate(50,48) scale(4.2)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+<path d="M12.5 15.6 L14.5 17.5 L18 13.2" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+<g transform="translate(260,32)">
+<rect width="64" height="64" rx="16" fill="#1e293b"/>
+<g transform="translate(15,14) scale(1.4)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+<path d="M12.5 15.6 L14.5 17.5 L18 13.2" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+<g transform="translate(260,116)">
+<rect width="32" height="32" rx="9" fill="#1e293b"/>
+<g transform="translate(7.5,7) scale(0.71)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+<path d="M12.2 15.5 L14.5 17.7 L18.5 13" stroke="#1e293b" stroke-width="2.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+<g transform="translate(260,164)">
+<rect width="16" height="16" rx="4.5" fill="#1e293b"/>
+<g transform="translate(3.9,3.5) scale(0.36)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+</g>
+</g>
+<g transform="translate(370,58)">
+<g transform="scale(1.7)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+<path d="M12.5 15.6 L14.5 17.5 L18 13.2" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<text x="50" y="32" font-size="34" font-weight="700" font-family="Helvetica Neue, Arial" fill="#0f172a" letter-spacing="-0.7">fortu<tspan fill="#a78bfa">do.</tspan></text>
+</g>
+<g transform="translate(370,128)">
+<rect width="330" height="62" rx="14" fill="#1e293b"/>
+<g transform="translate(14,10) scale(1.5)">
+<path d="M3 18.34C3 18.34 4 7.09 7 3L12 4L11 7.09H9V14.25H10C12 11.18 16.14 10.06 18.64 11.18C21.94 12.71 21.64 17.32 18.64 19.36C16.24 21 9 22.43 3 18.34Z" fill="#a78bfa"/>
+<path d="M12.5 15.6 L14.5 17.5 L18 13.2" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<text x="62" y="40" font-size="28" font-weight="700" font-family="Helvetica Neue, Arial" fill="#f1f5f9" letter-spacing="-0.6">fortu<tspan fill="#a78bfa">do.</tspan></text>
+</g>
+<text x="120" y="256" text-anchor="middle" font-size="13" font-family="Helvetica Neue, Arial" fill="#64748b">final mark (v2)</text>
+<text x="292" y="256" text-anchor="middle" font-size="13" font-family="Helvetica Neue, Arial" fill="#64748b">64 / 32 / 16 optical</text>
+<text x="535" y="256" text-anchor="middle" font-size="13" font-family="Helvetica Neue, Arial" fill="#64748b">violet-400 on all backgrounds</text>
+</svg>

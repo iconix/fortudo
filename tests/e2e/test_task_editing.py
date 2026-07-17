@@ -200,20 +200,21 @@ def test_task_editing_flow(app_server):
 
         submit_btn = page.locator('#task-form button[type="submit"]')
         btn_class = submit_btn.get_attribute("class") or ""
-        check("Default button has teal theme", "teal" in btn_class, f"Classes: {btn_class[:80]}")
+        check("Default button has scheduled teal theme", "teal" in btn_class,
+             f"Classes: {btn_class[:80]}")
 
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         btn_class_unsched = submit_btn.get_attribute("class") or ""
-        check("Unscheduled button has indigo theme", "indigo" in btn_class_unsched,
+        check("Unscheduled button uses indigo theme", "indigo" in btn_class_unsched,
              f"Classes: {btn_class_unsched[:80]}")
 
         desc_input = page.locator('input[name="description"]')
         desc_class = desc_input.get_attribute("class") or ""
-        check("Description input has indigo focus style", "indigo" in desc_class,
+        check("Description input has slate focus style", "focus:border-slate-400" in desc_class,
              f"Classes: {desc_class[:80]}")
 
-        page.locator("#scheduled").click()
+        page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
         btn_class_sched = submit_btn.get_attribute("class") or ""
         check("Back to scheduled - teal theme restored", "teal" in btn_class_sched,
@@ -261,7 +262,7 @@ def test_task_editing_flow(app_server):
              f"Expected 3, got {scheduled_count}")
 
         # Add unscheduled task
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         page.fill('input[name="description"]', "Read article")
         page.evaluate('document.querySelector(\'input[name="priority"][value="medium"]\').click()')
@@ -281,7 +282,7 @@ def test_task_editing_flow(app_server):
         # TEST 4: Edit a scheduled task
         # =========================================================================
         print("\nTEST 4: Edit a scheduled task", flush=True)
-        page.locator("#scheduled").click()
+        page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
 
         edit_buttons = page.locator("#scheduled-task-list .btn-edit")
@@ -422,7 +423,7 @@ def test_task_editing_flow(app_server):
         # TEST 9: Close schedule modal with X button
         # =========================================================================
         print("\nTEST 9: Close schedule modal with X", flush=True)
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(200)
         page.fill('input[name="description"]', "Modal test task")
         page.evaluate('document.querySelector(\'input[name="priority"][value="low"]\').click()')

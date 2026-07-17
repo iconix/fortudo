@@ -40,6 +40,25 @@ describe('showToast action support', () => {
         expect(document.querySelectorAll('[data-toast-container] > div').length).toBe(1);
     });
 
+    test('a dedupe key replaces an existing action toast with the latest handler', () => {
+        const firstHandler = jest.fn();
+        const latestHandler = jest.fn();
+
+        showToast('New version available', {
+            dedupeKey: 'app-update',
+            action: { label: 'Reload', onClick: firstHandler }
+        });
+        showToast('New version available', {
+            dedupeKey: 'app-update',
+            action: { label: 'Reload', onClick: latestHandler }
+        });
+
+        expect(document.querySelectorAll('[data-toast-container] > div')).toHaveLength(1);
+        document.querySelector('[data-toast-container] button').click();
+        expect(firstHandler).not.toHaveBeenCalled();
+        expect(latestHandler).toHaveBeenCalledTimes(1);
+    });
+
     test('clicking the action toast body dismisses without firing the action', () => {
         const onClick = jest.fn();
         showToast('New version available', { action: { label: 'Reload', onClick } });

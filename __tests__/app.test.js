@@ -257,6 +257,18 @@ describe('App.js Callback Functions', () => {
         clearLocalStorage();
     });
 
+    test('updates the copyright footer year when the app starts', async () => {
+        await setupAppWithTasks([]);
+        document.body.insertAdjacentHTML('beforeend', '<span id="copyright-year">1999</span>');
+
+        document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.getElementById('copyright-year').textContent).toBe(
+            String(new Date().getFullYear())
+        );
+    });
+
     describe('Unscheduled list seam wiring', () => {
         test('room initialization mounts and renders one named-action list seam', async () => {
             await setupAppWithTasks([]);
@@ -685,6 +697,30 @@ describe('App.js Callback Functions', () => {
 
             expect(addTaskButton.textContent).toContain('Log Activity');
             expect(overlapWarning.textContent).toBe('');
+        });
+
+        test('scheduled overlap changes the add button from teal to amber', async () => {
+            const existingTask = createTaskWithDateTime({
+                description: 'Existing meeting',
+                startTime: '10:00',
+                duration: 60
+            });
+
+            await setupAppWithTasks([existingTask]);
+
+            const startTimeInput = document.querySelector('#task-form input[name="start-time"]');
+            const durationHoursInput = document.querySelector(
+                '#task-form input[name="duration-hours"]'
+            );
+            const addTaskButton = document.getElementById('add-task-btn');
+
+            startTimeInput.value = '10:30';
+            durationHoursInput.value = '1';
+            durationHoursInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            expect(addTaskButton.textContent).toContain('Reschedule');
+            expect(addTaskButton.className).toContain('bg-amber-500/30');
+            expect(addTaskButton.className).not.toContain('bg-teal-500/30');
         });
 
         test('activity list delegates inline activity save and delete controls to the activity handlers', async () => {

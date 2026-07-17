@@ -258,11 +258,11 @@ describe('Modal Manager Tests', () => {
                 await expect(resultPromise).resolves.toBeUndefined();
             });
 
-            test('showCustomAlert applies indigo theme by default', () => {
+            test('showCustomAlert applies violet theme by default', () => {
                 showCustomAlert('Title', 'Message');
 
                 const title = document.getElementById('custom-alert-title');
-                expect(title.className).toContain('text-indigo-400');
+                expect(title.className).toContain('text-violet-400');
             });
 
             test('showCustomAlert applies teal theme when specified', () => {
@@ -335,6 +335,41 @@ describe('Modal Manager Tests', () => {
                 expect(cancelBtn.textContent).toBe('No');
 
                 okBtn.click();
+            });
+
+            test.each([
+                [
+                    'teal',
+                    'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40'
+                ],
+                [
+                    'indigo',
+                    'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40'
+                ],
+                ['sky', 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40'],
+                [
+                    'amber',
+                    'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40'
+                ],
+                [
+                    'slate',
+                    'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40'
+                ],
+                [
+                    'rose',
+                    'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'
+                ]
+            ])('showCustomConfirm applies the flat %s action theme', async (theme, classes) => {
+                const resultPromise = showCustomConfirm('Confirm', 'Message', undefined, theme);
+                const okBtn = document.getElementById('ok-custom-confirm-modal');
+
+                classes.split(' ').forEach((className) => {
+                    expect(okBtn.classList.contains(className)).toBe(true);
+                });
+                expect(okBtn.classList.contains('bg-gradient-to-r')).toBe(false);
+
+                okBtn.click();
+                await expect(resultPromise).resolves.toBe(true);
             });
 
             test('askConfirmation uses "Confirmation" as title', async () => {
@@ -677,8 +712,30 @@ describe('Modal Manager Tests', () => {
 
                 // task-1 (30m) fits in 60m gap
                 expect(options[0].textContent).toContain('Fits');
+                expect(options[0].querySelector('.text-emerald-400')).not.toBeNull();
+                expect(options[0].querySelector('.text-teal-400')).toBeNull();
                 // task-2 (120m) does not fit in 60m gap
                 expect(options[1].textContent).toContain('Too long');
+            });
+
+            test('showGapTaskPicker uses emerald for Low priority', () => {
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00.000Z',
+                    '2025-01-15T12:00:00.000Z',
+                    60,
+                    testTasks,
+                    jest.fn()
+                );
+
+                const lowPriority = document.querySelector(
+                    '.gap-task-option[data-task-id="task-3"] .text-teal-400'
+                );
+                expect(lowPriority).toBeNull();
+                expect(
+                    document.querySelector(
+                        '.gap-task-option[data-task-id="task-3"] .text-emerald-400'
+                    )
+                ).not.toBeNull();
             });
 
             test('clicking a task calls onTaskSelected and hides modal', () => {

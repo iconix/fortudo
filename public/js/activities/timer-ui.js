@@ -33,7 +33,19 @@ function moveStartTimerButton(targetId) {
     const startTimerButton = document.getElementById('start-timer-btn');
     const target = document.getElementById(targetId);
 
-    if (!startTimerButton || !target || startTimerButton.parentElement === target) {
+    if (!startTimerButton || !target) {
+        return;
+    }
+
+    if (targetId === 'activity-action-group') {
+        const logActivityButton = document.getElementById('add-task-btn');
+        if (logActivityButton?.parentElement === target) {
+            target.insertBefore(startTimerButton, logActivityButton);
+            return;
+        }
+    }
+
+    if (startTimerButton.parentElement === target) {
         return;
     }
 

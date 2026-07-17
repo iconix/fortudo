@@ -214,7 +214,7 @@ describe('Form Utils Tests', () => {
             const result = extractTaskFormData(form);
 
             expect(result).toBeNull();
-            expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'indigo');
+            expect(showAlert).toHaveBeenCalledWith('Invalid task type selected.', 'slate');
         });
 
         test('rejects activity mode when extracting task creation data', () => {

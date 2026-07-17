@@ -3,7 +3,7 @@
    The stamp line below is rewritten by that script so this file's bytes
    change on every deploy (update detection). */
 /* global PRECACHE_VERSION, PRECACHE_URLS */
-// precache-version: 845eeaa1f5a6
+// precache-version: 082119eb9f4f
 importScripts('sw-precache.js');
 
 const CACHE_NAME = `fortudo-shell-${PRECACHE_VERSION}`;
@@ -57,8 +57,8 @@ self.addEventListener('fetch', (event) => {
     // (cache:'no-cache' so the HTTP cache's max-age=3600 can't intervene).
     if (url.pathname === '/js/config.js') {
         event.respondWith(
-            fetch(event.request, { cache: 'no-cache' })
-                .then((response) => {
+            fetch(event.request, { cache: 'no-cache' }).then(
+                (response) => {
                     if (!response.ok) return response;
                     const copy = response.clone();
                     return caches
@@ -66,7 +66,9 @@ self.addEventListener('fetch', (event) => {
                         .then((cache) => cache.put(event.request, copy))
                         .catch(() => {})
                         .then(() => response);
-                }, () => caches.match(event.request))
+                },
+                () => caches.match(event.request)
+            )
         );
         return;
     }

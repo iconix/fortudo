@@ -325,6 +325,18 @@ describe('Unscheduled list UI interface', () => {
         expect(actions.cancelEdit).toHaveBeenCalledWith('a');
     });
 
+    test('uses indigo Tint+ styling for the unscheduled inline-save action', () => {
+        renderWith();
+
+        const saveButton = document.querySelector('.btn-save-inline-edit');
+
+        expect(saveButton.className).toContain('bg-indigo-500/30');
+        expect(saveButton.className).toContain('border-indigo-400/60');
+        expect(saveButton.className).toContain('text-indigo-200');
+        expect(saveButton.className).toContain('hover:bg-indigo-500/40');
+        expect(saveButton.className).not.toContain('violet');
+    });
+
     test('does not route disabled task actions', () => {
         const options = createOptions({
             readView: jest.fn(() => view([task('done', { status: 'completed' })]))
@@ -511,9 +523,42 @@ describe('Unscheduled list UI interface', () => {
     test('renders the empty state through the list seam', () => {
         renderWith(createOptions({ readView: jest.fn(() => view([])) }));
 
-        expect(document.getElementById('unscheduled-task-list').textContent).toContain(
-            'No unscheduled tasks yet'
+        const message = document.querySelector('#unscheduled-task-list p');
+        expect(message.textContent).toBe('Nothing waiting to be scheduled.');
+        expect(message.className).toBe('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
+        expect(document.getElementById('unscheduled-sort-control').classList).toContain('hidden');
+    });
+
+    test('shows sort controls when Unscheduled contains tasks', () => {
+        renderWith();
+
+        expect(document.getElementById('unscheduled-sort-control').classList).not.toContain(
+            'hidden'
         );
+    });
+
+    test('keeps low priority emerald within the indigo unscheduled treatment', () => {
+        useManualMode();
+        renderWith(
+            createOptions({
+                readView: jest.fn(() => view([task('low', { priority: 'low' }), task('other')]))
+            })
+        );
+
+        const card = document.querySelector('[data-task-id="low"]');
+        const priorityBadge = card.querySelector('.priority-badge');
+        const checkboxIcon = card.querySelector('.task-checkbox-unscheduled i');
+        const actionTrigger = card.querySelector('.btn-unscheduled-task-actions-menu');
+        const dragHandle = card.querySelector('.unscheduled-drag-handle');
+        const moveCommand = card.querySelector('[data-move-kind="down"]');
+
+        expect(card.className).toContain('border-l-indigo-400');
+        expect(priorityBadge.className).toContain('bg-emerald-400');
+        expect(priorityBadge.className).toContain('text-emerald-300');
+        expect(checkboxIcon.className).toContain('text-indigo-400');
+        expect(actionTrigger.className).toContain('text-indigo-400');
+        expect(dragHandle.className).toContain('focus:ring-indigo-400');
+        expect(moveCommand.className).toContain('focus:ring-indigo-400');
     });
 
     test('passes the current running activity to card rendering', () => {

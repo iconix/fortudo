@@ -167,6 +167,14 @@ describe('Scheduled Task Renderer Tests', () => {
         const mockInitListeners = jest.fn();
         const mockCallbacks = { onCompleteTask: jest.fn() };
 
+        test('renders a compact neutral empty state', () => {
+            renderTasks([], mockCallbacks, mockInitListeners, null);
+
+            const message = getScheduledTaskListElement().querySelector('p');
+            expect(message.textContent).toBe('Nothing scheduled for today.');
+            expect(message.className).toBe('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
+        });
+
         test('two tasks with gap produces a .schedule-gap element between them', () => {
             const tasks = [
                 createTask('1', '10:00', 60), // 10:00 - 11:00
@@ -217,6 +225,35 @@ describe('Scheduled Task Renderer Tests', () => {
             const badge = document.querySelector('.category-badge');
             expect(badge).not.toBeNull();
             expect(badge.textContent).toBe('work/deep');
+        });
+
+        test('wraps a long URL inside its own shrinkable description element', () => {
+            const longUrl =
+                'https://www.geoffreylitt.com/2026/07/02/understanding-is-the-new-bottleneck.html';
+            const tasks = [
+                createTask('url', '10:00', 60, {
+                    description: longUrl
+                })
+            ];
+
+            renderTasks(tasks, mockCallbacks, mockInitListeners, null);
+
+            const description = document.querySelector('.task-description');
+            expect(description).not.toBeNull();
+            expect(description.textContent).toBe(longUrl);
+        });
+
+        test('uses the scheduled teal accent on task rows', () => {
+            renderTasks(
+                [createTask('accent', '10:00', 30)],
+                mockCallbacks,
+                mockInitListeners,
+                null
+            );
+
+            const taskCard = document.querySelector('[data-task-id="accent"]');
+            expect(taskCard.className).toContain('border-l-4');
+            expect(taskCard.className).toContain('border-l-teal-400');
         });
 
         test('renders actions menu with do-now only for incomplete non-active scheduled tasks', () => {
@@ -576,7 +613,9 @@ describe('Scheduled Task Renderer Tests', () => {
             const list = getScheduledTaskListElement();
             const saveBtn = list.querySelector('.btn-save-edit');
             expect(saveBtn).not.toBeNull();
-            expect(saveBtn.className).toContain('from-amber-500');
+            expect(saveBtn.className).toContain('bg-amber-500/30');
+            expect(saveBtn.className).toContain('border-amber-400/60');
+            expect(saveBtn.className).not.toContain('bg-gradient-to-r');
             expect(saveBtn.textContent).toContain('Reschedule');
         });
 

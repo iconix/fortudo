@@ -174,7 +174,7 @@ def drag_task_before(page: Page, source_description: str, target_description: st
     assert drag_treatment["outlineStyle"] == "solid"
     assert drag_treatment["outlineWidth"] == "2px"
     assert drag_treatment["zIndex"] == "20"
-    assert drag_treatment["handleBackgroundColor"] == "rgba(79, 70, 229, 0.22)"
+    assert drag_treatment["handleBackgroundColor"] == "rgba(79, 70, 229, 0.16)"
     assert drag_treatment["handleBoxShadow"] != "none"
     assert drag_treatment["handleCursor"] == "grabbing"
     page.mouse.move(target_x, target_y, steps=8)

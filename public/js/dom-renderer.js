@@ -25,44 +25,39 @@ let globalScheduledTaskCallbacks = null;
 let pageEventListenersAbortController = null;
 
 const FORM_INPUT_BASE_CLASSES =
-    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all';
 const FORM_SUBMIT_BUTTON_BASE_CLASSES =
-    'shrink-0 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center';
-const INPUT_FOCUS_CLASS_BY_THEME = {
-    teal: 'focus:border-teal-400',
-    indigo: 'focus:border-indigo-400',
-    sky: 'focus:border-sky-400'
-};
+    'shrink-0 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center';
 const TASK_FORM_MODE_CONFIG = {
     scheduled: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
+        submitButtonSizeClasses: 'px-5 py-2.5',
         submitButtonClasses:
-            'bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
+            'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
-        descriptionPlaceholder: 'Describe your task...',
-        inputTheme: 'teal'
+        descriptionPlaceholder: 'Describe your task...'
     },
     unscheduled: {
         showTimeInputs: false,
         showPriorityInput: true,
         requireStartTime: false,
+        submitButtonSizeClasses: 'px-5 py-2.5',
         submitButtonClasses:
-            'bg-gradient-to-r from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
+            'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40',
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
-        descriptionPlaceholder: 'Describe your task...',
-        inputTheme: 'indigo'
+        descriptionPlaceholder: 'Describe your task...'
     },
     activity: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
+        submitButtonSizeClasses: 'px-4 py-2 text-sm sm:px-5 sm:py-2.5 sm:text-base',
         submitButtonClasses:
-            'bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300',
+            'bg-slate-700 hover:bg-slate-600 text-slate-100 border border-sky-400/30',
         submitButtonHtml: '<i class="fa-regular fa-clock mr-2"></i>Log Activity',
-        descriptionPlaceholder: 'What did you work on?',
-        inputTheme: 'sky'
+        descriptionPlaceholder: 'What did you work on?'
     }
 };
 
@@ -106,6 +101,17 @@ export function renderDateTime() {
         });
 }
 
+/**
+ * Keep the copyright range current without requiring an annual markup edit.
+ * @param {Date} now
+ */
+export function renderCopyrightYear(now = new Date()) {
+    const yearElement = document.getElementById('copyright-year');
+    if (yearElement) {
+        yearElement.textContent = String(now.getFullYear());
+    }
+}
+
 export function startRealTimeClock() {
     renderDateTime();
     setInterval(renderDateTime, 1000);
@@ -122,25 +128,6 @@ export function initializeTaskTypeToggle() {
     const startTimerButton = document.getElementById('start-timer-btn');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
-    const durationHoursInput = document.querySelector('input[name="duration-hours"]');
-    const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
-
-    const setInputTheme = (theme) => {
-        const themeClass = INPUT_FOCUS_CLASS_BY_THEME[theme];
-        [descriptionInput, startTimeInput, durationHoursInput, durationMinutesInput].forEach(
-            (element) => {
-                if (!(element instanceof HTMLElement)) {
-                    return;
-                }
-                Object.values(INPUT_FOCUS_CLASS_BY_THEME).forEach((className) => {
-                    element.classList.remove(className);
-                });
-                if (themeClass) {
-                    element.classList.add(themeClass);
-                }
-            }
-        );
-    };
 
     const applyActivityStartTimeDefault = () => {
         if (!(startTimeInput instanceof HTMLInputElement)) {
@@ -182,13 +169,12 @@ export function initializeTaskTypeToggle() {
             }
         }
 
-        addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonClasses}`;
+        addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonSizeClasses} ${config.submitButtonClasses}`;
         addTaskButton.innerHTML = config.submitButtonHtml;
         addTaskButton.dataset.defaultButtonHtml = config.submitButtonHtml;
         addTaskButton.dataset.defaultButtonClasses = addTaskButton.className;
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
-        setInputTheme(config.inputTheme);
         if (taskForm instanceof HTMLElement) {
             taskForm.classList.toggle('task-form--activity', mode === 'activity');
         }
@@ -464,9 +450,9 @@ function handleScheduledTaskListSubmit(event) {
 }
 
 const SAVE_BUTTON_DEFAULT_CLASSES =
-    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300';
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40';
 const SAVE_BUTTON_OVERLAP_CLASSES =
-    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300';
+    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40';
 
 function handleScheduledTaskListInput(event) {
     const target = /** @type {HTMLElement} */ (event.target);

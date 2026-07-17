@@ -121,10 +121,18 @@ export function updateSyncStatusUI(status) {
     if (!icon || !text || !indicator) return;
 
     const configs = {
-        idle: { icon: 'fa-solid fa-cloud', color: 'text-slate-500', label: 'Local' },
-        syncing: { icon: 'fa-solid fa-rotate fa-spin', color: 'text-blue-400', label: 'Syncing' },
-        synced: { icon: 'fa-solid fa-cloud-arrow-up', color: 'text-teal-400', label: 'Synced' },
-        error: { icon: 'fa-solid fa-triangle-exclamation', color: 'text-red-400', label: 'Error' },
+        idle: {
+            icon: 'fa-solid fa-cloud',
+            color: 'text-slate-400 sm:text-slate-500',
+            label: 'Local'
+        },
+        syncing: { icon: 'fa-solid fa-rotate fa-spin', color: 'text-sky-400', label: 'Syncing' },
+        synced: {
+            icon: 'fa-solid fa-cloud-arrow-up',
+            color: 'text-emerald-400',
+            label: 'Synced'
+        },
+        error: { icon: 'fa-solid fa-triangle-exclamation', color: 'text-rose-400', label: 'Error' },
         offline: { icon: 'fa-solid fa-link-slash', color: 'text-slate-400', label: 'Offline' },
         unsynced: {
             icon: 'fa-solid fa-cloud-arrow-up',

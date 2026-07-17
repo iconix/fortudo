@@ -101,7 +101,7 @@ def test_ui_states_flow(app_server):
 
         # 3. Switch to unscheduled form
         print("3. Unscheduled task form", flush=True)
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         assert time_inputs.is_hidden(), "Time inputs should be hidden for unscheduled mode"
         assert priority_input.is_visible(), "Priority input should be visible for unscheduled mode"
@@ -109,7 +109,7 @@ def test_ui_states_flow(app_server):
 
         # 4. Switch back to scheduled and add a task
         print("4. Adding a scheduled task", flush=True)
-        page.locator("#scheduled").click()
+        page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
         page.fill('input[name="description"]', "Morning standup meeting")
         page.fill('input[name="start-time"]', T1_TIME)
@@ -135,7 +135,7 @@ def test_ui_states_flow(app_server):
 
         # 6. Add an unscheduled task
         print("6. Adding an unscheduled task", flush=True)
-        page.locator("#unscheduled").click()
+        page.locator("#unscheduled + span").click()
         page.wait_for_timeout(300)
         page.fill('input[name="description"]', "Review pull requests")
         # Use force=True for hidden radio inputs (styled via Tailwind peer class)

@@ -385,7 +385,7 @@ describe('activity insights renderer', () => {
         expect(detail.textContent).toContain('10:39 AM - 10:48 AM');
         expect(detail.textContent).toContain('9m');
         expect(selectedBlock.dataset.selected).toBe('true');
-        expect(selectedBlock.className).toContain('shadow-cyan');
+        expect(selectedBlock.className).toContain('shadow-sky');
     });
 
     test('renderInsightsView renders visible Activity Log activities with summary metadata', () => {
@@ -819,6 +819,9 @@ describe('activity insights renderer', () => {
         Object.defineProperty(window.HTMLElement.prototype, 'offsetLeft', {
             configurable: true,
             get() {
+                if (this.matches?.('[data-trend-day-strip]')) {
+                    return 32;
+                }
                 return this.getAttribute?.('data-trend-day') === '2026-06-15' ? 500 : 0;
             }
         });
@@ -834,7 +837,7 @@ describe('activity insights renderer', () => {
             const strip = document.querySelector('[data-trend-day-strip]');
 
             expect(scrollIntoView).not.toHaveBeenCalled();
-            expect(strip.scrollLeft).toBe(450);
+            expect(strip.scrollLeft).toBe(418);
         } finally {
             window.requestAnimationFrame = originalRequestAnimationFrame;
             window.HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

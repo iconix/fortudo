@@ -1,4 +1,6 @@
-# fortudo: a daily time-blocking to-do app
+# Fortudo: a daily time-blocking to-do app
+
+![Fortudo violet arm-check mark and wordmark](public/og-image.png)
 
 [![CI/CD Pipeline](https://github.com/iconix/fortudo/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/iconix/fortudo/actions/workflows/ci-cd.yml)
 
@@ -22,8 +24,13 @@ precache manifest is committed to the repository; rebuild it with
 Tailwind CSS is also generated and committed. Run `npm run build:css` after any
 Tailwind class change; `npm run check:css` guards it in CI. Font Awesome is
 vendored locally with `npm run vendor:fontawesome` and verified with
-`npm run check:fontawesome`. Regenerate the app icons with
-`uv run scripts/generate_icons.py`.
+`npm run check:fontawesome`. The canonical app-icon source is
+`public/icons/icon.svg`; rasterize it at the required output dimensions with
+any SVG rasterizer, for example:
+
+```bash
+rsvg-convert --width 512 --height 512 --output public/icons/icon-512.png public/icons/icon.svg
+```
 
 iOS splash images (`apple-touch-startup-image`) are deliberately out of scope.
 Safari may return `false` from `navigator.storage.persist()`; this is normal and

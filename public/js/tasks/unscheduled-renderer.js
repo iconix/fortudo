@@ -67,8 +67,7 @@ export function getPriorityClasses(priority) {
         bg: config.bg,
         text: config.text,
         icon: config.icon,
-        focusRing: config.focusRing,
-        checkbox: 'text-teal-700'
+        focusRing: config.focusRing
     };
 }
 
@@ -169,12 +168,12 @@ function renderMoveMenu(movement, movementDisabled) {
     const upDisabled = movementDisabled || !movement?.canMoveUp;
     const downDisabled = movementDisabled || !movement?.canMoveDown;
     const itemClasses =
-        'unscheduled-task-actions-menu-item grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300';
+        'unscheduled-task-actions-menu-item grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400';
     const disabledClasses = ' opacity-50 cursor-not-allowed';
 
     const moveButton = (kind, label, icon, disabled) => `
         <button class="${itemClasses}${disabled ? disabledClasses : ''}" type="button" role="menuitem" data-move-kind="${kind}" ${disabled ? 'disabled' : ''}>
-            <i class="fa-solid ${icon} text-slate-400 text-center" aria-hidden="true"></i>
+            <i class="fa-solid ${icon} text-indigo-400/75 text-center" aria-hidden="true"></i>
             <span>${label}</span>
         </button>`;
 
@@ -209,22 +208,22 @@ function renderUnscheduledTaskActionsMenu(task, actionState, options) {
 
     return `
         <div class="unscheduled-task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
-            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
+            <button class="btn-unscheduled-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-indigo-400 hover:text-indigo-300 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors${menuTriggerDisabledClasses}" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}" ${menuTriggerDisabledAttr}>
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
             <div class="unscheduled-task-actions-menu action-menu-content ${actionMenuTransitionClass} absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
                 <div class="unscheduled-task-actions-menu-group">
-                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
-                        <i class="fa-solid fa-stopwatch text-indigo-300 text-center" aria-hidden="true"></i>
+                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
+                        <i class="fa-solid fa-stopwatch text-indigo-400 text-center" aria-hidden="true"></i>
                         <span>Start timer</span>
                     </button>
                 </div>
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
-                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
                         <i class="fa-regular fa-calendar-plus text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Schedule</span>
                     </button>
-                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-300${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
                         <i class="fa-solid fa-pen text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Edit task</span>
                     </button>
@@ -256,7 +255,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
     const isDisabled = isCompleted || isLinkedToRunningTimer;
     const completedClass = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
     const completedTitle = isCompleted ? 'Task already completed' : 'Toggle complete status';
-    const checkIcon = isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-slate-500';
+    const checkIcon = isCompleted ? 'fa-check-square text-indigo-400' : 'fa-square text-indigo-400';
     const textStrike = isCompleted ? 'line-through opacity-70' : '';
     const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
     const actionState = {
@@ -269,7 +268,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
         : '';
     const dragHandle =
         mode === 'manual'
-            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" aria-haspopup="menu" aria-expanded="false" ${movementDisabled ? 'disabled' : ''}>
+            ? `<button type="button" class="unscheduled-drag-handle shrink-0 inline-grid place-items-center w-8 h-8 -ml-1 rounded-md text-slate-500 hover:text-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-400${movementDisabled ? ' opacity-50 cursor-not-allowed' : ''}" aria-label="Move ${escapeHtml(task.description)}" aria-haspopup="menu" aria-expanded="false" ${movementDisabled ? 'disabled' : ''}>
                 <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
             </button>`
             : '';
@@ -281,12 +280,12 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
             <div class="min-w-0 flex-1">
-                <div class="font-medium text-white ${textStrike} text-sm sm:text-base break-words flex items-center gap-2 flex-wrap">${task.description} ${renderCategoryBadge(task.category)} ${inProgressBadge}</div>
-                <div class="text-xs text-gray-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
+                <div class="font-medium text-white ${textStrike} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${task.description}</span> ${renderCategoryBadge(task.category)} ${inProgressBadge}</div>
+                <div class="text-xs text-slate-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
                     <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
                         <i class="${priorityClasses.icon} mr-1 text-xs"></i>${priorityLabel} Priority
                     </span>
-                    <span class="inline-flex items-center text-gray-400 text-xs">
+                    <span class="inline-flex items-center text-slate-400 text-xs">
                         <i class="fa-regular fa-hourglass mr-1"></i>Est: ${durationText}
                     </span>
                 </div>
@@ -315,17 +314,17 @@ function createInlineEditFormHTML(task) {
         options: getSelectableCategoryOptions(),
         dotClass: 'unscheduled-edit-category-dot',
         selectClass:
-            'bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base'
+            'bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base'
     });
 
     return `
         <form class="space-y-3">
             <!-- Description Row -->
             <div class="relative">
-                <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
+                <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400/75"></i>
                 <input type="text" id="inline-edit-description-${task.id}" name="inline-edit-description"
                     placeholder="What needs to be done?"
-                    class="task-edit-description bg-gray-700 pl-9 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base" required>
+                    class="task-edit-description bg-slate-700 pl-9 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base" required>
             </div>
 
             <!-- Category Row -->
@@ -337,7 +336,7 @@ function createInlineEditFormHTML(task) {
                 <div class="flex items-center gap-2 sm:min-w-[200px]">
                     <label class="flex-1">
                         <input type="radio" name="inline-edit-priority" value="high" class="hidden peer" ${checkedHigh}>
-                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-slate-600 bg-slate-700 bg-opacity-30
                             peer-checked:bg-rose-500 peer-checked:bg-opacity-20
                             hover:bg-opacity-50 cursor-pointer transition-all text-sm">
                             <i class="fa-solid fa-bars text-rose-400"></i>
@@ -346,7 +345,7 @@ function createInlineEditFormHTML(task) {
                     </label>
                     <label class="flex-1">
                         <input type="radio" name="inline-edit-priority" value="medium" class="hidden peer" ${checkedMed}>
-                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
+                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-slate-600 bg-slate-700 bg-opacity-30
                             peer-checked:bg-amber-400 peer-checked:bg-opacity-20
                             hover:bg-opacity-50 cursor-pointer transition-all text-sm">
                             <i class="fa-regular fa-equals text-amber-400"></i>
@@ -355,10 +354,10 @@ function createInlineEditFormHTML(task) {
                     </label>
                     <label class="flex-1">
                         <input type="radio" name="inline-edit-priority" value="low" class="hidden peer" ${checkedLow}>
-                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-gray-600 bg-gray-700 bg-opacity-30
-                            peer-checked:bg-teal-500 peer-checked:bg-opacity-20
+                        <div class="task-edit-priority-option text-center py-1.5 px-2 rounded-lg border border-slate-600 bg-slate-700 bg-opacity-30
+                            peer-checked:bg-emerald-500 peer-checked:bg-opacity-20
                             hover:bg-opacity-50 cursor-pointer transition-all text-sm">
-                            <i class="fa-solid fa-minus text-teal-400"></i>
+                            <i class="fa-solid fa-minus text-emerald-400"></i>
                             <span class="ml-1">Low</span>
                         </div>
                     </label>
@@ -367,23 +366,23 @@ function createInlineEditFormHTML(task) {
                 <!-- Estimated Duration -->
                 <div class="flex items-center gap-2 sm:min-w-[140px]">
                     <div class="relative flex-1">
-                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-300"></i>
+                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400/75"></i>
                         <input type="number" name="inline-edit-est-duration-hours" placeholder="HH" min="0"
-                            class="task-edit-duration-hours bg-gray-700 pl-9 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
+                            class="task-edit-duration-hours bg-slate-700 pl-9 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
                     </div>
-                    <span class="text-gray-400 text-lg">:</span>
+                    <span class="text-slate-400 text-lg">:</span>
                     <div class="relative flex-1">
                         <input type="number" name="inline-edit-est-duration-minutes" placeholder="MM" min="0" max="59"
-                            class="task-edit-duration-minutes bg-gray-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-300 focus:outline-none transition-all text-sm sm:text-base">
+                            class="task-edit-duration-minutes bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
                     </div>
                 </div>
 
                 <!-- Action Buttons -->
                 <div class="flex items-center gap-2 sm:ml-auto">
-                    <button type="button" class="btn-cancel-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gray-700 hover:bg-gray-600 border border-gray-600 text-sm sm:text-base flex-1 sm:flex-none justify-center">
+                    <button type="button" class="btn-cancel-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
-                    <button type="button" class="btn-save-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-sm sm:text-base flex-1 sm:flex-none justify-center">
+                    <button type="button" class="btn-save-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                         <i class="fa-regular fa-save mr-2"></i>Save
                     </button>
                 </div>
@@ -404,7 +403,7 @@ function createUnscheduledTaskCard(task, options = {}) {
     const durationText = getDurationText(task.estDuration);
 
     const taskCard = document.createElement('div');
-    taskCard.className = `task-card relative bg-gray-800 bg-opacity-60 ${priorityClasses.border} p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${task.confirmingDelete ? 'z-40 ' : ''}${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
+    taskCard.className = `task-card relative bg-slate-800 bg-opacity-60 ${priorityClasses.border} border-l-4 border-l-indigo-400 p-2 sm:p-4 rounded-lg shadow-lg flex flex-col gap-2 ${task.confirmingDelete ? 'z-40 ' : ''}${isLinkedToRunningTimer ? 'opacity-70 pointer-events-none' : ''}`;
     taskCard.dataset.taskId = task.id;
     taskCard.dataset.taskName = task.description;
     taskCard.dataset.taskEstDuration = durationText;
@@ -425,7 +424,7 @@ function createUnscheduledTaskCard(task, options = {}) {
     // Inline edit form (hidden by default)
     const editFormContainer = document.createElement('div');
     editFormContainer.className =
-        'inline-edit-unscheduled-form hidden mt-3 pt-3 border-t border-gray-700 w-full';
+        'inline-edit-unscheduled-form hidden mt-3 pt-3 border-t border-slate-700 w-full';
     editFormContainer.innerHTML = createInlineEditFormHTML(task);
     taskCard.appendChild(editFormContainer);
     taskCard[CARD_RENDER_KEY] = createCardRenderKey(task, options);
@@ -436,7 +435,7 @@ function createUnscheduledTaskCard(task, options = {}) {
 // --- Render Functions ---
 
 const EMPTY_STATE_MESSAGE =
-    '<p class="text-gray-500 text-sm italic px-2">No unscheduled tasks yet. Add some using the form above!</p>';
+    '<p class="px-2 py-2 text-sm text-slate-400 sm:text-slate-500">Nothing waiting to be scheduled.</p>';
 
 /**
  * Renders all unscheduled tasks

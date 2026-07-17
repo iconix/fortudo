@@ -41,7 +41,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     "Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected.",
                     undefined,
-                    'teal'
+                    'rose'
                 )
             ) {
                 const result = await deleteAllScheduledTasks();
@@ -51,7 +51,7 @@ export function initializeClearTasksHandlers() {
                     });
                     onScheduledTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'red');
+                    showAlert(result.reason || 'Failed to clear scheduled tasks.', 'rose');
                     refreshUI();
                 }
             }
@@ -83,7 +83,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     'Are you sure you want to delete ALL tasks (scheduled and unscheduled)? This action cannot be undone.',
                     undefined,
-                    'red'
+                    'rose'
                 )
             ) {
                 const result = await deleteAllTasks();
@@ -91,7 +91,7 @@ export function initializeClearTasksHandlers() {
                     showToast(result.message || 'All tasks have been deleted.', { theme: 'rose' });
                     onAllTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to delete all tasks.', 'red');
+                    showAlert(result.reason || 'Failed to delete all tasks.', 'rose');
                     refreshUI();
                 }
             }
@@ -106,7 +106,7 @@ export function initializeClearTasksHandlers() {
             event.preventDefault();
             const completedTasksExist = getTaskState().some((task) => task.status === 'completed');
             if (!completedTasksExist) {
-                showToast('There are no completed tasks to clear.', { theme: 'indigo' });
+                showToast('There are no completed tasks to clear.', { theme: 'slate' });
                 closeClearTasksDropdown();
                 return;
             }
@@ -115,7 +115,7 @@ export function initializeClearTasksHandlers() {
                 await askConfirmation(
                     'Are you sure you want to clear all completed tasks? This will remove them from both scheduled and unscheduled lists.',
                     undefined,
-                    'indigo'
+                    'slate'
                 )
             ) {
                 const result = await deleteCompletedTasks();
@@ -125,7 +125,7 @@ export function initializeClearTasksHandlers() {
                     });
                     onCompletedTasksCleared();
                 } else {
-                    showAlert(result.reason || 'Failed to clear completed tasks.', 'red');
+                    showAlert(result.reason || 'Failed to clear completed tasks.', 'rose');
                     refreshUI();
                 }
             }

@@ -48,24 +48,32 @@ let currentUnscheduledActions = null;
 let scheduleModalListenersInitialized = false;
 
 // --- Helper Functions ---
-function setModalTheme(modal, title, button, theme = 'indigo') {
+function setModalTheme(modal, title, button, theme = 'violet') {
     const titleClasses = {
-        indigo: 'text-indigo-400',
+        violet: 'text-violet-400',
+        slate: 'text-slate-300',
         teal: 'text-teal-400',
-        sky: 'text-sky-400'
+        indigo: 'text-indigo-400',
+        sky: 'text-sky-400',
+        amber: 'text-amber-400',
+        rose: 'text-rose-400'
     };
     const buttonClasses = {
-        indigo: 'from-indigo-500 to-indigo-400 hover:from-indigo-400 hover:to-indigo-300',
-        teal: 'from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300',
-        sky: 'from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300'
+        violet: 'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40',
+        slate: 'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40',
+        teal: 'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
+        indigo: 'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40',
+        sky: 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40',
+        amber: 'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40',
+        rose: 'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'
     };
     // Update title color
     if (title) {
-        title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.indigo}`;
+        title.className = `text-xl font-normal ${titleClasses[theme] || titleClasses.violet}`;
     }
-    // Update button gradient
+    // Update button tint
     if (button) {
-        button.className = `bg-gradient-to-r ${buttonClasses[theme] || buttonClasses.indigo} px-5 py-2 rounded-lg text-white font-normal transition-colors`;
+        button.className = `${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg font-normal transition-colors`;
     }
 }
 
@@ -91,7 +99,7 @@ export function hideCustomAlert() {
     resolveCustomAlert = null;
 }
 
-export function showCustomAlert(title, message, theme = 'indigo') {
+export function showCustomAlert(title, message, theme = 'violet') {
     if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
         hideCustomAlert();
         customAlertTitle.textContent = title;
@@ -130,7 +138,7 @@ export function showCustomConfirm(
     title,
     message,
     buttonLabels = { ok: 'OK', cancel: 'Cancel' },
-    theme = 'indigo'
+    theme = 'violet'
 ) {
     const okBtnElement = document.getElementById('ok-custom-confirm-modal');
     const cancelBtnElement = document.getElementById('cancel-custom-confirm-modal');
@@ -332,10 +340,10 @@ export function initializeModalEventListeners(unscheduledActions) {
                 overlapButtonHTML:
                     '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
                 overlapButtonClasses: modalScheduleBtn.className
-                    .replace(/from-indigo-500\/90/g, 'from-amber-500')
-                    .replace(/to-indigo-400\/90/g, 'to-amber-400')
-                    .replace(/hover:from-indigo-400\/90/g, 'hover:from-amber-400')
-                    .replace(/hover:to-indigo-300\/90/g, 'hover:to-amber-300')
+                    .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
+                    .replace(/border-teal-400\/60/g, 'border-amber-400/60')
+                    .replace(/text-teal-200/g, 'text-amber-200')
+                    .replace(/hover:bg-teal-500\/40/g, 'hover:bg-amber-500/40')
             }
         );
     }
@@ -388,7 +396,7 @@ export function showGapTaskPicker(
 
     if (unscheduledTasks.length === 0) {
         gapTaskPickerList.innerHTML =
-            '<p class="text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
+            '<p class="text-slate-400 sm:text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
     } else {
         gapTaskPickerList.innerHTML = unscheduledTasks
             .map((task) => {
@@ -398,13 +406,13 @@ export function showGapTaskPicker(
                 const fits = task.estDuration && task.estDuration <= durationMinutes;
                 const fitIndicator = task.estDuration
                     ? fits
-                        ? '<span class="text-teal-400 text-xs whitespace-nowrap">Fits</span>'
+                        ? '<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>'
                         : '<span class="text-amber-300 text-xs whitespace-nowrap">Too long</span>'
                     : '';
                 const priorityColors = {
                     high: 'text-rose-400',
                     medium: 'text-amber-400',
-                    low: 'text-teal-400'
+                    low: 'text-emerald-400'
                 };
                 const priorityColor = priorityColors[task.priority] || 'text-slate-400';
                 return `<div class="gap-task-option flex items-center justify-between p-3 rounded-lg border border-slate-600 hover:border-teal-400 hover:bg-slate-700/50 cursor-pointer transition-all" data-task-id="${task.id}">
@@ -505,7 +513,7 @@ export function showActivityEditModal(currentDescription = '') {
 }
 
 // --- Convenience Wrappers ---
-export function showAlert(message, theme = 'indigo') {
+export function showAlert(message, theme = 'violet') {
     return showCustomAlert('Alert', message, theme);
 }
 
@@ -513,9 +521,9 @@ export function showAlert(message, theme = 'indigo') {
  * Show a confirmation dialog with customizable button labels
  * @param {string} message - The message to display
  * @param {{ok: string, cancel: string}=} buttonLabels - Optional custom labels for the buttons
- * @param {string=} theme - The theme to use ('indigo' or 'teal')
+ * @param {string=} theme - The semantic theme for the confirmation action
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
-export function askConfirmation(message, buttonLabels, theme = 'indigo') {
+export function askConfirmation(message, buttonLabels, theme = 'violet') {
     return showCustomConfirm('Confirmation', message, buttonLabels, theme);
 }

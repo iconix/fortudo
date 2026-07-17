@@ -244,14 +244,14 @@ function renderInlineEditActivityItem(activity, options = {}) {
                <span class="activity-source-link italic cursor-default" data-source-task-id="${escapeHtml(activity.sourceTaskId || '')}" title="Auto-logged from task">
                    <i class="fa-solid fa-link mr-0.5"></i>auto
                </span>
-               <span class="text-slate-500">Edited copy of a completed task</span>
+               <span class="text-slate-400 sm:text-slate-500">Edited copy of a completed task</span>
            </div>`
         : '';
     const activityIssues = getActivityIssuesForId(options.activityIssuesById, activity.id);
     const issueClasses = activityIssues.length > 0 ? ' bg-amber-950/30 border-amber-500/50' : '';
     const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 shadow-md space-y-3${issueClasses}" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
+    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 border-l-4 border-l-sky-400 shadow-md space-y-3${issueClasses}" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
         ${provenanceHtml}
         <div class="flex flex-col sm:flex-row gap-3">
             <div class="relative sm:flex-[1.8]">
@@ -288,7 +288,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
                 <button type="button" class="btn-cancel-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100">
                     <i class="fa-solid fa-xmark mr-2"></i>Cancel
                 </button>
-                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 text-white">
+                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40">
                     <i class="fa-solid fa-check mr-2"></i>Save
                 </button>
             </div>
@@ -324,7 +324,7 @@ function renderActivityItem(activity, options = {}) {
             : ' bg-slate-800/60 border-slate-700/50 hover:border-sky-700/30';
     const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors${issueClasses}" data-activity-id="${escapeHtml(activity.id)}">
+    return `<div class="activity-item flex items-center gap-2 px-3 py-2 rounded-lg border border-l-4 border-l-sky-400 transition-colors${issueClasses}" data-activity-id="${escapeHtml(activity.id)}">
         <div class="flex-grow min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm text-slate-200 truncate">${escapeHtml(activity.description)}</span>
@@ -355,14 +355,11 @@ export function renderActivities(activities, container, options = {}) {
 
     if (!activities || activities.length === 0) {
         const emptyStateMessage = summaryHtml
-            ? 'No completed activities logged today yet.'
-            : 'No activities tracked today. Log one or complete a scheduled task.';
+            ? 'No completed activities yet.'
+            : 'No activity logged today.';
         targetContainer.innerHTML = `
             ${summaryHtml}
-            <div class="py-6 text-slate-500 text-sm italic px-2">
-                <i class="fa-regular fa-clock mr-1"></i>
-                ${emptyStateMessage}
-            </div>`;
+            <div class="px-2 py-2 text-sm text-slate-400 sm:text-slate-500">${emptyStateMessage}</div>`;
         return;
     }
 

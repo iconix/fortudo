@@ -5,7 +5,7 @@ import { getThemeForTask } from '../utils.js';
 /**
  * Determine the theme based on task ID
  * @param {string} taskId
- * @returns {'teal'|'indigo'}
+ * @returns {'teal'|'slate'}
  */
 export function getThemeForTaskId(taskId) {
     const task = getTaskById(taskId);

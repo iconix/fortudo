@@ -3,18 +3,16 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Fortu-do 💪🏾</title>
+        <title>Fortudo</title>
         <link rel="manifest" href="manifest.webmanifest" />
-        <meta name="theme-color" content="#0f766e" />
+        <meta name="theme-color" content="#1e293b" />
+        <meta property="og:title" content="Fortudo" />
+        <meta property="og:description" content="A daily time-blocking to-do app" />
+        <meta property="og:image" content="https://fortudo.web.app/og-image.png" />
+        <meta name="twitter:card" content="summary_large_image" />
         <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-        <link
-            rel="icon"
-            href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪🏾</text></svg>"
-        />
-        <link
-            rel="stylesheet"
-            href="vendor/fontawesome/css/all.min.css"
-        />
+        <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+        <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" />
         <link rel="stylesheet" href="css/tailwind.css" />
         <link rel="stylesheet" href="css/custom.css" />
         <script src="vendor/pouchdb/pouchdb.min.js"></script>
@@ -28,7 +26,13 @@
             <div
                 class="bg-slate-800/80 border border-slate-700 rounded-lg p-8 max-w-md w-full mx-4 text-center"
             >
-                <h1 class="text-4xl font-bold text-amber-300 mb-2">Fortu-do 💪🏾</h1>
+                <h1
+                    data-brand-lockup
+                    class="flex items-center justify-center gap-3 text-4xl font-bold text-slate-100 mb-2"
+                >
+                    <img src="icons/mark.svg" alt="" class="h-10 w-10" />
+                    <span>fortu<span class="text-violet-400">do.</span></span>
+                </h1>
                 <p class="text-slate-400 mb-6">
                     Enter a room code to get started, or generate a new one.
                 </p>
@@ -38,7 +42,7 @@
                             type="text"
                             id="room-code-input"
                             placeholder="e.g. fox-742"
-                            class="bg-slate-700 p-3 rounded-lg flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none transition-all text-center text-lg"
+                            class="bg-slate-700 p-3 rounded-lg flex-1 border border-slate-600 focus:border-violet-400 focus:outline-none transition-all text-center text-lg"
                             required
                         />
                         <button
@@ -52,7 +56,7 @@
                     </div>
                     <button
                         type="submit"
-                        class="w-full bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-5 py-3 rounded-lg font-normal text-white transition-all duration-300"
+                        class="w-full bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40 px-5 py-3 rounded-lg font-normal transition-all duration-300"
                     >
                         <i class="fa-solid fa-right-to-bracket mr-2"></i>Enter Room
                     </button>
@@ -69,13 +73,60 @@
             <div class="container mx-auto px-2 lg:px-16 max-w-3xl text-center my-4 relative">
                 <!-- App Header with subtle styling -->
                 <div class="mb-8">
-                    <h1 class="lg:text-5xl text-4xl font-bold text-amber-300 mb-2">Fortu-do 💪🏾</h1>
+                    <h1
+                        data-brand-lockup
+                        class="flex items-center justify-center gap-3 lg:text-5xl text-4xl font-bold text-slate-100 mb-2"
+                    >
+                        <img src="icons/mark.svg" alt="" class="h-10 w-10 lg:h-12 lg:w-12" />
+                        <span>fortu<span class="text-violet-400">do.</span></span>
+                    </h1>
                     <div class="flex items-center justify-center gap-3">
                         <h2 class="lg:text-lg text-slate-400">
-                            A Daily Time-Blocking To-Do App. For Cristell<span
-                                class="not-italic pl-1 animate-pulse"
-                                >💜</span
-                            >
+                            A daily time-blocking to-do app.
+                            <span class="whitespace-nowrap"
+                                >For Cristell<span
+                                    class="dedication-heart"
+                                    role="img"
+                                    aria-label="Purple heart"
+                                    ><svg
+                                        data-dedication-heart
+                                        class="dedication-heart__svg"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    >
+                                        <defs>
+                                            <linearGradient
+                                                id="dedication-heart-gradient"
+                                                x1="5"
+                                                y1="4"
+                                                x2="18"
+                                                y2="20"
+                                                gradientUnits="userSpaceOnUse"
+                                            >
+                                                <stop
+                                                    offset="0"
+                                                    class="dedication-heart-stop--light"
+                                                />
+                                                <stop
+                                                    offset="0.55"
+                                                    class="dedication-heart-stop--base"
+                                                />
+                                                <stop
+                                                    offset="1"
+                                                    class="dedication-heart-stop--dark"
+                                                />
+                                            </linearGradient>
+                                        </defs>
+                                        <path
+                                            fill="url(#dedication-heart-gradient)"
+                                            d="M12 21c-1.5-1.3-7.8-5.55-9.35-9.4C1.15 7.85 3.45 4 7.35 4c2.1 0 3.7 1.22 4.65 2.6C12.95 5.22 14.55 4 16.65 4c3.9 0 6.2 3.85 4.7 7.6C19.8 15.45 13.5 19.7 12 21Z"
+                                        />
+                                        <path
+                                            class="dedication-heart__highlight"
+                                            d="M6.2 7.1c.7-1.05 2.05-1.3 3.15-.65.45.27.34.96-.16 1.12-1.25.39-2.1 1.17-2.56 2.3-.19.47-.87.4-.96-.1-.16-.91.02-1.9.53-2.67Z"
+                                        /></svg></span
+                            ></span>
                         </h2>
                     </div>
                     <div class="mt-2 flex items-center justify-center gap-2">
@@ -84,7 +135,7 @@
                             class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-700/80 border border-slate-600 text-sm text-slate-300 cursor-pointer hover:bg-slate-600/80 transition-colors"
                             title="Click to switch rooms"
                         >
-                            <i class="fa-solid fa-door-open text-teal-400/75 text-xs"></i>
+                            <i class="fa-solid fa-door-open text-violet-400/75 text-xs"></i>
                             <span id="room-code-display"></span>
                         </span>
                         <button
@@ -93,17 +144,23 @@
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs hover:bg-slate-700/50 transition-colors"
                             title="Sync now"
                         >
-                            <i id="sync-status-icon" class="fa-solid fa-cloud text-slate-500"></i>
-                            <span id="sync-status-text" class="text-slate-500">Local</span>
+                            <i
+                                id="sync-status-icon"
+                                class="fa-solid fa-cloud text-slate-400 sm:text-slate-500"
+                            ></i>
+                            <span id="sync-status-text" class="text-slate-400 sm:text-slate-500"
+                                >Local</span
+                            >
                         </button>
                         <button
                             id="settings-gear-btn"
                             type="button"
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs hover:bg-slate-700/50 transition-colors"
                             title="Settings"
+                            aria-label="Open settings"
                         >
                             <i
-                                class="fa-solid fa-gear text-slate-500 hover:text-slate-300 transition-colors"
+                                class="fa-solid fa-gear text-slate-400 sm:text-slate-500 hover:text-slate-300 transition-colors"
                             ></i>
                         </button>
                     </div>
@@ -115,7 +172,7 @@
                             id="view-toggle-tasks"
                             type="button"
                             data-view-toggle="tasks"
-                            class="inline-flex items-center gap-1.5 rounded-md bg-teal-500/20 px-3 py-1.5 text-sm text-teal-200 border border-teal-400/40"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-slate-700/70 px-3 py-1.5 text-sm text-violet-200 border border-violet-400/40"
                         >
                             <i class="fa-solid fa-list-check"></i>Tasks
                         </button>
@@ -131,417 +188,443 @@
                 </div>
 
                 <div id="tasks-view">
-                <!-- Task Form with refined styling -->
-                <form
-                    id="task-form"
-                    class="mb-4 sm:mb-8 p-3 sm:p-4 rounded-lg bg-slate-800/80 border border-slate-700 mx-2 text-left space-y-2 sm:space-y-3"
-                >
-                    <div class="flex flex-col sm:flex-row sm:space-x-4 mb-2">
-                        <div
-                            class="flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors"
-                        >
-                            <input
-                                id="scheduled"
-                                type="radio"
-                                name="task-type"
-                                value="scheduled"
-                                class="mr-2 h-4 w-4 text-teal-400 focus:ring-teal-400"
-                                checked
-                            />
-                            <label for="scheduled" class="text-slate-300 flex items-center text-sm">
-                                <i class="fa-regular fa-calendar-check mr-1 text-teal-400/75"></i
-                                >Scheduled
-                            </label>
-                        </div>
-                        <div
-                            class="flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors"
-                        >
-                            <input
-                                id="unscheduled"
-                                type="radio"
-                                name="task-type"
-                                value="unscheduled"
-                                class="mr-2 h-4 w-4 text-indigo-400 focus:ring-indigo-400"
-                            />
-                            <label
-                                for="unscheduled"
-                                class="text-slate-300 flex items-center text-sm"
-                            >
-                                <i class="fa-solid fa-list-ul mr-1 text-indigo-400/75"></i
-                                >Unscheduled
-                            </label>
-                        </div>
-                        <div
-                            id="activity-toggle-option"
-                            class="hidden flex items-center p-1.5 rounded hover:bg-slate-700/50 transition-colors"
-                        >
-                            <input
-                                id="activity"
-                                type="radio"
-                                name="task-type"
-                                value="activity"
-                                class="mr-2 h-4 w-4 text-sky-400 focus:ring-sky-400"
-                            />
-                            <label for="activity" class="text-slate-300 flex items-center text-sm">
-                                <i class="fa-regular fa-clock mr-1 text-sky-400/75"></i>Activity
-                            </label>
-                        </div>
-                    </div>
-
-                    <div id="task-form-fields">
-                        <div class="mb-2 sm:mb-3">
-                            <input
-                                type="text"
-                                name="description"
-                                placeholder="Describe your task..."
-                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
-                                required
-                            />
-                        </div>
-
-                        <div id="category-dropdown-row" class="hidden mb-2 sm:mb-3">
-                            <div class="flex items-center gap-2">
-                                <span
-                                    id="category-color-indicator"
-                                    class="w-3 h-3 rounded-full bg-slate-500 shrink-0"
-                                ></span>
-                                <select
-                                    name="category"
-                                    id="category-select"
-                                    class="bg-slate-700 p-2 rounded-lg flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none transition-all text-sm"
-                                >
-                                    <option value="">No category</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div
-                            id="task-form-main-row"
-                            class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5"
-                        >
-                            <div class="flex-grow flex flex-col gap-2 sm:gap-4">
-                                <div
-                                    id="time-inputs"
-                                    class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full pb-5 sm:pb-0"
-                                >
-                                <!-- Start Time -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="relative">
-                                        <i
-                                            class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"
-                                        ></i>
-                                        <input
-                                            type="time"
-                                            name="start-time"
-                                            class="bg-slate-700 pl-9 pr-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <!-- Duration -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="relative flex items-center gap-1 sm:gap-2">
-                                        <div class="relative flex-1">
-                                            <i
-                                                class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"
-                                            ></i>
-                                            <input
-                                                type="number"
-                                                name="duration-hours"
-                                                placeholder="HH"
-                                                min="0"
-                                                class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
-                                            />
-                                        </div>
-                                        <span class="text-slate-400 text-lg">:</span>
-                                        <div class="relative flex-1">
-                                            <input
-                                                type="number"
-                                                name="duration-minutes"
-                                                placeholder="MM"
-                                                min="0"
-                                                max="59"
-                                                class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
-                                            />
-                                        </div>
-                                        <span
-                                            id="end-time-hint"
-                                            class="absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"
-                                        ></span>
-                                    </div>
-                                </div>
-                            </div>
-
-                                <div
-                                    id="priority-input"
-                                    class="hidden flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full"
-                                >
-                                <!-- Priority -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-1 sm:gap-2">
-                                        <span
-                                            class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center"
-                                        >
-                                            <i
-                                                class="fa-solid fa-signal text-indigo-400/75 mr-1.5"
-                                            ></i
-                                            >Priority
-                                        </span>
-                                        <div class="flex flex-grow space-x-1 sm:space-x-2">
-                                            <label class="flex-1">
-                                                <input
-                                                    type="radio"
-                                                    name="priority"
-                                                    value="high"
-                                                    class="hidden peer"
-                                                />
-                                                <div
-                                                    class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-rose-500/20 peer-checked:border-rose-500/70 cursor-pointer transition-all text-xs"
-                                                >
-                                                    <i
-                                                        class="fa-solid fa-bars text-rose-400 sm:mr-1"
-                                                    ></i
-                                                    ><span class="hidden sm:inline">High</span>
-                                                </div>
-                                            </label>
-                                            <label class="flex-1">
-                                                <input
-                                                    type="radio"
-                                                    name="priority"
-                                                    value="medium"
-                                                    class="hidden peer"
-                                                    checked
-                                                />
-                                                <div
-                                                    class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-amber-400/20 peer-checked:border-amber-400/70 cursor-pointer transition-all text-xs"
-                                                >
-                                                    <i
-                                                        class="fa-regular fa-equals text-amber-400 sm:mr-1"
-                                                    ></i
-                                                    ><span class="hidden sm:inline">Med</span>
-                                                </div>
-                                            </label>
-                                            <label class="flex-1">
-                                                <input
-                                                    type="radio"
-                                                    name="priority"
-                                                    value="low"
-                                                    class="hidden peer"
-                                                />
-                                                <div
-                                                    class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-teal-500/20 peer-checked:border-teal-500/70 cursor-pointer transition-all text-xs"
-                                                >
-                                                    <i
-                                                        class="fa-solid fa-minus text-teal-400 sm:mr-1"
-                                                    ></i
-                                                    ><span class="hidden sm:inline">Low</span>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Est. Duration -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-1 sm:gap-2">
-                                        <span
-                                            class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center"
-                                        >
-                                            <i
-                                                class="fa-regular fa-hourglass text-indigo-400/75 mr-1.5"
-                                            ></i
-                                            >Est. Dur
-                                        </span>
-                                        <div class="relative flex-1">
-                                            <input
-                                                type="number"
-                                                name="est-duration-hours"
-                                                placeholder="HH"
-                                                min="0"
-                                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base"
-                                            />
-                                        </div>
-                                        <span class="text-slate-400 text-lg sm:text-base">:</span>
-                                        <div class="relative flex-1">
-                                            <input
-                                                type="number"
-                                                name="est-duration-minutes"
-                                                placeholder="MM"
-                                                min="0"
-                                                max="59"
-                                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-indigo-400 focus:outline-none transition-all text-sm sm:text-base"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            </div>
-
-                            <div id="activity-action-group">
-                                <!-- Submit Button -->
-                                <button
-                                    type="submit"
-                                    id="add-task-btn"
-                                    class="shrink-0 bg-gradient-to-r from-teal-500 to-teal-400 hover:from-teal-400 hover:to-teal-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base"
-                                >
-                                    <i class="fa-regular fa-plus mr-2"></i>Add Task
-                                </button>
-                                <button
-                                    type="button"
-                                    id="start-timer-btn"
-                                    class="hidden shrink-0 bg-slate-700 hover:bg-slate-600 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white border border-sky-400/30 transition-all duration-300 flex items-center justify-center text-sm sm:text-base"
-                                >
-                                    <i class="fa-solid fa-play mr-2"></i>Start Timer
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div
-                        id="timer-display"
-                        class="hidden rounded-lg border border-sky-400/20 bg-slate-900/40 p-3 sm:p-4 space-y-3"
+                    <!-- Task Form with refined styling -->
+                    <form
+                        id="task-form"
+                        class="mb-4 sm:mb-8 p-3 sm:p-4 rounded-lg bg-slate-800/80 border border-slate-700 mx-2 text-left space-y-2 sm:space-y-3"
                     >
-                        <div class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_auto] sm:items-end">
-                            <input
-                                id="timer-description"
-                                type="text"
-                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
-                            />
-                            <div class="sm:text-right">
-                                <div class="text-xs uppercase tracking-[0.2em] text-sky-300/70">
-                                    Elapsed
-                                </div>
-                                <div
-                                    id="timer-elapsed"
-                                    class="text-2xl sm:text-3xl font-light text-sky-300"
-                                >
-                                    00:00:00
-                                </div>
-                            </div>
-                        </div>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <select
-                                id="timer-category"
-                                class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
-                            ></select>
-                            <input
-                                id="timer-start-time"
-                                type="time"
-                                class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
-                            />
-                        </div>
-                        <div
-                            id="next-activity-strip"
-                            class="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-3 space-y-3"
-                        >
-                            <div class="flex items-center justify-between gap-3">
-                                <div class="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                                    Next Activity
-                                </div>
-                                <div class="text-xs text-slate-500">
-                                    Starts immediately when you click
-                                    <span class="text-slate-300">Start Timer</span>
-                                </div>
-                            </div>
-                            <div class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-center">
+                        <div data-task-type-toggle class="flex gap-1.5 sm:flex-wrap sm:gap-2 mb-2">
+                            <label class="min-w-0 flex-1 sm:flex-none">
                                 <input
-                                    id="next-activity-description"
+                                    id="scheduled"
+                                    type="radio"
+                                    name="task-type"
+                                    value="scheduled"
+                                    class="sr-only peer"
+                                    checked
+                                />
+                                <span
+                                    class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-400 peer-checked:bg-slate-700/70 peer-checked:border-teal-400/50 peer-checked:text-slate-100"
+                                >
+                                    <i
+                                        class="fa-regular fa-calendar-check mr-0.5 sm:mr-1 text-teal-400/75"
+                                    ></i
+                                    >Scheduled
+                                </span>
+                            </label>
+                            <label class="min-w-0 flex-1 sm:flex-none">
+                                <input
+                                    id="unscheduled"
+                                    type="radio"
+                                    name="task-type"
+                                    value="unscheduled"
+                                    class="sr-only peer"
+                                />
+                                <span
+                                    class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-400 peer-checked:bg-slate-700/70 peer-checked:border-indigo-400/50 peer-checked:text-slate-100"
+                                >
+                                    <i
+                                        class="fa-solid fa-list-ul mr-0.5 sm:mr-1 text-indigo-400/75"
+                                    ></i
+                                    >Unscheduled
+                                </span>
+                            </label>
+                            <div
+                                id="activity-toggle-option"
+                                class="hidden min-w-0 flex-1 sm:flex-none"
+                            >
+                                <label class="block">
+                                    <input
+                                        id="activity"
+                                        type="radio"
+                                        name="task-type"
+                                        value="activity"
+                                        class="sr-only peer"
+                                    />
+                                    <span
+                                        class="inline-flex w-full justify-center items-center rounded-md border border-transparent px-1 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-300 transition-colors hover:bg-slate-700/50 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-400 peer-checked:bg-slate-700/70 peer-checked:border-sky-400/50 peer-checked:text-slate-100"
+                                    >
+                                        <i
+                                            class="fa-regular fa-clock mr-0.5 sm:mr-1 text-sky-400/75"
+                                        ></i
+                                        >Activity
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="task-form-fields">
+                            <div class="mb-2 sm:mb-3">
+                                <input
                                     type="text"
-                                    placeholder="What are you doing next?"
+                                    name="description"
+                                    placeholder="Describe your task..."
+                                    class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
+                                    required
+                                />
+                            </div>
+
+                            <div id="category-dropdown-row" class="hidden mb-2 sm:mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span
+                                        id="category-color-indicator"
+                                        class="w-3 h-3 rounded-full bg-slate-500 shrink-0"
+                                    ></span>
+                                    <select
+                                        name="category"
+                                        id="category-select"
+                                        class="bg-slate-700 p-2 rounded-lg flex-1 border border-slate-600 focus:border-slate-400 focus:outline-none transition-all text-sm"
+                                    >
+                                        <option value="">No category</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div
+                                id="task-form-main-row"
+                                class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center sm:pb-5"
+                            >
+                                <div class="flex-grow flex flex-col gap-2 sm:gap-4">
+                                    <div
+                                        id="time-inputs"
+                                        class="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full pb-5 sm:pb-0"
+                                    >
+                                        <!-- Start Time -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="relative">
+                                                <i
+                                                    class="task-form-time-icon fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"
+                                                ></i>
+                                                <input
+                                                    type="time"
+                                                    name="start-time"
+                                                    class="bg-slate-700 pl-9 pr-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <!-- Duration -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="relative flex items-center gap-1 sm:gap-2">
+                                                <div class="relative flex-1">
+                                                    <i
+                                                        class="task-form-time-icon fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-teal-400/75"
+                                                    ></i>
+                                                    <input
+                                                        type="number"
+                                                        name="duration-hours"
+                                                        placeholder="HH"
+                                                        min="0"
+                                                        class="bg-slate-700 pl-9 pr-2 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
+                                                    />
+                                                </div>
+                                                <span class="text-slate-400 text-lg">:</span>
+                                                <div class="relative flex-1">
+                                                    <input
+                                                        type="number"
+                                                        name="duration-minutes"
+                                                        placeholder="MM"
+                                                        min="0"
+                                                        max="59"
+                                                        class="bg-slate-700 px-3 py-2 sm:py-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all scheduled-input text-sm sm:text-base"
+                                                    />
+                                                </div>
+                                                <span
+                                                    id="end-time-hint"
+                                                    class="task-form-time-hint absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"
+                                                ></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        id="priority-input"
+                                        class="hidden flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center w-full"
+                                    >
+                                        <!-- Priority -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1 sm:gap-2">
+                                                <span
+                                                    class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center"
+                                                >
+                                                    <i
+                                                        class="fa-solid fa-signal text-indigo-400/75 mr-1.5"
+                                                    ></i
+                                                    >Priority
+                                                </span>
+                                                <div class="flex flex-grow space-x-1 sm:space-x-2">
+                                                    <label class="flex-1">
+                                                        <input
+                                                            type="radio"
+                                                            name="priority"
+                                                            value="high"
+                                                            class="hidden peer"
+                                                        />
+                                                        <div
+                                                            class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-rose-500/20 peer-checked:border-rose-500/70 cursor-pointer transition-all text-xs"
+                                                        >
+                                                            <i
+                                                                class="fa-solid fa-bars text-rose-400 sm:mr-1"
+                                                            ></i
+                                                            ><span class="hidden sm:inline"
+                                                                >High</span
+                                                            >
+                                                        </div>
+                                                    </label>
+                                                    <label class="flex-1">
+                                                        <input
+                                                            type="radio"
+                                                            name="priority"
+                                                            value="medium"
+                                                            class="hidden peer"
+                                                            checked
+                                                        />
+                                                        <div
+                                                            class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-amber-400/20 peer-checked:border-amber-400/70 cursor-pointer transition-all text-xs"
+                                                        >
+                                                            <i
+                                                                class="fa-regular fa-equals text-amber-400 sm:mr-1"
+                                                            ></i
+                                                            ><span class="hidden sm:inline"
+                                                                >Med</span
+                                                            >
+                                                        </div>
+                                                    </label>
+                                                    <label class="flex-1">
+                                                        <input
+                                                            type="radio"
+                                                            name="priority"
+                                                            value="low"
+                                                            class="hidden peer"
+                                                        />
+                                                        <div
+                                                            class="text-center py-1.5 px-1.5 sm:px-2 rounded-lg border border-slate-600 bg-slate-700/50 peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/70 cursor-pointer transition-all text-xs"
+                                                        >
+                                                            <i
+                                                                class="fa-solid fa-minus text-emerald-400 sm:mr-1"
+                                                            ></i
+                                                            ><span class="hidden sm:inline"
+                                                                >Low</span
+                                                            >
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Est. Duration -->
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1 sm:gap-2">
+                                                <span
+                                                    class="text-slate-400 mr-1 sm:mr-0 text-xs sm:text-sm whitespace-nowrap flex items-center"
+                                                >
+                                                    <i
+                                                        class="fa-regular fa-hourglass text-indigo-400/75 mr-1.5"
+                                                    ></i
+                                                    >Est. Dur
+                                                </span>
+                                                <div class="relative flex-1">
+                                                    <input
+                                                        type="number"
+                                                        name="est-duration-hours"
+                                                        placeholder="HH"
+                                                        min="0"
+                                                        class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all text-sm sm:text-base"
+                                                    />
+                                                </div>
+                                                <span class="text-slate-400 text-lg sm:text-base"
+                                                    >:</span
+                                                >
+                                                <div class="relative flex-1">
+                                                    <input
+                                                        type="number"
+                                                        name="est-duration-minutes"
+                                                        placeholder="MM"
+                                                        min="0"
+                                                        max="59"
+                                                        class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all text-sm sm:text-base"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="activity-action-group">
+                                    <button
+                                        type="button"
+                                        id="start-timer-btn"
+                                        class="hidden shrink-0 bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center"
+                                    >
+                                        <i class="fa-solid fa-play mr-2"></i>Start Timer
+                                    </button>
+                                    <!-- Submit Button -->
+                                    <button
+                                        type="submit"
+                                        id="add-task-btn"
+                                        class="shrink-0 bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center scheduled-button text-sm sm:text-base"
+                                    >
+                                        <i class="fa-regular fa-plus mr-2"></i>Add Task
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            id="timer-display"
+                            class="hidden rounded-lg border border-sky-400/20 bg-slate-900/40 p-3 sm:p-4 space-y-3"
+                        >
+                            <div class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_auto] sm:items-end">
+                                <input
+                                    id="timer-description"
+                                    type="text"
                                     class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
                                 />
+                                <div class="sm:text-right">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-sky-300/70">
+                                        Elapsed
+                                    </div>
+                                    <div
+                                        id="timer-elapsed"
+                                        class="text-2xl sm:text-3xl font-light text-sky-300"
+                                    >
+                                        00:00:00
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid gap-3 sm:grid-cols-2">
                                 <select
-                                    id="next-activity-category"
+                                    id="timer-category"
                                     class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
                                 ></select>
-                                <div id="next-activity-action-group" class="w-full sm:w-auto"></div>
+                                <input
+                                    id="timer-start-time"
+                                    type="time"
+                                    class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
+                                />
+                            </div>
+                            <div
+                                id="next-activity-strip"
+                                class="rounded-xl border border-dashed border-slate-700 bg-slate-800/40 p-3 space-y-3"
+                            >
+                                <div class="flex items-center justify-between gap-3">
+                                    <div
+                                        class="text-[11px] uppercase tracking-[0.22em] text-slate-400"
+                                    >
+                                        Next Activity
+                                    </div>
+                                    <div class="text-xs text-slate-400 sm:text-slate-500">
+                                        Starts immediately when you click
+                                        <span class="text-slate-300">Start Timer</span>
+                                    </div>
+                                </div>
+                                <div
+                                    class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-center"
+                                >
+                                    <input
+                                        id="next-activity-description"
+                                        type="text"
+                                        placeholder="What are you doing next?"
+                                        class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
+                                    />
+                                    <select
+                                        id="next-activity-category"
+                                        class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
+                                    ></select>
+                                    <div
+                                        id="next-activity-action-group"
+                                        class="w-full sm:w-auto"
+                                    ></div>
+                                </div>
+                            </div>
+                            <div
+                                id="timer-action-group"
+                                class="flex flex-col gap-3 sm:flex-row sm:justify-end"
+                            >
+                                <button
+                                    type="button"
+                                    id="timer-stop-btn"
+                                    class="shrink-0 bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center text-sm sm:text-base"
+                                >
+                                    <i class="fa-solid fa-stop mr-2"></i>Stop
+                                </button>
                             </div>
                         </div>
-                        <div id="timer-action-group" class="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                            <button
-                                type="button"
-                                id="timer-stop-btn"
-                                class="shrink-0 bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg w-full sm:w-auto font-normal text-white transition-all duration-300 flex items-center justify-center text-sm sm:text-base"
+                        <span id="overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
+                    </form>
+
+                    <!-- Scheduled Tasks List -->
+                    <div id="scheduled-tasks-container" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
+                        <div class="flex justify-between items-center mb-2 sm:mb-3">
+                            <h3
+                                class="text-lg sm:text-xl font-normal text-slate-200 pl-2 flex items-center"
                             >
-                                <i class="fa-solid fa-stop mr-2"></i>Stop
-                            </button>
+                                <i class="fa-solid fa-calendar-day mr-2 text-teal-400/75"></i
+                                >Today's Schedule
+                            </h3>
+                        </div>
+                        <div id="scheduled-task-list" class="space-y-1.5">
+                            <!-- tasks will be generated here by JavaScript -->
                         </div>
                     </div>
-                    <span id="overlap-warning" class="block text-amber-400 text-xs mt-1"></span>
-                </form>
 
-                <!-- Scheduled Tasks List -->
-                <div id="scheduled-tasks-container" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
-                    <div class="flex justify-between items-center mb-2 sm:mb-3">
-                        <h3
-                            class="text-lg sm:text-xl font-normal text-teal-400 pl-2 flex items-center"
+                    <!-- Unscheduled Tasks Section -->
+                    <div id="unscheduled-tasks" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
+                        <div class="flex justify-between items-center mb-2 sm:mb-3">
+                            <h3
+                                class="text-lg sm:text-xl font-normal text-slate-200 pl-2 flex items-center"
+                            >
+                                <i class="fa-solid fa-list-ul mr-2 text-indigo-400/75"></i
+                                >Unscheduled Tasks
+                            </h3>
+                        </div>
+                        <div
+                            id="unscheduled-sort-control"
+                            class="mb-3 flex items-center justify-end gap-1"
+                            role="group"
+                            aria-label="Unscheduled order"
                         >
-                            <i class="fa-solid fa-calendar-day mr-2"></i>Today's Schedule
-                        </h3>
+                            <span class="mr-1 text-xs text-slate-400">Sort:</span>
+                            <button
+                                type="button"
+                                data-unscheduled-mode="manual"
+                                aria-pressed="false"
+                                class="rounded-md border border-transparent px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200 aria-pressed:bg-slate-700/70 aria-pressed:border-indigo-400/50 aria-pressed:text-slate-100"
+                            >
+                                My order
+                            </button>
+                            <button
+                                type="button"
+                                data-unscheduled-mode="priority"
+                                aria-pressed="true"
+                                class="rounded-md border border-transparent px-2.5 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200 aria-pressed:bg-slate-700/70 aria-pressed:border-indigo-400/50 aria-pressed:text-slate-100"
+                            >
+                                Priority
+                            </button>
+                        </div>
+                        <div id="unscheduled-order-status" class="sr-only" aria-live="polite"></div>
+                        <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
+                            <!-- tasks will be generated here by JavaScript -->
+                        </div>
                     </div>
-                    <div id="scheduled-task-list" class="space-y-1.5">
-                        <!-- tasks will be generated here by JavaScript -->
-                    </div>
-                </div>
 
-                <!-- Unscheduled Tasks Section -->
-                <div id="unscheduled-tasks" class="text-left mb-4 sm:mb-6 px-2 sm:px-0">
-                    <div class="flex justify-between items-center mb-2 sm:mb-3">
-                        <h3
-                            class="text-lg sm:text-xl font-normal text-indigo-400 pl-2 flex items-center"
-                        >
-                            <i class="fa-solid fa-list-ul mr-2"></i>Unscheduled Tasks
-                        </h3>
-                    </div>
                     <div
-                        id="unscheduled-sort-control"
-                        class="mb-3 flex items-center justify-end gap-1"
-                        role="group"
-                        aria-label="Unscheduled order"
+                        id="activities-container"
+                        class="hidden text-left mb-4 sm:mb-6 px-2 sm:px-0"
                     >
-                        <span class="mr-1 text-xs text-slate-400">Sort:</span>
-                        <button
-                            type="button"
-                            data-unscheduled-mode="manual"
-                            aria-pressed="false"
-                            class="rounded-md border border-slate-600 px-2.5 py-1 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 aria-pressed:border-indigo-400/50 aria-pressed:bg-indigo-400/10 aria-pressed:text-indigo-200"
-                        >
-                            My order
-                        </button>
-                        <button
-                            type="button"
-                            data-unscheduled-mode="priority"
-                            aria-pressed="true"
-                            class="rounded-md border border-slate-600 px-2.5 py-1 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 aria-pressed:border-indigo-400/50 aria-pressed:bg-indigo-400/10 aria-pressed:text-indigo-200"
-                        >
-                            Priority
-                        </button>
+                        <div class="flex justify-between items-center mb-2 sm:mb-3">
+                            <h3
+                                class="text-lg sm:text-xl font-normal text-slate-200 pl-2 flex items-center"
+                            >
+                                <i class="fa-regular fa-clock mr-2 text-sky-400/75"></i
+                                >Today's Activities
+                            </h3>
+                        </div>
+                        <div id="activity-list" class="grid grid-cols-1 gap-2">
+                            <!-- activities will be generated here by JavaScript -->
+                        </div>
                     </div>
-                    <div
-                        id="unscheduled-order-status"
-                        class="sr-only"
-                        aria-live="polite"
-                    ></div>
-                    <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
-                        <!-- tasks will be generated here by JavaScript -->
-                    </div>
-                </div>
-
-                <div
-                    id="activities-container"
-                    class="hidden text-left mb-4 sm:mb-6 px-2 sm:px-0"
-                >
-                    <div class="flex justify-between items-center mb-2 sm:mb-3">
-                        <h3 class="text-lg sm:text-xl font-normal text-sky-400 pl-2 flex items-center">
-                            <i class="fa-regular fa-clock mr-2"></i>Today's Activities
-                        </h3>
-                    </div>
-                    <div id="activity-list" class="grid grid-cols-1 gap-2">
-                        <!-- activities will be generated here by JavaScript -->
-                    </div>
-                </div>
-
                 </div>
 
                 <div id="insights-view" class="hidden text-left px-2 sm:px-0 space-y-4">
@@ -550,8 +633,10 @@
                     <div id="insights-summary"></div>
                     <div id="insights-timeline"></div>
                     <div id="insights-activity-log">
-                        <h3 class="text-lg sm:text-xl font-normal text-sky-400 pl-2 flex items-center">
-                            <i class="fa-regular fa-clock mr-2"></i>Activity Log
+                        <h3
+                            class="text-lg sm:text-xl font-normal text-slate-200 pl-2 flex items-center"
+                        >
+                            <i class="fa-regular fa-clock mr-2 text-sky-400/75"></i>Activity Log
                         </h3>
                         <div id="insights-activity-list" class="grid grid-cols-1 gap-2"></div>
                     </div>
@@ -618,15 +703,15 @@
                         </div>
                     </div>
                 </div>
-                <footer class="text-sm pt-6 pb-4 text-slate-500">
-                    © 2023-2025 R-F Incorporated.
+                <footer class="text-sm pt-6 pb-4 text-slate-400 sm:text-slate-500">
+                    © 2023-<span id="copyright-year">2026</span> R-F Incorporated.
                 </footer>
                 <div
                     id="settings-modal"
                     class="hidden fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50"
                 >
                     <div
-                        class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full mx-4 max-h-[80vh] overflow-hidden"
+                        class="bg-slate-800 border border-slate-700 p-4 sm:p-6 rounded-lg max-w-md w-full mx-3 sm:mx-4 max-h-[80vh] overflow-hidden"
                     >
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-xl font-normal text-slate-200 flex items-center gap-2">
@@ -636,6 +721,7 @@
                                 id="close-settings-modal"
                                 type="button"
                                 class="text-slate-400 hover:text-slate-200 p-1"
+                                aria-label="Close settings"
                             >
                                 <i class="fa-solid fa-xmark text-xl"></i>
                             </button>
@@ -654,7 +740,7 @@
         >
             <div class="bg-slate-800 border border-slate-700 p-6 rounded-lg max-w-md w-full">
                 <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-xl font-normal text-indigo-400">Schedule Task</h3>
+                    <h3 class="text-xl font-normal text-teal-400">Schedule Task</h3>
                     <button
                         id="close-schedule-modal"
                         class="text-slate-400 hover:text-slate-200 p-1"
@@ -672,19 +758,18 @@
                     <div class="space-y-4">
                         <label class="flex flex-col space-y-2">
                             <span class="text-slate-400 flex items-center">
-                                <i class="fa-regular fa-clock text-indigo-400/75 mr-2"></i>Start
-                                Time
+                                <i class="fa-regular fa-clock text-teal-400/75 mr-2"></i>Start Time
                             </span>
                             <input
                                 type="time"
                                 name="modal-start-time"
-                                class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all"
+                                class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-teal-400/50 focus:outline-none transition-all"
                             />
                         </label>
 
                         <div class="flex flex-col space-y-2">
                             <span class="text-slate-400 flex items-center">
-                                <i class="fa-regular fa-hourglass text-indigo-400/75 mr-2"></i
+                                <i class="fa-regular fa-hourglass text-teal-400/75 mr-2"></i
                                 >Duration
                             </span>
                             <div class="relative">
@@ -695,7 +780,7 @@
                                             name="modal-duration-hours"
                                             placeholder="HH"
                                             min="0"
-                                            class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all"
+                                            class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-teal-400/50 focus:outline-none transition-all"
                                         />
                                     </div>
                                     <span class="text-slate-400 text-lg">:</span>
@@ -706,20 +791,20 @@
                                             placeholder="MM"
                                             min="0"
                                             max="59"
-                                            class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-indigo-400/50 focus:outline-none transition-all"
+                                            class="bg-slate-700 p-3 rounded-lg w-full border border-slate-600 focus:border-teal-400/50 focus:outline-none transition-all"
                                         />
                                     </div>
                                 </div>
                                 <span
                                     id="modal-end-time-hint"
-                                    class="absolute top-full mt-0.5 right-0 text-xs text-indigo-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"
+                                    class="absolute top-full mt-0.5 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"
                                 ></span>
                             </div>
                         </div>
 
                         <div class="pt-2">
                             <div class="text-slate-400 mb-2 flex items-center">
-                                <i class="fa-solid fa-circle-info text-blue-300/75 mr-2"></i
+                                <i class="fa-solid fa-circle-info text-teal-300/75 mr-2"></i
                                 >Estimated Duration:
                                 <span id="schedule-modal-duration" class="ml-2 text-slate-200"
                                     >1 h 30 m</span
@@ -749,7 +834,7 @@
                         <button
                             type="submit"
                             id="schedule-modal-submit-btn"
-                            class="bg-gradient-to-r from-indigo-500/90 to-indigo-400/90 hover:from-indigo-400/90 hover:to-indigo-300/90 px-5 py-2 rounded-lg text-white font-normal transition-all duration-300 flex items-center"
+                            class="bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40 px-5 py-2 rounded-lg font-normal transition-all duration-300 flex items-center"
                         >
                             <i class="fa-regular fa-calendar-check mr-2"></i>Schedule
                         </button>
@@ -901,7 +986,7 @@
                         <button
                             id="save-activity-edit-modal"
                             type="submit"
-                            class="bg-gradient-to-r from-sky-500 to-sky-400 hover:from-sky-400 hover:to-sky-300 px-5 py-2 rounded-lg text-white font-normal transition-colors"
+                            class="bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40 px-5 py-2 rounded-lg font-normal transition-colors"
                         >
                             Save
                         </button>

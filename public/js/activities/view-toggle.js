@@ -1,4 +1,9 @@
-const ACTIVE_BUTTON_CLASSES = ['bg-teal-500/20', 'text-teal-200', 'border', 'border-teal-400/40'];
+const ACTIVE_BUTTON_CLASSES = [
+    'bg-slate-700/70',
+    'text-violet-200',
+    'border',
+    'border-violet-400/40'
+];
 const INACTIVE_BUTTON_CLASSES = ['text-slate-400', 'hover:text-slate-200'];
 
 let activeView = 'tasks';

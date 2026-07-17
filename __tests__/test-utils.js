@@ -86,7 +86,13 @@ function setupDOM() {
           </select>
           <input type="number" name="est-duration" placeholder="Est. minutes" />
         </div>
-        <button type="submit" id="add-task-btn">Add Task</button>
+        <button
+          type="submit"
+          id="add-task-btn"
+          class="bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40"
+        >
+          Add Task
+        </button>
         </div>
         <div id="timer-display" class="hidden">
           <input id="timer-description" />

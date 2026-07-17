@@ -288,6 +288,7 @@ function handleDocumentClick(event) {
 }
 
 function renderView(view) {
+    state.controls.classList.toggle('hidden', view.tasks.length === 0);
     state.controls.querySelectorAll('[data-unscheduled-mode]').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.unscheduledMode === state.mode));
     });

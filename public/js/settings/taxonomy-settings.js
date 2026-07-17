@@ -28,13 +28,13 @@ export function resetTaxonomySettingsViewState() {
 
 export function renderTaxonomyManagementContent() {
     return `
-        <section class="space-y-3">
-            <div class="flex items-center justify-between">
-                <div>
+        <section data-taxonomy-section="groups" class="space-y-3 text-left">
+            <div class="flex items-start justify-between gap-3 text-left">
+                <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
-                    <p class="text-xs text-slate-400">Standalone selectable groups and their color families.</p>
+                    <p class="text-xs text-slate-400">Top-level task categories.</p>
                 </div>
-                <button id="add-group-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-group-btn" type="button" aria-label="Add group" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
@@ -44,17 +44,17 @@ export function renderTaxonomyManagementContent() {
             ${renderAddGroupForm()}
         </section>
 
-        <section class="space-y-3">
-            <div class="flex items-center justify-between">
-                <div>
+        <section data-taxonomy-section="categories" class="space-y-3 text-left">
+            <div class="flex items-start justify-between gap-3 text-left">
+                <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
-                    <p class="text-xs text-slate-400">Child categories linked to a parent group family.</p>
+                    <p class="text-xs text-slate-400">Optional categories within a group.</p>
                 </div>
-                <button id="add-category-btn" type="button" class="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-1 transition-colors">
+                <button id="add-category-btn" type="button" aria-label="Add category" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
                 </button>
             </div>
-            <div id="categories-list" class="space-y-3">
+            <div id="categories-list" class="space-y-5">
                 ${renderCategoriesList()}
             </div>
             ${renderAddCategoryForm()}
@@ -108,20 +108,26 @@ function renderGroupsList() {
                 return renderGroupEditor(group);
             }
 
+            const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+
             return `
                 <div data-group-key="${escapeHtml(group.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
                     <div class="flex items-center gap-3 min-w-0">
-                        <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${group.color}"></span>
-                        <div class="min-w-0">
-                            <div class="text-sm text-slate-200">${escapeHtml(group.label)}</div>
-                            <div class="text-xs text-slate-400">${escapeHtml(group.key)} · ${escapeHtml(group.colorFamily)}</div>
-                        </div>
+                        <span
+                            data-group-color-dot
+                            role="img"
+                            aria-label="${escapeAttribute(colorFamilyLabel)} group color"
+                            title="${escapeAttribute(colorFamilyLabel)}"
+                            class="w-3 h-3 rounded-full shrink-0"
+                            style="background-color: ${group.color}"
+                        ></span>
+                        <div class="min-w-0 text-sm text-slate-200">${escapeHtml(group.label)}</div>
                     </div>
-                    <div class="flex items-center gap-1">
-                        <button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}">
+                    <div class="flex shrink-0 items-center gap-1">
+                        <button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Edit ${escapeAttribute(group.label)} group">
                             <i class="fa-solid fa-pen"></i>
                         </button>
-                        <button type="button" class="btn-delete-group text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(group.key)}">
+                        <button type="button" class="btn-delete-group text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Delete ${escapeAttribute(group.label)} group">
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
@@ -141,21 +147,21 @@ function renderGroupEditor(group) {
                     type="text"
                     name="edit-group-label"
                     value="${escapeAttribute(group.label)}"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
-                <label class="text-xs text-slate-400" for="edit-group-family-${escapeHtml(group.key)}">Color family</label>
+                <label class="text-xs text-slate-400" for="edit-group-family-${escapeHtml(group.key)}">Group color</label>
                 <select
                     id="edit-group-family-${escapeHtml(group.key)}"
                     name="edit-group-family"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     ${renderColorFamilyOptions(group.colorFamily)}
                 </select>
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-group bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -172,21 +178,21 @@ function renderAddGroupForm() {
                     type="text"
                     name="group-label"
                     placeholder="Group name"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
-                <label class="text-xs text-slate-400" for="group-family">Color family</label>
+                <label class="text-xs text-slate-400" for="group-family">Group color</label>
                 <select
                     id="group-family"
                     name="group-family"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     ${renderColorFamilyOptions('blue')}
                 </select>
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" id="cancel-add-group" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -208,9 +214,19 @@ function renderCategoriesList() {
                 return '';
             }
 
+            const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+
             return `
-                <div class="space-y-2">
-                    <div class="text-xs uppercase tracking-wide text-slate-500">${escapeHtml(group.label)}</div>
+                <div data-category-group-key="${escapeHtml(group.key)}" class="space-y-2">
+                    <div data-category-group-heading class="flex min-w-0 items-center gap-2 px-1 text-left">
+                        <div class="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-300">
+                            <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: ${group.color}" aria-hidden="true"></span>
+                            <span class="truncate">${escapeHtml(group.label)}</span>
+                        </div>
+                        <span data-category-color-default class="min-w-0 truncate text-[10px] font-normal leading-none text-slate-500">
+                            ${escapeHtml(colorFamilyLabel)} tones by default
+                        </span>
+                    </div>
                     <div class="space-y-2">
                         ${childCategories.map((category) => renderCategoryRow(category, group)).join('')}
                     </div>
@@ -223,29 +239,37 @@ function renderCategoriesList() {
 
 function renderCategoryRow(category, group) {
     if (editingCategoryKey === category.key) {
-        return renderCategoryEditor(category);
+        return renderCategoryEditor(category, group);
     }
 
-    const linkState = category.isLinkedToGroupFamily ? 'Linked' : 'Unlinked';
-    const linkTheme = category.isLinkedToGroupFamily
-        ? 'text-teal-300 border-teal-500/30 bg-teal-500/10'
-        : 'text-amber-300 border-amber-500/30 bg-amber-500/10';
+    const colorFamilyLabel = getColorFamilyLabel(group.colorFamily);
+    const colorDotLabel = category.isLinkedToGroupFamily
+        ? `${colorFamilyLabel} tone`
+        : `Custom color ${category.color}`;
+    const customColorLabel = category.isLinkedToGroupFamily
+        ? ''
+        : `<span data-custom-color-label class="shrink-0 text-[10px] font-normal leading-none text-slate-500">custom color</span>`;
 
     return `
         <div data-category-key="${escapeHtml(category.key)}" class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/40 text-left">
             <div class="flex items-center gap-3 min-w-0">
-                <span class="category-dot w-3 h-3 rounded-full shrink-0" style="background-color: ${category.color}"></span>
-                <div class="min-w-0">
-                    <div class="text-sm text-slate-200">${escapeHtml(category.label)}</div>
-                    <div class="text-xs text-slate-400">${escapeHtml(group.label)} · ${escapeHtml(category.key)}</div>
+                <span
+                    class="category-dot w-3 h-3 rounded-full shrink-0"
+                    style="background-color: ${category.color}"
+                    role="img"
+                    aria-label="${escapeAttribute(colorDotLabel)}"
+                    title="${escapeAttribute(colorDotLabel)}"
+                ></span>
+                <div class="flex min-w-0 items-center gap-2">
+                    <div class="truncate text-sm text-slate-200">${escapeHtml(category.label)}</div>
+                    ${customColorLabel}
                 </div>
             </div>
-            <div class="flex items-center gap-2">
-                <span class="text-[11px] px-2 py-0.5 rounded-full border ${linkTheme}">${linkState}</span>
-                <button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}">
+            <div class="flex shrink-0 items-center gap-1">
+                <button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Edit ${escapeAttribute(category.label)} category">
                     <i class="fa-solid fa-pen"></i>
                 </button>
-                <button type="button" class="btn-delete-category text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(category.key)}">
+                <button type="button" class="btn-delete-category text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Delete ${escapeAttribute(category.label)} category">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
@@ -253,7 +277,10 @@ function renderCategoryRow(category, group) {
     `;
 }
 
-function renderCategoryEditor(category) {
+function renderCategoryEditor(category, group) {
+    const colorMode = category.isLinkedToGroupFamily ? 'follow' : 'custom';
+    const toneLabel = getColorFamilyLabel(group.colorFamily).toLowerCase();
+
     return `
         <form class="edit-category-form space-y-3 py-3 px-3 rounded-lg border border-slate-600 bg-slate-700/30" data-key="${escapeHtml(category.key)}">
             <div class="space-y-1">
@@ -263,21 +290,33 @@ function renderCategoryEditor(category) {
                     type="text"
                     name="edit-category-label"
                     value="${escapeAttribute(category.label)}"
-                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
             </div>
             <div class="space-y-1">
-                <label class="text-xs text-slate-400" for="edit-category-color-${escapeHtml(category.key)}">Concrete color</label>
+                <label class="text-xs text-slate-400" for="edit-category-color-mode-${escapeHtml(category.key)}">Category color</label>
+                <select
+                    id="edit-category-color-mode-${escapeHtml(category.key)}"
+                    name="edit-category-color-mode"
+                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
+                >
+                    <option value="follow" ${colorMode === 'follow' ? 'selected' : ''}>Inherit ${escapeHtml(toneLabel)} tones from ${escapeHtml(group.label)}</option>
+                    <option value="custom" ${colorMode === 'custom' ? 'selected' : ''}>Custom color</option>
+                </select>
+            </div>
+            <div data-custom-color-field class="space-y-1 ${colorMode === 'custom' ? '' : 'hidden'}">
+                <label class="text-xs text-slate-400" for="edit-category-color-${escapeHtml(category.key)}">Custom color</label>
                 <input
                     id="edit-category-color-${escapeHtml(category.key)}"
                     type="color"
                     name="edit-category-color"
                     value="${category.color}"
+                    ${colorMode === 'custom' ? '' : 'disabled'}
                     class="h-10 w-full rounded cursor-pointer bg-transparent border border-slate-600"
                 />
             </div>
             <div class="flex gap-2 pt-1">
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-category bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -294,7 +333,7 @@ function renderAddCategoryForm() {
                     id="parent-group"
                     name="parent-group"
                     aria-label="Parent group"
-                    class="bg-slate-700 p-2 rounded-lg min-w-[9rem] flex-1 border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[9rem] flex-1 border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 >
                     <option value="">Group</option>
                     ${groups
@@ -306,7 +345,7 @@ function renderAddCategoryForm() {
                 </select>
                 <span
                     data-category-path-separator
-                    class="text-slate-500 text-lg leading-none shrink-0"
+                    class="text-slate-400 sm:text-slate-500 text-lg leading-none shrink-0"
                     aria-hidden="true"
                 >/</span>
                 <input
@@ -315,9 +354,9 @@ function renderAddCategoryForm() {
                     name="category-label"
                     aria-label="Category name"
                     placeholder="Category name"
-                    class="bg-slate-700 p-2 rounded-lg min-w-[11rem] flex-[2] border border-slate-600 focus:border-teal-400 focus:outline-none text-sm"
+                    class="bg-slate-700 p-2 rounded-lg min-w-[11rem] flex-[2] border border-slate-600 focus:border-violet-400 focus:outline-none text-sm"
                 />
-                <button type="submit" class="bg-teal-500 hover:bg-teal-400 text-white px-3 py-2 rounded-lg text-sm transition-colors">Save</button>
+                <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-2 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" id="cancel-add-category" class="bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-2 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
         </form>
@@ -517,13 +556,18 @@ function bindCategoryEvents(options) {
     });
 
     document.querySelectorAll('.edit-category-form').forEach((form) => {
+        const colorModeSelect = form.querySelector('[name="edit-category-color-mode"]');
+        colorModeSelect?.addEventListener('change', () => syncCategoryColorControls(form));
+        syncCategoryColorControls(form);
+
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
 
             const key = form.dataset.key;
             const formData = new FormData(form);
             const label = formData.get('edit-category-label')?.toString().trim();
-            const color = formData.get('edit-category-color')?.toString();
+            const colorMode = formData.get('edit-category-color-mode')?.toString() || 'follow';
+            const color = form.querySelector('[name="edit-category-color"]')?.value;
 
             if (!key) {
                 return;
@@ -536,7 +580,11 @@ function bindCategoryEvents(options) {
 
             try {
                 await applyAndRefresh(async () => {
-                    await updateCategory(key, { label, color });
+                    const updates =
+                        colorMode === 'follow'
+                            ? { label, linkToGroupFamily: true }
+                            : { label, color };
+                    await updateCategory(key, updates);
                     editingCategoryKey = null;
                 }, options);
             } catch (error) {
@@ -551,6 +599,18 @@ function bindCategoryEvents(options) {
             refreshTaxonomySettingsSection(options);
         });
     });
+}
+
+function syncCategoryColorControls(form) {
+    const colorMode = form.querySelector('[name="edit-category-color-mode"]')?.value;
+    const customColorField = form.querySelector('[data-custom-color-field]');
+    const customColorInput = form.querySelector('[name="edit-category-color"]');
+    const usesCustomColor = colorMode === 'custom';
+
+    customColorField?.classList.toggle('hidden', !usesCustomColor);
+    if (customColorInput) {
+        customColorInput.disabled = !usesCustomColor;
+    }
 }
 
 async function applyAndRefresh(asyncOperation, options) {
@@ -570,7 +630,7 @@ function captureTaxonomyDraftState() {
         ),
         categoryEdit: captureFormDraftState(
             `.edit-category-form[data-key="${editingCategoryKey}"]`,
-            ['edit-category-label', 'edit-category-color'],
+            ['edit-category-label', 'edit-category-color-mode', 'edit-category-color'],
             true
         )
     };

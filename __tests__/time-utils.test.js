@@ -383,8 +383,8 @@ describe('Time Utility Functions', () => {
             expect(getThemeForTask({ type: 'activity' })).toBe('sky');
         });
 
-        test('getThemeForTask returns indigo for null task', () => {
-            expect(getThemeForTask(null)).toBe('indigo');
+        test('getThemeForTask returns slate for null task', () => {
+            expect(getThemeForTask(null)).toBe('slate');
         });
 
         test('getThemeForTaskType returns teal for scheduled type', () => {

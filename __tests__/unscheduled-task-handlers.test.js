@@ -258,7 +258,7 @@ describe('Unscheduled Task Handlers', () => {
         test('shows alert when asked to edit a missing unscheduled task', () => {
             handleEditUnscheduledTask('missing-unsched');
 
-            expect(showAlert).toHaveBeenCalledWith('Could not find the task to edit.', 'teal');
+            expect(showAlert).toHaveBeenCalledWith('Could not find the task to edit.', 'rose');
         });
     });
 
@@ -303,6 +303,19 @@ describe('Unscheduled Task Handlers', () => {
                 task: expect.objectContaining({ id: 'unsched-task-id', type: 'unscheduled' })
             });
             expect(refreshUI).not.toHaveBeenCalled();
+        });
+
+        test('uses the error theme when deletion fails', async () => {
+            jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
+                success: false,
+                requiresConfirmation: false,
+                reason: 'Could not delete task.'
+            });
+
+            await handleDeleteUnscheduledTask('unsched-task-id');
+
+            expect(showAlert).toHaveBeenCalledWith('Could not delete task.', 'rose');
+            expect(refreshUI).toHaveBeenCalled();
         });
     });
 

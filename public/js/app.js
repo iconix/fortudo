@@ -31,7 +31,8 @@ import {
     initializePageEventListeners,
     refreshStartTimeField,
     initializeTaskTypeToggle,
-    startRealTimeClock
+    startRealTimeClock,
+    renderCopyrightYear
 } from './dom-renderer.js';
 import {
     loadActivitiesState,
@@ -275,10 +276,10 @@ async function initAndBootApp(roomCode) {
                     overlapButtonHTML:
                         '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule',
                     overlapButtonClasses: addTaskBtn.className
-                        .replace(/from-teal-500/g, 'from-amber-500')
-                        .replace(/to-teal-400/g, 'to-amber-400')
-                        .replace(/hover:from-teal-400/g, 'hover:from-amber-400')
-                        .replace(/hover:to-teal-300/g, 'hover:to-amber-300')
+                        .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
+                        .replace(/border-teal-400\/60/g, 'border-amber-400/60')
+                        .replace(/text-teal-200/g, 'text-amber-200')
+                        .replace(/hover:bg-teal-500\/40/g, 'hover:bg-amber-500/40')
                 }
             );
         }
@@ -353,10 +354,13 @@ async function initAndBootApp(roomCode) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    renderCopyrightYear();
+
     registerServiceWorker({
         onUpdateAvailable: (activate) => {
             showToast('New version available', {
-                theme: 'teal',
+                theme: 'violet',
+                dedupeKey: 'app-update',
                 action: { label: 'Reload', onClick: activate }
             });
         }

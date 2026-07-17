@@ -57,6 +57,40 @@ describe('toast-manager', () => {
         expect(toast.className).toContain('sky');
     });
 
+    test.each([
+        ['violet', 'border-violet-400/60', 'text-violet-200'],
+        ['teal', 'border-teal-400/60', 'text-teal-200'],
+        ['indigo', 'border-indigo-400/60', 'text-indigo-200'],
+        ['sky', 'border-sky-400/60', 'text-sky-200'],
+        ['slate', 'border-slate-500/60', 'text-slate-200'],
+        ['default', 'border-slate-500/60', 'text-slate-200']
+    ])('%s toasts use a quiet slate surface with semantic framing', (theme, border, text) => {
+        showToast('Informational message', { theme });
+        const toast = getToastContainer().children[0];
+
+        expect(toast.className).toContain('bg-slate-800/95');
+        expect(toast.className).toContain(border);
+        expect(toast.className).toContain(text);
+        expect(toast.className).not.toContain(`bg-${theme}-900/90`);
+    });
+
+    test.each(['amber', 'rose'])('%s toasts retain a denser urgent surface', (theme) => {
+        showToast('Urgent message', { theme });
+        const toast = getToastContainer().children[0];
+
+        expect(toast.className).toContain(`bg-${theme}-900/90`);
+        expect(toast.className).toContain(`border-${theme}-700`);
+        expect(toast.className).toContain(`text-${theme}-200`);
+    });
+
+    test('toast container uses mobile gutters and returns to top-right alignment on larger screens', () => {
+        const container = getToastContainer();
+
+        expect(container.className).toContain('left-4');
+        expect(container.className).toContain('right-4');
+        expect(container.className).toContain('sm:left-auto');
+    });
+
     test('multiple toasts stack in the container', () => {
         showToast('First');
         showToast('Second');
