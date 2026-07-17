@@ -46,14 +46,14 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).not.toContain('Fortu-do');
     });
 
-    test('uses violet for primary actions and active-view accents', () => {
-        const primaryClasses =
+    test('reserves violet primary styling for global actions and active-view accents', () => {
+        const globalPrimaryClasses =
             'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40';
         const domRenderer = read('public/js/dom-renderer.js');
         const viewToggle = read('public/js/activities/view-toggle.js');
 
-        expect(indexHtml).toContain(primaryClasses);
-        expect(domRenderer).toContain(primaryClasses);
+        expect(indexHtml).toContain(globalPrimaryClasses);
+        expect(domRenderer).not.toContain(globalPrimaryClasses);
         expect(indexHtml).toContain(
             'bg-slate-700/70 px-3 py-1.5 text-sm text-violet-200 border border-violet-400/40'
         );
@@ -70,6 +70,7 @@ describe('Fortudo brand system', () => {
         expect(appStyling).not.toMatch(/bg-gradient-to-r/);
         [
             'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
+            'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40',
             'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40',
             'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40',
             'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40',
@@ -111,13 +112,61 @@ describe('Fortudo brand system', () => {
         );
     });
 
-    test('connects each selected task type to its semantic color', () => {
-        expect(indexHtml).toContain('peer-checked:bg-teal-500/20');
-        expect(indexHtml).toContain('peer-checked:border-teal-400/40');
-        expect(indexHtml).toContain('peer-checked:bg-slate-500/20');
-        expect(indexHtml).toContain('peer-checked:border-slate-400/40');
-        expect(indexHtml).toContain('peer-checked:bg-sky-500/20');
-        expect(indexHtml).toContain('peer-checked:border-sky-400/40');
+    test('uses restrained type accents with contextual form actions and icons', () => {
+        const domRenderer = read('public/js/dom-renderer.js');
+
+        expect(indexHtml.match(/peer-checked:bg-slate-700\/70/g)).toHaveLength(3);
+        expect(indexHtml).toContain('peer-checked:border-teal-400/50');
+        expect(indexHtml).toContain('peer-checked:border-indigo-400/50');
+        expect(indexHtml).toContain('peer-checked:border-sky-400/50');
+        expect(indexHtml.match(/peer-checked:text-slate-100/g)).toHaveLength(3);
+
+        expect(indexHtml).toMatch(
+            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-teal-400\/75[\s\S]*?Today's Schedule/
+        );
+        expect(indexHtml).toMatch(
+            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-indigo-400\/75[\s\S]*?Unscheduled Tasks/
+        );
+        expect(indexHtml).toMatch(
+            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-sky-400\/75[\s\S]*?Today's Activities/
+        );
+        expect(indexHtml).toMatch(
+            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-sky-400\/75[\s\S]*?Activity Log/
+        );
+        expect(indexHtml.match(/task-form-time-icon[^"]*text-teal-400\/75/g)).toHaveLength(2);
+        expect(indexHtml).toMatch(/fa-signal text-indigo-400\/75 mr-1\.5/);
+        expect(indexHtml).toMatch(/fa-hourglass text-indigo-400\/75 mr-1\.5/);
+        expect(domRenderer).toContain(
+            'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40'
+        );
+        expect(domRenderer).toContain(
+            'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40'
+        );
+        expect(domRenderer).toContain(
+            'bg-slate-700 hover:bg-slate-600 text-slate-100 border border-sky-400/30'
+        );
+        expect(indexHtml).toMatch(
+            /id="start-timer-btn"[\s\S]*?bg-sky-500\/30[\s\S]*?border-sky-400\/60[\s\S]*?text-sky-200/
+        );
+        expect(indexHtml).toMatch(/id="start-timer-btn"[\s\S]*?px-5 py-2\.5/);
+        expect(domRenderer).toContain(
+            "submitButtonSizeClasses: 'px-4 py-2 text-sm sm:px-5 sm:py-2.5 sm:text-base'"
+        );
+        expect(indexHtml.indexOf('id="start-timer-btn"')).toBeLessThan(
+            indexHtml.indexOf('id="add-task-btn"')
+        );
+        expect(domRenderer).toContain(
+            'border border-slate-600 focus:border-slate-400 focus:outline-none'
+        );
+        expect(domRenderer).not.toContain('INPUT_FOCUS_CLASS_BY_THEME');
+        expect(domRenderer).not.toContain('setInputTheme');
+        [
+            /<input[^>]*name="description"[^>]*class="[^"]*focus:border-slate-400/,
+            /<select[^>]*id="category-select"[^>]*class="[^"]*focus:border-slate-400/,
+            /<input[^>]*name="start-time"[^>]*class="[^"]*focus:border-slate-400/,
+            /<input[^>]*name="duration-hours"[^>]*class="[^"]*focus:border-slate-400/,
+            /<input[^>]*name="est-duration-hours"[^>]*class="[^"]*focus:border-slate-400/
+        ].forEach((neutralFocusPattern) => expect(indexHtml).toMatch(neutralFocusPattern));
     });
 
     test('keeps all task-type controls on one compact mobile row', () => {
@@ -127,6 +176,27 @@ describe('Fortudo brand system', () => {
         expect(indexHtml.match(/min-w-0 flex-1 sm:flex-none/g)).toHaveLength(3);
         expect(indexHtml.match(/w-full justify-center[^"]*px-1 sm:px-3/g)).toHaveLength(3);
         expect(indexHtml.match(/mr-0\.5 sm:mr-1/g)).toHaveLength(3);
+    });
+
+    test('keeps Unscheduled sort controls quieter than its primary action', () => {
+        const restrainedSortClasses =
+            'aria-pressed:bg-slate-700/70 aria-pressed:border-indigo-400/50 aria-pressed:text-slate-100';
+
+        expect(indexHtml.match(new RegExp(restrainedSortClasses, 'g'))).toHaveLength(2);
+        expect(indexHtml).not.toContain('aria-pressed:bg-indigo-400/10');
+        expect(indexHtml).not.toContain('aria-pressed:text-indigo-200');
+    });
+
+    test('uses one compact neutral treatment for empty task and activity lists', () => {
+        const emptyStateClasses = 'px-2 py-2 text-sm text-slate-400 sm:text-slate-500';
+        const scheduledRenderer = read('public/js/tasks/scheduled-renderer.js');
+        const unscheduledRenderer = read('public/js/tasks/unscheduled-renderer.js');
+        const activityRenderer = read('public/js/activities/renderer.js');
+
+        [scheduledRenderer, unscheduledRenderer, activityRenderer].forEach((renderer) => {
+            expect(renderer).toContain(emptyStateClasses);
+            expect(renderer).not.toMatch(/empty[\s\S]{0,300}italic/i);
+        });
     });
 
     test('renders the branded Jelly dedication heart without orphaning it', () => {
@@ -165,21 +235,28 @@ describe('Fortudo brand system', () => {
             /<footer class="text-sm pt-6 pb-4 text-slate-400 sm:text-slate-500">/
         );
         expect(roomRenderer).toContain("color: 'text-slate-400 sm:text-slate-500'");
-        expect(activityRenderer).toContain(
-            'py-6 text-slate-400 sm:text-slate-500 text-sm italic px-2'
-        );
+        expect(activityRenderer).toContain('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
         expect(insightsRenderer).toContain('text-xs text-slate-400 sm:text-slate-500');
     });
 
-    test('gives the unscheduled section the unified crisp slate treatment', () => {
-        expect(indexHtml).toMatch(
-            /text-lg sm:text-xl font-normal text-slate-300 pl-2 flex items-center[\s\S]*?Unscheduled Tasks/
-        );
+    test('gives Unscheduled a restrained indigo identity', () => {
+        const unscheduledRenderer = read('public/js/tasks/unscheduled-renderer.js');
+        const brandGuide = read('docs/BRAND.md');
+
+        expect(indexHtml).toContain('peer-focus-visible:ring-indigo-400');
+        expect(indexHtml).toContain('fa-solid fa-list-ul mr-0.5 sm:mr-1 text-indigo-400/75');
+        expect(unscheduledRenderer).toContain('border-l-indigo-400');
+        expect(unscheduledRenderer).toContain('fa-square text-indigo-400');
+        expect(unscheduledRenderer).toContain('text-indigo-400 hover:text-indigo-300');
+        expect(brandGuide).toMatch(/\| Indigo\s+\| Unscheduled work\s+\|/);
     });
 
-    test('retires indigo from visible app styling', () => {
+    test('reserves indigo for Unscheduled and retires fuchsia from app styling', () => {
         const publicJavaScript = readJavaScriptTree(path.join(repoRoot, 'public', 'js')).join('\n');
-        expect(`${indexHtml}\n${publicJavaScript}`).not.toMatch(/indigo-/);
+        const appStyling = `${indexHtml}\n${publicJavaScript}`;
+
+        expect(appStyling).toMatch(/indigo-/);
+        expect(appStyling).not.toMatch(/fuchsia-/);
     });
 
     test('uses the canonical semantic color families instead of near-neighbor aliases', () => {
@@ -216,6 +293,7 @@ describe('Fortudo brand system', () => {
             '\'<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>\''
         );
         expect(brandGuide).toMatch(/\| Emerald\s+\| Low priority; positive\/safe outcomes\s+\|/);
+        expect(brandGuide).toMatch(/\| Indigo\s+\| Unscheduled work\s+\|/);
         expect(brandGuide).toMatch(/\| Synced\s+\| Emerald \|/);
         expect(brandGuide).toContain('Category colors are a separate data-identity namespace');
         expect(brandGuide).toContain('Blue, Green, Orange, Red, Purple, and Gray');

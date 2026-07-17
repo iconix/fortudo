@@ -397,7 +397,7 @@ export function renderTasks(
 
     if (scheduledTasks.length === 0) {
         taskListElement.innerHTML =
-            '<p class="text-slate-500 text-sm italic px-2">No scheduled tasks yet. Add some using the form above or schedule a task from below!</p>';
+            '<p class="px-2 py-2 text-sm text-slate-400 sm:text-slate-500">Nothing scheduled for today.</p>';
         return updatedCallbacks;
     }
 

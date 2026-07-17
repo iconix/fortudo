@@ -375,8 +375,8 @@ describe('Time Utility Functions', () => {
             expect(getThemeForTask({ type: 'scheduled' })).toBe('teal');
         });
 
-        test('getThemeForTask returns slate for unscheduled task', () => {
-            expect(getThemeForTask({ type: 'unscheduled' })).toBe('slate');
+        test('getThemeForTask returns indigo for unscheduled task', () => {
+            expect(getThemeForTask({ type: 'unscheduled' })).toBe('indigo');
         });
 
         test('getThemeForTask returns sky for activity task', () => {
@@ -391,8 +391,8 @@ describe('Time Utility Functions', () => {
             expect(getThemeForTaskType('scheduled')).toBe('teal');
         });
 
-        test('getThemeForTaskType returns slate for unscheduled type', () => {
-            expect(getThemeForTaskType('unscheduled')).toBe('slate');
+        test('getThemeForTaskType returns indigo for unscheduled type', () => {
+            expect(getThemeForTaskType('unscheduled')).toBe('indigo');
         });
 
         test('getThemeForTaskType returns sky for activity type', () => {

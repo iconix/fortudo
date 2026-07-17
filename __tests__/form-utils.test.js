@@ -199,7 +199,7 @@ describe('Form Utils Tests', () => {
             expect(result).toBeNull();
             expect(showAlert).toHaveBeenCalledWith(
                 expect.stringContaining('valid numbers'),
-                'slate'
+                'indigo'
             );
         });
 
@@ -649,7 +649,7 @@ describe('Form Utils Tests', () => {
                 expect(result).toBeNull();
                 expect(showAlert).toHaveBeenCalledWith(
                     'Selected category is no longer available.',
-                    'slate'
+                    'indigo'
                 );
             });
 
@@ -664,7 +664,7 @@ describe('Form Utils Tests', () => {
                 expect(result).toBeNull();
                 expect(showAlert).toHaveBeenCalledWith(
                     'Task description cannot be empty.',
-                    'slate'
+                    'indigo'
                 );
             });
 

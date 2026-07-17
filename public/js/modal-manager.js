@@ -53,6 +53,7 @@ function setModalTheme(modal, title, button, theme = 'violet') {
         violet: 'text-violet-400',
         slate: 'text-slate-300',
         teal: 'text-teal-400',
+        indigo: 'text-indigo-400',
         sky: 'text-sky-400',
         amber: 'text-amber-400',
         rose: 'text-rose-400'
@@ -61,6 +62,7 @@ function setModalTheme(modal, title, button, theme = 'violet') {
         violet: 'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40',
         slate: 'bg-slate-500/30 border border-slate-400/60 text-slate-200 hover:bg-slate-500/40',
         teal: 'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
+        indigo: 'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40',
         sky: 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40',
         amber: 'bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40',
         rose: 'bg-rose-500/30 border border-rose-400/60 text-rose-200 hover:bg-rose-500/40'

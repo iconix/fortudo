@@ -355,14 +355,11 @@ export function renderActivities(activities, container, options = {}) {
 
     if (!activities || activities.length === 0) {
         const emptyStateMessage = summaryHtml
-            ? 'No completed activities logged today yet.'
-            : 'No activities tracked today. Log one or complete a scheduled task.';
+            ? 'No completed activities yet.'
+            : 'No activity logged today.';
         targetContainer.innerHTML = `
             ${summaryHtml}
-            <div class="py-6 text-slate-400 sm:text-slate-500 text-sm italic px-2">
-                <i class="fa-regular fa-clock mr-1"></i>
-                ${emptyStateMessage}
-            </div>`;
+            <div class="px-2 py-2 text-sm text-slate-400 sm:text-slate-500">${emptyStateMessage}</div>`;
         return;
     }
 

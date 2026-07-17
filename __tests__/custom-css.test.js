@@ -42,15 +42,15 @@ describe('custom CSS polish hooks', () => {
         expect(draggingRule).toContain('transition: none;');
         expect(draggingRule).toContain('transform: translateY(-2px) scale(1.006);');
         expect(draggingRule).not.toContain('background:');
-        expect(draggingRule).toContain('outline: 2px solid rgb(203 213 225 / 0.85);');
+        expect(draggingRule).toContain('outline: 2px solid rgb(232 121 249 / 0.85);');
         expect(draggingRule).toContain('outline-offset: 0;');
         expect(draggingRule).toContain('box-shadow:');
         expect(draggingRule).toContain('z-index: 20;');
         expect(css).toMatch(
-            /\.unscheduled-task--dragging \.unscheduled-drag-handle\s*{[^}]*color: rgb\(226 232 240\);[^}]*background-color: rgb\(100 116 139 \/ 0\.22\);[^}]*box-shadow: inset 0 0 0 1px rgb\(203 213 225 \/ 0\.55\);[^}]*cursor: grabbing;/
+            /\.unscheduled-task--dragging \.unscheduled-drag-handle\s*{[^}]*color: rgb\(240 171 252\);[^}]*background-color: rgb\(217 70 239 \/ 0\.16\);[^}]*box-shadow: inset 0 0 0 1px rgb\(232 121 249 \/ 0\.5\);[^}]*cursor: grabbing;/
         );
         expect(css).toMatch(
-            /\.unscheduled-drag-placeholder\s*{[^}]*background-color: rgb\(203 213 225 \/ 0\.06\);[^}]*box-shadow: inset 0 0 0 1px rgb\(203 213 225 \/ 0\.3\);/
+            /\.unscheduled-drag-placeholder\s*{[^}]*background-color: rgb\(232 121 249 \/ 0\.06\);[^}]*box-shadow: inset 0 0 0 1px rgb\(232 121 249 \/ 0\.3\);/
         );
     });
 

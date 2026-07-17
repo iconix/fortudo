@@ -511,12 +511,21 @@ describe('Unscheduled list UI interface', () => {
     test('renders the empty state through the list seam', () => {
         renderWith(createOptions({ readView: jest.fn(() => view([])) }));
 
-        expect(document.getElementById('unscheduled-task-list').textContent).toContain(
-            'No unscheduled tasks yet'
+        const message = document.querySelector('#unscheduled-task-list p');
+        expect(message.textContent).toBe('Nothing waiting to be scheduled.');
+        expect(message.className).toBe('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
+        expect(document.getElementById('unscheduled-sort-control').classList).toContain('hidden');
+    });
+
+    test('shows sort controls when Unscheduled contains tasks', () => {
+        renderWith();
+
+        expect(document.getElementById('unscheduled-sort-control').classList).not.toContain(
+            'hidden'
         );
     });
 
-    test('keeps low priority emerald within the unified crisp unscheduled treatment', () => {
+    test('keeps low priority emerald within the indigo unscheduled treatment', () => {
         useManualMode();
         renderWith(
             createOptions({
@@ -531,13 +540,13 @@ describe('Unscheduled list UI interface', () => {
         const dragHandle = card.querySelector('.unscheduled-drag-handle');
         const moveCommand = card.querySelector('[data-move-kind="down"]');
 
-        expect(card.className).toContain('border-l-slate-300');
+        expect(card.className).toContain('border-l-indigo-400');
         expect(priorityBadge.className).toContain('bg-emerald-400');
         expect(priorityBadge.className).toContain('text-emerald-300');
-        expect(checkboxIcon.className).toContain('text-slate-300');
-        expect(actionTrigger.className).toContain('text-slate-300');
-        expect(dragHandle.className).toContain('focus:ring-slate-300');
-        expect(moveCommand.className).toContain('focus:ring-slate-300');
+        expect(checkboxIcon.className).toContain('text-indigo-400');
+        expect(actionTrigger.className).toContain('text-indigo-400');
+        expect(dragHandle.className).toContain('focus:ring-indigo-400');
+        expect(moveCommand.className).toContain('focus:ring-indigo-400');
     });
 
     test('passes the current running activity to card rendering', () => {

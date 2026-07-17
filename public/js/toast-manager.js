@@ -4,6 +4,7 @@ let container = null;
 const QUIET_TOAST_SURFACE = 'bg-slate-800/95';
 const THEME_CLASSES = {
     teal: `${QUIET_TOAST_SURFACE} border-teal-400/60 text-teal-200`,
+    indigo: `${QUIET_TOAST_SURFACE} border-indigo-400/60 text-indigo-200`,
     slate: `${QUIET_TOAST_SURFACE} border-slate-500/60 text-slate-200`,
     violet: `${QUIET_TOAST_SURFACE} border-violet-400/60 text-violet-200`,
     sky: `${QUIET_TOAST_SURFACE} border-sky-400/60 text-sky-200`,

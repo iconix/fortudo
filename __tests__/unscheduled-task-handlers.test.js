@@ -142,7 +142,7 @@ describe('Unscheduled Task Handlers', () => {
 
             expect(showAlert).toHaveBeenCalledWith(
                 'This task is already completed and cannot be scheduled.',
-                'slate'
+                'indigo'
             );
             expect(showScheduleModal).not.toHaveBeenCalled();
         });
@@ -194,7 +194,7 @@ describe('Unscheduled Task Handlers', () => {
             expect(handleStartTimer).not.toHaveBeenCalled();
             expect(showAlert).toHaveBeenCalledWith(
                 'This task is already completed and cannot be started as a timer.',
-                'slate'
+                'indigo'
             );
         });
 
@@ -346,7 +346,10 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleConfirmScheduleTask('unsched-overlap', '09:00', 30);
 
-            expect(showAlert).toHaveBeenCalledWith('Task not scheduled to avoid overlap.', 'slate');
+            expect(showAlert).toHaveBeenCalledWith(
+                'Task not scheduled to avoid overlap.',
+                'indigo'
+            );
             expect(refreshUI).toHaveBeenCalled();
         });
 
@@ -358,7 +361,7 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleConfirmScheduleTask('missing-unsched', '09:00', 30);
 
-            expect(showAlert).toHaveBeenCalledWith('Unscheduled task not found.', 'slate');
+            expect(showAlert).toHaveBeenCalledWith('Unscheduled task not found.', 'indigo');
             expect(refreshUI).toHaveBeenCalled();
         });
     });
@@ -420,7 +423,7 @@ describe('Unscheduled Task Handlers', () => {
 
             await handleSaveUnscheduledTaskEdit(task.id);
 
-            expect(showAlert).toHaveBeenCalledWith('Task description is required.', 'slate');
+            expect(showAlert).toHaveBeenCalledWith('Task description is required.', 'indigo');
             expect(onTaskEdited).not.toHaveBeenCalled();
         });
     });

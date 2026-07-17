@@ -92,11 +92,12 @@ describe('DOM Handler Interaction Tests', () => {
                                     <option value="high">High</option>
                                     <option value="low">Low</option>
                                 </select>
-                                <input type="number" name="est-duration" placeholder="Est. minutes" />
+                                <input type="number" name="est-duration-hours" placeholder="HH" />
+                                <input type="number" name="est-duration-minutes" placeholder="MM" />
                             </div>
                         </div>
+                        <button id="start-timer-btn" type="button" class="hidden bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40 px-5 py-2.5">Start Timer</button>
                         <button type="submit" id="add-task-btn">Add Task</button>
-                        <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
                     </div>
                 </form>
                 <div id="scheduled-task-list" class="task-list"></div>
@@ -1114,8 +1115,10 @@ describe('DOM Handler Interaction Tests', () => {
             const priorityInput = document.getElementById('priority-input');
             const startTimeInput = document.querySelector('input[name="start-time"]');
             const descriptionInput = document.querySelector('input[name="description"]');
-            const durationHoursInput = document.querySelector('input[name="duration-hours"]');
-            const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
+            const durationHoursInput = document.querySelector('input[name="est-duration-hours"]');
+            const durationMinutesInput = document.querySelector(
+                'input[name="est-duration-minutes"]'
+            );
             const addTaskButton = document.querySelector('#task-form button[type="submit"]');
 
             if (!(unscheduledRadio instanceof HTMLInputElement)) {
@@ -1129,10 +1132,14 @@ describe('DOM Handler Interaction Tests', () => {
             expect(priorityInput.classList.contains('hidden')).toBe(false);
             expect(startTimeInput.hasAttribute('required')).toBe(false);
             expect(addTaskButton.textContent).toContain('Add Task');
+            expect(addTaskButton.classList.contains('bg-indigo-500/30')).toBe(true);
+            expect(addTaskButton.classList.contains('border-indigo-400/60')).toBe(true);
+            expect(addTaskButton.classList.contains('text-indigo-200')).toBe(true);
             expect(descriptionInput.getAttribute('placeholder')).toBe('Describe your task...');
             expect(descriptionInput.classList.contains('focus:border-slate-400')).toBe(true);
-            expect(durationHoursInput.classList.contains('focus:border-slate-400')).toBe(true);
-            expect(durationMinutesInput.classList.contains('focus:border-slate-400')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-indigo-400')).toBe(false);
+            expect(durationHoursInput.classList.contains('focus:border-indigo-400')).toBe(false);
+            expect(durationMinutesInput.classList.contains('focus:border-indigo-400')).toBe(false);
         });
 
         test('can submit form multiple times in unscheduled mode without validation error', () => {
@@ -1176,16 +1183,40 @@ describe('DOM Handler Interaction Tests', () => {
             const activityRadio = document.getElementById('activity');
             const scheduledRadio = document.getElementById('scheduled');
             const startTimerButton = document.getElementById('start-timer-btn');
+            const addTaskButton = document.querySelector('#task-form button[type="submit"]');
+            const descriptionInput = document.querySelector('input[name="description"]');
+            const startTimeInput = document.querySelector('input[name="start-time"]');
 
             activityRadio.checked = true;
             activityRadio.dispatchEvent(new Event('change', { bubbles: true }));
             expect(taskForm.classList.contains('task-form--activity')).toBe(true);
             expect(startTimerButton.classList.contains('hidden')).toBe(false);
+            expect(startTimerButton.classList.contains('bg-sky-500/30')).toBe(true);
+            expect(startTimerButton.classList.contains('border-sky-400/60')).toBe(true);
+            expect(startTimerButton.classList.contains('text-sky-200')).toBe(true);
+            expect(startTimerButton.classList.contains('px-5')).toBe(true);
+            expect(startTimerButton.classList.contains('py-2.5')).toBe(true);
+            expect(startTimerButton.classList.contains('text-sm')).toBe(false);
+            expect(addTaskButton.classList.contains('bg-slate-700')).toBe(true);
+            expect(addTaskButton.classList.contains('border-sky-400/30')).toBe(true);
+            expect(addTaskButton.classList.contains('text-slate-100')).toBe(true);
+            expect(addTaskButton.classList.contains('px-4')).toBe(true);
+            expect(addTaskButton.classList.contains('py-2')).toBe(true);
+            expect(addTaskButton.classList.contains('text-sm')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-slate-400')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-sky-400')).toBe(false);
+            expect(startTimeInput.classList.contains('focus:border-sky-400')).toBe(false);
 
             scheduledRadio.checked = true;
             scheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
             expect(taskForm.classList.contains('task-form--activity')).toBe(false);
             expect(startTimerButton.classList.contains('hidden')).toBe(true);
+            expect(addTaskButton.classList.contains('bg-teal-500/30')).toBe(true);
+            expect(addTaskButton.classList.contains('border-teal-400/60')).toBe(true);
+            expect(addTaskButton.classList.contains('text-teal-200')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-slate-400')).toBe(true);
+            expect(descriptionInput.classList.contains('focus:border-teal-400')).toBe(false);
+            expect(startTimeInput.classList.contains('focus:border-teal-400')).toBe(false);
         });
 
         test('switching to activity replaces the generic default with the latest activity end time', () => {

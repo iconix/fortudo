@@ -173,7 +173,10 @@ describe('activity renderer', () => {
 
         renderActivities([], container);
 
-        expect(container.textContent).toContain('No activities tracked today');
+        const message = container.querySelector('div');
+        expect(message.textContent.trim()).toBe('No activity logged today.');
+        expect(message.className).toBe('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
+        expect(message.querySelector('i')).toBeNull();
         expect(container.querySelector('.text-center')).toBeNull();
     });
 
@@ -198,8 +201,8 @@ describe('activity renderer', () => {
         expect(container.querySelector('[data-activity-summary]')).not.toBeNull();
         expect(container.textContent).toContain('Activity Breakdown');
         expect(container.textContent).toContain('Work 3m');
-        expect(container.textContent).toContain('No completed activities logged today yet');
-        expect(container.textContent).not.toContain('No activities tracked today');
+        expect(container.textContent).toContain('No completed activities yet.');
+        expect(container.textContent).not.toContain('No activity logged today.');
     });
 
     test('renderActivitySummaryOnly updates an existing summary without replacing the list', () => {

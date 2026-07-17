@@ -60,6 +60,7 @@ describe('toast-manager', () => {
     test.each([
         ['violet', 'border-violet-400/60', 'text-violet-200'],
         ['teal', 'border-teal-400/60', 'text-teal-200'],
+        ['indigo', 'border-indigo-400/60', 'text-indigo-200'],
         ['sky', 'border-sky-400/60', 'text-sky-200'],
         ['slate', 'border-slate-500/60', 'text-slate-200'],
         ['default', 'border-slate-500/60', 'text-slate-200']

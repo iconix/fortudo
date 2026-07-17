@@ -36,7 +36,7 @@ export function handleScheduleUnscheduledTask(taskId) {
     const task = getTaskById(taskId);
     if (task) {
         if (task.status === 'completed') {
-            showAlert('This task is already completed and cannot be scheduled.', 'slate');
+            showAlert('This task is already completed and cannot be scheduled.', 'indigo');
             return;
         }
         showScheduleModal(
@@ -56,7 +56,7 @@ export async function handleStartTimerFromUnscheduledTask(taskId) {
     }
 
     if (task.status === 'completed') {
-        showAlert('This task is already completed and cannot be started as a timer.', 'slate');
+        showAlert('This task is already completed and cannot be started as a timer.', 'indigo');
         return;
     }
 
@@ -113,7 +113,7 @@ export async function handleConfirmScheduleTask(
     const result = await scheduleUnscheduledTask(taskId, startTime, duration);
     if (result.requiresConfirmation) {
         const userConfirmed =
-            reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'slate'));
+            reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
         if (userConfirmed && result.context) {
             const confirmResult = await confirmScheduleUnscheduledTask(
                 result.context.unscheduledTaskId,
@@ -122,15 +122,15 @@ export async function handleConfirmScheduleTask(
             if (confirmResult.success) {
                 onTaskScheduled({ task: confirmResult.task });
             } else {
-                showAlert(confirmResult.reason || 'Task could not be scheduled.', 'slate');
+                showAlert(confirmResult.reason || 'Task could not be scheduled.', 'indigo');
                 refreshUI();
             }
         } else if (!userConfirmed) {
-            showAlert('Task not scheduled to avoid overlap.', 'slate');
+            showAlert('Task not scheduled to avoid overlap.', 'indigo');
             refreshUI();
         }
     } else if (!result.success) {
-        showAlert(result.reason, 'slate');
+        showAlert(result.reason, 'indigo');
         refreshUI();
     } else {
         onTaskScheduled({ task: result.task });
@@ -150,7 +150,7 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
         setTaskInlineEditing(taskId, false);
         onTaskEdited({ task: result.task });
     } else {
-        showAlert(result.reason || 'Could not save unscheduled task.', 'slate');
+        showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
         refreshUI();
     }
 }

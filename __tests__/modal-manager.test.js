@@ -342,6 +342,10 @@ describe('Modal Manager Tests', () => {
                     'teal',
                     'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40'
                 ],
+                [
+                    'indigo',
+                    'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40'
+                ],
                 ['sky', 'bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40'],
                 [
                     'amber',

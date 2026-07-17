@@ -167,6 +167,14 @@ describe('Scheduled Task Renderer Tests', () => {
         const mockInitListeners = jest.fn();
         const mockCallbacks = { onCompleteTask: jest.fn() };
 
+        test('renders a compact neutral empty state', () => {
+            renderTasks([], mockCallbacks, mockInitListeners, null);
+
+            const message = getScheduledTaskListElement().querySelector('p');
+            expect(message.textContent).toBe('Nothing scheduled for today.');
+            expect(message.className).toBe('px-2 py-2 text-sm text-slate-400 sm:text-slate-500');
+        });
+
         test('two tasks with gap produces a .schedule-gap element between them', () => {
             const tasks = [
                 createTask('1', '10:00', 60), // 10:00 - 11:00

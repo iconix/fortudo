@@ -73,8 +73,8 @@ describe('activity timer ui', () => {
             <div id="task-form-fields">
                 <div id="time-inputs"></div>
                 <div id="activity-action-group">
-                    <button id="add-task-btn" type="submit">Log Activity</button>
                     <button id="start-timer-btn" type="button" class="hidden">Start Timer</button>
+                    <button id="add-task-btn" type="submit">Log Activity</button>
                 </div>
             </div>
             <div id="timer-display" class="hidden">
@@ -195,6 +195,12 @@ describe('activity timer ui', () => {
                     .getElementById('activity-action-group')
                     .contains(document.getElementById('start-timer-btn'))
             ).toBe(true);
+            expect(
+                document
+                    .getElementById('start-timer-btn')
+                    .compareDocumentPosition(document.getElementById('add-task-btn')) &
+                    Node.DOCUMENT_POSITION_FOLLOWING
+            ).toBeTruthy();
             expect(document.getElementById('start-timer-btn').textContent).toContain('Start Timer');
         });
 

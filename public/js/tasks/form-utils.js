@@ -108,7 +108,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
     const description =
         descriptionInput instanceof HTMLInputElement ? descriptionInput.value.trim() : '';
     if (!description) {
-        showAlert('Task description cannot be empty.', 'slate');
+        showAlert('Task description cannot be empty.', 'indigo');
         descriptionInput?.focus();
         return null;
     }
@@ -118,7 +118,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
     const durationResult = parseDuration(hoursValue, minutesValue, { allowZero: true });
 
     if (!durationResult.valid) {
-        showAlert(durationResult.error, 'slate');
+        showAlert(durationResult.error, 'indigo');
         hoursInput?.focus();
         return null;
     }
@@ -128,7 +128,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
             ? selectedPriorityElement.value
             : 'medium';
     const categoryValue = categorySelect instanceof HTMLSelectElement ? categorySelect.value : '';
-    const categoryResult = validateCategoryKey(categoryValue, 'slate');
+    const categoryResult = validateCategoryKey(categoryValue, 'indigo');
     if (!categoryResult.valid) {
         return null;
     }
@@ -230,7 +230,7 @@ export function extractTaskFormData(formElement) {
         );
 
         if (!estDurationResult.valid) {
-            showAlert(estDurationResult.error, 'slate');
+            showAlert(estDurationResult.error, 'indigo');
             return null;
         }
         const estDuration = estDurationResult.duration;

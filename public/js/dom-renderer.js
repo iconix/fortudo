@@ -25,43 +25,39 @@ let globalScheduledTaskCallbacks = null;
 let pageEventListenersAbortController = null;
 
 const FORM_INPUT_BASE_CLASSES =
-    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:outline-none transition-all';
+    'bg-slate-700 p-2.5 rounded-lg w-full border border-slate-600 focus:border-slate-400 focus:outline-none transition-all';
 const FORM_SUBMIT_BUTTON_BASE_CLASSES =
-    'shrink-0 px-5 py-2.5 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center';
-const INPUT_FOCUS_CLASS_BY_THEME = {
-    teal: 'focus:border-teal-400',
-    slate: 'focus:border-slate-400',
-    sky: 'focus:border-sky-400'
-};
-const PRIMARY_BUTTON_CLASSES =
-    'bg-violet-500/30 border border-violet-400/60 text-violet-200 hover:bg-violet-500/40';
+    'shrink-0 rounded-lg w-full sm:w-auto font-normal transition-all duration-300 flex items-center justify-center';
 const TASK_FORM_MODE_CONFIG = {
     scheduled: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
-        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
+        submitButtonSizeClasses: 'px-5 py-2.5',
+        submitButtonClasses:
+            'bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40',
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
-        descriptionPlaceholder: 'Describe your task...',
-        inputTheme: 'teal'
+        descriptionPlaceholder: 'Describe your task...'
     },
     unscheduled: {
         showTimeInputs: false,
         showPriorityInput: true,
         requireStartTime: false,
-        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
+        submitButtonSizeClasses: 'px-5 py-2.5',
+        submitButtonClasses:
+            'bg-indigo-500/30 border border-indigo-400/60 text-indigo-200 hover:bg-indigo-500/40',
         submitButtonHtml: '<i class="fa-regular fa-plus mr-2"></i>Add Task',
-        descriptionPlaceholder: 'Describe your task...',
-        inputTheme: 'slate'
+        descriptionPlaceholder: 'Describe your task...'
     },
     activity: {
         showTimeInputs: true,
         showPriorityInput: false,
         requireStartTime: true,
-        submitButtonClasses: PRIMARY_BUTTON_CLASSES,
+        submitButtonSizeClasses: 'px-4 py-2 text-sm sm:px-5 sm:py-2.5 sm:text-base',
+        submitButtonClasses:
+            'bg-slate-700 hover:bg-slate-600 text-slate-100 border border-sky-400/30',
         submitButtonHtml: '<i class="fa-regular fa-clock mr-2"></i>Log Activity',
-        descriptionPlaceholder: 'What did you work on?',
-        inputTheme: 'sky'
+        descriptionPlaceholder: 'What did you work on?'
     }
 };
 
@@ -132,25 +128,6 @@ export function initializeTaskTypeToggle() {
     const startTimerButton = document.getElementById('start-timer-btn');
     const descriptionInput = document.querySelector('input[name="description"]');
     const startTimeInput = document.querySelector('input[name="start-time"]');
-    const durationHoursInput = document.querySelector('input[name="duration-hours"]');
-    const durationMinutesInput = document.querySelector('input[name="duration-minutes"]');
-
-    const setInputTheme = (theme) => {
-        const themeClass = INPUT_FOCUS_CLASS_BY_THEME[theme];
-        [descriptionInput, startTimeInput, durationHoursInput, durationMinutesInput].forEach(
-            (element) => {
-                if (!(element instanceof HTMLElement)) {
-                    return;
-                }
-                Object.values(INPUT_FOCUS_CLASS_BY_THEME).forEach((className) => {
-                    element.classList.remove(className);
-                });
-                if (themeClass) {
-                    element.classList.add(themeClass);
-                }
-            }
-        );
-    };
 
     const applyActivityStartTimeDefault = () => {
         if (!(startTimeInput instanceof HTMLInputElement)) {
@@ -192,13 +169,12 @@ export function initializeTaskTypeToggle() {
             }
         }
 
-        addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonClasses}`;
+        addTaskButton.className = `${FORM_SUBMIT_BUTTON_BASE_CLASSES} ${config.submitButtonSizeClasses} ${config.submitButtonClasses}`;
         addTaskButton.innerHTML = config.submitButtonHtml;
         addTaskButton.dataset.defaultButtonHtml = config.submitButtonHtml;
         addTaskButton.dataset.defaultButtonClasses = addTaskButton.className;
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
-        setInputTheme(config.inputTheme);
         if (taskForm instanceof HTMLElement) {
             taskForm.classList.toggle('task-form--activity', mode === 'activity');
         }
