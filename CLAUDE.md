@@ -10,6 +10,50 @@ Fortudo is a daily time-blocking to-do app. It runs as a single-page application
 
 - GitHub CLI (`gh`) is installed at `/c/Program Files/GitHub CLI/gh`
 
+## Windows Agent Debugging
+
+### GitHub CLI falsely reports an invalid token
+
+This machine stores the GitHub CLI credential in the Windows keyring. A normal Git
+Bash session can therefore be authenticated even when `gh auth status` run by an
+agent reports:
+
+```text
+X Failed to log in to github.com account iconix
+The token in default is invalid.
+```
+
+The agent's first `gh` check may be running without network access. Treat that result
+as inconclusive, not as evidence that the user's credential is invalid.
+
+1. Run `gh` through Git Bash from the intended worktree:
+
+   ```powershell
+   & 'C:\Program Files\Git\bin\bash.exe' -lc 'gh auth status'
+   ```
+
+2. Allow that command network access (or rerun it outside the restricted sandbox)
+   before interpreting the result.
+3. If the network-enabled check succeeds, continue without asking the user to log in
+   again.
+4. Ask the user to run `gh auth login -h github.com` only if the network-enabled Git
+   Bash check still fails.
+
+`git push` uses Git Credential Manager separately from the GitHub CLI credential.
+For a task that only needs an existing branch pushed, a sandboxed `gh auth status`
+failure does not establish that `git push` will fail and should not block the push.
+
+### Worktree Git writes can need broader filesystem access
+
+The worktrees under `.worktrees/` share metadata in the main repository's
+`.git/worktrees/` directory. A restricted agent can edit worktree files successfully
+but then receive an `index.lock: Permission denied` error from `git add` or
+`git commit`. Rerun the Git mutation with access to the shared `.git` directory; do
+not delete lock files unless a real stale lock has been independently confirmed.
+
+Warnings about being unable to read `C:\Users\narho\.config\git\ignore` can also be a
+sandbox artifact. They are harmless when the Git command itself succeeds.
+
 ## Planning Docs
 
 Plans live under `docs/plans/` by document type, not by the workflow or tool that
