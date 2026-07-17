@@ -10,9 +10,8 @@ import * as taskManager from '../public/js/tasks/manager.js';
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
@@ -28,13 +27,11 @@ jest.mock('../public/js/modal-manager.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
@@ -81,6 +78,10 @@ import {
     resetTaskFormPreviewState
 } from '../public/js/tasks/form-utils.js';
 import { onTaskCreated } from '../public/js/app-coordinator.js';
+import { putTasks, loadTasks } from '../public/js/storage.js';
+
+const mockPutTasks = jest.mocked(putTasks);
+const mockLoadTasks = jest.mocked(loadTasks);
 
 describe('Add Task Handler', () => {
     let mockFormElement;
@@ -109,9 +110,54 @@ describe('Add Task Handler', () => {
         mockFormElement = document.getElementById('task-form');
         updateTaskState([]);
         jest.clearAllMocks();
+        mockPutTasks.mockReset();
+        mockPutTasks.mockResolvedValue({ succeededIds: [] });
+        mockLoadTasks.mockReset();
+        mockLoadTasks.mockResolvedValue([]);
     });
 
     describe('handleAddTaskProcess', () => {
+        test('publishes task-created only after primary persistence settles', async () => {
+            let finishTaskWrite;
+            mockPutTasks.mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        finishTaskWrite = resolve;
+                    })
+            );
+            const operation = handleAddTaskProcess(mockFormElement, {
+                description: 'Durable first',
+                startTime: '09:00',
+                duration: 60,
+                taskType: 'scheduled'
+            });
+            await Promise.resolve();
+
+            expect(onTaskCreated).not.toHaveBeenCalled();
+
+            finishTaskWrite({ succeededIds: [getTaskState()[0].id] });
+            await operation;
+            expect(onTaskCreated).toHaveBeenCalledWith({ task: getTaskState()[0] });
+        });
+
+        test('does not publish task-created when persistence fails', async () => {
+            mockPutTasks.mockRejectedValueOnce(new Error('Quota exceeded'));
+
+            await handleAddTaskProcess(mockFormElement, {
+                description: 'Not durable',
+                startTime: '09:00',
+                duration: 60,
+                taskType: 'scheduled'
+            });
+
+            expect(onTaskCreated).not.toHaveBeenCalled();
+            expect(showAlert).toHaveBeenCalledWith(
+                'Fortudo could not save that change. Tasks were reloaded from local storage.',
+                'teal'
+            );
+            expect(getTaskState()).toEqual([]);
+        });
+
         test('adds a scheduled task successfully', async () => {
             const taskData = {
                 description: 'New Scheduled Task',

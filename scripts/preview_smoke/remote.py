@@ -60,10 +60,15 @@ def delete_remote_database(couchdb_url: str, db_name: str) -> None:
         raise
 
 
-def fetch_remote_docs(couchdb_url: str, db_name: str) -> list[dict[str, Any]]:
+def fetch_remote_docs(
+    couchdb_url: str, db_name: str, *, include_conflicts: bool = False
+) -> list[dict[str, Any]]:
     base_url, headers = build_couchdb_request_parts(couchdb_url)
+    query = "include_docs=true"
+    if include_conflicts:
+        query += "&conflicts=true"
     request = Request(
-        f"{base_url}/{db_name}/_all_docs?include_docs=true",
+        f"{base_url}/{db_name}/_all_docs?{query}",
         headers=headers,
         method="GET",
     )

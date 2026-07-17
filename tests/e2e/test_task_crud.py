@@ -97,7 +97,7 @@ def open_unscheduled_action_menu_for_text(page, text):
     return task
 
 
-def test_task_crud_flow():
+def test_task_crud_flow(app_server):
     with sync_playwright() as p:
         browser, _context, page = launch_e2e_page(
             p,

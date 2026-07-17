@@ -1,56 +1,58 @@
 #!/bin/bash
 
-# Source NVM if it exists
+# Source NVM if it exists.
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Add common npm locations to PATH (Windows and Unix)
+# Add common npm locations to PATH (Windows and Unix).
 export PATH="$PATH:$HOME/AppData/Roaming/npm:/c/Program Files/nodejs:$HOME/.nvm/versions/node/$(node -v 2>/dev/null)/bin"
 
-echo "Running pre-commit checks..."
+echo "Running staged-file pre-commit checks..."
 
-# Get list of staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=d | grep -E '\.(js|jsx|ts|tsx|json|md)$' || true)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=d)
+RELEVANT_FILES=$(printf '%s\n' "$STAGED_FILES" | grep -E '\.(js|jsx|ts|tsx|json|md|py|toml|ya?ml)$' || true)
 
-if [ -z "$STAGED_FILES" ]; then
+if [ -z "$RELEVANT_FILES" ]; then
     echo "No relevant files staged for commit. Skipping checks."
     exit 0
 fi
 
-# Store the hash of staged files to detect any changes during the checks
-HASH_BEFORE=$(git diff --cached --name-only --diff-filter=d | sort | sha1sum)
+JS_AND_DOC_FILES=$(printf '%s\n' "$STAGED_FILES" | grep -E '\.(js|jsx|ts|tsx|json|md)$' || true)
+JS_FILES=$(printf '%s\n' "$STAGED_FILES" | grep -E '\.(js|jsx|ts|tsx)$' || true)
+PYTHON_AND_CONFIG_FILES=$(printf '%s\n' "$STAGED_FILES" | grep -E '\.(py|toml|ya?ml)$' || true)
 
-# Verify npm is available
+# Hash staged content, not only path names, so checks cannot silently change the commit.
+HASH_BEFORE=$(git diff --cached | sha1sum)
+
 if ! command -v npm &> /dev/null; then
-    echo "❌ npm command not found. Please ensure Node.js is installed and in your PATH"
+    echo "npm command not found. Please ensure Node.js is installed and in your PATH."
     exit 1
 fi
 
-echo "Running linting and formatting checks..."
-npm run check
-
-# Check if the script succeeded
-if [ $? -ne 0 ]; then
-    echo "❌ Pre-commit checks failed. Please fix the issues and try committing again."
-    exit 1
+if [ -n "$JS_AND_DOC_FILES" ]; then
+    echo "Running JavaScript linting and formatting checks..."
+    npm run check || exit 1
 fi
 
-echo "Running tests with coverage..."
-npm test -- --coverage
-
-# Check if coverage passed
-if [ $? -ne 0 ]; then
-    echo "❌ Tests or coverage threshold failed. Please fix the issues and try committing again."
-    exit 1
+if [ -n "$JS_FILES" ]; then
+    echo "Running Jest tests related to staged JavaScript..."
+    # Repository paths do not contain whitespace; intentional word splitting passes each path to Jest.
+    # shellcheck disable=SC2086
+    npm test -- --findRelatedTests $JS_FILES --runInBand --passWithNoTests || exit 1
 fi
 
-# Check if any files were modified during the checks
-HASH_AFTER=$(git diff --cached --name-only --diff-filter=d | sort | sha1sum)
+if [ -n "$PYTHON_AND_CONFIG_FILES" ]; then
+    echo "Running Python linting and non-browser tests..."
+    npm run lint:python || exit 1
+    npm run test:python || exit 1
+fi
+
+HASH_AFTER=$(git diff --cached | sha1sum)
 
 if [ "$HASH_BEFORE" != "$HASH_AFTER" ]; then
-    echo "❌ Files were modified during pre-commit checks. Please stage the changes and try committing again."
+    echo "Files were modified during pre-commit checks. Stage the changes and try again."
     exit 1
 fi
 
-echo "✅ All pre-commit checks passed!"
+echo "All pre-commit checks passed!"
 exit 0

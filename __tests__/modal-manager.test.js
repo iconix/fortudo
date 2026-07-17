@@ -42,6 +42,9 @@ describe('Modal Manager Tests', () => {
                     <input type="time" name="modal-start-time" />
                     <input type="number" name="modal-duration-hours" />
                     <input type="number" name="modal-duration-minutes" />
+                    <span id="modal-end-time-hint"></span>
+                    <span id="modal-overlap-warning"></span>
+                    <button id="schedule-modal-submit-btn" type="submit">Schedule</button>
                 </form>
             </div>
 
@@ -515,11 +518,11 @@ describe('Modal Manager Tests', () => {
 
         describe('initializeModalEventListeners', () => {
             test('form submit calls callback with task data', () => {
-                const mockCallbacks = {
-                    onConfirmScheduleTask: jest.fn()
+                const mockActions = {
+                    confirmSchedule: jest.fn()
                 };
 
-                initializeModalEventListeners(mockCallbacks);
+                initializeModalEventListeners(mockActions);
                 showScheduleModal('Task', '30m', 'task-1', '10:00');
 
                 const form = document.getElementById('schedule-modal-form');
@@ -533,7 +536,7 @@ describe('Modal Manager Tests', () => {
 
                 form.dispatchEvent(new Event('submit'));
 
-                expect(mockCallbacks.onConfirmScheduleTask).toHaveBeenCalledWith(
+                expect(mockActions.confirmSchedule).toHaveBeenCalledWith(
                     'task-1',
                     '11:00',
                     90,
@@ -541,12 +544,49 @@ describe('Modal Manager Tests', () => {
                 );
             });
 
+            test('reinitializing on the cached modal uses only the latest actions once', () => {
+                const actionsA = { confirmSchedule: jest.fn() };
+                const actionsB = { confirmSchedule: jest.fn() };
+                const form = document.getElementById('schedule-modal-form');
+                const inputs = [
+                    form.querySelector('input[name="modal-start-time"]'),
+                    form.querySelector('input[name="modal-duration-hours"]'),
+                    form.querySelector('input[name="modal-duration-minutes"]')
+                ];
+                const formListenerSpy = jest.spyOn(form, 'addEventListener');
+                const inputListenerSpies = inputs.map((input) =>
+                    jest.spyOn(input, 'addEventListener')
+                );
+
+                initializeModalEventListeners(actionsA);
+                initializeModalEventListeners(actionsB);
+                showScheduleModal('Task', '30m', 'task-1', '10:00');
+
+                form.querySelector('input[name="modal-start-time"]').value = '11:00';
+                form.querySelector('input[name="modal-duration-hours"]').value = '1';
+                form.querySelector('input[name="modal-duration-minutes"]').value = '30';
+
+                form.dispatchEvent(new Event('submit'));
+
+                expect(actionsA.confirmSchedule).not.toHaveBeenCalled();
+                expect(actionsB.confirmSchedule).toHaveBeenCalledTimes(1);
+                expect(actionsB.confirmSchedule).toHaveBeenCalledWith('task-1', '11:00', 90, false);
+                expect(
+                    formListenerSpy.mock.calls.filter(([eventName]) => eventName === 'submit')
+                ).toHaveLength(1);
+                inputListenerSpies.forEach((listenerSpy) => {
+                    expect(
+                        listenerSpy.mock.calls.filter(([eventName]) => eventName === 'input')
+                    ).toHaveLength(2);
+                });
+            });
+
             test('form submit hides modal after callback', () => {
-                const mockCallbacks = {
-                    onConfirmScheduleTask: jest.fn()
+                const mockActions = {
+                    confirmSchedule: jest.fn()
                 };
 
-                initializeModalEventListeners(mockCallbacks);
+                initializeModalEventListeners(mockActions);
                 showScheduleModal('Task', '30m', 'task-1', '10:00');
 
                 const form = document.getElementById('schedule-modal-form');
@@ -565,11 +605,11 @@ describe('Modal Manager Tests', () => {
             });
 
             test('form submit shows alert for invalid duration', () => {
-                const mockCallbacks = {
-                    onConfirmScheduleTask: jest.fn()
+                const mockActions = {
+                    confirmSchedule: jest.fn()
                 };
 
-                initializeModalEventListeners(mockCallbacks);
+                initializeModalEventListeners(mockActions);
                 showScheduleModal('Task', '30m', 'task-1', '10:00');
 
                 const form = document.getElementById('schedule-modal-form');
@@ -583,7 +623,7 @@ describe('Modal Manager Tests', () => {
 
                 form.dispatchEvent(new Event('submit'));
 
-                expect(mockCallbacks.onConfirmScheduleTask).not.toHaveBeenCalled();
+                expect(mockActions.confirmSchedule).not.toHaveBeenCalled();
                 // Alert should show but modal stays open
                 const modal = document.getElementById('schedule-modal');
                 expect(modal.classList.contains('hidden')).toBe(false);

@@ -10,9 +10,8 @@ import { createTaskWithDateTime } from './test-utils.js';
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
@@ -38,13 +37,11 @@ jest.mock('../public/js/app-coordinator.js', () => ({
 jest.mock('../public/js/dom-renderer.js', () => ({
     refreshUI: jest.fn(),
     renderTasks: jest.fn(),
-    renderUnscheduledTasks: jest.fn(),
     updateStartTimeField: jest.fn(),
     getCurrentTimeElement: jest.fn(() => null),
     initializePageEventListeners: jest.fn(),
     initializeTaskTypeToggle: jest.fn(),
     startRealTimeClock: jest.fn(),
-    initializeUnscheduledTaskListEventListeners: jest.fn(),
     initializeScheduledTaskListEventListeners: jest.fn(),
     refreshStartTimeField: jest.fn(),
     disableStartTimeAutoUpdate: jest.fn(),
@@ -85,7 +82,6 @@ import {
 import {
     refreshUI,
     renderTasks,
-    renderUnscheduledTasks,
     updateStartTimeField,
     toggleClearTasksDropdown,
     closeClearTasksDropdown,
@@ -172,7 +168,6 @@ describe('Clear Tasks Handler', () => {
             expect(onScheduledTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
             expect(renderTasks).not.toHaveBeenCalled();
-            expect(renderUnscheduledTasks).not.toHaveBeenCalled();
             expect(updateStartTimeField).not.toHaveBeenCalled();
         });
 
@@ -211,7 +206,6 @@ describe('Clear Tasks Handler', () => {
             expect(onAllTasksCleared).toHaveBeenCalled();
             expect(refreshUI).not.toHaveBeenCalled();
             expect(renderTasks).not.toHaveBeenCalled();
-            expect(renderUnscheduledTasks).not.toHaveBeenCalled();
             expect(updateStartTimeField).not.toHaveBeenCalled();
             expect(closeClearTasksDropdown).toHaveBeenCalled();
         });

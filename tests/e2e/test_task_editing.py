@@ -156,7 +156,7 @@ def open_unscheduled_action_menu_for_text(page, text):
     return task
 
 
-def test_task_editing_flow():
+def test_task_editing_flow(app_server):
     schedule = build_schedule()
     T_VAL_TIME = schedule["T_VAL_TIME"]
     T1_TIME = schedule["T1_TIME"]
@@ -563,7 +563,7 @@ def test_task_editing_flow():
     assert failed == 0, f"{failed} checks failed (see FAIL lines above)"
 
 
-def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh():
+def test_mobile_scheduled_edit_draft_survives_delayed_ui_refresh(app_server):
     room_code = "task-editing-mobile-draft"
 
     with sync_playwright() as playwright:

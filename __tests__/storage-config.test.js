@@ -24,7 +24,7 @@ import {
     putConfig,
     loadConfig,
     deleteConfig,
-    saveTasks,
+    deleteTasks,
     putTask,
     getDb
 } from '../public/js/storage.js';
@@ -98,10 +98,32 @@ describe('Storage - config docs', () => {
         expect(loaded.id).toBe('config-categories');
     });
 
-    test('config docs survive saveTasks bulk replace', async () => {
+    test('refreshes a config revision after another writer updates it', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({ id: 'config-categories', categories: ['A'] });
+
+        const database = getDb();
+        const externalDoc = await database.get('config-categories');
+        await database.put({ ...externalDoc, categories: ['A', 'B'], externalNote: 'keep' });
+
+        const loaded = await loadConfig('config-categories');
+        await expect(
+            putConfig({ ...loaded, categories: [...loaded.categories, 'C'] })
+        ).resolves.toBeUndefined();
+        expect(await loadConfig('config-categories')).toEqual(
+            expect.objectContaining({
+                id: 'config-categories',
+                categories: ['A', 'B', 'C'],
+                externalNote: 'keep'
+            })
+        );
+    });
+
+    test('config docs survive task delta deletion', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await putConfig({ id: 'config-categories', categories: ['survive'] });
-        await saveTasks([]);
+        await putTask({ id: 'task-to-delete', type: 'unscheduled', description: 'Delete me' });
+        await deleteTasks(['task-to-delete']);
 
         const loaded = await loadConfig('config-categories');
         expect(loaded).not.toBeNull();

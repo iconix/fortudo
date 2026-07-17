@@ -8,6 +8,7 @@
 import {
     getTaskState,
     updateTaskState,
+    updateTaskStateFromStorage,
     addTask,
     scheduleUnscheduledTask,
     updateTask,
@@ -31,9 +32,16 @@ import {
     getTaskById,
     getTaskIndex,
     getTodaysScheduledTasks,
+    getUnscheduledView,
+    moveUnscheduledTask,
+    waitForUnscheduledMoveSettlement,
+    refreshUnscheduledSequenceState,
+    hydrateUnscheduledSequenceState,
     setTaskInlineEditing,
     resetAllInlineEditingFlags,
-    consumeUnscheduledTask
+    consumeUnscheduledTask,
+    toggleUnscheduledTaskCompleteState,
+    unscheduleTask
 } from '../public/js/tasks/manager.js';
 import { isValidTaskData } from '../public/js/tasks/validators.js';
 import { checkOverlap, tasksOverlap } from '../public/js/reschedule-engine.js';
@@ -49,18 +57,28 @@ const { createTaskWithDateTime, calculateDurationMidnightAware } = require('./te
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
-    deleteTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => [])
 }));
 
-// Import the mocked storage functions
-import { saveTasks, putTask, deleteTask as deleteTaskFromStorage } from '../public/js/storage.js';
+jest.mock('../public/js/tasks/unscheduled-sequence-repository.js', () => ({
+    loadUnscheduledSequenceDocument: jest.fn(() => Promise.resolve(null)),
+    persistUnscheduledSequenceDocument: jest.fn(() => Promise.resolve())
+}));
 
-const mockSaveTasks = jest.mocked(saveTasks);
-const mockPutTask = jest.mocked(putTask);
-const mockDeleteTaskFromStorage = jest.mocked(deleteTaskFromStorage);
+// Import the mocked storage functions
+import { putTasks, loadTasks, deleteTasks } from '../public/js/storage.js';
+import {
+    loadUnscheduledSequenceDocument,
+    persistUnscheduledSequenceDocument
+} from '../public/js/tasks/unscheduled-sequence-repository.js';
+
+const mockPutTasks = jest.mocked(putTasks);
+const mockLoadTasks = jest.mocked(loadTasks);
+const mockDeleteTasks = jest.mocked(deleteTasks);
+const mockLoadUnscheduledSequenceDocument = jest.mocked(loadUnscheduledSequenceDocument);
+const mockPersistUnscheduledSequenceDocument = jest.mocked(persistUnscheduledSequenceDocument);
 
 // Mock localStorage before any other imports
 const localStorageMock = {
@@ -74,15 +92,169 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 describe('Task Management Functions (task-manager.js)', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         updateTaskState([]);
-        mockSaveTasks.mockClear();
-        mockPutTask.mockClear();
-        mockDeleteTaskFromStorage.mockClear();
+        hydrateUnscheduledSequenceState(null);
+        mockPutTasks.mockClear();
+        mockPutTasks.mockReset();
+        mockPutTasks.mockResolvedValue({ succeededIds: [] });
+        mockLoadTasks.mockReset();
+        mockLoadTasks.mockResolvedValue([]);
+        mockDeleteTasks.mockClear();
+        mockDeleteTasks.mockReset();
+        mockDeleteTasks.mockResolvedValue({ succeededIds: [] });
+        mockLoadUnscheduledSequenceDocument.mockReset();
+        mockLoadUnscheduledSequenceDocument.mockResolvedValue(null);
+        mockPersistUnscheduledSequenceDocument.mockReset();
+        mockPersistUnscheduledSequenceDocument.mockResolvedValue();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
+    });
+
+    describe('authoritative task persistence', () => {
+        test('storage refresh preserves transient edit state for tasks that still exist', () => {
+            updateTaskState([
+                {
+                    id: 'editing-task',
+                    type: 'unscheduled',
+                    description: 'Before remote refresh',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: null,
+                    isEditingInline: true,
+                    confirmingDelete: true
+                }
+            ]);
+
+            updateTaskStateFromStorage([
+                {
+                    id: 'editing-task',
+                    type: 'unscheduled',
+                    description: 'After remote refresh',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: null
+                }
+            ]);
+
+            expect(getTaskState()).toEqual([
+                expect.objectContaining({
+                    id: 'editing-task',
+                    description: 'After remote refresh',
+                    isEditingInline: true,
+                    confirmingDelete: true
+                })
+            ]);
+        });
+
+        test('does not resolve add success or place sequence state before the task write settles', async () => {
+            let finishTaskWrite;
+            mockPutTasks.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        finishTaskWrite = resolve;
+                    })
+            );
+
+            const operation = addTask({
+                taskType: 'unscheduled',
+                description: 'Write me first',
+                priority: 'medium'
+            });
+            let resolved = false;
+            Promise.resolve(operation).then(() => {
+                resolved = true;
+            });
+            await Promise.resolve();
+
+            expect(resolved).toBe(false);
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
+
+            finishTaskWrite({ succeededIds: [getTaskState()[0].id] });
+            await expect(operation).resolves.toMatchObject({ success: true });
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledTimes(1);
+        });
+
+        test('returns failure and reloads durable task truth when primary persistence fails', async () => {
+            const durableTask = {
+                id: 'durable-task',
+                type: 'unscheduled',
+                description: 'Still durable',
+                status: 'incomplete',
+                priority: 'medium',
+                estDuration: null
+            };
+            mockPutTasks.mockRejectedValue(new Error('Quota exceeded'));
+            mockLoadTasks.mockResolvedValue([durableTask]);
+
+            const result = await addTask({
+                taskType: 'unscheduled',
+                description: 'Cannot persist',
+                priority: 'medium'
+            });
+
+            expect(result).toMatchObject({
+                success: false,
+                persistenceFailed: true,
+                stateReconciled: true
+            });
+            expect(getTaskState()).toEqual([durableTask]);
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
+        });
+
+        test('does not report deletion success after a partial delete failure', async () => {
+            const durableTask = {
+                id: 'durable-delete',
+                type: 'unscheduled',
+                description: 'Still present',
+                status: 'incomplete',
+                priority: 'medium',
+                estDuration: null,
+                confirmingDelete: true
+            };
+            updateTaskState([durableTask]);
+            mockDeleteTasks.mockRejectedValueOnce(new Error('Document update conflict'));
+            mockLoadTasks.mockResolvedValueOnce([durableTask]);
+
+            const result = await deleteTask(0, true);
+
+            expect(result).toMatchObject({
+                success: false,
+                persistenceFailed: true,
+                stateReconciled: true
+            });
+            expect(getTaskState()).toEqual([durableTask]);
+        });
+
+        test('rolls memory back to the last durable snapshot when recovery cannot reload', async () => {
+            const priorTask = {
+                id: 'prior-durable',
+                type: 'unscheduled',
+                description: 'Prior durable task',
+                status: 'incomplete',
+                priority: 'medium',
+                estDuration: null
+            };
+            updateTaskState([priorTask]);
+            mockPutTasks.mockRejectedValueOnce(new Error('Quota exceeded'));
+            mockLoadTasks.mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+            const result = await addTask({
+                taskType: 'unscheduled',
+                description: 'Optimistic only',
+                priority: 'medium'
+            });
+
+            expect(result).toMatchObject({
+                success: false,
+                persistenceFailed: true,
+                stateReconciled: false,
+                rolledBack: true
+            });
+            expect(getTaskState()).toEqual([priorTask]);
+        });
     });
 
     /**
@@ -113,7 +285,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     }
 
     describe('tasksOverlap', () => {
-        test('tasksOverlap correctly identifies overlapping tasks', () => {
+        test('tasksOverlap correctly identifies overlapping tasks', async () => {
             const task1 = createTaskWithTimes('09:00', '10:00');
             const task2 = createTaskWithTimes('09:00', '10:00'); // Full overlap
             expect(tasksOverlap(task1, task2)).toBe(true);
@@ -149,7 +321,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Midnight Crossing Time Handling (tasksOverlap)', () => {
-        test('handles times that cross midnight correctly', () => {
+        test('handles times that cross midnight correctly', async () => {
             const lateNightTask = createTaskWithTimes('23:00', '00:30'); // Ends next day
 
             const dateForEarlyMorningTask = new Date();
@@ -174,7 +346,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasksOverlap(eveningTask, morningTask)).toBe(false); // Should be false if on different days like this
         });
 
-        test('handles complex midnight-crossing task overlaps correctly', () => {
+        test('handles complex midnight-crossing task overlaps correctly', async () => {
             const longEveningTask = createTaskWithTimes('20:00', '02:00'); // Spans 20:00 to 02:00 next day
 
             const dateForNextDay = new Date();
@@ -215,19 +387,19 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('isValidTaskData', () => {
-        test('should return valid for correct scheduled task data', () => {
+        test('should return valid for correct scheduled task data', async () => {
             expect(isValidTaskData('Test Task', 'scheduled', 30, '09:00')).toEqual({
                 isValid: true
             });
         });
 
-        test('should return valid for correct unscheduled task data', () => {
+        test('should return valid for correct unscheduled task data', async () => {
             expect(isValidTaskData('Test Task', 'unscheduled', undefined, undefined, 30)).toEqual({
                 isValid: true
             });
         });
 
-        test('should return invalid if description is empty', () => {
+        test('should return invalid if description is empty', async () => {
             expect(isValidTaskData('', 'scheduled', 30, '09:00')).toEqual({
                 isValid: false,
                 reason: 'Task description is required.'
@@ -238,7 +410,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
         });
 
-        test('should return invalid if taskType is missing or invalid', () => {
+        test('should return invalid if taskType is missing or invalid', async () => {
             expect(isValidTaskData('Test Task', null, 30, '09:00')).toEqual({
                 isValid: false,
                 reason: 'Invalid task type.'
@@ -249,7 +421,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
         });
 
-        test('should allow zero duration and reject negative duration for scheduled tasks', () => {
+        test('should allow zero duration and reject negative duration for scheduled tasks', async () => {
             // Zero duration is valid (e.g., milestone tasks)
             expect(isValidTaskData('Test Task', 'scheduled', 0, '09:00')).toEqual({
                 isValid: true
@@ -261,21 +433,21 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
         });
 
-        test('should return invalid if scheduled task duration is NaN', () => {
+        test('should return invalid if scheduled task duration is NaN', async () => {
             expect(isValidTaskData('Test Task', 'scheduled', NaN, '09:00')).toEqual({
                 isValid: false,
                 reason: 'Duration must be a non-negative number for scheduled tasks.'
             });
         });
 
-        test('should return invalid if scheduled task is missing start time', () => {
+        test('should return invalid if scheduled task is missing start time', async () => {
             expect(isValidTaskData('Test Task', 'scheduled', 30, '')).toEqual({
                 isValid: false,
                 reason: 'Start time is required for scheduled tasks.'
             });
         });
 
-        test('should return invalid if scheduled task has invalid time format', () => {
+        test('should return invalid if scheduled task has invalid time format', async () => {
             // Hours > 23 are invalid
             expect(isValidTaskData('Test Task', 'scheduled', 30, '25:00')).toEqual({
                 isValid: false,
@@ -293,7 +465,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
         });
 
-        test('should return invalid if unscheduled task has invalid estimated duration', () => {
+        test('should return invalid if unscheduled task has invalid estimated duration', async () => {
             expect(isValidTaskData('Test Task', 'unscheduled', undefined, undefined, -10)).toEqual({
                 isValid: false,
                 reason: 'Estimated duration must be a non-negative number for unscheduled tasks.'
@@ -325,7 +497,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
         let existingTasks;
 
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([]);
             existingTasks = [
                 createMockTask('T1', '09:00', 60), // 09:00 - 10:00
@@ -335,55 +507,55 @@ describe('Task Management Functions (task-manager.js)', () => {
             ];
         });
 
-        test('should return empty array if no tasks overlap', () => {
+        test('should return empty array if no tasks overlap', async () => {
             const newTask = createMockTask('New', '08:00', 30); // 08:00 - 08:30
             expect(checkOverlap(newTask, existingTasks)).toEqual([]);
         });
 
-        test('should identify full overlap', () => {
+        test('should identify full overlap', async () => {
             const newTask = createMockTask('New', '09:00', 60); // Overlaps T1
             expect(checkOverlap(newTask, existingTasks).map((t) => t.description)).toEqual(['T1']);
         });
 
-        test('should identify partial overlap (starts before, ends during)', () => {
+        test('should identify partial overlap (starts before, ends during)', async () => {
             const newTask = createMockTask('New', '08:30', 60); // 08:30 - 09:30 (overlaps T1)
             expect(checkOverlap(newTask, existingTasks).map((t) => t.description)).toEqual(['T1']);
         });
 
-        test('should identify partial overlap (starts during, ends after)', () => {
+        test('should identify partial overlap (starts during, ends after)', async () => {
             const newTask = createMockTask('New', '09:30', 60); // 09:30 - 10:30 (overlaps T1 and T2)
             const overlaps = checkOverlap(newTask, existingTasks);
             expect(overlaps.map((t) => t.description).sort()).toEqual(['T1', 'T2'].sort());
         });
 
-        test('should identify when new task is contained within an existing task', () => {
+        test('should identify when new task is contained within an existing task', async () => {
             const newTask = createMockTask('New', '09:15', 30); // 09:15 - 09:45 (contained in T1)
             expect(checkOverlap(newTask, existingTasks).map((t) => t.description)).toEqual(['T1']);
         });
 
-        test('should identify when new task contains an existing task', () => {
+        test('should identify when new task contains an existing task', async () => {
             const newTask = createMockTask('New', '08:00', 180); // 08:00 - 11:00 (contains T1 and T2)
             const overlaps = checkOverlap(newTask, existingTasks);
             expect(overlaps.map((t) => t.description).sort()).toEqual(['T1', 'T2'].sort());
         });
 
-        test('should not consider completed tasks for overlap', () => {
+        test('should not consider completed tasks for overlap', async () => {
             const newTask = createMockTask('New', '11:00', 60); // Same time as T3 Completed
             expect(checkOverlap(newTask, existingTasks)).toEqual([]);
         });
 
-        test('should not consider tasks being edited for overlap', () => {
+        test('should not consider tasks being edited for overlap', async () => {
             const newTask = createMockTask('New', '12:00', 60); // Same time as T4 Editing
             expect(checkOverlap(newTask, existingTasks)).toEqual([]);
         });
 
-        test('should handle adjacent tasks correctly (no overlap)', () => {
+        test('should handle adjacent tasks correctly (no overlap)', async () => {
             const newTask = createMockTask('New', '08:00', 60); // 08:00 - 09:00 (adjacent to T1)
             expect(checkOverlap(newTask, existingTasks)).toEqual([]);
             const newTask2 = createMockTask('New2', '13:00', 60); // 13:00 - 14:00 (adjacent to T4 Editing, but T4 is ignored)
             expect(checkOverlap(newTask2, existingTasks)).toEqual([]);
         });
-        test('should not overlap with itself (if accidentally included in existingTasks)', () => {
+        test('should not overlap with itself (if accidentally included in existingTasks)', async () => {
             const newTask = createMockTask('New', '09:00', 60);
             const tasksWithSelf = [...existingTasks, newTask];
             expect(checkOverlap(newTask, tasksWithSelf).map((t) => t.description)).toEqual(['T1']);
@@ -391,23 +563,23 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Sorted Tasks Caching', () => {
-        test('should maintain sort order when accessing tasks multiple times', () => {
+        test('should maintain sort order when accessing tasks multiple times', async () => {
             // Add tasks in non-sorted order (use _skipAdjustCheck to avoid adjust confirmation)
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task C',
                 startTime: '11:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task A',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task B',
                 startTime: '10:00',
@@ -428,16 +600,16 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks2[2].description).toBe('Task C');
         });
 
-        test('should update sort order when tasks are modified', () => {
+        test('should update sort order when tasks are modified', async () => {
             // Add tasks (use _skipAdjustCheck to avoid adjust confirmation)
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task A',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task B',
                 startTime: '10:00',
@@ -451,7 +623,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             // Update Task A to start later than Task B
             const taskAIndex = getTaskState().findIndex((t) => t.description === 'Task A');
-            updateTask(taskAIndex, { startTime: '11:00', duration: 60 });
+            await updateTask(taskAIndex, { startTime: '11:00', duration: 60 });
 
             tasks = getTaskState();
             expect(tasks[0].description).toBe('Task B'); // 10:00
@@ -472,14 +644,13 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
         };
 
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should not shift any tasks if no subsequent tasks exist', () => {
+        test('should not shift any tasks if no subsequent tasks exist', async () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             updateTaskState([taskA]);
             performReschedule(taskA);
@@ -489,7 +660,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(extractTimeFromDateTime(new Date(getTaskState()[0].endDateTime))).toBe('10:00');
         });
 
-        test('should shift a single subsequent overlapping task', () => {
+        test('should shift a single subsequent overlapping task', async () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskB = createTask('B', '09:30', 30); // Original: 09:30 - 10:00
             updateTaskState([taskA, taskB]);
@@ -512,7 +683,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
         });
 
-        test('should perform cascading reschedule for multiple tasks', () => {
+        test('should perform cascading reschedule for multiple tasks', async () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskB = createTask('B', '09:30', 30); // Original: 09:30 - 10:00
             const taskC = createTask('C', '09:45', 30); // Original: 09:45 - 10:15
@@ -537,7 +708,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
         });
 
-        test('should not shift completed tasks', () => {
+        test('should not shift completed tasks', async () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskB_completed = createTask('B_completed', '09:30', 30, 'completed'); // Original: 09:30 - 10:00
             updateTaskState([taskA, taskB_completed]);
@@ -547,7 +718,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(extractTimeFromDateTime(new Date(taskB_completed.endDateTime))).toBe('10:00');
         });
 
-        test('should not shift tasks currently being edited by the user', () => {
+        test('should not shift tasks currently being edited by the user', async () => {
             const taskA = createTask('A', '09:00', 60); // 09:00 - 10:00
             const taskC_editing = createTask('C_editing', '09:45', 30, 'incomplete', true); // Original: 09:45 - 10:15
             updateTaskState([taskA, taskC_editing]);
@@ -557,7 +728,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(extractTimeFromDateTime(new Date(taskC_editing.endDateTime))).toBe('10:15');
         });
 
-        test('taskThatChanged maintains its properties correctly', () => {
+        test('taskThatChanged maintains its properties correctly', async () => {
             const taskA = createTask('A', '09:00', 60); // Ends 10:00
             const taskB = createTask('B', '10:00', 30); // Starts 10:00
             updateTaskState([taskA, taskB]);
@@ -580,7 +751,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 expect(extractTimeFromDateTime(new Date(taskBResult.endDateTime))).toBe('11:00');
             }
         });
-        test('should correctly restore editing state of taskThatChanged', () => {
+        test('should correctly restore editing state of taskThatChanged', async () => {
             const taskA_editing = createTask('A_editing', '09:00', 60, 'incomplete', true);
             const taskB = createTask('B', '09:30', 30);
             updateTaskState([taskA_editing, taskB]);
@@ -599,15 +770,14 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('addTask', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should add a task, call performReschedule, sort, and save when no overlap occurs', () => {
-            addTask({
+        test('should add a task, call performReschedule, sort, and save when no overlap occurs', async () => {
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task 1',
                 startTime: '10:00',
@@ -619,7 +789,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 startTime: '09:00',
                 duration: 30
             }; // 09:00 - 09:30
-            const result = addTask(taskData);
+            const result = await addTask(taskData);
 
             expect(result.success).toBe(true);
             expect(result.task).toBeDefined();
@@ -627,22 +797,21 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks.length).toBe(2);
             expect(tasks[0].description).toBe('Task 2'); // Sorted
             expect(tasks[1].description).toBe('Task 1');
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             // performReschedule effect: If Task 1 was 09:00-10:00 and Task 2 was 09:30-10:30, Task 2 would be shifted.
             // Here, no shift needed for Task 1 by Task 2.
         });
 
-        test('should require confirmation if adding a task creates an overlap', () => {
-            addTask({
+        test('should require confirmation if adding a task creates an overlap', async () => {
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Existing Task',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             }); // 09:00 - 10:00
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             const taskData = {
                 taskType: 'scheduled',
@@ -651,7 +820,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 duration: 60,
                 _skipAdjustCheck: true // Skip adjust check to test overlap behavior
             };
-            const result = addTask(taskData);
+            const result = await addTask(taskData);
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
@@ -666,11 +835,11 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.reason).toBeDefined();
             expect(getTaskState().length).toBe(1); // Original task still there
             expect(getTaskState()[0].description).toBe('Existing Task');
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
-        test('preserves category when adding a scheduled task', () => {
-            const result = addTask({
+        test('preserves category when adding a scheduled task', async () => {
+            const result = await addTask({
                 taskType: 'scheduled',
                 description: 'Categorized task',
                 startTime: '10:00',
@@ -683,8 +852,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].category).toBe('work/deep');
         });
 
-        test('preserves category when adding an unscheduled task', () => {
-            const result = addTask({
+        test('preserves category when adding an unscheduled task', async () => {
+            const result = await addTask({
                 taskType: 'unscheduled',
                 description: 'Backlog task',
                 priority: 'medium',
@@ -697,8 +866,8 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].category).toBe('personal');
         });
 
-        test('should not add an invalid task and not save', () => {
-            const result = addTask({
+        test('should not add an invalid task and not save', async () => {
+            const result = await addTask({
                 taskType: 'scheduled',
                 description: '',
                 startTime: '10:00',
@@ -707,10 +876,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Task description is required.');
             expect(getTaskState().length).toBe(0);
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
-        test('should require confirmation when adding a task that overlaps a completed task', () => {
+        test('should require confirmation when adding a task that overlaps a completed task', async () => {
             // Scenario from user bug report:
             // User has a completed task from 16:00-17:29
             // User wants to add a new task in the middle (16:34-17:08)
@@ -724,12 +893,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
             updateTaskState([completedTask]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             // Add a new task that overlaps the completed task
-            const result = addTask({
+            const result = await addTask({
                 taskType: 'scheduled',
                 description: 'Break Task',
                 startTime: '16:34',
@@ -743,12 +911,12 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.completedTaskToTruncate.description).toBe('Completed Notes Task');
             // Task should not be added yet
             expect(getTaskState().length).toBe(1);
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
     });
 
     describe('confirmAddTaskAndReschedule', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([
                 createTaskWithDateTime({
                     description: 'Existing Task 1',
@@ -759,12 +927,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                     confirmingDelete: false
                 })
             ]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should add the task, reschedule, sort, and save', () => {
+        test('should add the task, reschedule, sort, and save', async () => {
             // Create the full task object as confirmAddTaskAndReschedule expects
             const proposedTask = createTaskWithDateTime({
                 description: 'New Task',
@@ -775,7 +942,7 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
 
-            const result = confirmAddTaskAndReschedule({ proposedTask });
+            const result = await confirmAddTaskAndReschedule({ proposedTask });
 
             expect(result.success).toBe(true);
             expect(result.task).toBeDefined();
@@ -803,19 +970,18 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
             expect(tasks[0].description).toBe('New Task'); // Sorted
             expect(tasks[1].description).toBe('Existing Task 1');
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
     });
 
     describe('scheduleUnscheduledTask contract', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('returns proposedTask and normalized context when confirmation is required', () => {
+        test('returns proposedTask and normalized context when confirmation is required', async () => {
             const existingScheduledTask = createTaskWithDateTime({
                 description: 'Existing Scheduled Task',
                 startTime: '09:00',
@@ -837,7 +1003,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([existingScheduledTask, unscheduledTask]);
 
-            const result = scheduleUnscheduledTask(unscheduledTask.id, '09:30', 45);
+            const result = await scheduleUnscheduledTask(unscheduledTask.id, '09:30', 45);
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
@@ -862,7 +1028,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.taskObjectToFinalize).toBeUndefined();
         });
 
-        test('returns canonical task and taskId after confirmed scheduling', () => {
+        test('returns canonical task and taskId after confirmed scheduling', async () => {
             const unscheduledTask = {
                 id: 'unsched-confirm-contract',
                 type: 'unscheduled',
@@ -876,7 +1042,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([unscheduledTask]);
 
-            const result = confirmScheduleUnscheduledTask(unscheduledTask.id, {
+            const result = await confirmScheduleUnscheduledTask(unscheduledTask.id, {
                 description: 'Schedule Me',
                 startTime: '11:00',
                 duration: 30,
@@ -896,7 +1062,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('updateTask', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([
                 createTaskWithDateTime({
                     description: 'Task 1',
@@ -915,14 +1081,13 @@ describe('Task Management Functions (task-manager.js)', () => {
                     confirmingDelete: false
                 })
             ]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should update a task, call performReschedule, sort, and save if no overlap occurs', () => {
+        test('should update a task, call performReschedule, sort, and save if no overlap occurs', async () => {
             const updatedData = { description: 'Task 1 Updated', startTime: '09:00', duration: 30 }; // Ends 09:30
-            const result = updateTask(0, updatedData);
+            const result = await updateTask(0, updatedData);
 
             expect(result.success).toBe(true);
             expect(result.task).toBeDefined();
@@ -930,10 +1095,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].description).toBe('Task 1 Updated');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('09:30');
             expect(tasks[1].description).toBe('Task 2'); // Task 2 remains, no reschedule needed for it in this case
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
-        test('updates a scheduled task category when edit data includes category', () => {
+        test('updates a scheduled task category when edit data includes category', async () => {
             const updatedData = {
                 description: 'Task 1 Updated',
                 startTime: '09:00',
@@ -941,21 +1106,21 @@ describe('Task Management Functions (task-manager.js)', () => {
                 category: 'work/deep'
             };
 
-            const result = updateTask(0, updatedData);
+            const result = await updateTask(0, updatedData);
 
             expect(result.success).toBe(true);
             expect(getTaskState()[0].category).toBe('work/deep');
-            expect(mockPutTask).toHaveBeenCalledWith(
-                expect.objectContaining({ category: 'work/deep' })
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([expect.objectContaining({ category: 'work/deep' })])
             );
         });
 
-        test('clears a scheduled task category when edit data includes null category', () => {
+        test('clears a scheduled task category when edit data includes null category', async () => {
             const [task1, task2] = getTaskState();
             updateTaskState([{ ...task1, category: 'work/deep' }, task2]);
-            mockPutTask.mockClear();
+            mockPutTasks.mockClear();
 
-            const result = updateTask(0, {
+            const result = await updateTask(0, {
                 description: 'Task 1 Updated',
                 startTime: '09:00',
                 duration: 30,
@@ -964,12 +1129,14 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             expect(result.success).toBe(true);
             expect(getTaskState()[0].category).toBeNull();
-            expect(mockPutTask).toHaveBeenCalledWith(expect.objectContaining({ category: null }));
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([expect.objectContaining({ category: null })])
+            );
         });
 
-        test('should require confirmation if updating a task creates an overlap', () => {
+        test('should require confirmation if updating a task creates an overlap', async () => {
             const updatedData = { description: 'Task 1 Updated', startTime: '09:30', duration: 60 }; // Now 09:30 - 10:30, overlaps Task 2
-            const result = updateTask(0, updatedData);
+            const result = await updateTask(0, updatedData);
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
@@ -982,25 +1149,25 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].description).toBe('Task 1'); // Unchanged
             expect(extractTimeFromDateTime(new Date(tasks[0].startDateTime))).toBe('09:00');
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
-        test('should not update with invalid data', () => {
-            const result = updateTask(0, { description: '', duration: 0 });
+        test('should not update with invalid data', async () => {
+            const result = await updateTask(0, { description: '', duration: 0 });
             expect(result.success).toBe(false);
             expect(result.reason).toBeDefined(); // e.g., "Description cannot be empty."
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
-        test('should return error for invalid index', () => {
-            const result = updateTask(5, { description: 'Valid Desc', duration: 30 });
+        test('should return error for invalid index', async () => {
+            const result = await updateTask(5, { description: 'Valid Desc', duration: 30 });
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Invalid task index.');
         });
     });
 
     describe('doScheduledTaskNow', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             const currentTask = createTaskWithDateTime({
                 description: 'Current Task',
                 startTime: '09:00',
@@ -1021,29 +1188,28 @@ describe('Task Management Functions (task-manager.js)', () => {
                 category: 'work/deep'
             };
             updateTaskState([currentTask, futureTask]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
+            mockPutTasks.mockClear();
         });
 
-        test('moves a selected scheduled task to the requested start time', () => {
+        test('moves a selected scheduled task to the requested start time', async () => {
             const futureTask = getTaskState().find((task) => task.description === 'Future Task');
 
-            const result = doScheduledTaskNow(futureTask.id, '10:00');
+            const result = await doScheduledTaskNow(futureTask.id, '10:00');
 
             expect(result.success).toBe(true);
             const movedTask = getTaskById(futureTask.id);
             expect(extractTimeFromDateTime(new Date(movedTask.startDateTime))).toBe('10:00');
             expect(extractTimeFromDateTime(new Date(movedTask.endDateTime))).toBe('10:30');
             expect(movedTask.category).toBe('work/deep');
-            expect(mockPutTask).toHaveBeenCalledWith(
-                expect.objectContaining({ id: futureTask.id })
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([expect.objectContaining({ id: futureTask.id })])
             );
         });
 
-        test('requires confirmation and leaves state unchanged when moving into an occupied slot', () => {
+        test('requires confirmation and leaves state unchanged when moving into an occupied slot', async () => {
             const futureTask = getTaskState().find((task) => task.description === 'Future Task');
 
-            const result = doScheduledTaskNow(futureTask.id, '09:30');
+            const result = await doScheduledTaskNow(futureTask.id, '09:30');
 
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
@@ -1058,18 +1224,18 @@ describe('Task Management Functions (task-manager.js)', () => {
             );
             const unchangedTask = getTaskById(futureTask.id);
             expect(extractTimeFromDateTime(new Date(unchangedTask.startDateTime))).toBe('10:30');
-            expect(mockPutTask).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
 
-        test('rejects completed and missing scheduled tasks', () => {
+        test('rejects completed and missing scheduled tasks', async () => {
             const [currentTask, futureTask] = getTaskState();
             updateTaskState([{ ...currentTask }, { ...futureTask, status: 'completed' }]);
 
-            expect(doScheduledTaskNow(futureTask.id, '09:30')).toEqual({
+            expect(await doScheduledTaskNow(futureTask.id, '09:30')).toEqual({
                 success: false,
                 reason: 'Completed tasks cannot be done now.'
             });
-            expect(doScheduledTaskNow('missing-task', '09:30')).toEqual({
+            expect(await doScheduledTaskNow('missing-task', '09:30')).toEqual({
                 success: false,
                 reason: 'Scheduled task not found.'
             });
@@ -1078,7 +1244,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('confirmUpdateTaskAndReschedule', () => {
         let task1, task2, task3;
-        beforeEach(() => {
+        beforeEach(async () => {
             task1 = createTaskWithDateTime({
                 description: 'Task 1',
                 startTime: '09:00',
@@ -1104,12 +1270,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
             updateTaskState([task1, task2, task3]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should update the task, reschedule subsequent tasks, sort, and save', () => {
+        test('should update the task, reschedule subsequent tasks, sort, and save', async () => {
             // Update Task 1 to overlap Task 2
             // Create a full task object as confirmUpdateTaskAndReschedule expects
             const updatedTaskObject = createTaskWithDateTime({
@@ -1123,7 +1288,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             // Set the id to match the existing task
             updatedTaskObject.id = task1.id;
 
-            const result = confirmUpdateTaskAndReschedule({ taskIndex: 0, updatedTaskObject });
+            const result = await confirmUpdateTaskAndReschedule({
+                taskIndex: 0,
+                updatedTaskObject
+            });
 
             expect(result.success).toBe(true);
             const tasks = getTaskState();
@@ -1142,11 +1310,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                 expect(extractTimeFromDateTime(new Date(shiftedT3.startDateTime))).toBe('11:30'); // Shifted
                 expect(extractTimeFromDateTime(new Date(shiftedT3.endDateTime))).toBe('12:30');
             }
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
             expect(tasks[0].description).toBe('Task 1 Extended'); // Should remain sorted or re-sorted
         });
 
-        test('should update a locked task and reschedule overlapping unlocked tasks', () => {
+        test('should update a locked task and reschedule overlapping unlocked tasks', async () => {
             // Reproduce user bug: moving a locked task to overlap with unlocked tasks
             // Setup: 4 tasks, with task at 17:30 being locked
             const taskA = createTaskWithDateTime({
@@ -1186,13 +1354,12 @@ describe('Task Management Functions (task-manager.js)', () => {
                 locked: false
             });
             updateTaskState([taskA, taskB, lockedTask, taskC]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             // User wants to move the locked task from 17:30 to 15:15
             // This should overlap with "Earlier Task" (15:00-16:00)
-            const updateResult = updateTask(2, {
+            const updateResult = await updateTask(2, {
                 description: 'Locked Task',
                 taskType: 'scheduled',
                 startTime: '15:15',
@@ -1207,7 +1374,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(updateResult.updatedTaskObject).toBeDefined();
 
             // User confirms the reschedule
-            const confirmResult = confirmUpdateTaskAndReschedule({
+            const confirmResult = await confirmUpdateTaskAndReschedule({
                 taskIndex: updateResult.taskIndex,
                 updatedTaskObject: updateResult.updatedTaskObject
             });
@@ -1229,7 +1396,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(extractTimeFromDateTime(new Date(earlierTask.startDateTime))).toBe('16:15');
         });
 
-        test('should resort task list after rescheduling pushes tasks past a locked task', () => {
+        test('should resort task list after rescheduling pushes tasks past a locked task', async () => {
             // Scenario: Completing a task late pushes another task past a locked task
             // The task list should be properly sorted after the reschedule
             //
@@ -1281,19 +1448,18 @@ describe('Task Management Functions (task-manager.js)', () => {
                 locked: false
             });
             updateTaskState([taskA, taskB, lockedTask, taskC]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
             // Complete Task A late at 10:30 (30 mins past scheduled end)
-            const completeResult = completeTask(0, '10:30');
+            const completeResult = await completeTask(0, '10:30');
 
             // Should require confirmation for late completion
             expect(completeResult.requiresConfirmation).toBe(true);
             expect(completeResult.confirmationType).toBe('COMPLETE_LATE');
 
             // Confirm the late completion with reschedule
-            const confirmResult = confirmCompleteLate(
+            const confirmResult = await confirmCompleteLate(
                 0,
                 completeResult.newEndTime,
                 completeResult.newDuration
@@ -1340,7 +1506,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('completeTask', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             updateTaskState([
                 createTaskWithDateTime({
                     description: 'Test Task',
@@ -1359,34 +1525,33 @@ describe('Task Management Functions (task-manager.js)', () => {
                     confirmingDelete: false
                 })
             ]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should mark a task as completed on time and save', () => {
-            const result = completeTask(0); // Complete 'Test Task'
+        test('should mark a task as completed on time and save', async () => {
+            const result = await completeTask(0); // Complete 'Test Task'
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Original end time
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
-        test('should adjust endTime and duration if completed early, and save', () => {
+        test('should adjust endTime and duration if completed early, and save', async () => {
             const currentTime = '09:30'; // Task ends at 10:00, started at 09:00
-            const result = completeTask(0, currentTime);
+            const result = await completeTask(0, currentTime);
             expect(result.success).toBe(true);
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('completed');
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe(currentTime);
             expect(tasks[0].duration).toBe(30); // 09:00 to 09:30
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
-        test('should return requiresConfirmation if completed late, task not modified yet', () => {
+        test('should return requiresConfirmation if completed late, task not modified yet', async () => {
             const currentTime = '10:30'; // Original end time 10:00
-            const result = completeTask(0, currentTime);
+            const result = await completeTask(0, currentTime);
 
             expect(result.success).toBe(true);
             expect(result.requiresConfirmation).toBe(true);
@@ -1403,10 +1568,10 @@ describe('Task Management Functions (task-manager.js)', () => {
             const tasks = getTaskState();
             expect(tasks[0].status).toBe('incomplete'); // Not yet completed
             expect(extractTimeFromDateTime(new Date(tasks[0].endDateTime))).toBe('10:00'); // Not yet changed
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
-        test('should handle invalid index gracefully', () => {
-            const result = completeTask(5, '10:00');
+        test('should handle invalid index gracefully', async () => {
+            const result = await completeTask(5, '10:00');
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Invalid task index.');
         });
@@ -1414,7 +1579,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('confirmCompleteLate', () => {
         let task1, task2;
-        beforeEach(() => {
+        beforeEach(async () => {
             task1 = createTaskWithDateTime({
                 description: 'Task A',
                 startTime: '09:00',
@@ -1432,15 +1597,14 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
             updateTaskState([task1, task2]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should update task status, time, duration, reschedule, sort, and save', () => {
+        test('should update task status, time, duration, reschedule, sort, and save', async () => {
             const newEndTime = '10:15'; // Original was 10:00
             const newDuration = 75; // Original was 60
-            const result = confirmCompleteLate(0, newEndTime, newDuration);
+            const result = await confirmCompleteLate(0, newEndTime, newDuration);
 
             expect(result.success).toBe(true);
             const tasks = getTaskState();
@@ -1463,11 +1627,11 @@ describe('Task Management Functions (task-manager.js)', () => {
                 ); // Rescheduled
                 expect(extractTimeFromDateTime(new Date(subsequentTask.endDateTime))).toBe('10:45');
             }
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
-        test('should handle invalid index', () => {
-            const result = confirmCompleteLate(5, '10:00', 60);
+        test('should handle invalid index', async () => {
+            const result = await confirmCompleteLate(5, '10:00', 60);
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Invalid task index.');
         });
@@ -1475,7 +1639,7 @@ describe('Task Management Functions (task-manager.js)', () => {
 
     describe('adjustAndCompleteTask', () => {
         let task1, task2;
-        beforeEach(() => {
+        beforeEach(async () => {
             task1 = createTaskWithDateTime({
                 description: 'Running Task',
                 startTime: '09:00',
@@ -1493,17 +1657,16 @@ describe('Task Management Functions (task-manager.js)', () => {
                 confirmingDelete: false
             });
             updateTaskState([task1, task2]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('truncates task end time and marks complete', () => {
+        test('truncates task end time and marks complete', async () => {
             // Truncate from 10:00 to 09:30
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('09:30', today);
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.wasExtended).toBe(false);
@@ -1513,15 +1676,15 @@ describe('Task Management Functions (task-manager.js)', () => {
             const updatedTask = tasks.find((t) => t.id === task1.id);
             expect(updatedTask.status).toBe('completed');
             expect(updatedTask.duration).toBe(30);
-            expect(mockPutTask).toHaveBeenCalled();
+            expect(mockPutTasks).toHaveBeenCalled();
         });
 
-        test('extends task end time and marks complete', () => {
+        test('extends task end time and marks complete', async () => {
             // Extend from 10:00 to 10:15
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('10:15', today);
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.wasExtended).toBe(true);
@@ -1533,57 +1696,57 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(updatedTask.duration).toBe(75);
         });
 
-        test('calculates new duration correctly', () => {
+        test('calculates new duration correctly', async () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('09:45', today);
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.newDuration).toBe(45); // 09:00 to 09:45 = 45 min
         });
 
-        test('returns wasExtended=true when extending', () => {
+        test('returns wasExtended=true when extending', async () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('11:00', today); // Beyond original 10:00
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.wasExtended).toBe(true);
         });
 
-        test('returns wasExtended=false when truncating', () => {
+        test('returns wasExtended=false when truncating', async () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('09:15', today); // Before original 10:00
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.wasExtended).toBe(false);
         });
 
-        test('returns error for non-existent task', () => {
+        test('returns error for non-existent task', async () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('09:30', today);
 
-            const result = adjustAndCompleteTask('nonexistent-id', newEndDateTime);
+            const result = await adjustAndCompleteTask('nonexistent-id', newEndDateTime);
 
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Task not found');
         });
 
-        test('returns error when new end is before start', () => {
+        test('returns error when new end is before start', async () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('08:30', today); // Before task start 09:00
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(false);
             expect(result.reason).toBe('New end time must be after start time');
         });
 
-        test('clears editing flag when completing', () => {
+        test('clears editing flag when completing', async () => {
             // Set editing flag
             task1.editing = true;
             updateTaskState([task1, task2]);
@@ -1591,7 +1754,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('09:30', today);
 
-            const result = adjustAndCompleteTask(task1.id, newEndDateTime);
+            const result = await adjustAndCompleteTask(task1.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             const tasks = getTaskState();
@@ -1599,7 +1762,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(updatedTask.editing).toBe(false);
         });
 
-        test('returns error for unscheduled task', () => {
+        test('returns error for unscheduled task', async () => {
             const unscheduledTask = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -1613,7 +1776,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             const today = extractDateFromDateTime(new Date());
             const newEndDateTime = timeToDateTime('10:00', today);
 
-            const result = adjustAndCompleteTask('unsched-1', newEndDateTime);
+            const result = await adjustAndCompleteTask('unsched-1', newEndDateTime);
 
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Only scheduled tasks can be adjusted');
@@ -1621,117 +1784,114 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('deleteTask', () => {
-        beforeEach(() => {
-            addTask({
+        beforeEach(async () => {
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task 1',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task 2',
                 startTime: '10:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should remove a task if confirmed and save', () => {
-            const result = deleteTask(0, true);
+        test('should remove a task if confirmed and save', async () => {
+            const result = await deleteTask(0, true);
             expect(result.success).toBe(true);
             expect(result.task).toEqual(expect.objectContaining({ description: 'Task 1' }));
             expect(getTaskState().length).toBe(1);
             expect(getTaskState()[0].description).toBe('Task 2');
-            expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
+            expect(mockDeleteTasks).toHaveBeenCalled();
         });
 
-        test('should require confirmation if not confirmed, and set flag', () => {
-            const result = deleteTask(0, false);
+        test('should require confirmation if not confirmed, and set flag', async () => {
+            const result = await deleteTask(0, false);
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
             expect(getTaskState().length).toBe(2); // Task still exists
             expect(getTaskState()[0].confirmingDelete).toBe(true);
-            expect(mockDeleteTaskFromStorage).not.toHaveBeenCalled(); // Not saved yet
+            expect(mockDeleteTasks).not.toHaveBeenCalled(); // Not saved yet
         });
     });
 
     describe('editTask / cancelEdit', () => {
-        beforeEach(() => {
-            addTask({
+        beforeEach(async () => {
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Test Task',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('editTask should set editing flag and clear confirmingDelete', () => {
+        test('editTask should set editing flag and clear confirmingDelete', async () => {
             getTaskState()[0].confirmingDelete = true; // Set it first
             const result = editTask(0);
             expect(result.success).toBe(true);
             expect(getTaskState()[0].editing).toBe(true);
             expect(getTaskState()[0].confirmingDelete).toBe(false);
-            expect(mockSaveTasks).not.toHaveBeenCalled(); // UI state change only
+            expect(mockPutTasks).not.toHaveBeenCalled(); // UI state change only
         });
 
-        test('cancelEdit should clear editing flag', () => {
+        test('cancelEdit should clear editing flag', async () => {
             getTaskState()[0].editing = true; // Set it first
             const result = cancelEdit(0);
             expect(result.success).toBe(true);
             expect(getTaskState()[0].editing).toBe(false);
-            expect(mockSaveTasks).not.toHaveBeenCalled(); // UI state change only
+            expect(mockPutTasks).not.toHaveBeenCalled(); // UI state change only
         });
     });
 
     describe('deleteAllTasks', () => {
-        beforeEach(() => {
-            addTask({
+        beforeEach(async () => {
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task 1',
                 startTime: '09:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            addTask({
+            await addTask({
                 taskType: 'scheduled',
                 description: 'Task 2',
                 startTime: '10:00',
                 duration: 60,
                 _skipAdjustCheck: true
             });
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
         });
 
-        test('should delete all tasks and return success result', () => {
-            const result = deleteAllTasks();
+        test('should delete all tasks and return success result', async () => {
+            const deletedTaskIds = getTaskState().map((task) => task.id);
+            const result = await deleteAllTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(2);
             expect(getTaskState().length).toBe(0);
-            expect(mockSaveTasks).toHaveBeenCalledWith([]);
+            expect(mockDeleteTasks).toHaveBeenCalledWith(deletedTaskIds);
         });
 
-        test('should return success if no tasks to delete', () => {
+        test('should return success if no tasks to delete', async () => {
             updateTaskState([]);
-            mockSaveTasks.mockClear();
-            mockPutTask.mockClear();
-            mockDeleteTaskFromStorage.mockClear();
+            mockPutTasks.mockClear();
+            mockDeleteTasks.mockClear();
 
-            const result = deleteAllTasks();
+            const result = await deleteAllTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(0);
             expect(getTaskState().length).toBe(0);
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
     });
 
@@ -1741,7 +1901,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('getSuggestedStartTime', () => {
         let getCurrentTimeRoundedSpy;
 
-        beforeEach(() => {
+        beforeEach(async () => {
             // Mock getCurrentTimeRounded to return 14:35 (2:32 PM rounded up to 2:35 PM)
             getCurrentTimeRoundedSpy = jest
                 .spyOn(require('../public/js/utils.js'), 'getCurrentTimeRounded')
@@ -1754,13 +1914,13 @@ describe('Task Management Functions (task-manager.js)', () => {
             }
         });
 
-        test('should return current time rounded up when no tasks exist', () => {
+        test('should return current time rounded up when no tasks exist', async () => {
             updateTaskState([]);
             const result = getSuggestedStartTime();
             expect(result).toBe('14:35'); // getCurrentTimeRounded() returns 14:35
         });
 
-        test('ignores scheduled tasks from prior days', () => {
+        test('ignores scheduled tasks from prior days', async () => {
             const today = extractDateFromDateTime(new Date());
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
@@ -1782,7 +1942,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getSuggestedStartTime()).toBe('16:00');
         });
 
-        test('should return current time rounded up when no incomplete tasks exist (only completed)', () => {
+        test('should return current time rounded up when no incomplete tasks exist (only completed)', async () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '14:00',
@@ -1796,7 +1956,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // Current time rounded up
         });
 
-        test('should return current time rounded up when filling a gap (tasks exist before current time)', () => {
+        test('should return current time rounded up when filling a gap (tasks exist before current time)', async () => {
             const task1 = createTaskWithDateTime({
                 description: 'Morning Task',
                 startTime: '09:00',
@@ -1818,7 +1978,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // Current time slot (14:35) is free and there's a task before it (morning task)
         });
 
-        test('should return end time of latest task when planning ahead (no tasks before current time)', () => {
+        test('should return end time of latest task when planning ahead (no tasks before current time)', async () => {
             const task1 = createTaskWithDateTime({
                 description: 'Future Task 1',
                 startTime: '16:00',
@@ -1840,7 +2000,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('19:00'); // No tasks before current time (14:35), so continue planning from latest task
         });
 
-        test('should return end time of latest task when current time slot is occupied', () => {
+        test('should return end time of latest task when current time slot is occupied', async () => {
             const task1 = createTaskWithDateTime({
                 description: 'Current Task',
                 startTime: '14:00',
@@ -1862,7 +2022,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('16:30'); // End time of latest task (task2)
         });
 
-        test('should handle task that spans current time (current time falls within task)', () => {
+        test('should handle task that spans current time (current time falls within task)', async () => {
             const spanningTask = createTaskWithDateTime({
                 description: 'Long Task',
                 startTime: '14:00',
@@ -1876,7 +2036,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('16:00'); // End time of the spanning task
         });
 
-        test('should handle tasks that cross midnight - current time in first part', () => {
+        test('should handle tasks that cross midnight - current time in first part', async () => {
             // Mock current time to 23:35 (11:35 PM)
             getCurrentTimeRoundedSpy.mockReturnValue('23:35');
 
@@ -1893,7 +2053,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
-        test('should handle tasks that cross midnight - current time in second part', () => {
+        test('should handle tasks that cross midnight - current time in second part', async () => {
             // Mock current time to 00:35 (12:35 AM)
             getCurrentTimeRoundedSpy.mockReturnValue('00:35');
 
@@ -1910,7 +2070,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('01:00'); // End time of midnight-crossing task
         });
 
-        test('should consider completed tasks when determining gap-filling vs planning ahead', () => {
+        test('should consider completed tasks when determining gap-filling vs planning ahead', async () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '14:00',
@@ -1932,7 +2092,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // Completed task counts as existing task before current time, so fill the gap
         });
 
-        test('should ignore completed tasks for conflict detection but consider them for gap-filling', () => {
+        test('should ignore completed tasks for conflict detection but consider them for gap-filling', async () => {
             const completedTaskAtCurrentTime = createTaskWithDateTime({
                 description: 'Completed Task at Current Time',
                 startTime: '14:30',
@@ -1954,7 +2114,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // Current time is free (completed task doesn't conflict) and there's a task before it, so fill the gap
         });
 
-        test('should return end time of chronologically latest task when multiple tasks exist', () => {
+        test('should return end time of chronologically latest task when multiple tasks exist', async () => {
             const task1 = createTaskWithDateTime({
                 description: 'Early Task',
                 startTime: '09:00',
@@ -1984,7 +2144,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('17:00'); // End time of chronologically latest task (task3)
         });
 
-        test('should handle edge case where current time exactly matches task start time', () => {
+        test('should handle edge case where current time exactly matches task start time', async () => {
             // Mock current time to 14:30 (already rounded)
             getCurrentTimeRoundedSpy.mockRestore();
             getCurrentTimeRoundedSpy = jest
@@ -2004,7 +2164,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('15:30'); // End time of the conflicting task
         });
 
-        test('should handle edge case where current time exactly matches task end time', () => {
+        test('should handle edge case where current time exactly matches task end time', async () => {
             // Mock current time to 15:00 (already rounded)
             getCurrentTimeRoundedSpy.mockRestore();
             getCurrentTimeRoundedSpy = jest
@@ -2024,7 +2184,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('15:00'); // Current time is free and there's a task before it, so fill the gap
         });
 
-        test('should handle mixed scenario with completed and incomplete tasks before current time', () => {
+        test('should handle mixed scenario with completed and incomplete tasks before current time', async () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Morning Task',
                 startTime: '09:00',
@@ -2054,7 +2214,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe('14:35'); // There are tasks (both completed and incomplete) before current time, so fill the gap
         });
 
-        test('should handle scenario where all tasks are in the future (planning mode)', () => {
+        test('should handle scenario where all tasks are in the future (planning mode)', async () => {
             const futureTask1 = createTaskWithDateTime({
                 description: 'Future Task 1',
                 startTime: '15:00',
@@ -2078,7 +2238,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('getTodaysScheduledTasks', () => {
-        test('returns only scheduled tasks that start on the current local day', () => {
+        test('returns only scheduled tasks that start on the current local day', async () => {
             const now = new Date('2026-06-22T13:00:00.000');
             const staleTask = createTaskWithDateTime({
                 description: 'Yesterday scheduled',
@@ -2106,7 +2266,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('Performance Characteristics', () => {
-        test('should handle large numbers of tasks efficiently', () => {
+        test('should handle large numbers of tasks efficiently', async () => {
             const startTime = performance.now();
 
             // Create 100 tasks
@@ -2154,93 +2314,298 @@ describe('Task Management Functions (task-manager.js)', () => {
         });
     });
 
-    describe('Unscheduled Task Sorting', () => {
-        const { getSortedUnscheduledTasks } = require('../public/js/tasks/manager.js');
+    describe('Unscheduled sequence composition', () => {
+        function createDeferred() {
+            let resolve;
+            let reject;
+            const promise = new Promise((resolvePromise, rejectPromise) => {
+                resolve = resolvePromise;
+                reject = rejectPromise;
+            });
+            return { promise, resolve, reject };
+        }
 
-        function createUnscheduledTask(priority, estDuration, status = 'incomplete') {
+        function rankedTask(id, manualOrder, overrides = {}) {
             return {
-                id: `unsched-${Date.now()}-${Math.random()}`,
+                id,
                 type: 'unscheduled',
-                description: `Task ${priority} ${estDuration}`,
-                priority,
-                estDuration,
-                status,
-                isEditingInline: false
+                description: id,
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                editing: false,
+                confirmingDelete: false,
+                manualOrder,
+                ...overrides
             };
         }
 
-        test('sorts by completion status (incomplete first)', () => {
-            const completed = createUnscheduledTask('high', 30, 'completed');
-            const incomplete = createUnscheduledTask('low', 30, 'incomplete');
-            updateTaskState([completed, incomplete]);
+        function sequenceDocument(orderedTaskIds) {
+            return {
+                id: 'config-unscheduled-sequence',
+                schemaVersion: 1,
+                orderedTaskIds
+            };
+        }
 
-            const sorted = getSortedUnscheduledTasks();
-            expect(sorted[0].status).toBe('incomplete');
-            expect(sorted[1].status).toBe('completed');
+        test('getUnscheduledView delegates display modes without persisting', async () => {
+            updateTaskState([
+                rankedTask('manual-first', 0, { priority: 'low' }),
+                rankedTask('priority-first', 1, { priority: 'high' })
+            ]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['manual-first', 'priority-first']));
+
+            expect(getUnscheduledView('priority').tasks.map((task) => task.id)).toEqual([
+                'priority-first',
+                'manual-first'
+            ]);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'manual-first',
+                'priority-first'
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
         });
 
-        test('sorts by priority (high > medium > low)', () => {
-            const low = createUnscheduledTask('low', 30);
-            const high = createUnscheduledTask('high', 30);
-            const medium = createUnscheduledTask('medium', 30);
-            updateTaskState([low, high, medium]);
+        test('move persists one sequence document and leaves task docs untouched', async () => {
+            updateTaskState([
+                rankedTask('a', 0, { remoteField: 'keep-a' }),
+                rankedTask('b', 1, { remoteField: 'keep-b' }),
+                rankedTask('c', 2, { remoteField: 'keep-c' })
+            ]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b', 'c']));
+            const before = JSON.parse(JSON.stringify(getTaskState()));
 
-            const sorted = getSortedUnscheduledTasks();
-            expect(sorted[0].priority).toBe('high');
-            expect(sorted[1].priority).toBe('medium');
-            expect(sorted[2].priority).toBe('low');
+            const operation = moveUnscheduledTask('c', { kind: 'top' });
+
+            expect(operation).toMatchObject({
+                success: true,
+                changed: true,
+                taskId: 'c',
+                position: 1
+            });
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'c',
+                'a',
+                'b'
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['c', 'a', 'b'])
+            );
+            expect(getTaskState()).toEqual(before);
+            expect(mockPutTasks).not.toHaveBeenCalled();
+            await expect(operation.settled).resolves.toEqual({ success: true });
         });
 
-        test('sorts by duration within same priority (shorter first)', () => {
-            const long = createUnscheduledTask('high', 120);
-            const short = createUnscheduledTask('high', 30);
-            const medium = createUnscheduledTask('high', 60);
-            updateTaskState([long, short, medium]);
+        test('a concurrent task refresh survives while a sequence write settles', async () => {
+            const write = createDeferred();
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
 
-            const sorted = getSortedUnscheduledTasks();
-            expect(sorted[0].estDuration).toBe(30);
-            expect(sorted[1].estDuration).toBe(60);
-            expect(sorted[2].estDuration).toBe(120);
+            const operation = moveUnscheduledTask('b', { kind: 'top' });
+            updateTaskState([
+                rankedTask('a', 0, {
+                    description: 'Edited on another client',
+                    remoteField: 'preserved'
+                }),
+                rankedTask('b', 1)
+            ]);
+            write.resolve();
+
+            await expect(operation.settled).resolves.toEqual({ success: true });
+            expect(getTaskById('a')).toEqual(
+                expect.objectContaining({
+                    description: 'Edited on another client',
+                    remoteField: 'preserved',
+                    manualOrder: 0
+                })
+            );
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['b', 'a']);
         });
 
-        test('handles null estDuration correctly', () => {
-            const withDuration = createUnscheduledTask('high', 30);
-            const withoutDuration = createUnscheduledTask('high', null);
-            updateTaskState([withoutDuration, withDuration]);
+        test('failed persistence reloads order without clobbering task fields', async () => {
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
+            mockPersistUnscheduledSequenceDocument.mockRejectedValueOnce(
+                new Error('Sequence write failed.')
+            );
+            mockLoadUnscheduledSequenceDocument.mockResolvedValueOnce(sequenceDocument(['a', 'b']));
 
-            const sorted = getSortedUnscheduledTasks();
-            // Tasks with duration should come before tasks without
-            expect(sorted[0].estDuration).toBe(30);
-            expect(sorted[1].estDuration).toBeNull();
+            const operation = moveUnscheduledTask('b', { kind: 'top' });
+            getTaskById('a').description = 'Concurrent task edit';
+
+            await expect(operation.settled).resolves.toEqual({
+                success: false,
+                code: 'persist-failed',
+                reason: 'Sequence write failed.',
+                rolledBack: false,
+                reloaded: true,
+                recoveryFailed: false
+            });
+            expect(getTaskById('a').description).toBe('Concurrent task edit');
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual(['a', 'b']);
         });
 
-        test('handles both tasks having null estDuration', () => {
-            const task1 = createUnscheduledTask('high', null);
-            const task2 = createUnscheduledTask('high', null);
-            updateTaskState([task1, task2]);
+        test('waitForUnscheduledMoveSettlement waits for the sequence transaction', async () => {
+            const write = createDeferred();
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1)]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b']));
 
-            const sorted = getSortedUnscheduledTasks();
-            expect(sorted).toHaveLength(2);
-            // Both have null duration, order should be stable
+            const operation = moveUnscheduledTask('b', { kind: 'top' });
+            let waitResolved = false;
+            const wait = waitForUnscheduledMoveSettlement().then(() => {
+                waitResolved = true;
+            });
+            await Promise.resolve();
+            expect(waitResolved).toBe(false);
+
+            write.resolve();
+            await operation.settled;
+            await wait;
+            expect(waitResolved).toBe(true);
         });
 
-        test('handles mix of priorities, durations, and statuses', () => {
-            const completedHigh = createUnscheduledTask('high', 30, 'completed');
-            const incompleteHigh = createUnscheduledTask('high', 60);
-            const incompleteLow = createUnscheduledTask('low', 30);
-            const incompleteMedium = createUnscheduledTask('medium', null);
-            updateTaskState([completedHigh, incompleteHigh, incompleteLow, incompleteMedium]);
+        test('refresh waits for a local write then hydrates the replicated winner', async () => {
+            const write = createDeferred();
+            mockPersistUnscheduledSequenceDocument.mockReturnValueOnce(write.promise);
+            updateTaskState([rankedTask('a', 0), rankedTask('b', 1), rankedTask('c', 2)]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'b', 'c']));
+            const operation = moveUnscheduledTask('c', { kind: 'top' });
+            mockLoadUnscheduledSequenceDocument.mockResolvedValueOnce(
+                sequenceDocument(['b', 'c', 'a'])
+            );
 
-            const sorted = getSortedUnscheduledTasks();
-            // First: incomplete high (60)
-            expect(sorted[0].priority).toBe('high');
-            expect(sorted[0].status).toBe('incomplete');
-            // Second: incomplete medium (null)
-            expect(sorted[1].priority).toBe('medium');
-            // Third: incomplete low (30)
-            expect(sorted[2].priority).toBe('low');
-            // Last: completed high
-            expect(sorted[3].status).toBe('completed');
+            const refresh = refreshUnscheduledSequenceState();
+            await Promise.resolve();
+            expect(mockLoadUnscheduledSequenceDocument).not.toHaveBeenCalled();
+
+            write.resolve();
+            await operation.settled;
+            await expect(refresh).resolves.toEqual(sequenceDocument(['b', 'c', 'a']));
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'b',
+                'c',
+                'a'
+            ]);
+        });
+
+        test('add writes the new task once and places it through the sequence document', async () => {
+            updateTaskState([
+                rankedTask('incomplete', 0),
+                rankedTask('completed', 1, { status: 'completed' })
+            ]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
+
+            const result = await addTask({
+                taskType: 'unscheduled',
+                description: 'Added',
+                priority: 'medium',
+                estDuration: 20
+            });
+
+            expect(result).toMatchObject({ success: true, taskId: result.task.id });
+            expect(result.task).not.toHaveProperty('manualOrder');
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'incomplete',
+                result.task.id,
+                'completed'
+            ]);
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: result.task.id, description: 'Added' })
+                ])
+            );
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', result.task.id, 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
+        });
+
+        test('confirmed add places a task without rewriting its peers', async () => {
+            updateTaskState([
+                rankedTask('incomplete', 0),
+                rankedTask('completed', 1, { status: 'completed' })
+            ]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
+            const proposedTask = rankedTask('confirmed', undefined, {
+                description: 'Confirmed',
+                editing: true,
+                confirmingDelete: true
+            });
+            delete proposedTask.manualOrder;
+
+            const result = await confirmAddTaskAndReschedule({ proposedTask });
+
+            expect(result).toMatchObject({
+                success: true,
+                taskId: 'confirmed',
+                task: expect.objectContaining({ id: 'confirmed' })
+            });
+            expect(result.task).not.toHaveProperty('manualOrder');
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks.mock.calls[0][0][0]).not.toHaveProperty('editing');
+            expect(mockPutTasks.mock.calls[0][0][0]).not.toHaveProperty('confirmingDelete');
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', 'confirmed', 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
+        });
+
+        test('unschedule persists only the converted task plus its placement', async () => {
+            const scheduled = createTaskWithDateTime({
+                description: 'Convert',
+                startTime: '10:00',
+                duration: 30,
+                status: 'incomplete',
+                editing: true,
+                confirmingDelete: true
+            });
+            updateTaskState([
+                scheduled,
+                rankedTask('incomplete', 0),
+                rankedTask('completed', 1, { status: 'completed' })
+            ]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['incomplete', 'completed']));
+
+            const result = await unscheduleTask(scheduled.id);
+
+            expect(result).toMatchObject({
+                success: true,
+                taskId: scheduled.id,
+                task: expect.objectContaining({ id: scheduled.id, type: 'unscheduled' })
+            });
+            expect(result.task).not.toHaveProperty('manualOrder');
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: scheduled.id, type: 'unscheduled' })
+                ])
+            );
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith(
+                sequenceDocument(['incomplete', scheduled.id, 'completed'])
+            );
+            await waitForUnscheduledMoveSettlement();
+        });
+
+        test('completion and reopening preserve position without a sequence write', async () => {
+            updateTaskState([rankedTask('a', 0), rankedTask('ranked', 1), rankedTask('b', 2)]);
+            hydrateUnscheduledSequenceState(sequenceDocument(['a', 'ranked', 'b']));
+
+            expect((await toggleUnscheduledTaskCompleteState('ranked')).success).toBe(true);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'a',
+                'ranked',
+                'b'
+            ]);
+            expect((await toggleUnscheduledTaskCompleteState('ranked')).success).toBe(true);
+            expect(getUnscheduledView('manual').tasks.map((task) => task.id)).toEqual([
+                'a',
+                'ranked',
+                'b'
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).not.toHaveBeenCalled();
         });
     });
 
@@ -2252,19 +2617,19 @@ describe('Task Management Functions (task-manager.js)', () => {
             unscheduleTask
         } = require('../public/js/tasks/manager.js');
 
-        test('scheduleUnscheduledTask with invalid task id returns failure', () => {
+        test('scheduleUnscheduledTask with invalid task id returns failure', async () => {
             updateTaskState([]);
-            const result = scheduleUnscheduledTask('nonexistent', '10:00', 60);
+            const result = await scheduleUnscheduledTask('nonexistent', '10:00', 60);
             expect(result.success).toBe(false);
         });
 
-        test('toggleUnscheduledTaskCompleteState with invalid task id returns failure', () => {
+        test('toggleUnscheduledTaskCompleteState with invalid task id returns failure', async () => {
             updateTaskState([]);
-            const result = toggleUnscheduledTaskCompleteState('nonexistent');
+            const result = await toggleUnscheduledTaskCompleteState('nonexistent');
             expect(result.success).toBe(false);
         });
 
-        test('toggleUnscheduledTaskCompleteState toggles status', () => {
+        test('toggleUnscheduledTaskCompleteState toggles status', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2275,22 +2640,22 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            let result = toggleUnscheduledTaskCompleteState('unsched-1');
+            let result = await toggleUnscheduledTaskCompleteState('unsched-1');
             expect(result.success).toBe(true);
             expect(getTaskState()[0].status).toBe('completed');
 
-            result = toggleUnscheduledTaskCompleteState('unsched-1');
+            result = await toggleUnscheduledTaskCompleteState('unsched-1');
             expect(result.success).toBe(true);
             expect(getTaskState()[0].status).toBe('incomplete');
         });
 
-        test('toggleLockState with invalid task id returns failure', () => {
+        test('toggleLockState with invalid task id returns failure', async () => {
             updateTaskState([]);
-            const result = toggleLockState('nonexistent');
+            const result = await toggleLockState('nonexistent');
             expect(result.success).toBe(false);
         });
 
-        test('toggleLockState toggles locked flag', () => {
+        test('toggleLockState toggles locked flag', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2302,22 +2667,22 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task]);
 
-            let result = toggleLockState(task.id);
+            let result = await toggleLockState(task.id);
             expect(result.success).toBe(true);
             expect(getTaskState()[0].locked).toBe(true);
 
-            result = toggleLockState(task.id);
+            result = await toggleLockState(task.id);
             expect(result.success).toBe(true);
             expect(getTaskState()[0].locked).toBe(false);
         });
 
-        test('unscheduleTask with invalid task id returns failure', () => {
+        test('unscheduleTask with invalid task id returns failure', async () => {
             updateTaskState([]);
-            const result = unscheduleTask('nonexistent');
+            const result = await unscheduleTask('nonexistent');
             expect(result.success).toBe(false);
         });
 
-        test('unscheduleTask converts scheduled to unscheduled', () => {
+        test('unscheduleTask converts scheduled to unscheduled', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2329,7 +2694,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task]);
 
-            const result = unscheduleTask(task.id);
+            const result = await unscheduleTask(task.id);
             expect(result.success).toBe(true);
 
             const tasks = getTaskState();
@@ -2341,7 +2706,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0]).not.toHaveProperty('locked');
         });
 
-        test('unscheduleTask preserves category on the converted task', () => {
+        test('unscheduleTask preserves category on the converted task', async () => {
             const task = {
                 ...createTaskWithDateTime({
                     description: 'Categorized',
@@ -2355,7 +2720,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = unscheduleTask(task.id);
+            const result = await unscheduleTask(task.id);
 
             expect(result.success).toBe(true);
             expect(getTaskState()[0].category).toBe('break');
@@ -2368,7 +2733,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             resetAllEditingFlags
         } = require('../public/js/tasks/manager.js');
 
-        test('resetAllConfirmingDeleteFlags returns false when no flags to reset', () => {
+        test('resetAllConfirmingDeleteFlags returns false when no flags to reset', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2383,7 +2748,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe(false);
         });
 
-        test('resetAllConfirmingDeleteFlags returns true and resets flags', () => {
+        test('resetAllConfirmingDeleteFlags returns true and resets flags', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2399,7 +2764,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].confirmingDelete).toBe(false);
         });
 
-        test('resetAllEditingFlags returns false when no flags to reset', () => {
+        test('resetAllEditingFlags returns false when no flags to reset', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2414,7 +2779,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result).toBe(false);
         });
 
-        test('resetAllEditingFlags returns true and resets flags', () => {
+        test('resetAllEditingFlags returns true and resets flags', async () => {
             const task = createTaskWithDateTime({
                 description: 'Test',
                 startTime: '10:00',
@@ -2434,7 +2799,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('Delete Functions Edge Cases', () => {
         const { deleteCompletedTasks } = require('../public/js/tasks/manager.js');
 
-        test('deleteAllScheduledTasks removes only scheduled tasks', () => {
+        test('deleteAllScheduledTasks removes only scheduled tasks', async () => {
             const scheduledTask = createTaskWithDateTime({
                 description: 'Scheduled',
                 startTime: '10:00',
@@ -2453,7 +2818,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([scheduledTask, unscheduledTask]);
 
-            const result = deleteAllScheduledTasks();
+            const result = await deleteAllScheduledTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(1);
 
@@ -2462,7 +2827,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].type).toBe('unscheduled');
         });
 
-        test('deleteAllScheduledTasks removes only today scheduled tasks', () => {
+        test('deleteAllScheduledTasks removes only today scheduled tasks', async () => {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const staleScheduledTask = createTaskWithDateTime({
@@ -2479,14 +2844,14 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             updateTaskState([staleScheduledTask, todayScheduledTask]);
 
-            const result = deleteAllScheduledTasks();
+            const result = await deleteAllScheduledTasks();
 
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(1);
             expect(getTaskState()).toEqual([staleScheduledTask]);
         });
 
-        test('deleteCompletedTasks removes completed tasks from both types', () => {
+        test('deleteCompletedTasks removes completed tasks from both types', async () => {
             const incompleteSched = createTaskWithDateTime({
                 description: 'Incomplete Scheduled',
                 startTime: '10:00',
@@ -2513,7 +2878,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([incompleteSched, completedSched, completedUnsched]);
 
-            const result = deleteCompletedTasks();
+            const result = await deleteCompletedTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(2);
 
@@ -2522,7 +2887,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].status).toBe('incomplete');
         });
 
-        test('deleteCompletedTasks returns zero deleted when no completed tasks', () => {
+        test('deleteCompletedTasks returns zero deleted when no completed tasks', async () => {
             const task = createTaskWithDateTime({
                 description: 'Incomplete',
                 startTime: '10:00',
@@ -2533,12 +2898,12 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([task]);
 
-            const result = deleteCompletedTasks();
+            const result = await deleteCompletedTasks();
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(0);
         });
 
-        test('deleteCompletedUnscheduledTasks removes only completed unscheduled tasks', () => {
+        test('deleteCompletedUnscheduledTasks removes only completed unscheduled tasks', async () => {
             const completedScheduled = createTaskWithDateTime({
                 description: 'Completed Scheduled',
                 startTime: '11:00',
@@ -2565,14 +2930,14 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([completedScheduled, incompleteUnscheduled, completedUnscheduled]);
 
-            const result = deleteCompletedUnscheduledTasks();
+            const result = await deleteCompletedUnscheduledTasks();
 
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(1);
             expect(getTaskState()).toEqual([completedScheduled, incompleteUnscheduled]);
         });
 
-        test('deleteCompletedUnscheduledTasks returns zero deleted when none exist', () => {
+        test('deleteCompletedUnscheduledTasks returns zero deleted when none exist', async () => {
             const task = {
                 id: 'unsched-incomplete',
                 type: 'unscheduled',
@@ -2583,85 +2948,109 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = deleteCompletedUnscheduledTasks();
+            const result = await deleteCompletedUnscheduledTasks();
 
             expect(result.success).toBe(true);
             expect(result.tasksDeleted).toBe(0);
         });
 
-        test('rolloverPriorDayScheduledTasks converts stale incomplete scheduled tasks to unscheduled', () => {
-            const staleScheduledTask = createTaskWithDateTime({
-                description: 'Yesterday unfinished',
-                startTime: '09:00',
-                duration: 45,
+        test('rolloverPriorDayScheduledTasks enters converted tasks in chronological sequence order', async () => {
+            const staleEarlyTask = createTaskWithDateTime({
+                description: 'Yesterday early and long',
+                startTime: '08:00',
+                duration: 120,
                 date: '2026-04-21',
                 status: 'incomplete',
                 locked: true,
                 isEditingInline: true
             });
-            staleScheduledTask.category = 'work/deep';
-            const todayScheduledTask = createTaskWithDateTime({
-                description: 'Today scheduled',
-                startTime: '10:00',
-                duration: 30,
-                date: '2026-04-22',
+            const staleLaterTask = createTaskWithDateTime({
+                description: 'Yesterday later and short',
+                startTime: '09:00',
+                duration: 15,
+                date: '2026-04-21',
                 status: 'incomplete'
             });
-            const completedStaleScheduledTask = createTaskWithDateTime({
-                description: 'Yesterday completed',
-                startTime: '11:00',
-                duration: 30,
-                date: '2026-04-21',
-                status: 'completed'
-            });
-            const existingUnscheduledTask = {
-                id: 'unsched-existing',
+            const existingIncomplete = {
+                id: 'unsched-incomplete',
                 type: 'unscheduled',
-                description: 'Existing backlog',
+                description: 'Existing incomplete',
                 priority: 'high',
                 estDuration: 20,
-                status: 'incomplete'
+                status: 'incomplete',
+                manualOrder: 0,
+                editing: false,
+                confirmingDelete: false
+            };
+            const existingCompleted = {
+                id: 'unsched-completed',
+                type: 'unscheduled',
+                description: 'Existing completed',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'completed',
+                manualOrder: 1,
+                editing: false,
+                confirmingDelete: false
             };
             updateTaskState([
-                staleScheduledTask,
-                todayScheduledTask,
-                completedStaleScheduledTask,
-                existingUnscheduledTask
+                staleLaterTask,
+                existingCompleted,
+                staleEarlyTask,
+                existingIncomplete
             ]);
 
-            const result = rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
+            const result = await rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
 
             expect(result).toEqual({
                 success: true,
-                message: '1 unfinished scheduled task moved to backlog.',
-                tasksMoved: 1
+                message: '2 unfinished scheduled tasks moved to backlog.',
+                tasksMoved: 2
             });
-            const movedTask = getTaskState().find((task) => task.id === staleScheduledTask.id);
-            expect(movedTask).toEqual(
-                expect.objectContaining({
-                    id: staleScheduledTask.id,
-                    type: 'unscheduled',
-                    description: 'Yesterday unfinished',
-                    status: 'incomplete',
-                    category: 'work/deep',
-                    priority: 'medium',
-                    estDuration: 45
-                })
-            );
-            expect(movedTask).not.toHaveProperty('startDateTime');
-            expect(movedTask).not.toHaveProperty('endDateTime');
-            expect(movedTask).not.toHaveProperty('duration');
-            expect(movedTask).not.toHaveProperty('locked');
-            expect(movedTask).not.toHaveProperty('isEditingInline');
-            expect(getTaskState()).toEqual([
-                completedStaleScheduledTask,
-                todayScheduledTask,
-                movedTask,
-                existingUnscheduledTask
+            const manualTasks = getUnscheduledView('manual').tasks;
+            expect(manualTasks.map((task) => task.id)).toEqual([
+                existingIncomplete.id,
+                staleEarlyTask.id,
+                staleLaterTask.id,
+                existingCompleted.id
             ]);
+            expect(manualTasks.map((task) => task.manualOrder)).toEqual([
+                0,
+                undefined,
+                undefined,
+                1
+            ]);
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledTimes(1);
+            expect(mockPersistUnscheduledSequenceDocument).toHaveBeenCalledWith({
+                id: 'config-unscheduled-sequence',
+                schemaVersion: 1,
+                orderedTaskIds: [
+                    existingIncomplete.id,
+                    staleEarlyTask.id,
+                    staleLaterTask.id,
+                    existingCompleted.id
+                ]
+            });
+            expect(manualTasks.at(-1)).toEqual(
+                expect.objectContaining({ id: existingCompleted.id, status: 'completed' })
+            );
+            expect(manualTasks[1]).toEqual(
+                expect.objectContaining({ type: 'unscheduled', estDuration: 120 })
+            );
+            expect(manualTasks[2]).toEqual(
+                expect.objectContaining({ type: 'unscheduled', estDuration: 15 })
+            );
+            expect(mockPutTasks).toHaveBeenCalledTimes(1);
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: staleEarlyTask.id, type: 'unscheduled' }),
+                    expect.objectContaining({ id: staleLaterTask.id, type: 'unscheduled' })
+                ])
+            );
+            expect(mockPutTasks.mock.calls[0][0]).toHaveLength(2);
         });
 
-        test('rolloverPriorDayScheduledTasks returns zero moved when no stale incomplete scheduled tasks exist', () => {
+        test('rolloverPriorDayScheduledTasks returns zero moved when no stale incomplete scheduled tasks exist', async () => {
             const todayScheduledTask = createTaskWithDateTime({
                 description: 'Today scheduled',
                 startTime: '10:00',
@@ -2671,7 +3060,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             });
             updateTaskState([todayScheduledTask]);
 
-            const result = rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
+            const result = await rolloverPriorDayScheduledTasks(new Date('2026-04-22T08:00:00'));
 
             expect(result).toEqual({
                 success: true,
@@ -2685,7 +3074,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('UpdateUnscheduledTask', () => {
         const { updateUnscheduledTask } = require('../public/js/tasks/manager.js');
 
-        test('updates unscheduled task successfully', () => {
+        test('updates unscheduled task successfully', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2697,7 +3086,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = updateUnscheduledTask('unsched-1', {
+            const result = await updateUnscheduledTask('unsched-1', {
                 description: 'Updated',
                 priority: 'high',
                 estDuration: 60
@@ -2710,7 +3099,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(tasks[0].estDuration).toBe(60);
         });
 
-        test('updates unscheduled task category', () => {
+        test('updates unscheduled task category', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2723,7 +3112,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = updateUnscheduledTask('unsched-1', {
+            const result = await updateUnscheduledTask('unsched-1', {
                 description: 'Updated',
                 priority: 'high',
                 estDuration: 60,
@@ -2734,7 +3123,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].category).toBe('work/deep');
         });
 
-        test('clears unscheduled task category', () => {
+        test('clears unscheduled task category', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2747,7 +3136,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = updateUnscheduledTask('unsched-1', {
+            const result = await updateUnscheduledTask('unsched-1', {
                 description: 'Updated',
                 priority: 'high',
                 estDuration: 60,
@@ -2758,9 +3147,9 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].category).toBeNull();
         });
 
-        test('returns failure for non-existent task', () => {
+        test('returns failure for non-existent task', async () => {
             updateTaskState([]);
-            const result = updateUnscheduledTask('nonexistent', { description: 'Test' });
+            const result = await updateUnscheduledTask('nonexistent', { description: 'Test' });
             expect(result.success).toBe(false);
         });
     });
@@ -2768,7 +3157,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     describe('DeleteUnscheduledTask', () => {
         const { deleteUnscheduledTask } = require('../public/js/tasks/manager.js');
 
-        test('deletes an existing unscheduled task with confirmation', () => {
+        test('deletes an existing unscheduled task with confirmation', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2780,13 +3169,13 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = deleteUnscheduledTask('unsched-1');
+            const result = await deleteUnscheduledTask('unsched-1');
             expect(result.success).toBe(true);
             expect(result.task).toEqual(expect.objectContaining({ id: 'unsched-1' }));
             expect(getTaskState()).toHaveLength(0);
         });
 
-        test('requires confirmation before deleting', () => {
+        test('requires confirmation before deleting', async () => {
             const task = {
                 id: 'unsched-1',
                 type: 'unscheduled',
@@ -2798,20 +3187,20 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = deleteUnscheduledTask('unsched-1');
+            const result = await deleteUnscheduledTask('unsched-1');
             expect(result.success).toBe(false);
             expect(result.requiresConfirmation).toBe(true);
         });
 
-        test('returns error for non-existent task', () => {
+        test('returns error for non-existent task', async () => {
             updateTaskState([]);
-            const result = deleteUnscheduledTask('nonexistent');
+            const result = await deleteUnscheduledTask('nonexistent');
             expect(result.success).toBe(false);
         });
     });
 
     describe('consumeUnscheduledTask', () => {
-        test('removes an incomplete unscheduled task without confirmation', () => {
+        test('removes an incomplete unscheduled task without confirmation', async () => {
             const task = {
                 id: 'unsched-linked',
                 type: 'unscheduled',
@@ -2823,18 +3212,18 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([task]);
 
-            const result = consumeUnscheduledTask('unsched-linked');
+            const result = await consumeUnscheduledTask('unsched-linked');
 
             expect(result.success).toBe(true);
             expect(result.task).toEqual(expect.objectContaining({ id: 'unsched-linked' }));
             expect(getTaskState()).toEqual([]);
-            expect(mockDeleteTaskFromStorage).toHaveBeenCalledWith('unsched-linked');
+            expect(mockDeleteTasks).toHaveBeenCalledWith(['unsched-linked']);
         });
 
-        test('returns failure for missing unscheduled tasks', () => {
+        test('returns failure for missing unscheduled tasks', async () => {
             updateTaskState([]);
 
-            const result = consumeUnscheduledTask('missing-unsched');
+            const result = await consumeUnscheduledTask('missing-unsched');
 
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Unscheduled task not found.');
@@ -2842,13 +3231,13 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('EditTask edge cases', () => {
-        test('editTask with invalid index returns error object', () => {
+        test('editTask with invalid index returns error object', async () => {
             updateTaskState([]);
             const result = editTask(0);
             expect(result.success).toBe(false);
         });
 
-        test('cancelEdit with invalid index returns error object', () => {
+        test('cancelEdit with invalid index returns error object', async () => {
             updateTaskState([]);
             const result = cancelEdit(0);
             expect(result.success).toBe(false);
@@ -2856,7 +3245,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('truncateCompletedTask', () => {
-        test('successfully truncates a completed task', () => {
+        test('successfully truncates a completed task', async () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '10:00',
@@ -2869,21 +3258,21 @@ describe('Task Management Functions (task-manager.js)', () => {
 
             // Truncate to end at 10:30 instead of 11:00
             const newEndDateTime = calculateEndDateTime(completedTask.startDateTime, 30);
-            const result = truncateCompletedTask(completedTask.id, newEndDateTime);
+            const result = await truncateCompletedTask(completedTask.id, newEndDateTime);
 
             expect(result.success).toBe(true);
             expect(result.newDuration).toBe(30);
             expect(result.task.endDateTime).toBe(newEndDateTime);
         });
 
-        test('returns error when task not found', () => {
+        test('returns error when task not found', async () => {
             updateTaskState([]);
-            const result = truncateCompletedTask('nonexistent', '2026-02-08T11:00:00.000Z');
+            const result = await truncateCompletedTask('nonexistent', '2026-02-08T11:00:00.000Z');
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Task not found');
         });
 
-        test('returns error for unscheduled task', () => {
+        test('returns error for unscheduled task', async () => {
             const unscheduledTask = {
                 id: 'unsched-1',
                 description: 'Unscheduled Task',
@@ -2894,12 +3283,15 @@ describe('Task Management Functions (task-manager.js)', () => {
             };
             updateTaskState([unscheduledTask]);
 
-            const result = truncateCompletedTask(unscheduledTask.id, '2026-02-08T11:00:00.000Z');
+            const result = await truncateCompletedTask(
+                unscheduledTask.id,
+                '2026-02-08T11:00:00.000Z'
+            );
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Only scheduled tasks can be truncated');
         });
 
-        test('returns error for incomplete task', () => {
+        test('returns error for incomplete task', async () => {
             const incompleteTask = createTaskWithDateTime({
                 description: 'Incomplete Task',
                 startTime: '10:00',
@@ -2911,12 +3303,12 @@ describe('Task Management Functions (task-manager.js)', () => {
             updateTaskState([incompleteTask]);
 
             const newEndDateTime = calculateEndDateTime(incompleteTask.startDateTime, 30);
-            const result = truncateCompletedTask(incompleteTask.id, newEndDateTime);
+            const result = await truncateCompletedTask(incompleteTask.id, newEndDateTime);
             expect(result.success).toBe(false);
             expect(result.reason).toBe('Only completed tasks can be truncated');
         });
 
-        test('returns error when new end time is before start time', () => {
+        test('returns error when new end time is before start time', async () => {
             const completedTask = createTaskWithDateTime({
                 description: 'Completed Task',
                 startTime: '10:00',
@@ -2931,14 +3323,14 @@ describe('Task Management Functions (task-manager.js)', () => {
             const invalidEndTime = new Date(
                 new Date(completedTask.startDateTime).getTime() - 30 * 60000
             ).toISOString();
-            const result = truncateCompletedTask(completedTask.id, invalidEndTime);
+            const result = await truncateCompletedTask(completedTask.id, invalidEndTime);
             expect(result.success).toBe(false);
             expect(result.reason).toBe('New end time must be after start time');
         });
     });
 
     describe('getTaskState immutability', () => {
-        test('returns a shallow copy, not the live array', () => {
+        test('returns a shallow copy, not the live array', async () => {
             const task = createTaskWithTimes('09:00', '10:00', 'Immutability Test');
             updateTaskState([task]);
 
@@ -2948,7 +3340,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(state1).toEqual(state2);
         });
 
-        test('pushing to returned array does not corrupt internal state', () => {
+        test('pushing to returned array does not corrupt internal state', async () => {
             const task = createTaskWithTimes('09:00', '10:00', 'Original');
             updateTaskState([task]);
 
@@ -2959,7 +3351,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[0].description).toBe('Original');
         });
 
-        test('splicing returned array does not remove from internal state', () => {
+        test('splicing returned array does not remove from internal state', async () => {
             const task1 = createTaskWithTimes('09:00', '10:00', 'Task A');
             const task2 = createTaskWithTimes('10:00', '11:00', 'Task B');
             updateTaskState([task1, task2]);
@@ -2970,17 +3362,21 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()).toHaveLength(2);
         });
 
-        test('object references are preserved (read-through still works)', () => {
+        test('hydration does not retain caller-owned task references', async () => {
             const task = createTaskWithTimes('09:00', '10:00', 'Ref Test');
             updateTaskState([task]);
 
             const fromState = getTaskState()[0];
-            expect(fromState).toBe(task);
+            expect(fromState).not.toBe(task);
+            expect(fromState).toEqual(task);
+
+            task.description = 'Mutated outside the manager';
+            expect(getTaskState()[0].description).toBe('Ref Test');
         });
     });
 
     describe('getTaskById', () => {
-        test('returns the task when found', () => {
+        test('returns the task when found', async () => {
             const task = createTaskWithTimes('09:00', '10:00', 'Find Me');
             updateTaskState([task]);
 
@@ -2989,12 +3385,12 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(found.description).toBe('Find Me');
         });
 
-        test('returns null when task not found', () => {
+        test('returns null when task not found', async () => {
             updateTaskState([]);
             expect(getTaskById('nonexistent-id')).toBeNull();
         });
 
-        test('returns the correct task among multiple', () => {
+        test('returns the correct task among multiple', async () => {
             const task1 = createTaskWithTimes('09:00', '10:00', 'First');
             const task2 = createTaskWithTimes('10:00', '11:00', 'Second');
             updateTaskState([task1, task2]);
@@ -3004,7 +3400,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('getTaskIndex', () => {
-        test('returns the index when found', () => {
+        test('returns the index when found', async () => {
             const task1 = createTaskWithTimes('09:00', '10:00', 'First');
             const task2 = createTaskWithTimes('10:00', '11:00', 'Second');
             updateTaskState([task1, task2]);
@@ -3013,14 +3409,14 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskIndex(task2.id)).toBe(1);
         });
 
-        test('returns -1 when task not found', () => {
+        test('returns -1 when task not found', async () => {
             updateTaskState([]);
             expect(getTaskIndex('nonexistent-id')).toBe(-1);
         });
     });
 
     describe('setTaskInlineEditing', () => {
-        test('sets editing flag on target task', () => {
+        test('sets editing flag on target task', async () => {
             const task1 = {
                 ...createTaskWithTimes('09:00', '10:00', 'Task A'),
                 isEditingInline: false
@@ -3038,7 +3434,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(state[1].isEditingInline).toBe(false);
         });
 
-        test('clears editing flag on other tasks', () => {
+        test('clears editing flag on other tasks', async () => {
             const task1 = {
                 ...createTaskWithTimes('09:00', '10:00', 'Task A'),
                 isEditingInline: true
@@ -3056,7 +3452,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(state[1].isEditingInline).toBe(true);
         });
 
-        test('sets editing to false on target task', () => {
+        test('sets editing to false on target task', async () => {
             const task1 = {
                 ...createTaskWithTimes('09:00', '10:00', 'Task A'),
                 isEditingInline: true
@@ -3070,7 +3466,7 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('resetAllInlineEditingFlags', () => {
-        test('resets all editing flags and returns true when flags were set', () => {
+        test('resets all editing flags and returns true when flags were set', async () => {
             const task1 = {
                 ...createTaskWithTimes('09:00', '10:00', 'Task A'),
                 isEditingInline: true
@@ -3088,7 +3484,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(getTaskState()[1].isEditingInline).toBe(false);
         });
 
-        test('returns false when no flags were set', () => {
+        test('returns false when no flags were set', async () => {
             const task1 = {
                 ...createTaskWithTimes('09:00', '10:00', 'Task A'),
                 isEditingInline: false
@@ -3099,7 +3495,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(changed).toBe(false);
         });
 
-        test('returns false when no tasks exist', () => {
+        test('returns false when no tasks exist', async () => {
             updateTaskState([]);
             expect(resetAllInlineEditingFlags()).toBe(false);
         });

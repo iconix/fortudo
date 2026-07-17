@@ -16,13 +16,17 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:coverage:watch": "jest --coverage --watch",
+    "test:python": "uv run --locked pytest tests --ignore=tests/e2e --ignore=tests/preview -q",
+    "test:e2e": "uv run --locked pytest tests/e2e -q",
+    "test:preview": "uv run --locked pytest tests/preview -q",
     "lint": "eslint public/js/**/*.js __tests__/**/*.js --max-warnings 0",
     "lint:fix": "eslint public/js/**/*.js __tests__/**/*.js --fix",
+    "lint:python": "uv run --locked ruff check scripts tests",
     "format": "prettier --write \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "format:check": "prettier --check \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "lint:format": "npm run lint:fix && npm run format",
     "check": "npm run lint && npm run format:check",
-    "test:e2e": "python -m pytest tests -q"
+    "verify": "npm run check && npm run lint:python && npm run test:coverage && npm run test:python && npm run test:e2e"
   },
   "repository": {
     "type": "git",

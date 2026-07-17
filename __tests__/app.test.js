@@ -13,23 +13,34 @@ import {
     updateTaskState,
     getTaskState,
     getSuggestedStartTime,
+    getUnscheduledView,
+    moveUnscheduledTask,
     cancelEdit as cancelEditDirect
 } from '../public/js/tasks/manager.js';
 import { resetEventDelegation, renderTasks, refreshUI } from '../public/js/dom-renderer.js';
 import { getTaskFormElement } from '../public/js/tasks/form-utils.js';
 
-// Mock storage.js to spy on saveTasks
+// Mock storage.js to spy on explicit task deltas
 jest.mock('../public/js/storage.js', () => ({
     prepareStorage: jest.fn(() => Promise.resolve()),
     initStorage: jest.fn(() => Promise.resolve()),
     migrateDocTypes: jest.fn(() => Promise.resolve()),
-    saveTasks: jest.fn(),
-    putTask: jest.fn(),
+    putTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     putConfig: jest.fn(() => Promise.resolve()),
-    deleteTask: jest.fn(),
+    deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => []),
     loadActivities: jest.fn(() => []),
-    loadConfig: jest.fn(() => Promise.resolve(null))
+    loadConfig: jest.fn(() => Promise.resolve(null)),
+    loadConfigWithConflicts: jest.fn(() =>
+        Promise.resolve({ config: null, conflictRevisions: [] })
+    ),
+    resolveConfigConflicts: jest.fn(() => Promise.resolve(null))
+}));
+
+jest.mock('../public/js/tasks/unscheduled-list.js', () => ({
+    mountUnscheduledList: jest.fn(() => true),
+    renderUnscheduledList: jest.fn(),
+    destroyUnscheduledList: jest.fn()
 }));
 
 // Mock sync-manager.js to prevent real sync operations
@@ -78,9 +89,9 @@ import {
     prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
     migrateDocTypes as mockMigrateDocTypesInternal,
-    saveTasks as mockSaveTasksInternal,
+    putTasks as mockPutTasksInternal,
     putConfig as mockPutConfigInternal,
-    deleteTask as mockDeleteTaskFromStorageInternal,
+    deleteTasks as mockDeleteTasksInternal,
     loadTasks as mockLoadTasksFromStorageInternal,
     loadActivities as mockLoadActivitiesFromStorageInternal,
     loadConfig as mockLoadConfigInternal
@@ -110,13 +121,19 @@ import {
     handleSaveActivityEdit as mockHandleSaveActivityEditInternal
 } from '../public/js/activities/handlers.js';
 import * as appCoordinator from '../public/js/app-coordinator.js';
+import { showToast as showToastInternal } from '../public/js/toast-manager.js';
+import {
+    mountUnscheduledList as mockMountUnscheduledListInternal,
+    renderUnscheduledList as mockRenderUnscheduledListInternal,
+    destroyUnscheduledList as mockDestroyUnscheduledListInternal
+} from '../public/js/tasks/unscheduled-list.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
 const mockMigrateDocTypes = jest.mocked(mockMigrateDocTypesInternal);
-const mockSaveTasks = jest.mocked(mockSaveTasksInternal);
+const mockPutTasks = jest.mocked(mockPutTasksInternal);
 const mockPutConfig = jest.mocked(mockPutConfigInternal);
-const mockDeleteTaskFromStorage = jest.mocked(mockDeleteTaskFromStorageInternal);
+const mockDeleteTasks = jest.mocked(mockDeleteTasksInternal);
 const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 const mockLoadActivitiesFromStorage = jest.mocked(mockLoadActivitiesFromStorageInternal);
 const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
@@ -136,6 +153,9 @@ const mockHandleAddActivity = jest.mocked(mockHandleAddActivityInternal);
 const mockHandleEditActivity = jest.mocked(mockHandleEditActivityInternal);
 const mockHandleDeleteActivity = jest.mocked(mockHandleDeleteActivityInternal);
 const mockHandleSaveActivityEdit = jest.mocked(mockHandleSaveActivityEditInternal);
+const mockMountUnscheduledList = jest.mocked(mockMountUnscheduledListInternal);
+const mockRenderUnscheduledList = jest.mocked(mockRenderUnscheduledListInternal);
+const mockDestroyUnscheduledList = jest.mocked(mockDestroyUnscheduledListInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -249,6 +269,72 @@ describe('App.js Callback Functions', () => {
         );
     });
 
+    describe('Unscheduled list seam wiring', () => {
+        test('room initialization mounts and renders one named-action list seam', async () => {
+            await setupAppWithTasks([]);
+
+            expect(mockDestroyUnscheduledList).toHaveBeenCalledTimes(1);
+            expect(mockMountUnscheduledList).toHaveBeenCalledTimes(1);
+            expect(mockMountUnscheduledList).toHaveBeenCalledWith({
+                readView: getUnscheduledView,
+                moveTask: moveUnscheduledTask,
+                actions: {
+                    schedule: expect.any(Function),
+                    startTimer: expect.any(Function),
+                    edit: expect.any(Function),
+                    delete: expect.any(Function),
+                    confirmSchedule: expect.any(Function),
+                    saveEdit: expect.any(Function),
+                    cancelEdit: expect.any(Function),
+                    toggleComplete: expect.any(Function)
+                },
+                getRunningActivity: mockGetRunningActivity,
+                showError: showToastInternal
+            });
+            expect(mockRenderUnscheduledList).toHaveBeenCalled();
+        });
+
+        test('a real list click inside the same task card preserves pending delete confirmation', async () => {
+            const unscheduledTask = {
+                id: 'unsched-keep-confirming',
+                type: 'unscheduled',
+                description: 'Backlog task',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                confirmingDelete: false
+            };
+            await setupAppWithTasks([unscheduledTask]);
+
+            const listRoot = document.getElementById('unscheduled-task-list');
+            listRoot.insertAdjacentHTML(
+                'beforebegin',
+                `
+                    <div id="unscheduled-sort-control">
+                        <button type="button" data-unscheduled-mode="manual">My order</button>
+                        <button type="button" data-unscheduled-mode="priority">Priority</button>
+                    </div>
+                    <div id="unscheduled-order-status" aria-live="polite"></div>
+                `
+            );
+            const actualList = jest.requireActual('../public/js/tasks/unscheduled-list.js');
+            const mountOptions = mockMountUnscheduledList.mock.calls.at(-1)[0];
+
+            try {
+                actualList.mountUnscheduledList(mountOptions);
+                actualList.renderUnscheduledList();
+
+                document.querySelector('.btn-delete-unscheduled').click();
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+
+                document.querySelector('.btn-unscheduled-task-actions-menu i').click();
+                expect(getTaskState()[0].confirmingDelete).toBe(true);
+            } finally {
+                actualList.destroyUnscheduledList();
+            }
+        });
+    });
+
     describe('onDeleteTask callback', () => {
         const setupTasksForDelete = async () => {
             const tasks = [
@@ -268,7 +354,9 @@ describe('App.js Callback Functions', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
+            mockPutTasks.mockClear();
+            mockPutTasks.mockReset();
+            mockPutTasks.mockResolvedValue({ succeededIds: [] });
         };
 
         test('should show confirmation dialog when clicking delete button first time', async () => {
@@ -311,7 +399,7 @@ describe('App.js Callback Functions', () => {
             expect(renderedTasks[0].description).toBe('Task 2');
 
             // Verify deleteTaskFromStorage was called
-            expect(mockDeleteTaskFromStorage).toHaveBeenCalled();
+            expect(mockDeleteTasks).toHaveBeenCalled();
         });
 
         test('should show alert if delete operation fails', async () => {
@@ -536,8 +624,10 @@ describe('App.js Callback Functions', () => {
             expectedBoundary.setHours(24, 0, 0, 0);
             mockLoadConfig.mockResolvedValue({ activitiesEnabled: true });
             mockLoadRunningActivity.mockResolvedValue(staleTimer);
-            mockGetRunningActivity.mockReturnValueOnce(staleTimer).mockReturnValue(null);
             mockStopTimerAt.mockResolvedValue({ success: true });
+            mockGetRunningActivity.mockImplementation(() =>
+                mockStopTimerAt.mock.calls.length === 0 ? staleTimer : null
+            );
 
             await setupAppWithTasks([]);
 
@@ -893,6 +983,52 @@ describe('App.js Callback Functions', () => {
     });
 
     describe('storage preparation boot ordering', () => {
+        test('waits for an accepted Unscheduled move before preparing or loading a room', async () => {
+            let resolveMoveWrite;
+            const moveWrite = new Promise((resolve) => {
+                resolveMoveWrite = resolve;
+            });
+            mockPutConfig.mockReturnValueOnce(moveWrite);
+            updateTaskState([
+                {
+                    id: 'unscheduled-a',
+                    type: 'unscheduled',
+                    description: 'A',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: 30,
+                    manualOrder: 0
+                },
+                {
+                    id: 'unscheduled-b',
+                    type: 'unscheduled',
+                    description: 'B',
+                    status: 'incomplete',
+                    priority: 'medium',
+                    estDuration: 30,
+                    manualOrder: 1
+                }
+            ]);
+            const operation = moveUnscheduledTask('unscheduled-b', { kind: 'top' });
+            mockPrepareStorage.mockReset();
+            mockPrepareStorage.mockResolvedValue(undefined);
+            mockLoadTasksFromStorage.mockClear();
+
+            const bootPromise = setupAppWithTasks([]);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockPrepareStorage).not.toHaveBeenCalled();
+            expect(mockLoadTasksFromStorage).not.toHaveBeenCalled();
+
+            resolveMoveWrite();
+            await operation.settled;
+            await bootPromise;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockPrepareStorage).toHaveBeenCalled();
+            expect(mockLoadTasksFromStorage).toHaveBeenCalled();
+        });
+
         test('awaits prepareStorage before loading tasks', async () => {
             let resolvePreparation;
             const preparationPromise = new Promise((resolve) => {
@@ -942,7 +1078,7 @@ describe('App.js Callback Functions', () => {
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
             confirmSpy = jest.spyOn(window, 'confirm');
-            mockSaveTasks.mockClear();
+            mockPutTasks.mockClear();
         };
 
         test('should cancel edit mode and revert to view mode', async () => {
@@ -1013,13 +1149,12 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks[1].editing).toBe(false);
         });
 
-        test('should not call saveTasks after canceling edit (editing is transient UI state)', async () => {
+        test('should not persist task deltas after canceling edit', async () => {
             await setupTasksForEdit();
 
             await clickCancelButton(1);
 
-            // Verify saveTasks was NOT called since editing is a transient UI state
-            expect(mockSaveTasks).not.toHaveBeenCalled();
+            expect(mockPutTasks).not.toHaveBeenCalled();
         });
     });
 
@@ -1042,7 +1177,7 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-            mockSaveTasks.mockClear();
+            mockPutTasks.mockClear();
 
             // Cancel edit on first task
             const cancelClicked = await clickCancelButton(0);
@@ -1108,9 +1243,6 @@ describe('App.js Callback Functions', () => {
             expect(updatedTasks).toHaveLength(1);
             expect(updatedTasks[0].type).toBe('unscheduled');
 
-            const unscheduledTask = document.querySelector('#unscheduled-task-list [data-task-id]');
-            expect(unscheduledTask).toBeTruthy();
-
             onTaskUnscheduledSpy.mockRestore();
         });
     });
@@ -1130,7 +1262,7 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock the completeTask to return late completion scenario
                 const completeTaskSpy = jest
@@ -1176,7 +1308,7 @@ describe('App.js Callback Functions', () => {
                 updateTaskState([]); // Set empty tasks to trigger the missing task branch
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Create a delete button manually and trigger it
                 const deleteButton = document.createElement('button');
@@ -1208,7 +1340,7 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies reschedule
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock updateTask to require confirmation
                 jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
@@ -1279,7 +1411,7 @@ describe('App.js Callback Functions', () => {
                 await setupAppWithTasks(tasks);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock updateTask to fail
                 jest.spyOn(require('../public/js/tasks/manager.js'), 'updateTask').mockReturnValue({
@@ -1311,7 +1443,7 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies reschedule
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock addTask to require confirmation
                 jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
@@ -1364,7 +1496,7 @@ describe('App.js Callback Functions', () => {
                 await setupAppWithTasks([]);
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock addTask to fail
                 jest.spyOn(require('../public/js/tasks/manager.js'), 'addTask').mockReturnValue({
@@ -1407,7 +1539,7 @@ describe('App.js Callback Functions', () => {
             test('pressing ENTER in start-time input should submit the form', async () => {
                 await setupAppWithTasks([]);
 
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
                 let formSubmitted = false;
 
                 // Spy on addTask to detect form submission
@@ -1459,7 +1591,7 @@ describe('App.js Callback Functions', () => {
             test('pressing ENTER in duration-hours input should submit the form', async () => {
                 await setupAppWithTasks([]);
 
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
                 let formSubmitted = false;
 
                 const addTaskSpy = jest
@@ -1517,7 +1649,7 @@ describe('App.js Callback Functions', () => {
                 const toastSpy = jest
                     .spyOn(require('../public/js/toast-manager.js'), 'showToast')
                     .mockImplementation(() => {});
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Click the clear schedule button when no tasks exist
                 const clearScheduleButton = document.getElementById('clear-schedule-button');
@@ -1547,7 +1679,7 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false); // User denies
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 const clearScheduleButton = document.getElementById('clear-schedule-button');
                 if (clearScheduleButton) {
@@ -1558,7 +1690,7 @@ describe('App.js Callback Functions', () => {
                 expect(confirmSpy).toHaveBeenCalledWith(
                     "Confirmation: Are you sure you want to clear all tasks from Today's Schedule? Unscheduled tasks will not be affected."
                 );
-                expect(mockSaveTasks).not.toHaveBeenCalled(); // Should not save since user denied
+                expect(mockPutTasks).not.toHaveBeenCalled(); // Should not save since user denied
             });
 
             test('should handle delete all failure with error', async () => {
@@ -1574,7 +1706,7 @@ describe('App.js Callback Functions', () => {
 
                 alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
                 confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // User confirms
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 // Mock deleteAllScheduledTasks to fail
                 jest.spyOn(
@@ -1619,7 +1751,7 @@ describe('App.js Callback Functions', () => {
                         tasksDeleted: 1
                     });
 
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
                 const startTimeInput = document.querySelector(
                     '#task-form input[name="start-time"]'
                 );
@@ -1700,39 +1832,6 @@ describe('App.js Callback Functions', () => {
                     taskList.dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
-            });
-
-            test('should not clear unscheduled delete confirmation when clicking inside task card', async () => {
-                const unscheduledTask = {
-                    id: 'unsched-keep-confirming',
-                    type: 'unscheduled',
-                    description: 'Backlog task',
-                    priority: 'medium',
-                    estDuration: 30,
-                    status: 'incomplete',
-                    confirmingDelete: false
-                };
-
-                await setupAppWithTasks([unscheduledTask]);
-
-                const deleteButton = document.querySelector(
-                    '#unscheduled-task-list .btn-delete-unscheduled'
-                );
-                expect(deleteButton).toBeTruthy();
-
-                deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-                await new Promise((resolve) => setTimeout(resolve, 10));
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
-
-                const editButton = document.querySelector(
-                    '#unscheduled-task-list .btn-edit-unscheduled'
-                );
-                expect(editButton).toBeTruthy();
-
-                editButton.dispatchEvent(new Event('click', { bubbles: true }));
-                await new Promise((resolve) => setTimeout(resolve, 10));
-
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
             });
         });
 
@@ -1816,7 +1915,7 @@ describe('App.js Callback Functions', () => {
                 expect(syncStatusCallback).toEqual(expect.any(Function));
 
                 mockLoadTasksFromStorage.mockReturnValue(syncedTasks);
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 syncStatusCallback('synced');
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1824,7 +1923,7 @@ describe('App.js Callback Functions', () => {
                 const renderedTasks = getRenderedTasksDOM();
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Synced Task');
-                expect(mockSaveTasks).not.toHaveBeenCalled();
+                expect(mockPutTasks).not.toHaveBeenCalled();
             });
 
             test('should re-sync the timer ui when a running timer changes after sync completes', async () => {
@@ -1882,7 +1981,7 @@ describe('App.js Callback Functions', () => {
 
                 mockLoadTasksFromStorage.mockReturnValue(refreshedTasks);
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 document.dispatchEvent(new Event('visibilitychange'));
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1890,7 +1989,7 @@ describe('App.js Callback Functions', () => {
                 const renderedTasks = getRenderedTasksDOM();
                 expect(renderedTasks).toHaveLength(1);
                 expect(renderedTasks[0].description).toBe('Visible Task');
-                expect(mockSaveTasks).not.toHaveBeenCalled();
+                expect(mockPutTasks).not.toHaveBeenCalled();
             });
 
             test('should trigger remote sync when the window regains focus', async () => {
@@ -1955,14 +2054,15 @@ describe('App.js Callback Functions', () => {
                 });
                 mockLoadTasksFromStorage.mockClear();
                 mockLoadTasksFromStorage.mockImplementation(() => pendingLoadTasks);
-                mockSaveTasks.mockClear();
+                mockPutTasks.mockClear();
 
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
                 document.dispatchEvent(new Event('visibilitychange'));
+                await Promise.resolve();
 
                 expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
-                expect(mockSaveTasks).not.toHaveBeenCalled();
+                expect(mockPutTasks).not.toHaveBeenCalled();
 
                 resolveLoadTasks();
                 await pendingLoadTasks;

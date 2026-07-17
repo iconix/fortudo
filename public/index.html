@@ -575,6 +575,31 @@
                                 <i class="fa-solid fa-list-ul mr-2"></i>Unscheduled Tasks
                             </h3>
                         </div>
+                        <div
+                            id="unscheduled-sort-control"
+                            class="mb-3 flex items-center justify-end gap-1"
+                            role="group"
+                            aria-label="Unscheduled order"
+                        >
+                            <span class="mr-1 text-xs text-slate-400">Sort:</span>
+                            <button
+                                type="button"
+                                data-unscheduled-mode="manual"
+                                aria-pressed="false"
+                                class="rounded-md border border-slate-600 px-2.5 py-1 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 aria-pressed:border-slate-300/50 aria-pressed:bg-slate-300/10 aria-pressed:text-slate-200"
+                            >
+                                My order
+                            </button>
+                            <button
+                                type="button"
+                                data-unscheduled-mode="priority"
+                                aria-pressed="true"
+                                class="rounded-md border border-slate-600 px-2.5 py-1 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 aria-pressed:border-slate-300/50 aria-pressed:bg-slate-300/10 aria-pressed:text-slate-200"
+                            >
+                                Priority
+                            </button>
+                        </div>
+                        <div id="unscheduled-order-status" class="sr-only" aria-live="polite"></div>
                         <div id="unscheduled-task-list" class="grid grid-cols-1 gap-2">
                             <!-- tasks will be generated here by JavaScript -->
                         </div>

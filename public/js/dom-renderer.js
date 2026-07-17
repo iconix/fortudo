@@ -1,10 +1,5 @@
 import { logger, getCurrentTimeRounded } from './utils.js';
-import {
-    getTaskState,
-    getSortedUnscheduledTasks,
-    getSuggestedStartTime,
-    getTodaysScheduledTasks
-} from './tasks/manager.js';
+import { getTaskState, getSuggestedStartTime, getTodaysScheduledTasks } from './tasks/manager.js';
 import { isActivitiesEnabled } from './settings-manager.js';
 import { renderTodayActivities } from './activities/ui-handlers.js';
 import { getSuggestedActivityStartTime } from './activities/manager.js';
@@ -23,14 +18,10 @@ import {
     refreshActiveTaskColor
 } from './tasks/scheduled-renderer.js';
 
-import {
-    renderUnscheduledTasks as renderUnscheduledTasksBase,
-    getUnscheduledTaskListElement
-} from './tasks/unscheduled-renderer.js';
+import { renderUnscheduledList } from './tasks/unscheduled-list.js';
 
 // Global event callbacks storage for event delegation
 let globalScheduledTaskCallbacks = null;
-let globalUnscheduledTaskCallbacks = null;
 let pageEventListenersAbortController = null;
 
 const FORM_INPUT_BASE_CLASSES =
@@ -308,34 +299,6 @@ function toggleScheduledTaskActionMenu(trigger) {
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 }
 
-function closeUnscheduledTaskActionMenus(exceptMenu = null) {
-    const taskListElement = getUnscheduledTaskListElement();
-    if (!taskListElement) return;
-
-    taskListElement.querySelectorAll('.unscheduled-task-actions-menu').forEach((menu) => {
-        if (menu === exceptMenu) return;
-        menu.hidden = true;
-        setActionMenuTransitionState(menu, false);
-        setTaskActionMenuElevation(menu, false);
-        const trigger = menu.parentElement?.querySelector('.btn-unscheduled-task-actions-menu');
-        if (trigger instanceof HTMLElement) {
-            trigger.setAttribute('aria-expanded', 'false');
-        }
-    });
-}
-
-function toggleUnscheduledTaskActionMenu(trigger) {
-    const menu = trigger.parentElement?.querySelector('.unscheduled-task-actions-menu');
-    if (!(menu instanceof HTMLElement)) return;
-
-    const shouldOpen = menu.hidden;
-    closeUnscheduledTaskActionMenus(shouldOpen ? menu : null);
-    menu.hidden = !shouldOpen;
-    setActionMenuTransitionState(menu, shouldOpen);
-    setTaskActionMenuElevation(menu, shouldOpen);
-    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-}
-
 function handleScheduledTaskListKeydown(event) {
     if (event.key === 'Escape') {
         closeScheduledTaskActionMenus();
@@ -573,111 +536,6 @@ function handleScheduledTaskListInput(event) {
     }
 }
 
-function handleUnscheduledTaskListClick(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
-    const taskCard = /** @type {HTMLElement} */ (target.closest('.task-card'));
-
-    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
-    if (target.closest('button[disabled]')) return;
-
-    const taskId = taskCard.dataset.taskId;
-
-    const actionsTrigger = target.closest('.btn-unscheduled-task-actions-menu');
-    if (actionsTrigger instanceof HTMLElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleUnscheduledTaskActionMenu(actionsTrigger);
-        return;
-    }
-
-    if (target.closest('.btn-start-unscheduled-timer')) {
-        closeUnscheduledTaskActionMenus();
-        if (globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask && taskId) {
-            globalUnscheduledTaskCallbacks.onStartTimerFromUnscheduledTask(taskId);
-        }
-    } else if (target.closest('.btn-schedule-task')) {
-        closeUnscheduledTaskActionMenus();
-        if (globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask && taskId) {
-            const taskName = taskCard.dataset.taskName || 'Task';
-            const estDurationText = taskCard.dataset.taskEstDuration || 'N/A';
-            const task = getTaskState().find((t) => t.id === taskId); // Check if task is completed
-            if (task && task.status !== 'completed') {
-                // Only schedule if not completed
-                globalUnscheduledTaskCallbacks.onScheduleUnscheduledTask(
-                    taskId,
-                    taskName,
-                    estDurationText
-                );
-            }
-        }
-    } else if (target.closest('.btn-edit-unscheduled')) {
-        closeUnscheduledTaskActionMenus();
-        if (globalUnscheduledTaskCallbacks.onEditUnscheduledTask && taskId) {
-            logger.debug(`Edit button clicked for unscheduled task: ${taskId}`);
-            globalUnscheduledTaskCallbacks.onEditUnscheduledTask(taskId);
-        }
-    } else if (target.closest('.btn-delete-unscheduled')) {
-        closeUnscheduledTaskActionMenus();
-        if (globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask && taskId) {
-            globalUnscheduledTaskCallbacks.onDeleteUnscheduledTask(taskId);
-        }
-    } else if (target.closest('.task-checkbox-unscheduled')) {
-        if (globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask && taskId) {
-            globalUnscheduledTaskCallbacks.onToggleCompleteUnscheduledTask(taskId);
-        } else {
-            logger.warn(
-                'onToggleCompleteUnscheduledTask callback not found or taskId missing for unscheduled task checkbox.'
-            );
-        }
-    } else if (target.closest('.btn-save-inline-edit')) {
-        // Handle save from inline form
-        if (globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit && taskId) {
-            logger.debug(`Save inline edit button clicked for unscheduled task: ${taskId}`);
-            globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
-        }
-    } else if (target.closest('.btn-cancel-inline-edit')) {
-        // Handle cancel from inline form
-        if (globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit && taskId) {
-            logger.debug(`Cancel inline edit button clicked for unscheduled task: ${taskId}`);
-            globalUnscheduledTaskCallbacks.onCancelUnscheduledTaskEdit(taskId);
-        }
-    }
-}
-
-function handleUnscheduledTaskListKeydown(event) {
-    if (event.key === 'Escape') {
-        closeUnscheduledTaskActionMenus();
-        return;
-    }
-
-    if (event.key !== 'Enter') return;
-    if (!(event.target instanceof HTMLInputElement)) return;
-    const form = event.target.closest('form');
-    if (!form) return;
-    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
-    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
-
-    event.preventDefault();
-    const taskId = taskCard.dataset.taskId;
-    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
-        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
-    }
-}
-
-function handleUnscheduledTaskListSubmit(event) {
-    event.preventDefault(); // Always prevent default form submission
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement)) return;
-
-    const taskCard = /** @type {HTMLElement} */ (form.closest('.task-card'));
-    if (!taskCard || !globalUnscheduledTaskCallbacks) return;
-
-    const taskId = taskCard.dataset.taskId;
-    if (taskId && globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit) {
-        globalUnscheduledTaskCallbacks.onSaveUnscheduledTaskEdit(taskId);
-    }
-}
-
 // --- Event Listener Initialization ---
 
 export function initializeScheduledTaskListEventListeners(eventCallbacks) {
@@ -697,22 +555,6 @@ export function initializeScheduledTaskListEventListeners(eventCallbacks) {
     taskListElement.addEventListener('keydown', handleScheduledTaskListKeydown);
 }
 
-export function initializeUnscheduledTaskListEventListeners(callbacks) {
-    globalUnscheduledTaskCallbacks = callbacks;
-    const unscheduledTaskList = getUnscheduledTaskListElement();
-    if (unscheduledTaskList) {
-        // Remove existing listeners to prevent duplicates if re-initialized
-        unscheduledTaskList.removeEventListener('click', handleUnscheduledTaskListClick);
-        unscheduledTaskList.removeEventListener('submit', handleUnscheduledTaskListSubmit);
-        unscheduledTaskList.removeEventListener('keydown', handleUnscheduledTaskListKeydown);
-        unscheduledTaskList.addEventListener('click', handleUnscheduledTaskListClick);
-        unscheduledTaskList.addEventListener('submit', handleUnscheduledTaskListSubmit);
-        unscheduledTaskList.addEventListener('keydown', handleUnscheduledTaskListKeydown);
-    } else {
-        logger.error('Unscheduled task list element not found for event listeners.');
-    }
-}
-
 // --- Wrapper for Render Functions ---
 
 export function renderTasks(tasksToRender, eventCallbacks) {
@@ -725,13 +567,6 @@ export function renderTasks(tasksToRender, eventCallbacks) {
     );
 }
 
-export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
-    const callbacks = eventCallbacks || globalUnscheduledTaskCallbacks;
-    renderUnscheduledTasksBase(unscheduledTasks, callbacks, (cb) => {
-        globalUnscheduledTaskCallbacks = cb;
-    });
-}
-
 /**
  * Re-render both task lists and update the start time field using stored state.
  * Convenience function that replaces repeated 3-line render boilerplate.
@@ -739,7 +574,7 @@ export function renderUnscheduledTasks(unscheduledTasks, eventCallbacks) {
 export function refreshUI() {
     const todaysScheduledTasks = getTodaysScheduledTasks();
     renderTasks(todaysScheduledTasks);
-    renderUnscheduledTasks(getSortedUnscheduledTasks());
+    renderUnscheduledList();
     if (isActivitiesEnabled()) {
         renderTodayActivities(true);
         renderActiveInsightsView();
@@ -890,9 +725,6 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
             if (!target?.closest?.('.task-actions')) {
                 closeScheduledTaskActionMenus();
             }
-            if (!target?.closest?.('.unscheduled-task-actions')) {
-                closeUnscheduledTaskActionMenus();
-            }
             if (appCallbacks && appCallbacks.onGlobalClick) {
                 appCallbacks.onGlobalClick(event);
             }
@@ -948,7 +780,6 @@ export function closeClearTasksDropdown() {
 export function resetEventDelegation() {
     logger.debug('Resetting global event callbacks.');
     globalScheduledTaskCallbacks = null;
-    globalUnscheduledTaskCallbacks = null;
     if (pageEventListenersAbortController) {
         pageEventListenersAbortController.abort();
         pageEventListenersAbortController = null;

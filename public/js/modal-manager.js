@@ -44,6 +44,8 @@ const activityEditDescriptionInput = document.getElementById('activity-edit-desc
 
 let cleanupCustomAlertEscape = null;
 let resolveCustomAlert = null;
+let currentUnscheduledActions = null;
+let scheduleModalListenersInitialized = false;
 
 // --- Helper Functions ---
 function setModalTheme(modal, title, button, theme = 'violet') {
@@ -257,8 +259,45 @@ if (closeScheduleModalButton) closeScheduleModalButton.addEventListener('click',
 if (cancelScheduleModalButton)
     cancelScheduleModalButton.addEventListener('click', hideScheduleModal);
 
-export function initializeModalEventListeners(unscheduledTaskCallbacks) {
+function handleScheduleModalSubmit(event) {
+    event.preventDefault();
+    const taskId = scheduleModalForm.dataset.taskId;
+    const startTime =
+        modalStartTimeInput instanceof HTMLInputElement ? modalStartTimeInput.value : '';
+
+    let duration = null;
+    if (
+        modalDurationHoursInput instanceof HTMLInputElement &&
+        modalDurationMinutesInput instanceof HTMLInputElement
+    ) {
+        const durationResult = parseDuration(
+            modalDurationHoursInput.value,
+            modalDurationMinutesInput.value
+        );
+        if (!durationResult.valid) {
+            showAlert(durationResult.error, 'teal');
+            return;
+        }
+        duration = durationResult.duration;
+    }
+
+    if (taskId && startTime && duration !== null) {
+        const modalWarningEl = document.getElementById('modal-overlap-warning');
+        const reschedulePreApproved = !!(modalWarningEl && modalWarningEl.textContent.trim());
+        currentUnscheduledActions.confirmSchedule(
+            taskId,
+            startTime,
+            duration,
+            reschedulePreApproved
+        );
+    }
+    hideScheduleModal();
+}
+
+export function initializeModalEventListeners(unscheduledActions) {
+    currentUnscheduledActions = unscheduledActions;
     if (!(scheduleModalForm instanceof HTMLFormElement)) return;
+    if (scheduleModalListenersInitialized) return;
 
     // Wire up end time hint for the schedule modal
     const modalHintElement = document.getElementById('modal-end-time-hint');
@@ -307,40 +346,8 @@ export function initializeModalEventListeners(unscheduledTaskCallbacks) {
         );
     }
 
-    scheduleModalForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const taskId = scheduleModalForm.dataset.taskId;
-        const startTime =
-            modalStartTimeInput instanceof HTMLInputElement ? modalStartTimeInput.value : '';
-
-        let duration = null;
-        if (
-            modalDurationHoursInput instanceof HTMLInputElement &&
-            modalDurationMinutesInput instanceof HTMLInputElement
-        ) {
-            const durationResult = parseDuration(
-                modalDurationHoursInput.value,
-                modalDurationMinutesInput.value
-            );
-            if (!durationResult.valid) {
-                showAlert(durationResult.error, 'teal');
-                return;
-            }
-            duration = durationResult.duration;
-        }
-
-        if (taskId && startTime && duration !== null) {
-            const modalWarningEl = document.getElementById('modal-overlap-warning');
-            const reschedulePreApproved = !!(modalWarningEl && modalWarningEl.textContent.trim());
-            unscheduledTaskCallbacks.onConfirmScheduleTask(
-                taskId,
-                startTime,
-                duration,
-                reschedulePreApproved
-            );
-        }
-        hideScheduleModal();
-    });
+    scheduleModalForm.addEventListener('submit', handleScheduleModalSubmit);
+    scheduleModalListenersInitialized = true;
 }
 
 // --- Gap Task Picker Modal ---

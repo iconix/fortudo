@@ -49,7 +49,7 @@ def assert_onboarding_step(page, expected_title: str, expected_target_id: str):
     }
 
 
-def test_activities_onboarding_prepares_ui_and_persists_dismissal():
+def test_activities_onboarding_prepares_ui_and_persists_dismissal(app_server):
     room_code = "activities-onboarding-sequence"
 
     with sync_playwright() as playwright:
@@ -127,7 +127,7 @@ def test_activities_onboarding_prepares_ui_and_persists_dismissal():
 # onboarding sequence that follows Activities enablement.
 
 
-def test_running_timer_restores_after_reload():
+def test_running_timer_restores_after_reload(app_server):
     room_code = "activities-timer-restore"
     with sync_playwright() as playwright:
         browser, context, page = launch_seeded_page(
@@ -161,7 +161,7 @@ def test_running_timer_restores_after_reload():
             browser.close()
 
 
-def test_settings_activities_toggle_persists_across_reload():
+def test_settings_activities_toggle_persists_across_reload(app_server):
     room_code = "activities-settings-persist"
     with sync_playwright() as playwright:
         browser, context, page = launch_seeded_page(

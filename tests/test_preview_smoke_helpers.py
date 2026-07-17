@@ -128,6 +128,24 @@ class CouchDbHelpersTests(unittest.TestCase):
         )
         self.assertEqual(request.get_method(), "GET")
 
+    @patch("scripts.preview_smoke.remote.urlopen")
+    def test_fetch_remote_docs_can_request_conflict_metadata(self, mock_urlopen):
+        mock_response = mock_urlopen.return_value.__enter__.return_value
+        mock_response.read.return_value = b'{"rows":[]}'
+
+        fetch_remote_docs(
+            "https://user:pass@example.cloudant.com",
+            "fortudo-preview-smoke-alpha",
+            include_conflicts=True,
+        )
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.cloudant.com/fortudo-preview-smoke-alpha/"
+            "_all_docs?include_docs=true&conflicts=true",
+        )
+
 
 class SummarizeDocsTests(unittest.TestCase):
     def test_groups_task_legacy_and_non_task_docs(self):
@@ -648,10 +666,19 @@ class DeleteStatePage(FakePage):
     def __init__(self, task_id):
         self.task_id = task_id
         self.state = "idle"
+        self.queued_state_reads = []
         self.button = FakeLocator(classes="btn-delete-unscheduled text-gray-400")
         self.icon = FakeLocator(classes="fa-regular fa-trash-can")
         self.card = FakeLocator()
         super().__init__({})
+
+    def evaluate(self, script, payload=None):
+        self.evaluations.append((script, payload))
+        if payload == self.task_id and "btn-delete-unscheduled" in script:
+            if self.queued_state_reads:
+                self.state = self.queued_state_reads.pop(0)
+            return self.state
+        return None
 
     def locator(self, selector):
         task_selector = f'.task-card[data-task-id="{self.task_id}"]'
@@ -1504,11 +1531,12 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(selector, form_selector)
         self.assertEqual(button.clicks, 1)
 
-    def test_get_unscheduled_delete_state_detects_confirmation_icon(self):
+    def test_get_unscheduled_delete_state_reads_atomic_page_state(self):
         page = DeleteStatePage("unsched-123")
         page.state = "confirming"
 
         self.assertEqual(get_unscheduled_delete_state(page, "unsched-123"), "confirming")
+        self.assertEqual(len(page.evaluations), 1)
 
     def test_delete_unscheduled_task_via_ui_waits_for_confirm_state_before_second_click(self):
         task_id = "unsched-123"
@@ -1530,7 +1558,7 @@ class PreviewWaitHelperTests(unittest.TestCase):
         self.assertEqual(page.button.clicks, 2)
         self.assertEqual(page.state, "deleted")
 
-    def test_delete_unscheduled_task_via_ui_retries_confirm_click_until_deleted(self):
+    def test_delete_unscheduled_task_via_ui_polls_after_confirm_without_clicking_again(self):
         task_id = "unsched-retry"
         page = DeleteStatePage(task_id)
 
@@ -1540,14 +1568,14 @@ class PreviewWaitHelperTests(unittest.TestCase):
             original_click()
             if page.state == "idle":
                 page.state = "confirming"
-            elif page.state == "confirming" and page.button.clicks >= 3:
-                page.state = "deleted"
+            elif page.state == "confirming":
+                page.queued_state_reads = ["confirming", "deleted"]
 
         page.button.click = click_and_advance
 
         delete_unscheduled_task_via_ui(page, task_id, timeout_s=0.05, interval_s=0)
 
-        self.assertEqual(page.button.clicks, 3)
+        self.assertEqual(page.button.clicks, 2)
         self.assertEqual(page.state, "deleted")
 
     def test_clear_all_tasks_via_ui_waits_for_dropdown_and_confirm_modal(self):

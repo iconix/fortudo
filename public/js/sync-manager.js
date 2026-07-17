@@ -12,6 +12,9 @@ let syncStatus = 'idle';
 /** @type {Set<Function>} Registered status change callbacks */
 const statusCallbacks = new Set();
 
+/** @type {Set<Function>} Registered callbacks for documents pulled into local storage */
+const dataChangeCallbacks = new Set();
+
 /** @type {number|null} Debounce timer ID */
 let debounceTimer = null;
 
@@ -47,6 +50,16 @@ function setStatus(newStatus) {
             cb(newStatus);
         } catch (err) {
             logger.error('Sync status callback error:', err);
+        }
+    }
+}
+
+function notifyDataChange() {
+    for (const cb of dataChangeCallbacks) {
+        try {
+            cb();
+        } catch (err) {
+            logger.error('Sync data change callback error:', err);
         }
     }
 }
@@ -100,10 +113,13 @@ export async function triggerSync({
         let shouldRetry = false;
         try {
             await currentDb.replicate.to(currentRemoteUrl);
-            await currentDb.replicate.from(currentRemoteUrl);
+            const pullResult = await currentDb.replicate.from(currentRemoteUrl);
             if (currentSessionId === syncSessionId) {
                 syncSucceeded = true;
                 setStatus('synced');
+                if ((pullResult?.docs_written || 0) > 0) {
+                    notifyDataChange();
+                }
             }
         } catch (err) {
             if (currentSessionId === syncSessionId) {
@@ -163,6 +179,17 @@ export function onSyncStatusChange(callback) {
 }
 
 /**
+ * Register a callback for documents pulled into the local database.
+ * Transport status changes without local data changes do not notify this listener.
+ * @param {Function} callback - Called after pull replication writes local documents
+ * @returns {Function} Unsubscribe function
+ */
+export function onSyncDataChange(callback) {
+    dataChangeCallbacks.add(callback);
+    return () => dataChangeCallbacks.delete(callback);
+}
+
+/**
  * Get current sync status.
  * @returns {string}
  */
@@ -203,4 +230,5 @@ export function teardownSync() {
     retryAfterInFlightFailureRequested = false;
     reconnectRetrySessionId = null;
     statusCallbacks.clear();
+    dataChangeCallbacks.clear();
 }
