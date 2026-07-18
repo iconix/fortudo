@@ -28,13 +28,7 @@ const WHATS_NEW_FEATURES = [
 
 function createWhatsNewMessage() {
     const container = document.createElement('div');
-    container.className = 'max-h-64 space-y-4 overflow-y-auto pr-1';
-
-    const intro = document.createElement('p');
-    intro.dataset.whatsNewIntro = 'true';
-    intro.className = 'text-sm leading-6 text-slate-300';
-    intro.textContent = 'Fortudo has new ways to plan, track, and keep moving:';
-    container.appendChild(intro);
+    container.className = 'whats-new-scroll-area overflow-y-auto pr-1';
 
     const list = document.createElement('ul');
     list.className = 'space-y-3';
@@ -50,7 +44,7 @@ function createWhatsNewMessage() {
         title.textContent = feature.title;
 
         const body = document.createElement('div');
-        body.className = 'mt-1 leading-5 text-slate-400';
+        body.className = 'mt-1 leading-5 text-slate-300';
         body.textContent = feature.body;
 
         item.append(title, body);
@@ -77,7 +71,9 @@ export async function maybeShowWhatsNew({
         return;
     }
 
-    await Promise.resolve(showAlert(WHATS_NEW_TITLE, createWhatsNewMessage(), 'violet'));
+    await Promise.resolve(
+        showAlert(WHATS_NEW_TITLE, createWhatsNewMessage(), 'violet', 'Got it', 'wide')
+    );
 
     if (typeof localStorage !== 'undefined') {
         localStorage.setItem(WHATS_NEW_KEY, 'dismissed');

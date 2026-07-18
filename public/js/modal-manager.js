@@ -99,11 +99,19 @@ export function hideCustomAlert() {
     resolveCustomAlert = null;
 }
 
-export function showCustomAlert(title, message, theme = 'violet') {
+export function showCustomAlert(
+    title,
+    message,
+    theme = 'violet',
+    actionLabel = 'OK',
+    layout = 'default'
+) {
     if (customAlertTitle && customAlertMessage && customAlertModal && okCustomAlertButton) {
         hideCustomAlert();
+        customAlertModal.classList.toggle('custom-alert-modal--wide', layout === 'wide');
         customAlertTitle.textContent = title;
         renderCustomAlertMessage(message);
+        okCustomAlertButton.textContent = actionLabel;
         setModalTheme(customAlertModal, customAlertTitle, okCustomAlertButton, theme);
         customAlertModal.classList.remove('hidden');
         const handleEscape = (event) => {

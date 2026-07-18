@@ -30,17 +30,25 @@ describe("what's new modal", () => {
         expect(showAlert).toHaveBeenCalledWith(
             "What's New in Fortudo",
             expect.any(HTMLElement),
-            'violet'
+            'violet',
+            'Got it',
+            'wide'
         );
-        expect(message.className).toContain('max-h-64');
+        expect(message.className).not.toContain('max-h-64');
         expect(message.className).toContain('overflow-y-auto');
-        expect(message.querySelector('[data-whats-new-intro]').textContent).toContain(
-            'Fortudo has new ways to plan, track, and keep moving'
-        );
+        expect(message.className).toContain('whats-new-scroll-area');
+        expect(message.querySelector('[data-whats-new-intro]')).toBeNull();
+        expect(message.textContent).not.toContain("Here's what's new:");
+        expect(message.textContent).not.toContain('Here’s what’s new:');
         expect(message.querySelectorAll('[data-whats-new-feature]')).toHaveLength(5);
         expect(
             [...message.querySelectorAll('[data-whats-new-feature]')].every((feature) =>
                 feature.className.includes('border-violet-400/40')
+            )
+        ).toBe(true);
+        expect(
+            [...message.querySelectorAll('[data-whats-new-feature]')].every((feature) =>
+                feature.lastElementChild.className.includes('text-slate-300')
             )
         ).toBe(true);
         expect(message.textContent).toContain('Activity Tracking');

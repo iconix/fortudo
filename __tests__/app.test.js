@@ -85,6 +85,9 @@ jest.mock('../public/js/activities/handlers.js', () => ({
     handleDeleteActivity: jest.fn(() => Promise.resolve()),
     handleSaveActivityEdit: jest.fn(() => Promise.resolve({ success: true }))
 }));
+jest.mock('../public/js/whats-new.js', () => ({
+    maybeShowWhatsNew: jest.fn(() => Promise.resolve())
+}));
 import {
     prepareStorage as mockPrepareStorageInternal,
     initStorage as mockInitStorageInternal,
@@ -127,6 +130,7 @@ import {
     renderUnscheduledList as mockRenderUnscheduledListInternal,
     destroyUnscheduledList as mockDestroyUnscheduledListInternal
 } from '../public/js/tasks/unscheduled-list.js';
+import { maybeShowWhatsNew as mockMaybeShowWhatsNewInternal } from '../public/js/whats-new.js';
 
 const mockPrepareStorage = jest.mocked(mockPrepareStorageInternal);
 const mockInitStorage = jest.mocked(mockInitStorageInternal);
@@ -156,6 +160,7 @@ const mockHandleSaveActivityEdit = jest.mocked(mockHandleSaveActivityEditInterna
 const mockMountUnscheduledList = jest.mocked(mockMountUnscheduledListInternal);
 const mockRenderUnscheduledList = jest.mocked(mockRenderUnscheduledListInternal);
 const mockDestroyUnscheduledList = jest.mocked(mockDestroyUnscheduledListInternal);
+const mockMaybeShowWhatsNew = jest.mocked(mockMaybeShowWhatsNewInternal);
 
 describe('App.js Callback Functions', () => {
     let alertSpy;
@@ -489,7 +494,7 @@ describe('App.js Callback Functions', () => {
             const featureFlags = await import('../public/js/feature-flags.js');
 
             expect(config.COUCHDB_URL).toBeNull();
-            expect(featureFlags.WHATS_NEW_ANNOUNCEMENT_ENABLED).toBe(false);
+            expect(featureFlags.WHATS_NEW_ANNOUNCEMENT_ENABLED).toBe(true);
             expect(featureFlags.ACTIVITY_OVERLAP_REPAIR_ENABLED).toBe(false);
         });
 
@@ -497,6 +502,12 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks([]);
 
             expect(mockPrepareStorage).toHaveBeenCalledWith(expect.any(String), {}, null);
+        });
+
+        test("boot requests the What's New announcement when its flag is enabled", async () => {
+            await setupAppWithTasks([]);
+
+            expect(mockMaybeShowWhatsNew).toHaveBeenCalledWith({ announcementEnabled: true });
         });
 
         test('when activities are enabled, boot loads activity state and reveals activity UI', async () => {

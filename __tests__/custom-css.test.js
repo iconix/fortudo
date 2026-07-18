@@ -100,6 +100,38 @@ describe('custom CSS polish hooks', () => {
         );
     });
 
+    test("themes the What's New scrollbar with the Fortudo palette", () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(
+            /\.whats-new-scroll-area\s*\{[^}]*max-height:\s*min\(58vh,\s*24rem\);[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*rgba\(167,\s*139,\s*250,\s*0\.78\)\s*rgba\(51,\s*65,\s*85,\s*0\.35\);/s
+        );
+        expect(css).toMatch(/\.whats-new-scroll-area::-webkit-scrollbar\s*\{[^}]*width:\s*8px;/s);
+        expect(css).toMatch(
+            /\.whats-new-scroll-area::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*rgba\(139,\s*92,\s*246,\s*0\.72\);[^}]*border-radius:\s*9999px;[^}]*border:\s*2px solid rgba\(30,\s*41,\s*59,\s*0\.9\);/s
+        );
+        expect(css).toMatch(
+            /@media \(min-width:\s*640px\)[\s\S]*?\.whats-new-scroll-area\s*\{[^}]*max-height:\s*min\(65vh,\s*32rem\);/s
+        );
+    });
+
+    test("gives the What's New alert a wider responsive layout", () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+
+        expect(css).toMatch(
+            /#custom-alert-modal\.custom-alert-modal--wide\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(2px\);[^}]*backdrop-filter:\s*blur\(2px\);/s
+        );
+        expect(css).toMatch(
+            /#custom-alert-modal\.custom-alert-modal--wide\s*>\s*div\s*\{[^}]*width:\s*min\(40rem,\s*calc\(100%\s*-\s*1\.5rem\)\);[^}]*max-width:\s*40rem;/s
+        );
+    });
+
     test('uses a neutral keyboard-only focus outline for buttons', () => {
         const css = fs.readFileSync(
             path.join(__dirname, '..', 'public', 'css', 'custom.css'),
