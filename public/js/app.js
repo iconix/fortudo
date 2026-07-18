@@ -88,7 +88,7 @@ import {
     waitForIdleSync
 } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
-import { ACTIVITIES_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
+import { WHATS_NEW_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 import { registerServiceWorker } from './sw-register.js';
 
 /** @type {AbortController|null} */
@@ -164,7 +164,7 @@ async function initAndBootApp(roomCode) {
     syncActivitiesUI(isActivitiesEnabled());
     void (async () => {
         const activitiesEnabled = isActivitiesEnabled();
-        await maybeShowWhatsNew({ announcementEnabled: ACTIVITIES_ANNOUNCEMENT_ENABLED });
+        await maybeShowWhatsNew({ announcementEnabled: WHATS_NEW_ANNOUNCEMENT_ENABLED });
         await maybeShowOnboarding({ activitiesEnabled, signal });
     })();
 

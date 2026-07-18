@@ -489,7 +489,7 @@ describe('App.js Callback Functions', () => {
             const featureFlags = await import('../public/js/feature-flags.js');
 
             expect(config.COUCHDB_URL).toBeNull();
-            expect(featureFlags.ACTIVITIES_ANNOUNCEMENT_ENABLED).toBe(false);
+            expect(featureFlags.WHATS_NEW_ANNOUNCEMENT_ENABLED).toBe(false);
         });
 
         test('boot initializes storage without a remote URL when sync config is null', async () => {
