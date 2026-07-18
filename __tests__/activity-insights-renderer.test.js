@@ -86,7 +86,8 @@ function renderWith({
     activities = [],
     now = new Date(isoAt('12:00')),
     dateRange = null,
-    selectedDate = null
+    selectedDate = null,
+    overlapRepairEnabled
 } = {}) {
     getActivityState.mockReturnValue(activities);
     getRunningActivity.mockReturnValue(null);
@@ -96,7 +97,10 @@ function renderWith({
         now,
         dateRange,
         selectedDate,
-        activityRenderOptions: { confirmingDeleteActivityId: 'activity-3' }
+        activityRenderOptions: {
+            confirmingDeleteActivityId: 'activity-3',
+            overlapRepairEnabled
+        }
     });
 }
 
@@ -527,9 +531,34 @@ describe('activity insights renderer', () => {
         );
     });
 
-    test('renders truncate overlaps action only when the selected Activity Log has overlaps', () => {
+    test('hides the overlap repair action while the feature flag is disabled', () => {
         renderWith({
             selectedDate: '2026-05-07',
+            activities: [
+                activity({
+                    id: 'activity-overlapped',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                }),
+                activity({
+                    id: 'activity-overlapping',
+                    startDateTime: isoAt('09:30'),
+                    endDateTime: isoAt('10:30'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ]
+        });
+
+        expect(document.querySelector('[data-truncate-activity-overlaps]')).toBeNull();
+    });
+
+    test('renders overlap repair only when enabled and the selected Activity Log has overlaps', () => {
+        renderWith({
+            selectedDate: '2026-05-07',
+            overlapRepairEnabled: true,
             activities: [
                 activity({
                     id: 'activity-overlapped',
@@ -555,6 +584,7 @@ describe('activity insights renderer', () => {
 
         renderWith({
             selectedDate: '2026-05-07',
+            overlapRepairEnabled: true,
             activities: [
                 activity({
                     id: 'activity-clean-1',
