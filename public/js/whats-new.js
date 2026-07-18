@@ -5,22 +5,27 @@ export const WHATS_NEW_KEY = 'fortudo-whats-new-v1';
 const WHATS_NEW_TITLE = "What's New in Fortudo";
 const WHATS_NEW_FEATURES = [
     {
+        emoji: '⏱️',
         title: 'Activity Tracking',
         body: 'Log what you actually do, or use the live timer to capture it automatically.'
     },
     {
+        emoji: '⚡',
         title: 'Reschedule on the Fly',
         body: 'Use Do Now on any scheduled task to move it to the current time and automatically adjust the rest of your day.'
     },
     {
+        emoji: '🔀',
         title: 'My Order',
         body: 'Arrange unscheduled tasks by dragging them or using Move actions. Switch back to Priority anytime.'
     },
     {
+        emoji: '📲',
         title: 'Install Fortudo',
         body: 'Add Fortudo to your home screen or desktop and use it like an app—even when you’re offline.'
     },
     {
+        emoji: '✨',
         title: 'A New Look',
         body: 'Fortudo has a new logo and a refreshed design throughout the app.'
     }
@@ -40,8 +45,17 @@ function createWhatsNewMessage() {
             'rounded-lg border border-violet-400/40 bg-slate-900/40 px-3 py-2.5 text-sm';
 
         const title = document.createElement('div');
-        title.className = 'font-semibold text-slate-100';
-        title.textContent = feature.title;
+        title.className = 'flex items-center gap-2 font-semibold text-slate-100';
+
+        const emoji = document.createElement('span');
+        emoji.dataset.whatsNewFeatureEmoji = 'true';
+        emoji.className = 'shrink-0 text-base leading-none';
+        emoji.setAttribute('aria-hidden', 'true');
+        emoji.textContent = feature.emoji;
+
+        const titleText = document.createElement('span');
+        titleText.textContent = feature.title;
+        title.append(emoji, titleText);
 
         const body = document.createElement('div');
         body.className = 'mt-1 leading-5 text-slate-300';

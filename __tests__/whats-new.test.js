@@ -42,6 +42,16 @@ describe("what's new modal", () => {
         expect(message.textContent).not.toContain('Here’s what’s new:');
         expect(message.querySelectorAll('[data-whats-new-feature]')).toHaveLength(5);
         expect(
+            [...message.querySelectorAll('[data-whats-new-feature-emoji]')].map(
+                (emoji) => emoji.textContent
+            )
+        ).toEqual(['⏱️', '⚡', '🔀', '📲', '✨']);
+        expect(
+            [...message.querySelectorAll('[data-whats-new-feature-emoji]')].every(
+                (emoji) => emoji.getAttribute('aria-hidden') === 'true'
+            )
+        ).toBe(true);
+        expect(
             [...message.querySelectorAll('[data-whats-new-feature]')].every((feature) =>
                 feature.className.includes('border-violet-400/40')
             )
