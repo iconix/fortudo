@@ -7,7 +7,7 @@ const WHATS_NEW_FEATURES = [
     {
         emoji: '⏱️',
         title: 'Activity Tracking',
-        body: 'Log what you actually do, or use the live timer to capture it automatically. (Enable in Settings.)'
+        body: 'Log what you actually do, or use the live timer to capture it automatically. Enable in Settings.'
     },
     {
         emoji: '⚡',

@@ -63,7 +63,7 @@ describe("what's new modal", () => {
         ).toBe(true);
         expect(message.textContent).toContain('Activity Tracking');
         expect(message.textContent).toContain(
-            'Log what you actually do, or use the live timer to capture it automatically. (Enable in Settings.)'
+            'Log what you actually do, or use the live timer to capture it automatically. Enable in Settings.'
         );
         expect(message.textContent).toContain('Reschedule on the Fly');
         expect(message.textContent).toContain(
