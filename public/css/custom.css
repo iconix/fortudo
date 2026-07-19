@@ -109,7 +109,47 @@ button:focus-visible {
     background: rgba(148, 163, 184, 0.86);
 }
 
+#custom-alert-modal.custom-alert-modal--wide {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+
+#custom-alert-modal.custom-alert-modal--wide > div {
+    width: min(40rem, calc(100% - 1.5rem));
+    max-width: 40rem;
+}
+
+.whats-new-scroll-area {
+    max-height: min(58vh, 24rem);
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(167, 139, 250, 0.78) rgba(51, 65, 85, 0.35);
+}
+
+.whats-new-scroll-area::-webkit-scrollbar {
+    width: 8px;
+}
+
+.whats-new-scroll-area::-webkit-scrollbar-track {
+    background: rgba(51, 65, 85, 0.35);
+    border-radius: 9999px;
+}
+
+.whats-new-scroll-area::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.72);
+    border-radius: 9999px;
+    border: 2px solid rgba(30, 41, 59, 0.9);
+}
+
+.whats-new-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: rgba(167, 139, 250, 0.9);
+}
+
 @media (min-width: 640px) {
+    .whats-new-scroll-area {
+        max-height: min(65vh, 32rem);
+    }
+
     .settings-scroll-area {
         padding-right: 0.25rem;
     }

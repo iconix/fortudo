@@ -85,13 +85,16 @@ describe('Fortudo brand system', () => {
 
     test('uses a neutral slate settings scrollbar', () => {
         const customCss = read('public/css/custom.css');
+        const settingsScrollbarRules = customCss.match(
+            /\.settings-scroll-area\s*\{[\s\S]*?\.settings-scroll-area::-webkit-scrollbar-thumb:hover\s*\{[^}]*\}/
+        )?.[0];
 
-        expect(customCss).toContain(
+        expect(settingsScrollbarRules).toContain(
             'scrollbar-color: rgba(100, 116, 139, 0.7) rgba(51, 65, 85, 0.35);'
         );
-        expect(customCss).toContain('background: rgba(100, 116, 139, 0.72);');
-        expect(customCss).toContain('background: rgba(148, 163, 184, 0.86);');
-        expect(customCss).not.toMatch(/settings-scroll-area[\s\S]*?rgba\(139, 92, 246/);
+        expect(settingsScrollbarRules).toContain('background: rgba(100, 116, 139, 0.72);');
+        expect(settingsScrollbarRules).toContain('background: rgba(148, 163, 184, 0.86);');
+        expect(settingsScrollbarRules).not.toContain('rgba(139, 92, 246');
     });
 
     test('uses brand violet for shared Settings utilities', () => {

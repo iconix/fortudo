@@ -177,6 +177,26 @@ describe('Modal Manager Tests', () => {
                 expect(message.textContent).toBe('Test Message');
             });
 
+            test('showCustomAlert supports a custom action label and restores the default', () => {
+                const okButton = document.getElementById('ok-custom-alert-modal');
+
+                showCustomAlert('Title', 'Message', 'violet', 'Got it');
+                expect(okButton.textContent).toBe('Got it');
+
+                showCustomAlert('Another title', 'Another message');
+                expect(okButton.textContent).toBe('OK');
+            });
+
+            test('showCustomAlert supports a wide layout and restores the default', () => {
+                const modal = document.getElementById('custom-alert-modal');
+
+                showCustomAlert('Title', 'Message', 'violet', 'OK', 'wide');
+                expect(modal.classList).toContain('custom-alert-modal--wide');
+
+                showCustomAlert('Another title', 'Another message');
+                expect(modal.classList).not.toContain('custom-alert-modal--wide');
+            });
+
             test('showCustomAlert renders element messages without flattening markup', () => {
                 const content = document.createElement('div');
                 content.innerHTML = `
