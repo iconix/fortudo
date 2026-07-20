@@ -18,7 +18,13 @@ from scripts.e2e_helpers import (
     wait_for_running_timer_ui,
     wait_until,
 )
-from tests.e2e.helpers import BASE_URL, activities_config, launch_e2e_page, launch_seeded_page
+from tests.e2e.helpers import (
+    BASE_URL,
+    activities_config,
+    launch_e2e_page,
+    launch_seeded_page,
+    seed_and_enter_room,
+)
 
 
 def get_onboarding_target(page):
@@ -156,6 +162,39 @@ def test_running_timer_restores_after_reload(app_server):
                 expected_description="Activities reload timer",
             )
             assert restored_config.get("activityId") == running_config.get("activityId")
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_running_timer_elapsed_advances_with_stale_server_date_header(app_server):
+    room_code = "activities-timer-stale-server-date"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(playwright)
+
+        def serve_stale_date_header(route):
+            if route.request.method == "HEAD":
+                route.fulfill(
+                    status=200,
+                    headers={"Date": "Thu, 01 Jan 1970 00:00:00 GMT"},
+                )
+                return
+            route.continue_()
+
+        page.route("**/*", serve_stale_date_header)
+
+        try:
+            seed_and_enter_room(page, room_code, [activities_config()])
+            start_activity_timer(page, "Advancing elapsed timer", room_code=room_code)
+            wait_for_running_timer_ui(page, "Advancing elapsed timer")
+
+            initial_elapsed = page.locator("#timer-elapsed").inner_text()
+            wait_until(
+                lambda: page.locator("#timer-elapsed").inner_text() != initial_elapsed,
+                "elapsed timer to advance despite a stale server date header",
+                timeout_s=3.0,
+                interval_s=0.1,
+            )
         finally:
             context.close()
             browser.close()
