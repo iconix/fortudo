@@ -336,7 +336,7 @@ describe('activity timer ui', () => {
             expect(handleStopTimer).toHaveBeenCalledTimes(1);
         });
 
-        test('applies measured server clock offset to the visible elapsed timer', async () => {
+        test('keeps the visible elapsed timer on the local clock after measuring server offset', async () => {
             document.getElementById('activity').checked = true;
             getRunningActivity.mockReturnValue({
                 description: 'Running timer',
@@ -357,7 +357,11 @@ describe('activity timer ui', () => {
             syncTimerFormState();
             await flushAsyncWork(6);
 
-            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:00');
+
+            jest.advanceTimersByTime(2000);
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:02');
         });
 
         test('keeps using the local clock when server offset measurement fails', async () => {
@@ -411,7 +415,7 @@ describe('activity timer ui', () => {
             syncTimerFormState();
             await flushAsyncWork(6);
 
-            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:00');
 
             resolveFirstFetch({
                 headers: {
@@ -422,7 +426,10 @@ describe('activity timer ui', () => {
             });
             await flushAsyncWork(6);
 
-            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:05');
+            const snapshot = await window.dumpTimerDebug();
+
+            expect(document.getElementById('timer-elapsed').textContent).toBe('00:00:00');
+            expect(snapshot.estimatedServerOffsetMs).toBe(5000);
         });
 
         test('registers an async global timer debug helper with corrected timing estimate', async () => {
@@ -460,7 +467,7 @@ describe('activity timer ui', () => {
                     }),
                     correctedElapsedMs: 5000,
                     correctedDisplayedElapsed: '00:00:05',
-                    displayedElapsed: '00:00:05',
+                    displayedElapsed: '00:00:00',
                     isTimerVisible: true
                 })
             );
@@ -469,7 +476,7 @@ describe('activity timer ui', () => {
                 'timer-debug:snapshot',
                 expect.objectContaining({
                     correctedDisplayedElapsed: '00:00:05',
-                    displayedElapsed: '00:00:05',
+                    displayedElapsed: '00:00:00',
                     isTimerVisible: true
                 })
             );

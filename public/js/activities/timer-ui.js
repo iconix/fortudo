@@ -72,10 +72,6 @@ function refreshTimerDerivedViews() {
     renderActiveInsightsView();
 }
 
-function getEffectiveNowMs() {
-    return Date.now() + (timerUiState.serverClockOffsetMs ?? 0);
-}
-
 function stopElapsedCounter() {
     if (timerUiState.tickTimeoutId) {
         clearTimeout(timerUiState.tickTimeoutId);
@@ -195,7 +191,6 @@ async function measureServerClockOffset() {
 }
 
 async function refreshServerClockOffset(sessionId) {
-    const previousOffsetMs = timerUiState.serverClockOffsetMs;
     let nextOffsetMs = null;
     let estimate = {
         serverDateHeader: null,
@@ -223,24 +218,6 @@ async function refreshServerClockOffset(sessionId) {
     timerUiState.serverClockOffsetMs = nextOffsetMs;
     timerUiState.serverDateHeader = estimate.serverDateHeader;
     timerUiState.serverRoundTripMs = estimate.serverRoundTripMs;
-
-    if (previousOffsetMs === nextOffsetMs) {
-        return;
-    }
-
-    const runningActivity = getRunningActivity();
-    const timerDisplay = document.getElementById('timer-display');
-    const isTimerVisible =
-        runningActivity &&
-        timerDisplay instanceof HTMLElement &&
-        !timerDisplay.classList.contains('hidden');
-
-    if (!isTimerVisible) {
-        return;
-    }
-
-    startElapsedCounter(runningActivity.startDateTime);
-    refreshTimerDerivedViews();
 }
 
 function registerTimerDebugHelper() {
@@ -265,7 +242,7 @@ function startElapsedCounter(startDateTime) {
     }
 
     const updateElapsed = () => {
-        const elapsedMs = getEffectiveNowMs() - startMs;
+        const elapsedMs = Date.now() - startMs;
         elapsedElement.textContent = formatElapsed(elapsedMs);
 
         const elapsedMinutes = Math.max(0, Math.round(elapsedMs / 60000));
@@ -287,7 +264,7 @@ function startElapsedCounter(startDateTime) {
     };
 
     const scheduleNextUpdate = () => {
-        const elapsedMs = Math.max(0, getEffectiveNowMs() - startMs);
+        const elapsedMs = Math.max(0, Date.now() - startMs);
         const nextDelay = Math.max(1, 1000 - (elapsedMs % 1000));
         timerUiState.tickTimeoutId = setTimeout(() => {
             updateElapsed();
