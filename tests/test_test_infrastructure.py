@@ -112,12 +112,12 @@ def test_ci_separates_python_unit_browser_and_deployment_gates():
     python_tests = workflow_job("python-tests")
     e2e = workflow_job("e2e")
 
-    assert "actions/setup-node@v6" in python_tests
+    assert "actions/setup-node@v7" in python_tests
     assert "npm run lint:python" in python_tests
     assert "npm run test:python" in python_tests
     assert "npm run test:e2e" not in python_tests
 
-    assert "actions/setup-node@v6" in e2e
+    assert "actions/setup-node@v7" in e2e
     assert "npm run test:e2e" in e2e
     assert "npm run test:python" not in e2e
 
