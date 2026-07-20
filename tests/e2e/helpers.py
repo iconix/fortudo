@@ -35,6 +35,7 @@ def choose_port() -> int:
 
 PORT = choose_port()
 BASE_URL = f"http://{HOST}:{PORT}"
+WHATS_NEW_KEY = "fortudo-whats-new-v1"
 
 
 def launch_e2e_page(playwright, *, viewport: dict | None = None):
@@ -42,6 +43,23 @@ def launch_e2e_page(playwright, *, viewport: dict | None = None):
     browser = launch_browser(playwright)
     context = browser.new_context(viewport=viewport or {"width": 1280, "height": 900})
     page = context.new_page()
+    page.add_init_script(
+        f"""
+        (() => {{
+            const announcementKey = {WHATS_NEW_KEY!r};
+            const clearStorage = Storage.prototype.clear;
+
+            Storage.prototype.clear = function () {{
+                clearStorage.call(this);
+                if (this === window.localStorage) {{
+                    this.setItem(announcementKey, 'dismissed');
+                }}
+            }};
+
+            window.localStorage.setItem(announcementKey, 'dismissed');
+        }})();
+        """
+    )
 
     return browser, context, page
 

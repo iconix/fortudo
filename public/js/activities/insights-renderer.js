@@ -4,6 +4,7 @@ import {
     extractDateFromDateTime,
     extractTimeFromDateTime
 } from '../utils.js';
+import { ACTIVITY_OVERLAP_REPAIR_ENABLED } from '../feature-flags.js';
 import { getActivityState, getRunningActivity } from './manager.js';
 import { renderActivities } from './renderer.js';
 import { buildInsightsModel } from './insights-model.js';
@@ -261,13 +262,20 @@ function renderShowMoreButton(hiddenCount) {
     listContainer.append(button);
 }
 
-function renderActivityLogActions(model) {
+function renderActivityLogActions(
+    model,
+    { overlapRepairEnabled = ACTIVITY_OVERLAP_REPAIR_ENABLED } = {}
+) {
     const logContainer = document.getElementById('insights-activity-log');
     if (!logContainer) {
         return;
     }
 
     logContainer.querySelector('[data-activity-log-actions]')?.remove();
+
+    if (!overlapRepairEnabled) {
+        return;
+    }
 
     const hasOverlaps = model.activityLogIssues.some((issue) => issue.type === 'overlap');
     if (!hasOverlaps) {
@@ -305,7 +313,7 @@ function renderActivityLog(model, activityRenderOptions = {}) {
         heading.textContent = 'Activity Log';
     }
 
-    renderActivityLogActions(model);
+    renderActivityLogActions(model, activityRenderOptions);
 
     if (model.activityLog.length === 0) {
         listContainer.innerHTML = `<div class="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-4 text-sm text-slate-400">

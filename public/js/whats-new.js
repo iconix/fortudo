@@ -1,32 +1,39 @@
 import { showCustomAlert } from './modal-manager.js';
 
-export const WHATS_NEW_KEY = 'fortudo-whats-new-activities-v1';
+export const WHATS_NEW_KEY = 'fortudo-whats-new-v1';
 
 const WHATS_NEW_TITLE = "What's New in Fortudo";
 const WHATS_NEW_FEATURES = [
     {
-        title: 'Activity Logging',
-        body: 'Track what you actually do alongside your plan.'
+        emoji: '⏱️',
+        title: 'Activity Tracking',
+        body: 'Log what you actually do, or use the live timer to capture it automatically. Enable in Settings.'
     },
     {
-        title: 'Live Timer',
-        body: 'Start and stop capture with automatic activity logging.'
+        emoji: '⚡',
+        title: 'Reschedule on the Fly',
+        body: 'Use Do Now on any scheduled task to move it to the current time and automatically adjust the rest of your day.'
     },
     {
-        title: 'Insights View',
-        body: 'Compare plan vs actual with timelines and trend day cards.'
+        emoji: '🔀',
+        title: 'My Order',
+        body: 'Arrange unscheduled tasks by dragging them or using Move actions. Switch back to Priority anytime.'
+    },
+    {
+        emoji: '📲',
+        title: 'Install Fortudo',
+        body: 'Add Fortudo to your home screen or desktop and use it like an app—even when you’re offline.'
+    },
+    {
+        emoji: '✨',
+        title: 'A New Look',
+        body: 'Fortudo has a new logo and a refreshed design throughout the app.'
     }
 ];
 
 function createWhatsNewMessage() {
     const container = document.createElement('div');
-    container.className = 'space-y-4';
-
-    const intro = document.createElement('p');
-    intro.dataset.whatsNewIntro = 'true';
-    intro.className = 'text-sm leading-6 text-slate-300';
-    intro.textContent = 'Activities are ready to try. Here is what changed:';
-    container.appendChild(intro);
+    container.className = 'whats-new-scroll-area overflow-y-auto pr-1';
 
     const list = document.createElement('ul');
     list.className = 'space-y-3';
@@ -34,14 +41,24 @@ function createWhatsNewMessage() {
     WHATS_NEW_FEATURES.forEach((feature) => {
         const item = document.createElement('li');
         item.dataset.whatsNewFeature = 'true';
-        item.className = 'rounded-lg border border-sky-400/20 bg-slate-900/40 px-3 py-2.5 text-sm';
+        item.className =
+            'rounded-lg border border-violet-400/40 bg-slate-900/40 px-3 py-2.5 text-sm';
 
         const title = document.createElement('div');
-        title.className = 'font-semibold text-slate-100';
-        title.textContent = feature.title;
+        title.className = 'flex items-center gap-2 font-semibold text-slate-100';
+
+        const emoji = document.createElement('span');
+        emoji.dataset.whatsNewFeatureEmoji = 'true';
+        emoji.className = 'shrink-0 text-base leading-none';
+        emoji.setAttribute('aria-hidden', 'true');
+        emoji.textContent = feature.emoji;
+
+        const titleText = document.createElement('span');
+        titleText.textContent = feature.title;
+        title.append(emoji, titleText);
 
         const body = document.createElement('div');
-        body.className = 'mt-1 leading-5 text-slate-400';
+        body.className = 'mt-1 leading-5 text-slate-300';
         body.textContent = feature.body;
 
         item.append(title, body);
@@ -53,7 +70,7 @@ function createWhatsNewMessage() {
 }
 
 /**
- * Shows the one-time Activities announcement for this browser.
+ * Shows the one-time release announcement for this browser.
  * @param {{ announcementEnabled?: boolean, showAlert?: Function }} [options]
  */
 export async function maybeShowWhatsNew({
@@ -68,7 +85,9 @@ export async function maybeShowWhatsNew({
         return;
     }
 
-    await Promise.resolve(showAlert(WHATS_NEW_TITLE, createWhatsNewMessage(), 'sky'));
+    await Promise.resolve(
+        showAlert(WHATS_NEW_TITLE, createWhatsNewMessage(), 'violet', 'Got it', 'wide')
+    );
 
     if (typeof localStorage !== 'undefined') {
         localStorage.setItem(WHATS_NEW_KEY, 'dismissed');
