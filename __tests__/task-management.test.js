@@ -1010,6 +1010,7 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.confirmationType).toBe('RESCHEDULE_SCHEDULE_UNSCHEDULED');
             expect(result.proposedTask).toEqual(
                 expect.objectContaining({
+                    id: unscheduledTask.id,
                     description: 'Unscheduled Contract Task',
                     type: 'scheduled'
                 })
@@ -1058,7 +1059,76 @@ describe('Task Management Functions (task-manager.js)', () => {
                 })
             );
             expect(result.taskId).toBe(result.task.id);
+            expect(result.task.id).toBe(unscheduledTask.id);
+            expect(mockDeleteTasks).not.toHaveBeenCalled();
         });
+
+        test('schedules in place under the same task document ID without deleting', async () => {
+            const unscheduledTask = {
+                id: 'unsched-in-place',
+                type: 'unscheduled',
+                description: 'Keep my identity',
+                priority: 'high',
+                estDuration: 30,
+                status: 'incomplete'
+            };
+            updateTaskState([unscheduledTask]);
+
+            const result = await scheduleUnscheduledTask(unscheduledTask.id, '15:00', 30);
+
+            expect(result).toMatchObject({
+                success: true,
+                taskId: unscheduledTask.id,
+                task: { id: unscheduledTask.id, type: 'scheduled' }
+            });
+            expect(mockPutTasks).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({ id: unscheduledTask.id, type: 'scheduled' })
+                ])
+            );
+            expect(mockDeleteTasks).not.toHaveBeenCalled();
+        });
+
+        test('preserves identity across scheduled to unscheduled to scheduled lifecycle', async () => {
+            const scheduledTask = createTaskWithDateTime({
+                description: 'Round trip',
+                startTime: '16:00',
+                duration: 30,
+                status: 'incomplete'
+            });
+            updateTaskState([scheduledTask]);
+
+            const unscheduledResult = await unscheduleTask(scheduledTask.id);
+            const scheduledResult = await scheduleUnscheduledTask(scheduledTask.id, '17:00', 30);
+
+            expect(unscheduledResult.task.id).toBe(scheduledTask.id);
+            expect(scheduledResult.task.id).toBe(scheduledTask.id);
+            expect(getTaskState()).toEqual([
+                expect.objectContaining({ id: scheduledTask.id, type: 'scheduled' })
+            ]);
+        });
+    });
+
+    test('new tasks use stable task UUID identity regardless of scheduled state', async () => {
+        updateTaskState([]);
+
+        const scheduled = await addTask({
+            description: 'Secure scheduled',
+            taskType: 'scheduled',
+            startTime: '22:00',
+            duration: 15
+        });
+        const unscheduled = await addTask({
+            description: 'Secure backlog',
+            taskType: 'unscheduled',
+            priority: 'medium',
+            estDuration: 15
+        });
+
+        expect(scheduled.task.id).toMatch(
+            /^task_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+        );
+        expect(unscheduled.task.id).toMatch(/^task_[0-9a-f-]{36}$/);
     });
 
     describe('updateTask', () => {

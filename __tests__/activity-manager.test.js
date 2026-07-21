@@ -50,7 +50,7 @@ describe('activity manager', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(result.activity.id).toMatch(/^activity-/);
+            expect(result.activity.id).toMatch(/^activity_[0-9a-f-]{36}$/);
             expect(result.activity.description).toBe('Deep work session');
             expect(result.activity.docType).toBe('activity');
             expect(putActivity).toHaveBeenCalledWith(result.activity);
@@ -312,7 +312,7 @@ describe('activity manager', () => {
 
             expect(summary).toEqual(
                 expect.objectContaining({
-                    id: expect.stringMatching(/^activity-/),
+                    id: expect.stringMatching(/^activity_[0-9a-f-]{36}$/),
                     description: 'Running',
                     category: 'work/deep',
                     duration: 17,

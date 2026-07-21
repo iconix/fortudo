@@ -78,6 +78,44 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
 
         return null;
     }),
+    resolveCategoryReference: jest.fn((reference) => {
+        const key = typeof reference === 'string' ? reference : reference?.category;
+        const groups = {
+            work: { key: 'work', label: 'Work', color: '#0f172a' },
+            personal: { key: 'personal', label: 'Personal', color: '#f97316' },
+            solo: { key: 'solo', label: 'Solo', color: '#a855f7' }
+        };
+        if (groups[key]) {
+            return { kind: 'group', record: groups[key] };
+        }
+        const records = {
+            'work/deep': {
+                key: 'work/deep',
+                label: 'Deep Work',
+                groupKey: 'work',
+                color: '#0ea5e9'
+            },
+            'work/admin': {
+                key: 'work/admin',
+                label: 'Admin',
+                groupKey: 'work',
+                color: '#14b8a6'
+            },
+            'personal/planning': {
+                key: 'personal/planning',
+                label: 'Planning',
+                groupKey: 'personal',
+                color: '#f97316'
+            },
+            'ghost/focus': {
+                key: 'ghost/focus',
+                label: 'Focus',
+                groupKey: 'ghost',
+                color: '#22c55e'
+            }
+        };
+        return records[key] ? { kind: 'category', record: records[key] } : null;
+    }),
     resolveCategoryKey: jest.fn((key) => {
         if (key === 'work') {
             return {
@@ -489,7 +527,7 @@ describe('activity renderer', () => {
         ).toBe('1');
     });
 
-    test('parent-group summary rolls deleted child categories up to their inferred parent', () => {
+    test('parent-group summary flags deleted child categories without inferring a parent', () => {
         const container = document.getElementById('activity-list');
 
         renderActivities(
@@ -521,12 +559,13 @@ describe('activity renderer', () => {
         const summary = container.querySelector('[data-activity-summary]');
 
         expect(summary).not.toBeNull();
-        expect(summary.textContent).toContain('Work 50m');
+        expect(summary.textContent).toContain('Work 30m');
+        expect(summary.textContent).toContain('Unknown category 20m');
         expect(summary.textContent).not.toContain('work/missing');
-        expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(1);
+        expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(2);
     });
 
-    test('parent-group summary keeps missing parent groups in one fallback bucket', () => {
+    test('parent-group summary uses fixed labels for missing parent groups', () => {
         const container = document.getElementById('activity-list');
 
         renderActivities(
@@ -558,9 +597,10 @@ describe('activity renderer', () => {
         const summary = container.querySelector('[data-activity-summary]');
 
         expect(summary).not.toBeNull();
-        expect(summary.textContent).toContain('Ghost 45m');
+        expect(summary.textContent).toContain('Unknown category');
+        expect(summary.textContent).not.toContain('Ghost');
         expect(summary.textContent).not.toContain('Focus');
-        expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(1);
+        expect(summary.querySelectorAll('[data-summary-parent-segment]')).toHaveLength(2);
     });
 
     test('parent-group summary uses deterministic ordering when durations tie', () => {

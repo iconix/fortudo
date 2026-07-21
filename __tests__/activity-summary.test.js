@@ -166,7 +166,7 @@ describe('activity summary selectors', () => {
         );
     });
 
-    test('rolls missing child categories and missing parent groups into stable buckets', () => {
+    test('keeps unresolved references in fixed-label integrity buckets', () => {
         const model = buildActivitySummaryModel([
             {
                 id: 'activity-1',
@@ -185,10 +185,25 @@ describe('activity summary selectors', () => {
             }
         ]);
 
-        expect(model.summaryItems).toEqual([
-            expect.objectContaining({ key: 'ghost', label: 'Ghost', duration: 45, count: 2 }),
-            expect.objectContaining({ key: 'work', label: 'Work', duration: 20, count: 1 })
-        ]);
+        expect(model.summaryItems).toHaveLength(3);
+        expect(model.summaryItems).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    label: 'Unknown category',
+                    duration: 25,
+                    count: 1,
+                    isIntegrityIssue: true
+                }),
+                expect.objectContaining({
+                    label: 'Unknown category',
+                    duration: 20,
+                    count: 1,
+                    isIntegrityIssue: true
+                })
+            ])
+        );
+        expect(model.summaryItems.map((item) => item.label)).not.toContain('Ghost');
+        expect(model.summaryItems.map((item) => item.label)).not.toContain('Work');
     });
 
     test('builds expanded child detail for the selected group with parent label fallback', () => {

@@ -1,5 +1,5 @@
 import { extractDateFromDateTime } from '../utils.js';
-import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import { resolveCategoryKey, resolveCategoryReference } from '../taxonomy/taxonomy-selectors.js';
 import { detectActivityDataIssues } from './insights-issues.js';
 import {
     getClippedDurationInterval,
@@ -90,7 +90,7 @@ function buildTimelineBlock(item, visibleInterval, now) {
         startDateTime: clippedInterval ? clippedInterval.start.toISOString() : item.startDateTime,
         endDateTime: clippedInterval ? clippedInterval.end.toISOString() : item.endDateTime,
         duration,
-        categoryMeta: getCategoryMeta(item.category),
+        categoryMeta: getCategoryMeta(item),
         leftPercent: (startMinutes / MINUTES_PER_DAY) * 100,
         widthPercent: (duration / MINUTES_PER_DAY) * 100,
         source: item.source,
@@ -123,8 +123,13 @@ function normalizeRunningActivity(runningActivity, today, now) {
     };
 }
 
-function getCategoryMeta(categoryKey) {
-    const resolved = categoryKey ? resolveCategoryKey(categoryKey) : null;
+function getCategoryMeta(item) {
+    const resolved =
+        typeof resolveCategoryReference === 'function'
+            ? resolveCategoryReference(item)
+            : item.category
+              ? resolveCategoryKey(item.category)
+              : null;
 
     if (!resolved) {
         return {
@@ -134,10 +139,20 @@ function getCategoryMeta(categoryKey) {
         };
     }
 
+    if (!resolved.record) {
+        return {
+            key: `unknown-category:${item.categoryId || item.category || 'missing'}`,
+            label: 'Unknown category',
+            color: '#64748b',
+            isIntegrityIssue: true
+        };
+    }
+
     return {
-        key: resolved.record.key,
+        key: resolved.record.id || resolved.record.key,
         label: resolved.record.label,
-        color: resolved.record.color
+        color: resolved.record.color,
+        isIntegrityIssue: Boolean(resolved.integrityIssue)
     };
 }
 

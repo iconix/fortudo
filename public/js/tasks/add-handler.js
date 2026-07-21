@@ -46,7 +46,11 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
             if (adjustResult.success) {
                 triggerConfettiAnimation(operationResult.adjustableTask.id);
                 operationResult = await addTask(
-                    { ...initialTaskData, _skipAdjustCheck: true },
+                    {
+                        ...initialTaskData,
+                        id: operationResult.taskObjectToAdd?.id,
+                        _skipAdjustCheck: true
+                    },
                     false
                 );
             } else {
@@ -55,7 +59,14 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
                 return;
             }
         } else {
-            operationResult = await addTask({ ...initialTaskData, _skipAdjustCheck: true }, false);
+            operationResult = await addTask(
+                {
+                    ...initialTaskData,
+                    id: operationResult.taskObjectToAdd?.id,
+                    _skipAdjustCheck: true
+                },
+                false
+            );
         }
     }
 
@@ -78,7 +89,11 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
 
             if (truncateResult.success) {
                 operationResult = await addTask(
-                    { ...initialTaskData, _skipCompletedCheck: true },
+                    {
+                        ...initialTaskData,
+                        id: operationResult.taskObjectToAdd?.id,
+                        _skipCompletedCheck: true
+                    },
                     false
                 );
             } else {

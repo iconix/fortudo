@@ -6,9 +6,15 @@ import {
 import {
     addGroup,
     updateGroup,
+    archiveGroup,
+    restoreGroup,
+    archiveAndCreateGroupReplacement,
     deleteGroup,
     addCategory,
     updateCategory,
+    archiveCategory,
+    restoreCategory,
+    archiveAndCreateCategoryReplacement,
     deleteCategory
 } from '../taxonomy/taxonomy-mutations.js';
 import { populateCategoryDropdown } from '../tasks/form-utils.js';
@@ -32,7 +38,7 @@ export function renderTaxonomyManagementContent() {
             <div class="flex items-start justify-between gap-3 text-left">
                 <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Groups</h4>
-                    <p class="text-xs text-slate-400">Top-level task categories.</p>
+                    <p class="text-xs text-slate-400">Top-level task categories. Renaming changes the label shown on historical records.</p>
                 </div>
                 <button id="add-group-btn" type="button" aria-label="Add group" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
@@ -48,7 +54,7 @@ export function renderTaxonomyManagementContent() {
             <div class="flex items-start justify-between gap-3 text-left">
                 <div class="min-w-0 text-left">
                     <h4 class="text-slate-200 font-medium text-sm">Categories</h4>
-                    <p class="text-xs text-slate-400">Optional categories within a group.</p>
+                    <p class="text-xs text-slate-400">Optional categories within a group. Renaming changes the label shown on historical records.</p>
                 </div>
                 <button id="add-category-btn" type="button" aria-label="Add category" class="shrink-0 text-violet-300 hover:text-violet-200 focus-visible:text-violet-200 text-sm flex items-center gap-1 transition-colors">
                     <i class="fa-solid fa-plus text-xs"></i> Add
@@ -104,7 +110,7 @@ function renderGroupsList() {
 
     return groups
         .map((group) => {
-            if (editingGroupKey === group.key) {
+            if (editingGroupKey === group.key && group.status === 'active') {
                 return renderGroupEditor(group);
             }
 
@@ -122,11 +128,21 @@ function renderGroupsList() {
                             style="background-color: ${group.color}"
                         ></span>
                         <div class="min-w-0 text-sm text-slate-200">${escapeHtml(group.label)}</div>
+                        ${renderStatusBadge(group)}
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Edit ${escapeAttribute(group.label)} group">
-                            <i class="fa-solid fa-pen"></i>
-                        </button>
+                        ${
+                            group.status === 'active'
+                                ? `<button type="button" class="btn-edit-group text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Edit ${escapeAttribute(group.label)} group">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button type="button" class="btn-archive-group text-slate-400 hover:text-amber-300 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Archive ${escapeAttribute(group.label)} group">
+                                    <i class="fa-solid fa-box-archive"></i>
+                                </button>`
+                                : `<button type="button" class="btn-restore-group text-slate-400 hover:text-emerald-300 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Restore ${escapeAttribute(group.label)} group">
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </button>`
+                        }
                         <button type="button" class="btn-delete-group text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(group.key)}" aria-label="Delete ${escapeAttribute(group.label)} group">
                             <i class="fa-solid fa-trash"></i>
                         </button>
@@ -163,6 +179,10 @@ function renderGroupEditor(group) {
             <div class="flex gap-2 pt-1">
                 <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-group bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
+            </div>
+            <div class="border-t border-slate-600 pt-3 space-y-2">
+                <p class="text-xs text-slate-400">If the meaning is changing, preserve historical records by creating a new identity.</p>
+                <button type="button" class="btn-replace-group text-amber-300 hover:text-amber-200 text-sm" data-key="${escapeHtml(group.key)}">Archive and create replacement</button>
             </div>
         </form>
     `;
@@ -238,7 +258,7 @@ function renderCategoriesList() {
 }
 
 function renderCategoryRow(category, group) {
-    if (editingCategoryKey === category.key) {
+    if (editingCategoryKey === category.key && category.status === 'active') {
         return renderCategoryEditor(category, group);
     }
 
@@ -263,12 +283,22 @@ function renderCategoryRow(category, group) {
                 <div class="flex min-w-0 items-center gap-2">
                     <div class="truncate text-sm text-slate-200">${escapeHtml(category.label)}</div>
                     ${customColorLabel}
+                    ${renderStatusBadge(category)}
                 </div>
             </div>
             <div class="flex shrink-0 items-center gap-1">
-                <button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Edit ${escapeAttribute(category.label)} category">
-                    <i class="fa-solid fa-pen"></i>
-                </button>
+                ${
+                    category.status === 'active'
+                        ? `<button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Edit ${escapeAttribute(category.label)} category">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button type="button" class="btn-archive-category text-slate-400 hover:text-amber-300 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Archive ${escapeAttribute(category.label)} category">
+                            <i class="fa-solid fa-box-archive"></i>
+                        </button>`
+                        : `<button type="button" class="btn-restore-category text-slate-400 hover:text-emerald-300 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Restore ${escapeAttribute(category.label)} category">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>`
+                }
                 <button type="button" class="btn-delete-category text-slate-400 hover:text-rose-400 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Delete ${escapeAttribute(category.label)} category">
                     <i class="fa-solid fa-trash"></i>
                 </button>
@@ -319,6 +349,10 @@ function renderCategoryEditor(category, group) {
                 <button type="submit" class="bg-violet-500 hover:bg-violet-400 text-white px-3 py-1.5 rounded-lg text-sm transition-colors">Save</button>
                 <button type="button" class="btn-cancel-edit-category bg-slate-600 hover:bg-slate-500 text-slate-200 px-3 py-1.5 rounded-lg text-sm transition-colors">Cancel</button>
             </div>
+            <div class="border-t border-slate-600 pt-3 space-y-2">
+                <p class="text-xs text-slate-400">If the meaning is changing, preserve historical records by creating a new identity.</p>
+                <button type="button" class="btn-replace-category text-amber-300 hover:text-amber-200 text-sm" data-key="${escapeHtml(category.key)}">Archive and create replacement</button>
+            </div>
         </form>
     `;
 }
@@ -337,6 +371,7 @@ function renderAddCategoryForm() {
                 >
                     <option value="">Group</option>
                     ${groups
+                        .filter((group) => group.status === 'active')
                         .map(
                             (group) =>
                                 `<option value="${escapeHtml(group.key)}">${escapeHtml(group.label)}</option>`
@@ -379,6 +414,13 @@ function getColorFamilyLabel(familyName) {
         violet: 'Purple'
     };
     return labels[familyName] || titleCase(familyName);
+}
+
+function renderStatusBadge(record) {
+    if (record.status !== 'archived') {
+        return '';
+    }
+    return '<span class="shrink-0 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">Archived</span>';
 }
 
 function bindGroupEvents(options) {
@@ -447,6 +489,34 @@ function bindGroupEvents(options) {
         });
     });
 
+    document.querySelectorAll('.btn-archive-group').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const key = button.dataset.key;
+            if (!key) {
+                return;
+            }
+            try {
+                await applyAndRefresh(() => archiveGroup(key), options);
+            } catch (error) {
+                showToast(error.message || 'Failed to archive group', { theme: 'rose' });
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-restore-group').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const key = button.dataset.key;
+            if (!key) {
+                return;
+            }
+            try {
+                await applyAndRefresh(() => restoreGroup(key), options);
+            } catch (error) {
+                showToast(error.message || 'Failed to restore group', { theme: 'rose' });
+            }
+        });
+    });
+
     document.querySelectorAll('.edit-group-form').forEach((form) => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -480,6 +550,27 @@ function bindGroupEvents(options) {
         button.addEventListener('click', () => {
             editingGroupKey = null;
             refreshTaxonomySettingsSection(options);
+        });
+    });
+
+    document.querySelectorAll('.btn-replace-group').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const form = button.closest('.edit-group-form');
+            const key = button.dataset.key;
+            const label = form?.querySelector('[name="edit-group-label"]')?.value.trim();
+            const colorFamily = form?.querySelector('[name="edit-group-family"]')?.value || 'blue';
+            if (!key || !label) {
+                showToast('Group name is required', { theme: 'rose' });
+                return;
+            }
+            try {
+                await applyAndRefresh(async () => {
+                    await archiveAndCreateGroupReplacement(key, { label, colorFamily });
+                    editingGroupKey = null;
+                }, options);
+            } catch (error) {
+                showToast(error.message || 'Failed to replace group', { theme: 'rose' });
+            }
         });
     });
 }
@@ -555,6 +646,34 @@ function bindCategoryEvents(options) {
         });
     });
 
+    document.querySelectorAll('.btn-archive-category').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const key = button.dataset.key;
+            if (!key) {
+                return;
+            }
+            try {
+                await applyAndRefresh(() => archiveCategory(key), options);
+            } catch (error) {
+                showToast(error.message || 'Failed to archive category', { theme: 'rose' });
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-restore-category').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const key = button.dataset.key;
+            if (!key) {
+                return;
+            }
+            try {
+                await applyAndRefresh(() => restoreCategory(key), options);
+            } catch (error) {
+                showToast(error.message || 'Failed to restore category', { theme: 'rose' });
+            }
+        });
+    });
+
     document.querySelectorAll('.edit-category-form').forEach((form) => {
         const colorModeSelect = form.querySelector('[name="edit-category-color-mode"]');
         colorModeSelect?.addEventListener('change', () => syncCategoryColorControls(form));
@@ -597,6 +716,32 @@ function bindCategoryEvents(options) {
         button.addEventListener('click', () => {
             editingCategoryKey = null;
             refreshTaxonomySettingsSection(options);
+        });
+    });
+
+    document.querySelectorAll('.btn-replace-category').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const form = button.closest('.edit-category-form');
+            const key = button.dataset.key;
+            const label = form?.querySelector('[name="edit-category-label"]')?.value.trim();
+            const colorMode =
+                form?.querySelector('[name="edit-category-color-mode"]')?.value || 'follow';
+            const color =
+                colorMode === 'custom'
+                    ? form?.querySelector('[name="edit-category-color"]')?.value
+                    : null;
+            if (!key || !label) {
+                showToast('Category name is required', { theme: 'rose' });
+                return;
+            }
+            try {
+                await applyAndRefresh(async () => {
+                    await archiveAndCreateCategoryReplacement(key, { label, color });
+                    editingCategoryKey = null;
+                }, options);
+            } catch (error) {
+                showToast(error.message || 'Failed to replace category', { theme: 'rose' });
+            }
         });
     });
 }

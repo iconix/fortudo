@@ -1,4 +1,9 @@
-import { getGroupByKey, resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import {
+    getGroupById,
+    getGroupByKey,
+    resolveCategoryKey,
+    resolveCategoryReference
+} from '../taxonomy/taxonomy-selectors.js';
 import { extractDateFromDateTime } from '../utils.js';
 import { detectActivityDataIssues } from './insights-issues.js';
 import {
@@ -43,7 +48,7 @@ export function buildTrendModel({
             continue;
         }
 
-        const categoryMeta = getParentGroupMeta(activityItem.category);
+        const categoryMeta = getParentGroupMeta(activityItem);
 
         for (const dailyBucket of dailyBuckets.values()) {
             const bucketInterval = getDayInterval(dailyBucket.date);
@@ -117,8 +122,13 @@ function buildDailyBuckets(dateRange) {
     return buckets;
 }
 
-function getParentGroupMeta(categoryKey) {
-    const resolved = categoryKey ? resolveCategoryKey(categoryKey) : null;
+function getParentGroupMeta(activityItem) {
+    const resolved =
+        typeof resolveCategoryReference === 'function'
+            ? resolveCategoryReference(activityItem)
+            : activityItem.category
+              ? resolveCategoryKey(activityItem.category)
+              : null;
 
     if (!resolved) {
         return {
@@ -128,28 +138,40 @@ function getParentGroupMeta(categoryKey) {
         };
     }
 
+    if (!resolved.record) {
+        return {
+            key: `unknown-category:${activityItem.categoryId || activityItem.category || 'missing'}`,
+            label: 'Unknown category',
+            color: '#64748b',
+            isIntegrityIssue: true
+        };
+    }
+
     if (resolved.kind === 'group') {
         return {
-            key: resolved.record.key,
+            key: resolved.record.id || resolved.record.key,
             label: resolved.record.label,
             color: resolved.record.color
         };
     }
 
-    const parentGroup = getGroupByKey(resolved.record.groupKey);
+    const parentGroup =
+        (typeof getGroupById === 'function' ? getGroupById(resolved.record.groupId) : null) ||
+        getGroupByKey(resolved.record.groupKey);
 
     if (parentGroup) {
         return {
-            key: parentGroup.key,
+            key: parentGroup.id || parentGroup.key,
             label: parentGroup.label,
             color: parentGroup.color
         };
     }
 
     return {
-        key: resolved.record.groupKey,
-        label: titleizeKey(resolved.record.groupKey),
-        color: resolved.record.color
+        key: `unknown-category:${resolved.record.id || resolved.record.key}`,
+        label: 'Unknown category',
+        color: '#64748b',
+        isIntegrityIssue: true
     };
 }
 
@@ -175,12 +197,4 @@ function sortCategoryEntries(categoryMap) {
 
 function isCompletedActivity(activityItem) {
     return activityItem.docType === 'activity' && Boolean(activityItem.endDateTime);
-}
-
-function titleizeKey(key) {
-    return key
-        .split(/[/-]/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
 }

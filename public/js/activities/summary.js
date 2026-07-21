@@ -1,61 +1,73 @@
 import {
     resolveCategoryKey,
+    resolveCategoryReference,
+    getGroupById,
     getGroupByKey,
+    getCategoryById,
     getCategoryByKey
 } from '../taxonomy/taxonomy-selectors.js';
 
-function titleCaseKey(value) {
-    return String(value)
-        .split(/[-_/]+/)
-        .filter(Boolean)
-        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-        .join(' ');
+function resolveActivityCategory(activity) {
+    if (typeof resolveCategoryReference === 'function') {
+        return resolveCategoryReference(activity);
+    }
+    return activity.category ? resolveCategoryKey(activity.category) : null;
 }
 
-function buildFallbackParentMetadata(parentKey) {
+function getGroupByIdentity(idOrKey) {
+    return (
+        (typeof getGroupById === 'function' ? getGroupById(idOrKey) : null) ||
+        getGroupByKey(idOrKey)
+    );
+}
+
+function buildGroupMetadata(group) {
     return {
-        key: parentKey,
-        label: titleCaseKey(parentKey),
-        color: '#64748b',
-        isUncategorized: false
+        key: group.id || group.key,
+        compatibilityKey: group.key,
+        label: group.label,
+        color: group.color,
+        isUncategorized: false,
+        isIntegrityIssue: false
     };
 }
 
-function buildResolvedParentMetadata(parentKey) {
-    const parentGroup = getGroupByKey(parentKey);
-    if (parentGroup) {
-        return {
-            key: parentGroup.key,
-            label: parentGroup.label,
-            color: parentGroup.color,
-            isUncategorized: false
-        };
-    }
-
-    return buildFallbackParentMetadata(parentKey);
+function buildUnknownMetadata(activity) {
+    return {
+        key: `unknown-category:${activity.categoryId || activity.category || 'missing'}`,
+        compatibilityKey: null,
+        label: 'Unknown category',
+        color: '#64748b',
+        isUncategorized: false,
+        isIntegrityIssue: true
+    };
 }
 
 function getParentSummaryMetadata(activity) {
-    if (!activity.category) {
+    if (!activity.category && !activity.categoryId) {
         return {
             key: 'uncategorized',
+            compatibilityKey: null,
             label: 'Uncategorized',
             color: '#64748b',
-            isUncategorized: true
+            isUncategorized: true,
+            isIntegrityIssue: false
         };
     }
 
-    const resolvedCategory = resolveCategoryKey(activity.category);
-    if (!resolvedCategory) {
-        const inferredParentKey = activity.category.split('/')[0] || activity.category;
-        return buildResolvedParentMetadata(inferredParentKey);
+    const resolvedCategory = resolveActivityCategory(activity);
+    if (!resolvedCategory?.record) {
+        return buildUnknownMetadata(activity);
     }
 
     if (resolvedCategory.kind === 'group') {
-        return buildResolvedParentMetadata(resolvedCategory.record.key);
+        return buildGroupMetadata(resolvedCategory.record);
     }
 
-    return buildResolvedParentMetadata(resolvedCategory.record.groupKey);
+    const parentGroup = getGroupByIdentity(
+        resolvedCategory.record.groupId || resolvedCategory.record.groupKey
+    );
+    return parentGroup ? buildGroupMetadata(parentGroup) : buildUnknownMetadata(activity);
 }
 
 export function summarizeActivitiesByParentGroup(activities) {
@@ -88,34 +100,35 @@ export function summarizeActivitiesByParentGroup(activities) {
     });
 }
 
-export function summarizeExpandedChildCategories(activities, expandedParentGroupKey) {
-    if (!expandedParentGroupKey || expandedParentGroupKey === 'uncategorized') {
+export function summarizeExpandedChildCategories(activities, expandedParentGroupId) {
+    if (!expandedParentGroupId || expandedParentGroupId === 'uncategorized') {
         return null;
     }
 
-    const parentGroup = getGroupByKey(expandedParentGroupKey);
+    const parentGroup = getGroupByIdentity(expandedParentGroupId);
     if (!parentGroup) {
         return null;
     }
+    const parentIdentity = parentGroup.id || parentGroup.key;
 
     const summaryMap = new Map();
 
     for (const activity of activities) {
-        if (!activity.category) {
+        if (!activity.category && !activity.categoryId) {
             continue;
         }
 
-        const resolvedCategory = resolveCategoryKey(activity.category);
-        if (!resolvedCategory) {
+        const resolvedCategory = resolveActivityCategory(activity);
+        if (!resolvedCategory?.record) {
             continue;
         }
 
         if (resolvedCategory.kind === 'group') {
-            if (resolvedCategory.record.key !== expandedParentGroupKey) {
+            if ((resolvedCategory.record.id || resolvedCategory.record.key) !== parentIdentity) {
                 continue;
             }
 
-            const syntheticKey = `${expandedParentGroupKey}::__unspecified`;
+            const syntheticKey = `${parentIdentity}::__unspecified`;
             const existing = summaryMap.get(syntheticKey);
             if (existing) {
                 existing.duration += activity.duration;
@@ -131,19 +144,28 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
             continue;
         }
 
-        const childCategory = getCategoryByKey(resolvedCategory.record.key);
-        if (!childCategory || childCategory.groupKey !== expandedParentGroupKey) {
+        const childCategory =
+            (typeof getCategoryById === 'function'
+                ? getCategoryById(resolvedCategory.record.id)
+                : null) || getCategoryByKey(resolvedCategory.record.key);
+        if (
+            !childCategory ||
+            (childCategory.groupId || childCategory.groupKey) !==
+                (parentGroup.id || parentGroup.key)
+        ) {
             continue;
         }
 
-        const existing = summaryMap.get(childCategory.key);
+        const childIdentity = childCategory.id || childCategory.key;
+        const existing = summaryMap.get(childIdentity);
         if (existing) {
             existing.duration += activity.duration;
             continue;
         }
 
-        summaryMap.set(childCategory.key, {
-            key: childCategory.key,
+        summaryMap.set(childIdentity, {
+            key: childIdentity,
+            compatibilityKey: childCategory.key,
             label: childCategory.label,
             color: childCategory.color,
             duration: activity.duration
@@ -165,7 +187,8 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
     }
 
     return {
-        key: expandedParentGroupKey,
+        key: parentIdentity,
+        compatibilityKey: parentGroup.key,
         label: parentGroup.label,
         items,
         totalDuration: items.reduce((sum, item) => sum + item.duration, 0)

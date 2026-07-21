@@ -1,7 +1,7 @@
 import {
     renderCategoryBadge,
     getSelectableCategoryOptions,
-    resolveCategoryKey
+    resolveCategoryReference
 } from '../taxonomy/taxonomy-selectors.js';
 import {
     calculateHoursAndMinutes,
@@ -39,6 +39,14 @@ function getActivityDataIssueLabel(issue) {
 
     if (issue?.type === 'duplicate-auto') {
         return 'Duplicate auto-logged task activity';
+    }
+
+    if (issue?.type === 'unknown-category') {
+        return 'Unknown category';
+    }
+
+    if (issue?.type === 'category-mismatch' || issue?.type === 'unknown-legacy-category') {
+        return 'Category identity mismatch';
     }
 
     return 'Activity data issue';
@@ -222,12 +230,12 @@ function renderInlineEditActivityItem(activity, options = {}) {
     const durationMinutes = activity.duration % 60;
     const displayStartTime = extractTimeFromDateTime(new Date(activity.startDateTime));
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
-    const resolvedCategory = activity.category ? resolveCategoryKey(activity.category) : null;
+    const resolvedCategory = resolveCategoryReference(activity);
     const categoryColor = resolvedCategory?.record?.color || '#64748b';
     const categoryRowHtml = renderCategorySelectRow({
         selectName: 'category',
         selectedValue: activity.category || '',
-        options: getSelectableCategoryOptions(),
+        options: getSelectableCategoryOptions(activity),
         dotClass: 'activity-edit-category-dot',
         selectClass:
             'bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100',
@@ -300,7 +308,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
 function renderActivityItem(activity, options = {}) {
     const timeRange = formatTimeRange(activity.startDateTime, activity.endDateTime);
     const durationText = calculateHoursAndMinutes(activity.duration);
-    const badge = renderCategoryBadge(activity.category);
+    const badge = renderCategoryBadge(activity);
     const isConfirmingDelete = options.confirmingDeleteActivityId === activity.id;
     const isAuto = activity.source === 'auto';
     const provenanceHtml = isAuto

@@ -10,6 +10,8 @@ import {
     convertTo12HourTime
 } from '../utils.js';
 import { putTasks, deleteTasks, loadTasks } from '../storage.js';
+import { createTaskId } from '../entity-id.js';
+import { getCategoryReferenceFields } from '../taxonomy/taxonomy-selectors.js';
 
 // Import from new modules
 import {
@@ -230,7 +232,7 @@ export function getTodaysScheduledTasks(now = new Date()) {
 
 const createTaskObject = (taskData) => {
     logger.debug('createTaskObject called with taskData:', taskData);
-    const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`; // Generic ID prefix initially
+    const id = taskData.id || createTaskId();
     const baseTask = {
         id,
         description: taskData.description,
@@ -238,7 +240,7 @@ const createTaskObject = (taskData) => {
         editing: false,
         confirmingDelete: false,
         type: taskData.taskType || 'scheduled',
-        category: taskData.category || null
+        ...getCategoryReferenceFields(taskData)
     };
 
     let finalTask;
@@ -247,7 +249,6 @@ const createTaskObject = (taskData) => {
         const startDateTime = timeToDateTime(taskData.startTime, today);
         finalTask = {
             ...baseTask,
-            id: id.replace('task-', 'sched-'),
             startDateTime,
             endDateTime: calculateEndDateTime(startDateTime, taskData.duration),
             duration: taskData.duration
@@ -256,7 +257,6 @@ const createTaskObject = (taskData) => {
         // unscheduled
         finalTask = {
             ...baseTask,
-            id: id.replace('task-', 'unsched-'),
             priority: taskData.priority || 'medium',
             estDuration:
                 taskData.estDuration !== undefined && taskData.estDuration !== null
@@ -376,6 +376,28 @@ function convertScheduledTaskToUnscheduled(task) {
     };
 }
 
+function convertUnscheduledTaskToScheduled(task, startTime, duration) {
+    const {
+        priority: _priority,
+        estDuration,
+        editing: _editing,
+        confirmingDelete: _confirmingDelete,
+        isEditingInline: _isEditingInline,
+        manualOrder: _manualOrder,
+        ...remainingTask
+    } = task;
+    const today = extractDateFromDateTime(new Date());
+    const startDateTime = timeToDateTime(startTime, today);
+    const scheduledDuration = duration || estDuration;
+    return {
+        ...remainingTask,
+        type: 'scheduled',
+        startDateTime,
+        endDateTime: calculateEndDateTime(startDateTime, scheduledDuration),
+        duration: scheduledDuration
+    };
+}
+
 async function recoverDurableTaskState(persistenceError) {
     logger.error('Task persistence failed. Reloading durable local task state.', persistenceError);
     try {
@@ -419,14 +441,27 @@ const finalizeTaskModification = async (changedTasks, { deletedTaskIds = [] } = 
             : [changedTasks]
         : [];
     const uniqueTasksToSave = [
-        ...new Map(tasksToSave.map((task) => [task.id, stripUIFlags(task)])).values()
+        ...new Map(
+            tasksToSave.map((task) => {
+                const persistableTask = stripUIFlags(task);
+                return [
+                    task.id,
+                    {
+                        ...persistableTask,
+                        ...getCategoryReferenceFields(persistableTask)
+                    }
+                ];
+            })
+        ).values()
     ];
     const uniqueDeletedTaskIds = [...new Set(deletedTaskIds)];
 
     try {
         // Upserts precede deletes so conversions can fail with duplicates, never missing tasks.
         await putTasks(uniqueTasksToSave);
-        await deleteTasks(uniqueDeletedTaskIds);
+        if (uniqueDeletedTaskIds.length > 0) {
+            await deleteTasks(uniqueDeletedTaskIds);
+        }
         applyDurableTaskDeltas(uniqueTasksToSave, uniqueDeletedTaskIds);
         return null;
     } catch (error) {
@@ -674,6 +709,7 @@ export async function addTask(taskData, isResubmissionAfterShiftConfirm = false)
                         context: {
                             resubmissionTaskData: {
                                 ...taskData,
+                                id: taskAfterLockedCheck.id,
                                 startTime: extractTimeFromDateTime(
                                     new Date(taskAfterLockedCheck.startDateTime)
                                 ),
@@ -891,6 +927,7 @@ export async function updateTask(index, taskData) {
     }
     const existingTask = tasks[index];
     const hasCategoryUpdate = Object.prototype.hasOwnProperty.call(taskData, 'category');
+    const categoryReference = hasCategoryUpdate ? taskData : existingTask;
     let updatedProposedDetails = {
         description:
             taskData.description !== undefined ? taskData.description : existingTask.description,
@@ -900,7 +937,7 @@ export async function updateTask(index, taskData) {
         editing: false,
         confirmingDelete: existingTask.confirmingDelete,
         locked: taskData.locked !== undefined ? taskData.locked : existingTask.locked,
-        category: hasCategoryUpdate ? taskData.category || null : existingTask.category || null
+        ...getCategoryReferenceFields(categoryReference)
     };
 
     let wasShiftedByLocked = false;
@@ -1066,7 +1103,9 @@ export async function updateUnscheduledTask(taskId, newData) {
     taskToUpdate.priority = newData.priority;
     taskToUpdate.estDuration = newData.estDuration;
     if (Object.prototype.hasOwnProperty.call(newData, 'category')) {
-        taskToUpdate.category = newData.category || null;
+        Object.assign(taskToUpdate, getCategoryReferenceFields(newData));
+    } else {
+        Object.assign(taskToUpdate, getCategoryReferenceFields(taskToUpdate));
     }
 
     const persistenceFailure = await finalizeTaskModification(taskToUpdate);
@@ -1545,8 +1584,12 @@ export async function scheduleUnscheduledTask(taskId, startTime, duration) {
         category: unscheduledTask.category || null
     };
 
-    // Create temp task and get all current scheduled tasks
-    let tempScheduledTask = createTaskObject(newScheduledTaskData);
+    // Project the same stable entity into scheduled state for every validation branch.
+    let tempScheduledTask = convertUnscheduledTaskToScheduled(
+        unscheduledTask,
+        startTime,
+        newScheduledTaskData.duration
+    );
     const allScheduledTasks = tasks.filter((t) => t.type === 'scheduled');
 
     // Step 1: Check and adjust for locked task conflicts (shift if needed)
@@ -1606,17 +1649,16 @@ export async function scheduleUnscheduledTask(taskId, startTime, duration) {
     }
 
     // No conflicts - proceed with scheduling
-    const unscheduledTaskId = tasks[taskIndex].id;
-    tasks.splice(taskIndex, 1); // Remove the original unscheduled task
-
-    const newScheduledTask = createTaskObject(newScheduledTaskData);
-    tasks.push(newScheduledTask);
+    const newScheduledTask = convertUnscheduledTaskToScheduled(
+        unscheduledTask,
+        startTime,
+        newScheduledTaskData.duration
+    );
+    tasks[taskIndex] = newScheduledTask;
     reorganizeTaskArray();
 
     const schedAffected = performRescheduleAndReorganize(newScheduledTask);
-    const persistenceFailure = await finalizeTaskModification(schedAffected, {
-        deletedTaskIds: [unscheduledTaskId]
-    });
+    const persistenceFailure = await finalizeTaskModification(schedAffected);
     if (persistenceFailure) return persistenceFailure;
     return createSuccessfulTaskResult(newScheduledTask);
 }
@@ -1626,9 +1668,15 @@ export async function confirmScheduleUnscheduledTask(unscheduledTaskId, newSched
         (t) => t.id === unscheduledTaskId && t.type === 'unscheduled'
     );
 
-    // Create the task object first to validate
-    const taskToCreate = { ...newScheduledTaskData, taskType: 'scheduled' };
-    const newScheduledTask = createTaskObject(taskToCreate);
+    if (taskIndex === -1) {
+        return { success: false, reason: 'Unscheduled task not found.' };
+    }
+    const unscheduledTask = tasks[taskIndex];
+    const newScheduledTask = convertUnscheduledTaskToScheduled(
+        unscheduledTask,
+        newScheduledTaskData.startTime,
+        newScheduledTaskData.duration || unscheduledTask.estDuration
+    );
 
     // VALIDATION: Check if rescheduling would create locked task conflicts
     const allScheduledTasks = tasks.filter((t) => t.type === 'scheduled');
@@ -1641,20 +1689,11 @@ export async function confirmScheduleUnscheduledTask(unscheduledTaskId, newSched
         return { success: false, reason: rescheduleValidation.error };
     }
 
-    // Validation passed - now remove the unscheduled task
-    if (taskIndex !== -1) {
-        tasks.splice(taskIndex, 1);
-    } else {
-        logger.warn(`Unscheduled task ID ${unscheduledTaskId} not found for confirmation.`);
-    }
-
-    tasks.push(newScheduledTask);
+    tasks[taskIndex] = newScheduledTask;
     reorganizeTaskArray();
 
     const confirmSchedAffected = performRescheduleAndReorganize(newScheduledTask);
-    const persistenceFailure = await finalizeTaskModification(confirmSchedAffected, {
-        deletedTaskIds: taskIndex === -1 ? [] : [unscheduledTaskId]
-    });
+    const persistenceFailure = await finalizeTaskModification(confirmSchedAffected);
     if (persistenceFailure) return persistenceFailure;
     return createSuccessfulTaskResult(newScheduledTask);
 }

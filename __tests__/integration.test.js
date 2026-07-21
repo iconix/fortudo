@@ -22,6 +22,7 @@ import * as appCoordinator from '../public/js/app-coordinator.js';
 
 import { extractDateFromDateTime, extractTimeFromDateTime } from '../public/js/utils.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
+import { getTaxonomySnapshot } from '../public/js/taxonomy/taxonomy-selectors.js';
 
 // Mock storage.js to spy on explicit task deltas
 jest.mock('../public/js/storage.js', () => ({
@@ -32,6 +33,7 @@ jest.mock('../public/js/storage.js', () => ({
     putConfig: jest.fn(() => Promise.resolve()),
     deleteTasks: jest.fn(() => Promise.resolve({ succeededIds: [] })),
     loadTasks: jest.fn(() => []),
+    loadActivities: jest.fn(() => []),
     loadConfig: jest.fn(() => Promise.resolve(null)),
     loadConfigWithConflicts: jest.fn(() =>
         Promise.resolve({ config: null, conflictRevisions: [] })
@@ -1300,24 +1302,27 @@ describe('Phase 3.5 Taxonomy Integration', () => {
         addGroupForm.querySelector('[name="group-family"]').value = 'green';
         addGroupForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         await new Promise((resolve) => setTimeout(resolve, 50));
+        const healthGroup = getTaxonomySnapshot().groups.find((group) => group.label === 'Health');
 
         await addScheduledTaskWithCategory({
             description: 'Referenced Group Task',
             startTime: '09:00',
-            categoryKey: 'health'
+            categoryKey: healthGroup.key
         });
         mockLoadTasksFromStorage.mockImplementation(() => taskManager.getTaskState());
 
         document.getElementById('settings-gear-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        document.querySelector('.btn-delete-group[data-key="health"]').click();
+        document.querySelector(`.btn-delete-group[data-key="${healthGroup.key}"]`).click();
         await new Promise((resolve) => setTimeout(resolve, 50));
 
-        expect(toastSpy).toHaveBeenCalledWith('Group "health" is referenced by tasks', {
+        expect(toastSpy).toHaveBeenCalledWith('Group "Health" is referenced by tasks', {
             theme: 'rose'
         });
-        expect(document.querySelector('#category-select option[value="health"]')).not.toBeNull();
+        expect(
+            document.querySelector(`#category-select option[value="${healthGroup.key}"]`)
+        ).not.toBeNull();
 
         await addScheduledTaskWithCategory({
             description: 'Referenced Child Task',
@@ -1332,7 +1337,7 @@ describe('Phase 3.5 Taxonomy Integration', () => {
         document.querySelector('.btn-delete-category[data-key="work/deep"]').click();
         await new Promise((resolve) => setTimeout(resolve, 50));
 
-        expect(toastSpy).toHaveBeenCalledWith('Category "work/deep" is referenced by tasks', {
+        expect(toastSpy).toHaveBeenCalledWith('Category "Deep Work" is referenced by tasks', {
             theme: 'rose'
         });
         expect(document.querySelector('#category-select option[value="work/deep"]')).not.toBeNull();

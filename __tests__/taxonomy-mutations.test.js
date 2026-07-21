@@ -18,7 +18,13 @@ jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn()
 }));
 
-import { initStorage, destroyStorage, putTask } from '../public/js/storage.js';
+import {
+    initStorage,
+    destroyStorage,
+    putTask,
+    putActivity,
+    putConfig
+} from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
 import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
@@ -26,9 +32,15 @@ import {
     addGroup,
     updateGroup,
     deleteGroup,
+    archiveGroup,
+    restoreGroup,
+    archiveAndCreateGroupReplacement,
     addCategory,
     updateCategory,
-    deleteCategory
+    deleteCategory,
+    archiveCategory,
+    restoreCategory,
+    archiveAndCreateCategoryReplacement
 } from '../public/js/taxonomy/taxonomy-mutations.js';
 
 let testDbCounter = 0;
@@ -46,18 +58,24 @@ afterEach(async () => {
 });
 
 describe('taxonomy-mutations', () => {
-    test('addGroup slugifies labels, persists, and rejects collisions', async () => {
+    test('addGroup uses opaque compatibility keys and rejects active label collisions', async () => {
         await initAndLoadTaxonomy();
 
-        await addGroup({ label: 'Deep Focus', colorFamily: 'amber' });
+        const group = await addGroup({ label: 'Deep Focus', colorFamily: 'amber' });
 
-        expect(getGroupByKey('deep-focus')).toMatchObject({
-            key: 'deep-focus',
+        expect(group).toMatchObject({
+            id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+            key: expect.stringMatching(/^g-[0-9a-f-]{36}$/),
             label: 'Deep Focus',
-            colorFamily: 'amber'
+            colorFamily: 'amber',
+            legacyKeys: [],
+            status: 'active',
+            archivedAt: null
         });
+        expect(group.key).toBe(`g-${group.id}`);
+        expect(getGroupByKey(group.key)).toMatchObject({ id: group.id });
 
-        await expect(addGroup({ label: 'Deep Focus', colorFamily: 'blue' })).rejects.toThrow(
+        await expect(addGroup({ label: 'deep focus', colorFamily: 'blue' })).rejects.toThrow(
             'already exists'
         );
     });
@@ -68,13 +86,17 @@ describe('taxonomy-mutations', () => {
         await expect(addGroup({ label: '   ' })).rejects.toThrow('Group label is required');
         await expect(updateGroup('missing', { label: 'Nope' })).rejects.toThrow('not found');
 
-        await addGroup({ label: 'Errands', colorFamily: 'rose' });
-        await updateGroup('errands', { label: 'Errands And Life' });
+        const group = await addGroup({ label: 'Errands', colorFamily: 'rose' });
+        await updateGroup(group.key, { label: 'Errands And Life' });
 
-        expect(getGroupByKey('errands').label).toBe('Errands And Life');
+        expect(getGroupByKey(group.key)).toMatchObject({
+            id: group.id,
+            key: group.key,
+            label: 'Errands And Life'
+        });
 
-        await deleteGroup('errands');
-        expect(getGroupByKey('errands')).toBeNull();
+        await deleteGroup(group.key);
+        expect(getGroupByKey(group.key)).toBeNull();
     });
 
     test('updateGroup cascades family changes only to linked children', async () => {
@@ -105,6 +127,45 @@ describe('taxonomy-mutations', () => {
         });
 
         await expect(deleteGroup('break')).rejects.toThrow('referenced by tasks');
+    });
+
+    test('active labels are case-insensitively unique and archived labels are locked', async () => {
+        await initAndLoadTaxonomy();
+
+        await expect(addGroup({ label: 'work', colorFamily: 'amber' })).rejects.toThrow(
+            'already exists'
+        );
+        await archiveGroup('work', '2026-07-21T12:00:00.000Z');
+        await expect(updateGroup('work', { label: 'Renamed' })).rejects.toThrow(
+            'Archived group labels are locked'
+        );
+
+        const replacement = await addGroup({ label: 'Work', colorFamily: 'amber' });
+        expect(replacement.key).not.toBe('work');
+        await expect(restoreGroup('work')).rejects.toThrow('already exists');
+    });
+
+    test('archive-and-create group replacement preserves the old identity', async () => {
+        await initAndLoadTaxonomy();
+        const original = getGroupByKey('personal');
+
+        const replacement = await archiveAndCreateGroupReplacement('personal', {
+            label: 'Life',
+            colorFamily: 'amber'
+        });
+
+        expect(getGroupByKey('personal')).toMatchObject({
+            id: original.id,
+            label: 'Personal',
+            status: 'archived'
+        });
+        expect(replacement).toMatchObject({
+            label: 'Life',
+            colorFamily: 'amber',
+            status: 'active'
+        });
+        expect(replacement.id).not.toBe(original.id);
+        expect(replacement.key).toBe(`g-${replacement.id}`);
     });
 
     test('editing a child color back into the family relinks the child', async () => {
@@ -138,20 +199,31 @@ describe('taxonomy-mutations', () => {
         await expect(addCategory({ groupKey: 'missing', label: 'Errands' })).rejects.toThrow(
             'Group "missing" not found'
         );
+        await expect(
+            addCategory({
+                groupKey: 'health',
+                label: 'Exercise',
+                color: '#10b981',
+                allowCreateGroup: true
+            })
+        ).rejects.toThrow('Group label is required');
 
-        await addCategory({
+        const category = await addCategory({
             groupKey: 'health',
+            groupLabel: 'Health',
             label: 'Exercise',
             color: '#10b981',
             allowCreateGroup: true
         });
 
-        expect(getGroupByKey('health')).toMatchObject({
-            key: 'health',
+        const compatibilityGroup = getGroupByKey(category.groupKey);
+        expect(compatibilityGroup).toMatchObject({
+            key: expect.stringMatching(/^g-[0-9a-f-]{36}$/),
             label: 'Health'
         });
-        expect(getCategoryByKey('health/exercise')).toMatchObject({
-            groupKey: 'health',
+        expect(category).toMatchObject({
+            key: expect.stringMatching(/\/c-[0-9a-f-]{36}$/),
+            groupKey: compatibilityGroup.key,
             color: '#10b981'
         });
     });
@@ -159,15 +231,15 @@ describe('taxonomy-mutations', () => {
     test('addGroup, addCategory, and deleteCategory keep persisted taxonomy writable', async () => {
         await initAndLoadTaxonomy();
 
-        await addGroup({ label: 'Health', colorFamily: 'green' });
-        await addCategory({ groupKey: 'health', label: 'Exercise' });
+        const group = await addGroup({ label: 'Health', colorFamily: 'green' });
+        const category = await addCategory({ groupKey: group.key, label: 'Exercise' });
 
-        expect(getGroupByKey('health')).not.toBeNull();
-        expect(getCategoryByKey('health/exercise')).not.toBeNull();
+        expect(getGroupByKey(group.key)).not.toBeNull();
+        expect(getCategoryByKey(category.key)).not.toBeNull();
 
-        await deleteCategory('health/exercise');
+        await deleteCategory(category.key);
 
-        expect(getCategoryByKey('health/exercise')).toBeNull();
+        expect(getCategoryByKey(category.key)).toBeNull();
     });
 
     test('category mutations validate lookup failures and block deleting referenced keys', async () => {
@@ -185,5 +257,72 @@ describe('taxonomy-mutations', () => {
         });
 
         await expect(deleteCategory('work/deep')).rejects.toThrow('referenced by tasks');
+    });
+
+    test('hard deletion checks activities and the running timer by opaque identity', async () => {
+        await initAndLoadTaxonomy();
+        const category = getCategoryByKey('work/meetings');
+        await putActivity({
+            id: 'activity-reference',
+            description: 'Private activity',
+            startDateTime: '2026-07-21T09:00:00.000Z',
+            endDateTime: '2026-07-21T09:30:00.000Z',
+            duration: 30,
+            categoryId: category.id,
+            categoryIdentityVersion: 1
+        });
+
+        await expect(deleteCategory(category.key)).rejects.toThrow('referenced by activities');
+
+        await putConfig({
+            id: 'config-running-activity',
+            activityId: 'activity-running',
+            category: 'work/comms',
+            categoryId: getCategoryByKey('work/comms').id,
+            categoryIdentityVersion: 1
+        });
+        await expect(deleteCategory('work/comms')).rejects.toThrow('running timer');
+    });
+
+    test('archived categories remain resolvable, lock labels, and can be restored', async () => {
+        await initAndLoadTaxonomy();
+
+        await archiveCategory('work/deep', '2026-07-21T12:00:00.000Z');
+        expect(getCategoryByKey('work/deep')).toMatchObject({
+            status: 'archived',
+            archivedAt: '2026-07-21T12:00:00.000Z'
+        });
+        await expect(updateCategory('work/deep', { label: 'Changed meaning' })).rejects.toThrow(
+            'Archived category labels are locked'
+        );
+
+        await restoreCategory('work/deep');
+        expect(getCategoryByKey('work/deep')).toMatchObject({
+            status: 'active',
+            archivedAt: null
+        });
+    });
+
+    test('archive-and-create replacement preserves the old identity and creates a new one', async () => {
+        await initAndLoadTaxonomy();
+        const original = getCategoryByKey('work/deep');
+
+        const replacement = await archiveAndCreateCategoryReplacement('work/deep', {
+            label: 'Strategy',
+            color: '#22c55e'
+        });
+
+        expect(getCategoryByKey('work/deep')).toMatchObject({
+            id: original.id,
+            label: original.label,
+            status: 'archived'
+        });
+        expect(replacement).toMatchObject({
+            label: 'Strategy',
+            groupId: original.groupId,
+            status: 'active'
+        });
+        expect(replacement.id).not.toBe(original.id);
+        expect(replacement.key).not.toBe(original.key);
     });
 });
