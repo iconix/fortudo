@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from urllib.error import HTTPError
 from urllib.parse import urlparse
 
 import pytest
@@ -14,7 +15,6 @@ from scripts.e2e_helpers import (
     enter_room,
     launch_browser,
     read_docs,
-    request_manual_sync,
     seed_docs,
     wait_until,
 )
@@ -28,6 +28,7 @@ from scripts.preview_smoke.remote import (
 LEGACY_TASK_ID = "unsched-taxonomy-identity-legacy"
 LEGACY_ACTIVITY_ID = "activity-taxonomy-identity-legacy"
 COMMS_ID = "9c52c0e9-c389-54e1-927f-52c16b13de99"
+WHATS_NEW_KEY = "fortudo-whats-new-v1"
 
 
 def compatibility_seed() -> list[dict]:
@@ -98,6 +99,31 @@ def local_doc(page: Page, room_code: str, document_id: str) -> dict | None:
     )
 
 
+def reset_preview_browser_state(page: Page) -> None:
+    page.evaluate(
+        """
+        (whatsNewKey) => {
+            localStorage.clear();
+            localStorage.setItem(whatsNewKey, 'dismissed');
+        }
+        """,
+        WHATS_NEW_KEY,
+    )
+
+
+def trigger_sync_and_wait(page: Page) -> str:
+    return page.evaluate(
+        """
+        async () => {
+            const sync = await import('/js/sync-manager.js');
+            await sync.triggerSync();
+            await sync.waitForIdleSync();
+            return sync.getSyncStatus();
+        }
+        """
+    )
+
+
 def compatibility_state(page: Page) -> dict:
     return page.evaluate(
         """
@@ -149,50 +175,115 @@ def test_taxonomy_identity_compatibility_converges_across_two_preview_clients():
     remote_db_name = build_remote_db_name(hostname, room_code)
     delete_remote_database(couchdb_url, remote_db_name)
 
-    browser = None
     try:
         with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
+            if os.environ.get("FORTUDO_E2E_BYPASS_CORS") == "1":
+                launch_options = {
+                    "headless": True,
+                    "args": ["--disable-web-security"],
+                }
+                channel = os.environ.get("E2E_BROWSER_CHANNEL", "chromium")
+                if channel != "chromium":
+                    launch_options["channel"] = channel
+                browser = playwright.chromium.launch(**launch_options)
+            else:
+                browser = launch_browser(playwright)
             context_a = browser.new_context()
             context_b = browser.new_context()
             page_a = context_a.new_page()
             page_b = context_b.new_page()
+            sync_diagnostics: list[dict[str, str | int]] = []
+
+            def record_failed_response(response):
+                if response.status >= 400:
+                    sync_diagnostics.append(
+                        {
+                            "status": response.status,
+                            "method": response.request.method,
+                            "path": urlparse(response.url).path,
+                        }
+                    )
+
+            def record_failed_request(request):
+                sync_diagnostics.append(
+                    {
+                        "status": "request-failed",
+                        "method": request.method,
+                        "path": urlparse(request.url).path,
+                        "failure": request.failure or "unknown",
+                    }
+                )
+
+            page_a.on("response", record_failed_response)
+            page_b.on("response", record_failed_response)
+            page_a.on("requestfailed", record_failed_request)
+            page_b.on("requestfailed", record_failed_request)
 
             page_a.goto(preview_url, wait_until="load")
-            page_a.evaluate("localStorage.clear()")
+            reset_preview_browser_state(page_a)
             clear_room_storage(page_a, room_code)
             seed_docs(page_a, room_code, compatibility_seed())
             enter_room(page_a, room_code)
 
             def remote_seed_ready():
-                request_manual_sync(page_a)
-                remote_ids = {
-                    document.get("_id")
-                    for document in fetch_remote_docs(couchdb_url, remote_db_name)
-                }
+                trigger_sync_and_wait(page_a)
+                try:
+                    remote_ids = {
+                        document.get("_id")
+                        for document in fetch_remote_docs(couchdb_url, remote_db_name)
+                    }
+                except HTTPError as error:
+                    if error.code == 404:
+                        return False
+                    raise
                 return {
                     "config-categories",
                     LEGACY_TASK_ID,
                     LEGACY_ACTIVITY_ID,
                 }.issubset(remote_ids)
 
-            wait_until(remote_seed_ready, "compatibility seed to reach preview Cloudant")
+            try:
+                wait_until(remote_seed_ready, "compatibility seed to reach preview Cloudant")
+            except TimeoutError as error:
+                sync_status = trigger_sync_and_wait(page_a)
+                raise AssertionError(
+                    "Initial preview sync did not settle; "
+                    f"status={sync_status!r}, diagnostics={sync_diagnostics[-20:]!r}"
+                ) from error
 
             page_b.goto(preview_url, wait_until="load")
-            page_b.evaluate("localStorage.clear()")
+            reset_preview_browser_state(page_b)
             clear_room_storage(page_b, room_code)
             enter_room(page_b, room_code)
+            client_b_diagnostics: dict[str, object] = {}
 
             def client_b_seed_ready():
-                request_manual_sync(page_b)
+                sync_status = trigger_sync_and_wait(page_b)
                 state = compatibility_state(page_b)
+                activity_is_local = local_doc(page_b, room_code, LEGACY_ACTIVITY_ID) is not None
+                client_b_diagnostics.update(
+                    {
+                        "syncStatus": sync_status,
+                        "activityIsLocal": activity_is_local,
+                        "taskIsInMemory": state["task"] is not None,
+                        "totalDuration": state["totalDuration"],
+                    }
+                )
                 return (
-                    local_doc(page_b, room_code, LEGACY_ACTIVITY_ID) is not None
-                    and state["task"] is not None
-                    and state["totalDuration"] == 35
+                    activity_is_local and state["task"] is not None and state["totalDuration"] == 35
                 )
 
-            wait_until(client_b_seed_ready, "second client to pull compatibility seed")
+            try:
+                wait_until(
+                    client_b_seed_ready,
+                    "second client to pull compatibility seed",
+                    timeout_s=30,
+                )
+            except TimeoutError as error:
+                raise AssertionError(
+                    "Second preview client did not rebuild compatibility state; "
+                    f"diagnostics={client_b_diagnostics!r}"
+                ) from error
             state_a = compatibility_state(page_a)
             state_b = compatibility_state(page_b)
             for state in (state_a, state_b):
@@ -205,8 +296,8 @@ def test_taxonomy_identity_compatibility_converges_across_two_preview_clients():
             schedule_legacy_task(page_a)
 
             def stable_task_converged():
-                request_manual_sync(page_a)
-                request_manual_sync(page_b)
+                trigger_sync_and_wait(page_a)
+                trigger_sync_and_wait(page_b)
                 task_a = local_doc(page_a, room_code, LEGACY_TASK_ID) or {}
                 task_b = local_doc(page_b, room_code, LEGACY_TASK_ID) or {}
                 state_a = compatibility_state(page_a)
@@ -231,7 +322,6 @@ def test_taxonomy_identity_compatibility_converges_across_two_preview_clients():
             )
             assert compatibility_state(page_a)["task"]["id"] == LEGACY_TASK_ID
             assert compatibility_state(page_b)["task"]["id"] == LEGACY_TASK_ID
-    finally:
-        if browser is not None:
             browser.close()
+    finally:
         delete_remote_database(couchdb_url, remote_db_name)

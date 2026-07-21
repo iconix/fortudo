@@ -126,6 +126,8 @@ async function loadTasksIntoState() {
 }
 
 async function loadAppState() {
+    await loadSettings();
+    syncActivitiesUI(isActivitiesEnabled());
     await loadTaxonomy();
     await loadTasksIntoState();
     if (isActivitiesEnabled()) {
@@ -160,17 +162,14 @@ async function initAndBootApp(roomCode) {
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     await prepareStorage(storageRoomCode, {}, remoteUrl);
 
-    // Load settings before any UI checks that depend on cached flags.
-    await loadSettings();
-    syncActivitiesUI(isActivitiesEnabled());
+    // Settings must reload with every state rebuild so a fresh client observes
+    // remotely pulled feature flags before deciding which state domains to load.
+    await loadAppState();
     void (async () => {
         const activitiesEnabled = isActivitiesEnabled();
         await maybeShowWhatsNew({ announcementEnabled: WHATS_NEW_ANNOUNCEMENT_ENABLED });
         await maybeShowOnboarding({ activitiesEnabled, signal });
     })();
-
-    // Load and initialize state
-    await loadAppState();
 
     // Create each UI action set once per room session.
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();

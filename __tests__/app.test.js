@@ -46,6 +46,7 @@ jest.mock('../public/js/tasks/unscheduled-list.js', () => ({
 // Mock sync-manager.js to prevent real sync operations
 jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn(() => jest.fn()),
+    onSyncDataChange: jest.fn(() => jest.fn()),
     initSync: jest.fn(),
     debouncedSync: jest.fn(),
     triggerSync: jest.fn(() => Promise.resolve())
@@ -101,6 +102,7 @@ import {
 } from '../public/js/storage.js';
 import {
     onSyncStatusChange as mockOnSyncStatusChangeInternal,
+    onSyncDataChange as mockOnSyncDataChangeInternal,
     triggerSync as mockTriggerSyncInternal
 } from '../public/js/sync-manager.js';
 import {
@@ -142,6 +144,7 @@ const mockLoadTasksFromStorage = jest.mocked(mockLoadTasksFromStorageInternal);
 const mockLoadActivitiesFromStorage = jest.mocked(mockLoadActivitiesFromStorageInternal);
 const mockLoadConfig = jest.mocked(mockLoadConfigInternal);
 const mockOnSyncStatusChange = jest.mocked(mockOnSyncStatusChangeInternal);
+const mockOnSyncDataChange = jest.mocked(mockOnSyncDataChangeInternal);
 const mockTriggerSync = jest.mocked(mockTriggerSyncInternal);
 const mockLoadActivitiesState = jest.mocked(mockLoadActivitiesStateInternal);
 const mockLoadRunningActivity = jest.mocked(mockLoadRunningActivityInternal);
@@ -527,6 +530,33 @@ describe('App.js Callback Functions', () => {
             expect(
                 document.getElementById('activity-toggle-option')?.classList.contains('hidden')
             ).toBe(false);
+            expect(
+                document.getElementById('activities-container')?.classList.contains('hidden')
+            ).toBe(false);
+        });
+
+        test('a fresh client reloads pulled settings before rebuilding activity state', async () => {
+            let settingsReads = 0;
+            mockLoadConfig.mockImplementation((configId) => {
+                if (configId === 'config-settings') {
+                    settingsReads += 1;
+                    return Promise.resolve({
+                        activitiesEnabled: settingsReads > 1,
+                        onboardingDismissed: true
+                    });
+                }
+                return Promise.resolve(null);
+            });
+
+            await setupAppWithTasks([]);
+            expect(mockLoadActivitiesState).not.toHaveBeenCalled();
+
+            const syncDataCallback = mockOnSyncDataChange.mock.calls.at(-1)?.[0];
+            expect(syncDataCallback).toEqual(expect.any(Function));
+            syncDataCallback();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(mockLoadActivitiesState).toHaveBeenCalledTimes(1);
             expect(
                 document.getElementById('activities-container')?.classList.contains('hidden')
             ).toBe(false);
