@@ -83,7 +83,7 @@ function createCardRenderKey(task, options) {
         priority: task.priority,
         estDuration: task.estDuration,
         category: task.category || null,
-        categoryBadge: renderCategoryBadge(task.category),
+        categoryBadge: renderCategoryBadge(task),
         confirmingDelete: Boolean(task.confirmingDelete),
         isEditingInline: Boolean(task.isEditingInline),
         mode: options.mode,
@@ -280,7 +280,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
                 <i class="fa-regular ${checkIcon} text-lg sm:text-xl"></i>
             </label>
             <div class="min-w-0 flex-1">
-                <div class="font-medium text-white ${textStrike} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${task.description}</span> ${renderCategoryBadge(task.category)} ${inProgressBadge}</div>
+                <div class="font-medium text-white ${textStrike} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${task.description}</span> ${renderCategoryBadge(task)} ${inProgressBadge}</div>
                 <div class="text-xs text-slate-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
                     <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
                         <i class="${priorityClasses.icon} mr-1 text-xs"></i>${priorityLabel} Priority
@@ -311,7 +311,7 @@ function createInlineEditFormHTML(task) {
     const categoryRowHtml = renderCategorySelectRow({
         selectName: 'inline-edit-category',
         selectedValue: task.category || '',
-        options: getSelectableCategoryOptions(),
+        options: getSelectableCategoryOptions(task),
         dotClass: 'unscheduled-edit-category-dot',
         selectClass:
             'bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base'

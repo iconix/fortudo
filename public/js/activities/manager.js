@@ -10,6 +10,8 @@ import {
     deleteRunningActivityConfig
 } from './running-activity-repository.js';
 import { getDayInterval, itemOverlapsInterval } from './insights-intervals.js';
+import { createActivityId } from '../entity-id.js';
+import { getCategoryReferenceFields } from '../taxonomy/taxonomy-selectors.js';
 
 /** @type {Array<Object>} */
 let activities = [];
@@ -32,10 +34,6 @@ function normalizeActivity(activity) {
         sourceTaskId: null,
         ...activity
     };
-}
-
-function generateActivityId() {
-    return `activity-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function toSafeIsoDateTime(value, fallback = new Date().toISOString()) {
@@ -206,8 +204,9 @@ export async function addActivity(activityData) {
 
     const activity = normalizeActivity({
         ...normalizedActivityData,
-        id: normalizedActivityData.id || generateActivityId(),
-        description
+        id: normalizedActivityData.id || createActivityId(),
+        description,
+        ...getCategoryReferenceFields(normalizedActivityData)
     });
 
     await putActivity(activity);
@@ -228,7 +227,10 @@ export async function editActivity(activityId, updates = {}) {
         ...existing,
         ...updates,
         id: activityId,
-        description: updates.description ? updates.description.trim() : existing.description
+        description: updates.description ? updates.description.trim() : existing.description,
+        ...getCategoryReferenceFields(
+            Object.prototype.hasOwnProperty.call(updates, 'category') ? updates : existing
+        )
     });
 
     if (!nextActivity.description) {
@@ -340,6 +342,7 @@ export async function truncateActivityOverlapsForDate(selectedDate) {
     const { truncatedActivities } = result;
 
     for (const activity of truncatedActivities) {
+        Object.assign(activity, getCategoryReferenceFields(activity));
         await putActivity(activity);
     }
 
@@ -382,7 +385,7 @@ export function createActivityFromTask(task) {
 
     return {
         description: task.description,
-        category: task.category || null,
+        ...getCategoryReferenceFields(task),
         startDateTime,
         endDateTime,
         duration: task.duration,
@@ -400,12 +403,8 @@ export function getRunningActivity() {
     return runningActivity ? { ...runningActivity } : null;
 }
 
-export async function startTimer({
-    description,
-    category,
-    source = 'timer',
-    sourceTaskId = null
-} = {}) {
+export async function startTimer(timerInput = {}) {
+    const { description, source = 'timer', sourceTaskId = null } = timerInput;
     const trimmedDescription = description?.trim();
     if (!trimmedDescription) {
         return { success: false, reason: 'Description is required to start a timer.' };
@@ -416,9 +415,9 @@ export async function startTimer({
     }
 
     const timerState = {
-        id: generateActivityId(),
+        id: createActivityId(),
         description: trimmedDescription,
-        category: category || null,
+        ...getCategoryReferenceFields(timerInput),
         startDateTime: new Date().toISOString(),
         source,
         sourceTaskId
@@ -477,9 +476,9 @@ export async function stopTimerAt(endDateTime) {
 
     try {
         const activityResult = await addActivity({
-            id: timerToStop.id || generateActivityId(),
+            id: timerToStop.id || createActivityId(),
             description: timerToStop.description,
-            category: timerToStop.category || null,
+            ...getCategoryReferenceFields(timerToStop),
             startDateTime: timerToStop.startDateTime,
             endDateTime: safeEndDateTime,
             duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
@@ -518,9 +517,9 @@ export async function updateRunningActivity(updates = {}) {
     const nextRunningActivity = {
         id: runningActivity.id || null,
         description: nextDescription,
-        category: Object.prototype.hasOwnProperty.call(updates, 'category')
-            ? updates.category || null
-            : runningActivity.category || null,
+        ...getCategoryReferenceFields(
+            Object.prototype.hasOwnProperty.call(updates, 'category') ? updates : runningActivity
+        ),
         startDateTime: Object.prototype.hasOwnProperty.call(updates, 'startDateTime')
             ? toSafeIsoDateTime(updates.startDateTime, runningActivity.startDateTime)
             : runningActivity.startDateTime,

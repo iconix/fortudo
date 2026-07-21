@@ -11,6 +11,10 @@ function normalizeRunningActivityConfig(config) {
         ...(config.activityId ? { id: config.activityId } : {}),
         description: config.description,
         category: config.category || null,
+        ...(config.categoryId ? { categoryId: config.categoryId } : {}),
+        ...(config.categoryIdentityVersion
+            ? { categoryIdentityVersion: config.categoryIdentityVersion }
+            : {}),
         startDateTime: config.startDateTime,
         source: config.source || 'timer',
         sourceTaskId: config.sourceTaskId || null
@@ -28,6 +32,10 @@ export async function saveRunningActivityConfig(runningActivity) {
         ...(runningActivity.id ? { activityId: runningActivity.id } : {}),
         description: runningActivity.description,
         category: runningActivity.category || null,
+        ...(runningActivity.categoryId ? { categoryId: runningActivity.categoryId } : {}),
+        ...(runningActivity.categoryIdentityVersion
+            ? { categoryIdentityVersion: runningActivity.categoryIdentityVersion }
+            : {}),
         startDateTime: runningActivity.startDateTime,
         source: runningActivity.source || 'timer',
         sourceTaskId: runningActivity.sourceTaskId || null

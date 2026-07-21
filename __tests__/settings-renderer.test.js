@@ -28,7 +28,11 @@ import * as settingsManager from '../public/js/settings-manager.js';
 import { loadSettings, setActivitiesEnabled } from '../public/js/settings-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
-import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
+import {
+    getGroupByKey,
+    getCategoryByKey,
+    getTaxonomySnapshot
+} from '../public/js/taxonomy/taxonomy-selectors.js';
 import {
     openSettingsModal,
     closeSettingsModal,
@@ -473,8 +477,9 @@ describe('settings-renderer', () => {
             await submitForm(form);
             await new Promise((resolve) => setTimeout(resolve, 0));
 
-            expect(getGroupByKey('health')).not.toBeNull();
-            expect(document.querySelector('[data-group-key="health"]')).not.toBeNull();
+            const health = getTaxonomySnapshot().groups.find((group) => group.label === 'Health');
+            expect(health.key).toMatch(/^g-[0-9a-f-]{36}$/);
+            expect(document.querySelector(`[data-group-key="${health.key}"]`)).not.toBeNull();
         });
 
         test('add group failure shows toast for duplicate groups', async () => {
@@ -487,7 +492,7 @@ describe('settings-renderer', () => {
             form.querySelector('[name="group-family"]').value = 'blue';
             await submitForm(form);
 
-            expect(showToast).toHaveBeenCalledWith('Group "work" already exists', {
+            expect(showToast).toHaveBeenCalledWith('Active group label "Work" already exists', {
                 theme: 'rose'
             });
         });
@@ -542,6 +547,7 @@ describe('settings-renderer', () => {
             const content = document.getElementById('taxonomy-management-section').textContent;
             expect(content).toContain('Top-level task categories.');
             expect(content).toContain('Optional categories within a group.');
+            expect(content).toContain('Renaming changes the label shown on historical records.');
             expect(content).not.toContain('Standalone selectable');
             expect(content).not.toContain('Child categories linked');
 
@@ -549,6 +555,38 @@ describe('settings-renderer', () => {
             expect(groupForm.querySelector('label[for^="edit-group-family-"]').textContent).toBe(
                 'Group color'
             );
+            expect(groupForm.textContent).toContain('Archive and create replacement');
+            expect(groupForm.textContent).not.toContain(getGroupByKey('work').id);
+        });
+
+        test('archived category labels are locked in the UI until restored', async () => {
+            await renderEnabledSettings();
+
+            await clickAndWait(
+                document.querySelector('.btn-archive-category[data-key="work/deep"]')
+            );
+            await waitForCondition(
+                () =>
+                    getCategoryByKey('work/deep')?.status === 'archived' &&
+                    document
+                        .querySelector('[data-category-key="work/deep"]')
+                        ?.textContent.includes('Archived')
+            );
+
+            const archivedRow = document.querySelector('[data-category-key="work/deep"]');
+            expect(archivedRow.textContent).toContain('Archived');
+            expect(archivedRow.querySelector('.btn-edit-category')).toBeNull();
+            expect(archivedRow.querySelector('.btn-restore-category')).not.toBeNull();
+
+            await clickAndWait(archivedRow.querySelector('.btn-restore-category'));
+            await waitForCondition(
+                () =>
+                    getCategoryByKey('work/deep')?.status === 'active' &&
+                    document.querySelector('[data-category-key="work/deep"] .btn-edit-category')
+            );
+            expect(
+                document.querySelector('[data-category-key="work/deep"] .btn-edit-category')
+            ).not.toBeNull();
         });
 
         test('keeps group cards compact while naming color dots accessibly', async () => {
@@ -742,9 +780,12 @@ describe('settings-renderer', () => {
             form.querySelector('[name="parent-group"]').value = 'work';
             await submitForm(form);
 
-            expect(showToast).toHaveBeenCalledWith('Category "work/admin" already exists', {
-                theme: 'rose'
-            });
+            expect(showToast).toHaveBeenCalledWith(
+                'Active category label "Admin" already exists in this group',
+                {
+                    theme: 'rose'
+                }
+            );
         });
 
         test('cancel add category hides and resets the form', async () => {

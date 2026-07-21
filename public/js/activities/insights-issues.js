@@ -10,6 +10,17 @@ export function detectActivityDataIssues(activities = []) {
     let previousValidActivity = null;
 
     for (const activityItem of sortedActivities) {
+        const categoryResolution =
+            typeof resolveCategoryReference === 'function'
+                ? resolveCategoryReference(activityItem)
+                : null;
+        if (categoryResolution?.integrityIssue) {
+            issues.push({
+                type: categoryResolution.integrityIssue,
+                activityId: activityItem.id,
+                categoryId: activityItem.categoryId || null
+            });
+        }
         const startDate = new Date(activityItem.startDateTime);
         const endDate = new Date(activityItem.endDateTime);
         const hasDurationCapableRange =
@@ -135,3 +146,4 @@ function getDisplayedMinuteTime(date) {
 function hasDisplayedMinuteOverlap(startDate, previousEndDate) {
     return getDisplayedMinuteTime(startDate) < getDisplayedMinuteTime(previousEndDate);
 }
+import { resolveCategoryReference } from '../taxonomy/taxonomy-selectors.js';

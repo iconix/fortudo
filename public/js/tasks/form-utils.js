@@ -67,7 +67,7 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
     if (categorySelect instanceof HTMLSelectElement) {
         populateCategorySelect(
             categorySelect,
-            getSelectableCategoryOptions(),
+            getSelectableCategoryOptions(taskData),
             taskData.category || ''
         );
     }

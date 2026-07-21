@@ -23,7 +23,8 @@ import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 import {
     loadTaxonomy,
     getTaxonomyState,
-    TAXONOMY_CONFIG_ID
+    TAXONOMY_CONFIG_ID,
+    TAXONOMY_IDENTITY_VERSION
 } from '../public/js/taxonomy/taxonomy-store.js';
 import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-selectors.js';
 
@@ -56,8 +57,27 @@ describe('taxonomy-store', () => {
 
         const config = await loadConfig(TAXONOMY_CONFIG_ID);
         expect(config).not.toBeNull();
+        expect(config.identityVersion).toBe(TAXONOMY_IDENTITY_VERSION);
         expect(config.groups).toHaveLength(3);
         expect(config.categories).toHaveLength(4);
+        expect(config.categories).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    key: 'work/meetings',
+                    label: 'Comms',
+                    id: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                    groupId: '3930ae01-aef6-5c5f-8db3-d91be139ea84',
+                    legacyKeys: ['work/meetings'],
+                    status: 'active',
+                    archivedAt: null
+                }),
+                expect.objectContaining({
+                    key: 'work/comms',
+                    label: 'Meetings',
+                    id: '0dfac102-30f3-56d9-86c0-c3b414aeaf6e'
+                })
+            ])
+        );
     });
 
     test('loadTaxonomy preserves empty schemaVersion 3.5 arrays', async () => {
@@ -72,6 +92,45 @@ describe('taxonomy-store', () => {
         await loadTaxonomy();
 
         expect(getTaxonomyState()).toEqual({ groups: [], categories: [] });
+    });
+
+    test('loadTaxonomy projects legacy schema 3.5 identity without writing during boot', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({
+            id: TAXONOMY_CONFIG_ID,
+            schemaVersion: '3.5',
+            groups: [{ key: 'work', label: 'Work', colorFamily: 'blue', color: '#0ea5e9' }],
+            categories: [
+                {
+                    key: 'work/meetings',
+                    label: 'Comms',
+                    groupKey: 'work',
+                    color: '#38bdf8'
+                }
+            ]
+        });
+
+        await loadTaxonomy();
+
+        expect(getTaxonomyState()).toEqual({
+            groups: [
+                expect.objectContaining({
+                    id: '3930ae01-aef6-5c5f-8db3-d91be139ea84',
+                    key: 'work',
+                    legacyKeys: ['work'],
+                    status: 'active'
+                })
+            ],
+            categories: [
+                expect.objectContaining({
+                    id: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                    groupId: '3930ae01-aef6-5c5f-8db3-d91be139ea84',
+                    legacyKeys: ['work/meetings'],
+                    status: 'active'
+                })
+            ]
+        });
+        expect((await loadConfig(TAXONOMY_CONFIG_ID)).identityVersion).toBeUndefined();
     });
 
     test('loadTaxonomy migrates legacy rows into split group/category records', async () => {
@@ -143,16 +202,16 @@ describe('taxonomy-store', () => {
         await loadTaxonomy();
 
         expect(getGroupByKey('errands')).toMatchObject({
-            label: 'Errands',
+            label: 'Unnamed group',
             colorFamily: 'rose',
             color: COLOR_FAMILIES.rose[1]
         });
         expect(getGroupByKey('misc')).toMatchObject({
-            label: 'Misc',
+            label: 'Unnamed group',
             colorFamily: 'blue'
         });
         expect(getCategoryByKey('misc/notes')).toMatchObject({
-            label: 'Notes',
+            label: 'Unnamed category',
             isLinkedToGroupFamily: true
         });
         expect(getCategoryByKey('misc/notes').color).toBe(getGroupByKey('misc').color);
@@ -176,12 +235,46 @@ describe('taxonomy-store', () => {
         await loadTaxonomy();
 
         expect(getGroupByKey('hobby')).toMatchObject({
-            label: 'Hobby',
+            label: 'Unnamed group',
             colorFamily: 'rose'
         });
         expect(getCategoryByKey('hobby/paint')).toMatchObject({
             groupKey: 'hobby',
             isLinkedToGroupFamily: true
+        });
+    });
+
+    test('loadTaxonomy never derives display meaning from legacy key text', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({
+            id: TAXONOMY_CONFIG_ID,
+            categories: [
+                {
+                    key: 'legacy-key-that-is-not-a-label',
+                    color: COLOR_FAMILIES.blue[0],
+                    group: 'opaque-parent-key'
+                }
+            ]
+        });
+
+        await loadTaxonomy();
+
+        expect(getGroupByKey('opaque-parent-key').label).toBe('Unnamed group');
+        expect(getCategoryByKey('legacy-key-that-is-not-a-label').label).toBe('Unnamed category');
+    });
+
+    test('legacy styling fallbacks also ignore semantic-looking keys', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+        await putConfig({
+            id: TAXONOMY_CONFIG_ID,
+            categories: [{ key: 'personal', group: 'personal' }]
+        });
+
+        await loadTaxonomy();
+
+        expect(getGroupByKey('personal')).toMatchObject({
+            label: 'Unnamed group',
+            colorFamily: 'blue'
         });
     });
 });

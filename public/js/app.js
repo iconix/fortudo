@@ -126,6 +126,7 @@ async function loadTasksIntoState() {
 }
 
 async function loadAppState() {
+    await loadTaxonomy();
     await loadTasksIntoState();
     if (isActivitiesEnabled()) {
         await loadActivitiesState();
@@ -170,7 +171,6 @@ async function initAndBootApp(roomCode) {
 
     // Load and initialize state
     await loadAppState();
-    await loadTaxonomy();
 
     // Create each UI action set once per room session.
     const scheduledTaskEventCallbacks = createScheduledTaskCallbacks();

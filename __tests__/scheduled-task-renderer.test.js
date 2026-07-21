@@ -12,8 +12,8 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
             ? { kind: 'category', record: { key, label: 'Deep Work', color: '#0ea5e9' } }
             : null
     ),
-    renderCategoryBadge: jest.fn((categoryKey) =>
-        categoryKey ? `<span class="category-badge">${categoryKey}</span>` : ''
+    renderCategoryBadge: jest.fn((reference) =>
+        reference?.category ? `<span class="category-badge">${reference.category}</span>` : ''
     )
 }));
 

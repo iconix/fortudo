@@ -22,6 +22,7 @@ import { initStorage, destroyStorage } from '../public/js/storage.js';
 import { loadTaxonomy } from '../public/js/taxonomy/taxonomy-store.js';
 import {
     resolveCategoryKey,
+    resolveCategoryReference,
     getSelectableCategoryOptions,
     getCategoryBadgeData,
     renderCategoryBadge
@@ -68,6 +69,113 @@ describe('taxonomy-selectors', () => {
         );
     });
 
+    test('new-entry options exclude archived records while existing assignments retain them', async () => {
+        await initAndLoadTaxonomy();
+        const { archiveCategory } = await import('../public/js/taxonomy/taxonomy-mutations.js');
+        await archiveCategory('work/deep', '2026-07-21T12:00:00.000Z');
+
+        expect(getSelectableCategoryOptions().map((option) => option.value)).not.toContain(
+            'work/deep'
+        );
+        expect(
+            getSelectableCategoryOptions({ category: 'work/deep' }).map((option) => option.value)
+        ).toContain('work/deep');
+    });
+
+    test('an archived parent exposes only the existing selected assignment', async () => {
+        await initAndLoadTaxonomy();
+        const { archiveGroup } = await import('../public/js/taxonomy/taxonomy-mutations.js');
+        await archiveGroup('work', '2026-07-21T12:00:00.000Z');
+
+        const selectedGroupOptions = getSelectableCategoryOptions({ category: 'work' });
+        expect(selectedGroupOptions.map((option) => option.value)).toContain('work');
+        expect(selectedGroupOptions.map((option) => option.value)).not.toContain('work/deep');
+
+        const selectedChildOptions = getSelectableCategoryOptions({ category: 'work/deep' });
+        expect(selectedChildOptions.map((option) => option.value)).toEqual(
+            expect.arrayContaining(['work', 'work/deep'])
+        );
+        expect(selectedChildOptions.map((option) => option.value)).not.toContain('work/admin');
+    });
+
+    test('resolveCategoryReference maps legacy-only references and marks them for repair', async () => {
+        await initAndLoadTaxonomy();
+
+        expect(resolveCategoryReference({ category: 'work/meetings' })).toMatchObject({
+            kind: 'category',
+            record: {
+                id: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                key: 'work/meetings',
+                label: 'Comms'
+            },
+            needsRepair: true,
+            integrityIssue: null,
+            repairedFields: {
+                category: 'work/meetings',
+                categoryId: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                categoryIdentityVersion: 1
+            }
+        });
+    });
+
+    test('consistent dual references resolve by opaque identity', async () => {
+        await initAndLoadTaxonomy();
+
+        expect(
+            resolveCategoryReference({
+                category: 'work/meetings',
+                categoryId: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                categoryIdentityVersion: 1
+            })
+        ).toMatchObject({
+            record: { label: 'Comms' },
+            resolution: 'id',
+            needsRepair: false,
+            integrityIssue: null
+        });
+    });
+
+    test('valid legacy keys win mismatches and produce safe repair fields', async () => {
+        await initAndLoadTaxonomy();
+
+        expect(
+            resolveCategoryReference({
+                category: 'work/meetings',
+                categoryId: '0dfac102-30f3-56d9-86c0-c3b414aeaf6e',
+                categoryIdentityVersion: 1
+            })
+        ).toMatchObject({
+            record: { key: 'work/meetings', label: 'Comms' },
+            resolution: 'legacy-mismatch',
+            needsRepair: true,
+            integrityIssue: 'category-mismatch',
+            repairedFields: {
+                categoryId: '9c52c0e9-c389-54e1-927f-52c16b13de99'
+            }
+        });
+    });
+
+    test('unknown opaque identities never generate labels from ID text', async () => {
+        await initAndLoadTaxonomy();
+
+        const unknown = resolveCategoryReference({
+            categoryId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            categoryIdentityVersion: 1
+        });
+        expect(unknown).toMatchObject({
+            record: null,
+            label: 'Unknown category',
+            integrityIssue: 'unknown-category',
+            needsRepair: false
+        });
+        expect(renderCategoryBadge({ categoryId: 'work/secret-looking-id' })).toContain(
+            'Unknown category'
+        );
+        expect(renderCategoryBadge({ categoryId: 'work/secret-looking-id' })).not.toContain(
+            'Secret Looking Id'
+        );
+    });
+
     test('getCategoryBadgeData returns badge data for group and child keys', async () => {
         await initAndLoadTaxonomy();
 
@@ -110,9 +218,12 @@ describe('taxonomy-selectors', () => {
         await initAndLoadTaxonomy();
 
         const { addGroup } = await import('../public/js/taxonomy/taxonomy-mutations.js');
-        await addGroup({ label: '<script>alert("xss")</script>', colorFamily: 'gray' });
+        const group = await addGroup({
+            label: '<script>alert("xss")</script>',
+            colorFamily: 'gray'
+        });
 
-        const badge = renderCategoryBadge('script-alert-xss-script');
+        const badge = renderCategoryBadge(group.key);
         expect(badge).not.toContain('<script>');
         expect(badge).toContain('&lt;script&gt;');
     });

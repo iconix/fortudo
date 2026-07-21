@@ -951,7 +951,11 @@ describe('App.js Callback Functions', () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
 
             const categorySelect = document.getElementById('category-select');
-            expect(categorySelect.querySelector('option[value="health"]')).not.toBeNull();
+            const healthOption = Array.from(categorySelect.options).find(
+                (option) => option.textContent.trim() === 'Health'
+            );
+            expect(healthOption).toBeDefined();
+            expect(healthOption.value).toMatch(/^g-[0-9a-f-]{36}$/);
             expect(toastSpy).not.toHaveBeenCalled();
             toastSpy.mockRestore();
         });
@@ -2095,7 +2099,7 @@ describe('App.js Callback Functions', () => {
                 Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 
                 document.dispatchEvent(new Event('visibilitychange'));
-                await Promise.resolve();
+                await new Promise((resolve) => setTimeout(resolve, 0));
 
                 expect(mockLoadTasksFromStorage).toHaveBeenCalledTimes(1);
                 expect(mockPutTasks).not.toHaveBeenCalled();
