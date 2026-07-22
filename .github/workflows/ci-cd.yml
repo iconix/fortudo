@@ -12,6 +12,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             has_code_changes: ${{ steps.filter.outputs.src }}
+            has_deploy_changes: ${{ steps.deploy_filter.outputs.deploy }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v7
@@ -34,6 +35,16 @@ jobs:
                         - '!LICENSE'
                         - '!.github/**'
                   predicate-quantifier: 'every'
+
+            - name: Detect deployable hosting changes
+              uses: dorny/paths-filter@v4
+              id: deploy_filter
+              with:
+                  base: ${{ github.event_name == 'push' && github.event.before || '' }}
+                  filters: |
+                      deploy:
+                        - 'public/**'
+                        - 'firebase.json'
 
     test:
         name: Test & Lint
@@ -207,7 +218,7 @@ jobs:
         name: Deploy Preview
         runs-on: ubuntu-latest
         needs: [test, python-tests, e2e, build, check_for_code_changes]
-        if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_code_changes == 'true' && github.actor != 'dependabot[bot]'
+        if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_deploy_changes == 'true' && github.actor != 'dependabot[bot]'
         permissions:
             contents: read
             pull-requests: write
@@ -247,7 +258,8 @@ jobs:
                   legacy_channel_prefix="${channel}-"
                   log_file="$RUNNER_TEMP/firebase-preview-deploy.log"
                   channel_list_file="$RUNNER_TEMP/firebase-preview-channels.json"
-                  legacy_channels_file="$RUNNER_TEMP/firebase-legacy-preview-channels.txt"
+                  cleanup_channels_file="$RUNNER_TEMP/firebase-preview-cleanup-channels.txt"
+                  cleanup_cutoff="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
                   export_preview_details() {
                     local source_file="$1"
@@ -290,7 +302,9 @@ jobs:
 
                   python3 scripts/firebase_preview_channels.py \
                     "$channel_list_file" \
-                    "$legacy_channel_prefix" > "$legacy_channels_file"
+                    "$legacy_channel_prefix" \
+                    "$channel" \
+                    "$cleanup_cutoff" > "$cleanup_channels_file"
                   parse_status=$?
 
                   if [ "$parse_status" -ne 0 ]; then
@@ -298,12 +312,12 @@ jobs:
                     exit "$parse_status"
                   fi
 
-                  while IFS= read -r legacy_channel; do
-                    if [ -z "$legacy_channel" ]; then
+                  while IFS= read -r cleanup_channel; do
+                    if [ -z "$cleanup_channel" ]; then
                       continue
                     fi
-                    echo "Deleting obsolete preview channel: $legacy_channel"
-                    npx firebase-tools@latest hosting:channel:delete "$legacy_channel" \
+                    echo "Deleting obsolete or expired preview channel: $cleanup_channel"
+                    npx firebase-tools@latest hosting:channel:delete "$cleanup_channel" \
                       --site fortudo \
                       --force \
                       --project fortudo
@@ -311,10 +325,10 @@ jobs:
                     if [ "$delete_status" -ne 0 ]; then
                       exit "$delete_status"
                     fi
-                  done < "$legacy_channels_file"
+                  done < "$cleanup_channels_file"
 
                   npx firebase-tools@latest hosting:channel:deploy "$channel" \
-                    --expires 30d \
+                    --expires 7d \
                     --project fortudo \
                     --json 2>&1 | tee "$log_file"
                   deploy_status=${PIPESTATUS[0]}
@@ -331,7 +345,7 @@ jobs:
                       --force \
                       --project fortudo
                     npx firebase-tools@latest hosting:channel:deploy "$channel" \
-                      --expires 30d \
+                      --expires 7d \
                       --project fortudo \
                       --json 2>&1 | tee "$log_file"
                     deploy_status=${PIPESTATUS[0]}
@@ -409,7 +423,7 @@ jobs:
         name: Deploy to Production
         runs-on: ubuntu-latest
         needs: [test, python-tests, e2e, build, check_for_code_changes]
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_deploy_changes == 'true'
 
         steps:
             - name: Checkout code

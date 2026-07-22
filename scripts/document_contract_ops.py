@@ -41,6 +41,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_MODULE = REPOSITORY_ROOT / "public" / "js" / "document-contract.js"
 CONTRACT_DESIGN_ID = "_design/fortudo-document-contract"
 CONTRACT_VERSION = 1
+TEMPORARY_UNENCRYPTED_RETENTION = "delete-after-s3-and-known-client-exercise"
 
 
 class ContractOpsSafetyError(RuntimeError):
@@ -68,9 +69,33 @@ def security_checksum(security: Mapping[str, Any]) -> str:
     return _sha256_bytes(_canonical_json(security).encode("utf-8"))
 
 
-def _require_encrypted_volume(confirmed: bool) -> None:
-    if not confirmed:
-        raise ContractOpsSafetyError("an encrypted user-only volume must be confirmed")
+def _require_backup_protection(
+    *, encrypted_volume_confirmed: bool, temporary_unencrypted_confirmed: bool
+) -> dict[str, str]:
+    if encrypted_volume_confirmed == temporary_unencrypted_confirmed:
+        raise ContractOpsSafetyError(
+            "confirm exactly one backup protection mode: an encrypted user-only volume "
+            "or the explicit temporary-unencrypted retention override"
+        )
+    if encrypted_volume_confirmed:
+        return {"mode": "encrypted-user-only-volume"}
+    return {
+        "mode": "temporary-unencrypted-user-only-directory",
+        "retention": TEMPORARY_UNENCRYPTED_RETENTION,
+    }
+
+
+def _validate_backup_protection(value: Any) -> None:
+    valid = (
+        value == {"mode": "encrypted-user-only-volume"}
+        or value
+        == {
+            "mode": "temporary-unencrypted-user-only-directory",
+            "retention": TEMPORARY_UNENCRYPTED_RETENTION,
+        }
+    )
+    if not valid:
+        raise ContractOpsSafetyError("snapshot backup protection evidence is invalid")
 
 
 def _require_database_name(database: str) -> None:
@@ -166,10 +191,14 @@ def create_snapshot(
     backup_root: str | Path,
     label: str,
     encrypted_volume_confirmed: bool,
+    temporary_unencrypted_confirmed: bool = False,
     timestamp: str | None = None,
 ) -> SnapshotResult:
     _require_database_name(database)
-    _require_encrypted_volume(encrypted_volume_confirmed)
+    backup_protection = _require_backup_protection(
+        encrypted_volume_confirmed=encrypted_volume_confirmed,
+        temporary_unencrypted_confirmed=temporary_unencrypted_confirmed,
+    )
     _require_artifact_label(label)
     root = validate_backup_root(backup_root)
     timestamp = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -212,6 +241,7 @@ def create_snapshot(
             "formatVersion": 1,
             "label": label,
             "createdAt": timestamp,
+            "backupProtection": backup_protection,
             **metadata,
             "leafCount": len(leaves),
             "winnerCount": len(winners),
@@ -258,6 +288,7 @@ def create_snapshot(
 def verify_snapshot(snapshot_path: str | Path) -> dict[str, Any]:
     path = Path(snapshot_path).resolve()
     manifest = _read_json(path / "manifest.json")
+    _validate_backup_protection(manifest.get("backupProtection"))
     for filename, checksum in manifest.get("files", {}).items():
         try:
             content = (path / filename).read_bytes()
@@ -488,9 +519,13 @@ def create_inventory(
     *,
     manifest_root: str | Path,
     encrypted_volume_confirmed: bool,
+    temporary_unencrypted_confirmed: bool = False,
     timestamp: str | None = None,
 ) -> InventoryResult:
-    _require_encrypted_volume(encrypted_volume_confirmed)
+    backup_protection = _require_backup_protection(
+        encrypted_volume_confirmed=encrypted_volume_confirmed,
+        temporary_unencrypted_confirmed=temporary_unencrypted_confirmed,
+    )
     root = validate_backup_root(manifest_root)
     timestamp = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = _exact_artifact_path(root, f"fortudo-inventory-{timestamp}")
@@ -528,6 +563,7 @@ def create_inventory(
         manifest_base = {
             "formatVersion": 1,
             "createdAt": timestamp,
+            "backupProtection": backup_protection,
             "counts": counts,
             "databases": rows,
         }
@@ -621,13 +657,17 @@ def _parser() -> argparse.ArgumentParser:
 
     inventory = subparsers.add_parser("inventory")
     inventory.add_argument("--manifest-root", required=True)
-    inventory.add_argument("--confirm-encrypted-volume", action="store_true")
+    inventory_protection = inventory.add_mutually_exclusive_group()
+    inventory_protection.add_argument("--confirm-encrypted-volume", action="store_true")
+    inventory_protection.add_argument("--confirm-temporary-unencrypted", action="store_true")
 
     snapshot = subparsers.add_parser("snapshot")
     snapshot.add_argument("--database", required=True)
     snapshot.add_argument("--backup-root", required=True)
     snapshot.add_argument("--label", required=True)
-    snapshot.add_argument("--confirm-encrypted-volume", action="store_true")
+    snapshot_protection = snapshot.add_mutually_exclusive_group()
+    snapshot_protection.add_argument("--confirm-encrypted-volume", action="store_true")
+    snapshot_protection.add_argument("--confirm-temporary-unencrypted", action="store_true")
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--database", required=True)
@@ -677,6 +717,7 @@ def execute(
             client,
             manifest_root=args.manifest_root,
             encrypted_volume_confirmed=args.confirm_encrypted_volume,
+            temporary_unencrypted_confirmed=args.confirm_temporary_unencrypted,
         )
         report = {
             "mode": args.mode,
@@ -691,6 +732,7 @@ def execute(
             backup_root=args.backup_root,
             label=args.label,
             encrypted_volume_confirmed=args.confirm_encrypted_volume,
+            temporary_unencrypted_confirmed=args.confirm_temporary_unencrypted,
         )
         report = {
             "mode": args.mode,

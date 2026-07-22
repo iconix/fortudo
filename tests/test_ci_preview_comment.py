@@ -1,4 +1,6 @@
+from fnmatch import fnmatchcase
 from pathlib import Path
+import re
 
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci-cd.yml"
@@ -27,15 +29,43 @@ def test_preview_deploy_exports_url_and_updates_one_pr_comment():
     assert "github.rest.issues.createComment" in workflow
 
 
-def test_preview_deploy_reuses_one_channel_and_only_prunes_same_pr_legacy_channels():
+def test_preview_deploy_reuses_one_channel_and_prunes_only_parser_selected_channels():
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert 'channel="pr${{ github.event.pull_request.number }}-${slug}"' in workflow
     assert 'short_sha="$(printf' not in workflow
     assert '${channel}-${short_sha}' not in workflow
     assert 'legacy_channel_prefix="${channel}-"' in workflow
+    assert 'cleanup_cutoff="$(date -u +' in workflow
     assert "python3 scripts/firebase_preview_channels.py" in workflow
+    assert '"$channel" \\' in workflow
+    assert '"$cleanup_cutoff" > "$cleanup_channels_file"' in workflow
     assert 'hosting:channel:list' in workflow
-    assert 'hosting:channel:delete "$legacy_channel"' in workflow
+    assert 'done < "$cleanup_channels_file"' in workflow
+    assert 'hosting:channel:delete "$cleanup_channel"' in workflow
     assert '--site fortudo' in workflow
     assert 'hosting:channel:delete "$channel"' in workflow
+
+
+def test_firebase_deploys_only_changed_public_output_with_seven_day_previews():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "has_deploy_changes: ${{ steps.deploy_filter.outputs.deploy }}" in workflow
+    deploy_step = workflow.split("- name: Detect deployable hosting changes", 1)[1].split(
+        "\n    test:", 1
+    )[0]
+    assert "predicate-quantifier" not in deploy_step
+    deploy_patterns = re.findall(r"^\s+- '([^']+)'$", deploy_step, flags=re.MULTILINE)
+    assert deploy_patterns == ["public/**", "firebase.json"]
+
+    def matches_deploy_output(path):
+        return any(fnmatchcase(path, pattern) for pattern in deploy_patterns)
+
+    assert matches_deploy_output("public/js/app.js")
+    assert matches_deploy_output("firebase.json")
+    assert not matches_deploy_output("scripts/document_contract_ops.py")
+    assert not matches_deploy_output("tests/test_document_contract_ops.py")
+    assert workflow.count("needs.check_for_code_changes.outputs.has_deploy_changes") == 2
+    assert "needs.check_for_code_changes.outputs.has_code_changes == 'true'" not in workflow
+    assert workflow.count("--expires 7d") == 2
+    assert "--expires 30d" not in workflow
