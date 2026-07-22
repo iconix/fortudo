@@ -19,6 +19,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+# The operational runbook invokes this file directly. In that mode Python adds
+# ``scripts/`` rather than the repository root to ``sys.path``, so make the
+# package import below resolve identically to ``python -m`` execution.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from scripts.migrate_taxonomy_identity import (
     CREDENTIAL_ENV_VAR,
     CloudantClient,

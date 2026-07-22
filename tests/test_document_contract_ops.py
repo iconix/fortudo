@@ -4,9 +4,29 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from scripts import document_contract_ops as ops
+
+
+def test_runbook_direct_cli_entry_point_loads_from_any_working_directory(tmp_path) -> None:
+    script = Path(ops.__file__).resolve()
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "inventory" in result.stdout
+    assert "restore-quarantine" in result.stdout
 
 
 class FakeCloudant:
