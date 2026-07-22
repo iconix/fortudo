@@ -347,3 +347,86 @@ def test_encrypted_volume_confirmation_and_exact_target_are_mandatory(tmp_path):
             encrypted_volume_confirmed=True,
         )
     assert list(tmp_path.iterdir()) == []
+
+
+def test_temporary_unencrypted_override_is_explicit_and_recorded(tmp_path):
+    client = FakeCloudant()
+
+    snapshot = ops.create_snapshot(
+        client,
+        database=client.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=False,
+        temporary_unencrypted_confirmed=True,
+        timestamp="20260722T170000Z",
+    )
+    manifest = ops.verify_snapshot(snapshot.path)
+
+    assert manifest["backupProtection"] == {
+        "mode": "temporary-unencrypted-user-only-directory",
+        "retention": "delete-after-s3-and-known-client-exercise",
+    }
+
+    inventory = ops.create_inventory(
+        client,
+        manifest_root=tmp_path,
+        encrypted_volume_confirmed=False,
+        temporary_unencrypted_confirmed=True,
+        timestamp="20260722T170001Z",
+    )
+    inventory_manifest = json.loads(inventory.path.read_text(encoding="utf-8"))
+    assert inventory_manifest["backupProtection"] == manifest["backupProtection"]
+
+
+@pytest.mark.parametrize(
+    "invalid_protection",
+    [
+        None,
+        {"mode": "unknown"},
+        {
+            "mode": "temporary-unencrypted-user-only-directory",
+            "retention": "keep-indefinitely",
+        },
+        {"mode": "encrypted-user-only-volume", "extra": True},
+    ],
+)
+def test_snapshot_verification_rejects_rechecksummed_invalid_backup_protection(
+    tmp_path, invalid_protection
+):
+    client = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        client,
+        database=client.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260722T170000Z",
+    )
+    manifest_path = snapshot.path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if invalid_protection is None:
+        manifest.pop("backupProtection")
+    else:
+        manifest["backupProtection"] = invalid_protection
+    manifest["manifestChecksum"] = ops._manifest_checksum(manifest)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="backup protection"):
+        ops.verify_snapshot(snapshot.path)
+
+
+def test_backup_protection_modes_are_mutually_exclusive_for_programmatic_callers(tmp_path):
+    client = FakeCloudant()
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="exactly one"):
+        ops.create_snapshot(
+            client,
+            database=client.database,
+            backup_root=tmp_path,
+            label="S0",
+            encrypted_volume_confirmed=True,
+            temporary_unencrypted_confirmed=True,
+        )
+
+    assert list(tmp_path.iterdir()) == []

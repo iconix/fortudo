@@ -2,7 +2,9 @@
 
 This runbook is the operational companion to the entity and taxonomy identity hardening. It does not authorize a production write by itself. Stop whenever a database name, UUID, opaque update sequence, `_security` hash, validator revision, leaf set, or required approval differs from the locked private manifest.
 
-Never paste the Cloudant credential URL, document bodies, descriptions, or private manifests into a terminal transcript, issue, pull request, or chat. Set `FORTUDO_CLOUDANT_URL` only in the local process environment. Store inventories, snapshots, and journals on an encrypted user-only volume outside the repository.
+Never paste the Cloudant credential URL, document bodies, descriptions, or private manifests into a terminal transcript, issue, pull request, or chat. Set `FORTUDO_CLOUDANT_URL` only in the local process environment. Store inventories, snapshots, and journals on an encrypted user-only volume outside the repository by default.
+
+An operator may explicitly accept temporary unencrypted storage with `--confirm-temporary-unencrypted` only when the directory is user-only, outside the repository and cloud-synced folders, and retained no later than completion of S3 and the known-client exercise. The private manifest records this protection mode and deletion condition. Never pass `--confirm-encrypted-volume` for an unencrypted destination.
 
 ## Compatibility release
 
@@ -50,6 +52,8 @@ python scripts/document_contract_ops.py inventory `
   --confirm-encrypted-volume
 ```
 
+For the approved temporary-unencrypted exception, replace the final flag with `--confirm-temporary-unencrypted`.
+
 The normal output contains aggregate counts and the manifest checksum only. Locate the private manifest inside the operator-supplied root; its path and exact database list stay off normal command output. Obtain explicit approval for the fresh database list. Do not reuse an older count.
 
 ## Fence and migrate `fortudo-dat-411`
@@ -65,6 +69,8 @@ The normal output contains aggregate counts and the manifest checksum only. Loca
      --label S0 `
      --confirm-encrypted-volume
    ```
+
+   For the approved temporary-unencrypted exception, replace the final flag with `--confirm-temporary-unencrypted`. The resulting manifest binds the exception and mandatory post-S3 deletion into its checksum.
 
 4. Install the validator using only values copied from the locked `S0` manifest:
 
