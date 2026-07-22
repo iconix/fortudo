@@ -1267,7 +1267,8 @@ def add_unscheduled_task(
     category: str | None = None,
 ) -> None:
     cancel_open_confirm_modal(page)
-    page.locator("#unscheduled").check()
+    # The task-type radios are intentionally visually hidden behind their labels.
+    page.locator("#unscheduled").check(force=True)
     fill_locator_value(
         page,
         page.locator(task_form_input_selector("description")),

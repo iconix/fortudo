@@ -817,12 +817,17 @@ class PreviewWaitHelperTests(unittest.TestCase):
                 "#cancel-custom-confirm-modal": FakeLocator(),
             }
         )
-        unscheduled_radio.check = lambda: setattr(unscheduled_radio, "value", "checked")
+        def check_unscheduled(*, force=False):
+            unscheduled_radio.value = "checked"
+            unscheduled_radio.attributes["force"] = force
+
+        unscheduled_radio.check = check_unscheduled
         priority.check = lambda force=False: setattr(priority, "value", "checked")
 
         add_unscheduled_task(page, "Linked timer task", 45, category="work/project")
 
         self.assertEqual(unscheduled_radio.value, "checked")
+        self.assertTrue(unscheduled_radio.attributes["force"])
         self.assertEqual(description.value, "Linked timer task")
         self.assertEqual(duration_hours.value, "0")
         self.assertEqual(duration_minutes.value, "45")
