@@ -865,7 +865,7 @@ def _attachment_digests(document: Mapping[str, Any]) -> dict[str, str]:
 def compute_verified_state_fingerprint(
     client: Any, database: str, validator_revision: str
 ) -> tuple[str, dict[str, int]]:
-    leaves, _winners = client.get_current_leaf_graph(database)
+    leaves, _winners = _read_stable_leaf_graph(client, database)
     filtered = [leaf for leaf in leaves if leaf.get("_id") != MIGRATION_COMPLETION_ID]
     identities = [(leaf.get("_id"), leaf.get("_rev")) for leaf in filtered]
     if len(identities) != len(set(identities)):
@@ -901,6 +901,43 @@ def compute_verified_state_fingerprint(
         "leaves": canonical_leaves,
     }
     return _sha256_bytes(_canonical_json(fingerprint_body).encode("utf-8")), counts
+
+
+def _completion_intent(completion: Mapping[str, Any]) -> dict[str, Any]:
+    intent = {
+        "formatVersion": 1,
+        "documentId": MIGRATION_COMPLETION_ID,
+        "preRevision": None,
+        "intendedBody": dict(completion),
+        "intendedBodyChecksum": _sha256_bytes(
+            _canonical_json(completion).encode("utf-8")
+        ),
+    }
+    intent["intentChecksum"] = _backup_checksum(intent)
+    return intent
+
+
+def _load_completion_intent(path: Path) -> dict[str, Any]:
+    try:
+        intent = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationSafetyError("completion intent journal is unreadable") from error
+    if not isinstance(intent, dict):
+        raise MigrationSafetyError("completion intent journal is invalid")
+    unsigned = dict(intent)
+    intent_checksum = unsigned.pop("intentChecksum", None)
+    body = intent.get("intendedBody")
+    if (
+        intent.get("formatVersion") != 1
+        or intent.get("documentId") != MIGRATION_COMPLETION_ID
+        or intent.get("preRevision") is not None
+        or not isinstance(body, dict)
+        or intent.get("intendedBodyChecksum")
+        != _sha256_bytes(_canonical_json(body).encode("utf-8"))
+        or intent_checksum != _backup_checksum(unsigned)
+    ):
+        raise MigrationSafetyError("completion intent journal is invalid")
+    return intent
 
 
 def _validate_snapshot_and_fence(
@@ -1163,6 +1200,20 @@ def apply_migration(
             require_exact_state=True,
         )
     apply_or_resume_journal(client, database=database, journal_path=journal_path)
+    _validate_resume_state_against_s1(
+        client,
+        database=database,
+        snapshot=snapshot,
+        snapshot_leaves=snapshot_leaves,
+        journal=journal,
+    )
+    snapshot, validator = _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
     post_winners = client.get_all_documents(database, include_conflicts=True)
     _verify_post_migration(winners, post_winners)
 
@@ -1175,37 +1226,59 @@ def apply_migration(
     if fingerprint != repeated_fingerprint or verified_counts != repeated_counts:
         raise MigrationSafetyError("verified state changed before completion")
 
-    completion = _apply_writer_contract({
+    # Re-establish the exact S1-derived graph and metadata fence immediately before
+    # fixing the completion intent. A later race is detected by the post-marker checks.
+    _validate_resume_state_against_s1(
+        client,
+        database=database,
+        snapshot=snapshot,
+        snapshot_leaves=snapshot_leaves,
+        journal=journal,
+    )
+    snapshot, validator = _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
+    locked_fingerprint, locked_counts = compute_verified_state_fingerprint(
+        client, database, validator["validatorRevision"]
+    )
+    if locked_fingerprint != fingerprint or locked_counts != verified_counts:
+        raise MigrationSafetyError("verified state changed before completion")
+
+    completion_fields = {
         "_id": MIGRATION_COMPLETION_ID,
         "id": MIGRATION_COMPLETION_ID,
         "docType": "config",
         "migration": "taxonomy-identity-v1",
-        "completedAt": timestamp or datetime.now(UTC).isoformat(),
         "s1SnapshotChecksum": snapshot["manifestChecksum"],
         "verifiedStateFingerprint": fingerprint,
         "validatorRevision": validator["validatorRevision"],
         "counts": plan.counts,
         "verifiedCounts": verified_counts,
-    })
-    completion_intent = {
-        "formatVersion": 1,
-        "documentId": MIGRATION_COMPLETION_ID,
-        "preRevision": None,
-        "intendedBody": completion,
-        "intendedBodyChecksum": _sha256_bytes(
-            _canonical_json(completion).encode("utf-8")
-        ),
     }
-    completion_intent["intentChecksum"] = _backup_checksum(completion_intent)
     completion_intent_path = Path(journal_path) / "completion-intent.json"
     if completion_intent_path.exists():
-        try:
-            existing_intent = json.loads(completion_intent_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            raise MigrationSafetyError("completion intent journal is unreadable") from error
+        existing_intent = _load_completion_intent(completion_intent_path)
+        completed_at = existing_intent["intendedBody"].get("completedAt")
+        if not isinstance(completed_at, str) or not completed_at:
+            raise MigrationSafetyError("completion intent journal is invalid")
+        completion = _apply_writer_contract(
+            {**completion_fields, "completedAt": completed_at}
+        )
+        completion_intent = _completion_intent(completion)
         if existing_intent != completion_intent:
             raise MigrationSafetyError("completion intent journal diverges from verified state")
     else:
+        completion = _apply_writer_contract(
+            {
+                **completion_fields,
+                "completedAt": timestamp or datetime.now(UTC).isoformat(),
+            }
+        )
+        completion_intent = _completion_intent(completion)
         _write_secure(
             completion_intent_path,
             (json.dumps(completion_intent, indent=2, sort_keys=True) + "\n").encode("utf-8"),
@@ -1217,6 +1290,13 @@ def apply_migration(
     expected_stored_marker = {**completion, "_rev": marker_result["rev"]}
     if stored_marker != expected_stored_marker:
         raise MigrationSafetyError("completion marker reread failed")
+    _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
     final_fingerprint, final_counts = compute_verified_state_fingerprint(
         client, database, validator["validatorRevision"]
     )

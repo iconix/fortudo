@@ -535,6 +535,107 @@ def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path)
     assert len(list(tmp_path.iterdir())) == 2
 
 
+def test_apply_rejects_unrelated_valid_write_that_races_with_journal_application(tmp_path):
+    class ConcurrentInsertCloudant(FakeCloudant):
+        inserted = False
+
+        def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
+            result = super().bulk_docs(database, documents)
+            if not self.inserted:
+                self.inserted = True
+                concurrent = {
+                    "_id": "task-concurrent",
+                    "_rev": "1-concurrent",
+                    "id": "task-concurrent",
+                    "docType": "task",
+                    "type": "unscheduled",
+                    "description": "valid concurrent writer",
+                    "category": None,
+                    "categoryId": None,
+                    "categoryIdentityVersion": None,
+                    "writerContract": {"version": 1, "categoryReference": None},
+                }
+                self.winners.append(concurrent)
+                self.revision_ancestries[(concurrent["_id"], concurrent["_rev"])] = [
+                    concurrent["_rev"]
+                ]
+            return result
+
+    client = ConcurrentInsertCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+
+    with pytest.raises(migration.MigrationSafetyError, match="unrelated changes"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+            timestamp="20260721T120000Z",
+        )
+
+    assert client.put_calls == []
+
+
+def test_apply_rechecks_security_after_journal_application(tmp_path):
+    class SecurityDriftCloudant(FakeCloudant):
+        drifted = False
+
+        def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
+            result = super().bulk_docs(database, documents)
+            if not self.drifted:
+                self.drifted = True
+                self.security["members"]["names"] = ["concurrent-change"]
+            return result
+
+    client = SecurityDriftCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+
+    with pytest.raises(migration.MigrationSafetyError, match="complete S1 snapshot"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+            timestamp="20260721T120000Z",
+        )
+
+    assert client.put_calls == []
+
+
+def test_apply_rechecks_security_after_completion_marker(tmp_path):
+    class PostMarkerSecurityDriftCloudant(FakeCloudant):
+        def put_document(self, database: str, document: dict) -> dict:
+            result = super().put_document(database, document)
+            self.security["members"]["names"] = ["post-marker-change"]
+            return result
+
+    client = PostMarkerSecurityDriftCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+
+    with pytest.raises(migration.MigrationSafetyError, match="complete S1 snapshot"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+            timestamp="20260721T120000Z",
+        )
+
+    assert client.put_calls[-1]["_id"] == migration.MIGRATION_COMPLETION_ID
+
+
 def test_migration_plan_is_idempotent_after_identity_fields_exist():
     first = migration.build_migration_plan(production_winners())
     migrated = []
@@ -687,6 +788,53 @@ def test_apply_migration_resumes_only_s1_or_ancestry_proven_partial_state(tmp_pa
 
     assert result.mode == "apply"
     assert client.put_calls[-1]["_id"] == migration.MIGRATION_COMPLETION_ID
+
+
+def test_completion_intent_resume_reuses_original_timestamp_after_marker_crash(tmp_path):
+    class MarkerCrashCloudant(FakeCloudant):
+        fail_marker_once = True
+
+        def put_document(self, database: str, document: dict) -> dict:
+            if document.get("_id") == migration.MIGRATION_COMPLETION_ID and self.fail_marker_once:
+                self.fail_marker_once = False
+                raise migration.MigrationSafetyError("simulated marker crash")
+            return super().put_document(database, document)
+
+    client = MarkerCrashCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+    plan = migration.build_migration_plan(client.winners)
+    journal = migration.create_migration_journal(
+        [*plan.updates, *plan.conflict_tombstones],
+        tmp_path,
+        timestamp="20260721T120001Z",
+    )
+
+    with pytest.raises(migration.MigrationSafetyError, match="simulated marker crash"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+            journal_path=journal,
+            timestamp="20260721T120002Z",
+        )
+
+    result = migration.apply_migration(
+        client,
+        database=migration.EXPECTED_DATABASE_NAME,
+        expected_update_seq="42-seq",
+        confirmation=migration.EXPECTED_DATABASE_NAME,
+        snapshot_path=snapshot,
+        journal_path=journal,
+        timestamp="20260722T090000Z",
+    )
+
+    assert result.mode == "apply"
+    assert client.put_calls[-1]["completedAt"] == "20260721T120002Z"
 
 
 def test_journal_rejects_matching_body_without_locked_pre_revision_ancestry(tmp_path):

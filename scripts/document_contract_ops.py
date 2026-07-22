@@ -426,7 +426,6 @@ def restore_quarantine(
         raise ContractOpsSafetyError("quarantine database was not empty")
     if legacy_leaves:
         client.bulk_docs_new_edits_false(database, legacy_leaves)
-    client.put_security(database, source_security)
 
     restored_before_validator, winners_before_validator = _read_stable_leaf_graph(
         client, database
@@ -438,13 +437,15 @@ def restore_quarantine(
     if (
         restored_bodies != expected_leaf_bodies
         or dict(winners_before_validator) != expected_winners
-        or security_checksum(client.get_security(database)) != manifest["securityChecksum"]
     ):
         raise ContractOpsSafetyError("quarantine leaf reconstruction verification failed")
 
     result = client.put_document(database, load_design_document())
     if not result.get("ok") or verify_validator(client, database).get("state") != "compatible":
         raise ContractOpsSafetyError("validator-last quarantine reconstruction failed")
+    # Restore source authorization only after every document write. This avoids
+    # self-locking the recovery operator before the validator can be installed.
+    client.put_security(database, source_security)
     restored_after_validator, winners_after_validator = _read_stable_leaf_graph(client, database)
     non_design_after = [
         leaf for leaf in restored_after_validator if leaf.get("_id") != CONTRACT_DESIGN_ID

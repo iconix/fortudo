@@ -69,6 +69,7 @@ class FakeCloudant:
         return copy.deepcopy(self.security)
 
     def put_security(self, database: str, security: dict) -> None:
+        self.write_order.append("_security")
         self.security = copy.deepcopy(security)
 
     def get_current_leaf_graph(self, database: str) -> tuple[list[dict], dict[str, str]]:
@@ -233,8 +234,8 @@ def test_quarantine_restore_loads_legacy_leaves_before_validator(tmp_path):
     )
 
     assert target.created == ["fortudo-quarantine-20260721"]
-    assert target.write_order[-1] == "_design/fortudo-document-contract"
-    assert "task-live" in target.write_order[:-1]
+    assert target.write_order[-2:] == ["_design/fortudo-document-contract", "_security"]
+    assert "task-live" in target.write_order[:-2]
     assert target.security == source.security
 
 
