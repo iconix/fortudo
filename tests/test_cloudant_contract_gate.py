@@ -27,9 +27,10 @@ def test_gate_covers_partial_denial_checkpoint_detection_and_validator_last_orde
     assert "await local.replicate.from(database)" in source
     assert "database.revsDiff" in source
     assert "valid successor conflict was not replicated" in source
-    assert "database.bulkDocs([base, validBase], { new_edits: false })" in source
+    assert "database.bulkDocs([base, validBase, taxonomyBase], { new_edits: false })" in source
+    assert "validServerDeniedLeavesDetected" in source
     quarantine_gate = source[source.index("async function runCheckpointAndQuarantineGate") :]
-    assert quarantine_gate.index("bulkDocs([base, validBase]") < quarantine_gate.index(
+    assert quarantine_gate.index("bulkDocs([base, validBase, taxonomyBase]") < quarantine_gate.index(
         "database.put(design)"
     )
 

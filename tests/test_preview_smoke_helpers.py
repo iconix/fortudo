@@ -60,8 +60,10 @@ from scripts.preview_smoke.cli import build_launch_options, parse_cli_args
 from scripts.preview_smoke.remote import (
     build_couchdb_request_parts,
     build_remote_db_name,
+    create_remote_database,
     extract_couchdb_url,
     fetch_remote_docs,
+    put_remote_docs,
 )
 from scripts.preview_smoke.scenarios import (
     create_run_scoped_prefix,
@@ -107,6 +109,41 @@ class CouchDbHelpersTests(unittest.TestCase):
 
         self.assertEqual(base_url, "https://example.cloudant.com")
         self.assertIn("Authorization", headers)
+
+    @patch("scripts.preview_smoke.remote.urlopen")
+    def test_create_remote_database_uses_an_authenticated_put(self, mock_urlopen):
+        create_remote_database(
+            "https://user:pass@example.cloudant.com",
+            "fortudo-preview-smoke-alpha",
+        )
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.cloudant.com/fortudo-preview-smoke-alpha",
+        )
+        self.assertEqual(request.get_method(), "PUT")
+        self.assertIn("Authorization", request.headers)
+
+    @patch("scripts.preview_smoke.remote.urlopen")
+    def test_put_remote_docs_uses_bulk_docs_without_exposing_credentials(self, mock_urlopen):
+        mock_response = mock_urlopen.return_value.__enter__.return_value
+        mock_response.read.return_value = b'[{"id":"task-1","ok":true,"rev":"1-a"}]'
+
+        put_remote_docs(
+            "https://user:pass@example.cloudant.com",
+            "fortudo-preview-smoke-alpha",
+            [{"_id": "task-1", "docType": "task"}],
+        )
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.cloudant.com/fortudo-preview-smoke-alpha/_bulk_docs",
+        )
+        self.assertEqual(request.get_method(), "POST")
+        self.assertNotIn("user", request.full_url)
+        self.assertNotIn("pass", request.full_url)
 
     @patch("scripts.preview_smoke.remote.urlopen")
     def test_fetch_remote_docs_reads_all_docs(self, mock_urlopen):

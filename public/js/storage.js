@@ -11,7 +11,11 @@ import {
     registerExpectedLocalRevision,
     getLastDivergenceAudit
 } from './sync-manager.js';
-import { applyWriterContract, stripWriterContract } from './document-contract.js';
+import {
+    applyWriterContract,
+    stripWriterContract,
+    validateLocalDocumentContract
+} from './document-contract.js';
 import {
     buildLocalRecoveryBundle,
     downloadLocalRecoveryBundle,
@@ -119,7 +123,16 @@ function normalizeStoredDoc(doc) {
 function toStoredDoc(record, docType) {
     const doc = { ...record, _id: record.id, docType };
     delete doc.id;
-    return applyWriterContract(doc);
+    return createContractedDocument(doc);
+}
+
+function createContractedDocument(document) {
+    const contracted = applyWriterContract(document);
+    const validation = validateLocalDocumentContract(contracted);
+    if (!validation.ok) {
+        throw new Error(`Persistence contract rejected the document: ${validation.code}`);
+    }
+    return contracted;
 }
 
 function assertCanPersist() {
@@ -243,7 +256,9 @@ async function deleteTypedDoc(id, docType, logLabel) {
     }
 
     try {
-        const result = await db.put(applyWriterContract({ _id: id, _rev: rev, _deleted: true }));
+        const result = await db.put(
+            createContractedDocument({ _id: id, _rev: rev, _deleted: true })
+        );
         revStore.delete(id);
         recordExpectedRevision(id, result.rev);
     } catch (err) {
@@ -447,7 +462,7 @@ export async function deleteTasks(taskIds) {
 
     const results = await db.bulkDocs(
         existing.map(({ id, revision }) =>
-            applyWriterContract({ _id: id, _rev: revision, _deleted: true })
+            createContractedDocument({ _id: id, _rev: revision, _deleted: true })
         )
     );
     const succeededIds = [...alreadyDeletedIds];
@@ -590,12 +605,12 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
                 return normalizeConfigWinner(winner);
             }
 
-            const successor = applyWriterContract({ ...winner });
+            const successor = createContractedDocument({ ...winner });
             delete successor._conflicts;
             const documents = [
                 successor,
                 ...conflictRevisions.map((revision) =>
-                    applyWriterContract({
+                    createContractedDocument({
                         _id: configId,
                         _rev: revision,
                         _deleted: true
@@ -704,7 +719,7 @@ export async function migrateDocTypes() {
 
     assertCanPersist();
     const docsToUpdate = legacyDocs.map((doc) =>
-        applyWriterContract({
+        createContractedDocument({
             ...doc,
             docType: DOC_TYPES.TASK
         })

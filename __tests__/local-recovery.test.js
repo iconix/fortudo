@@ -130,4 +130,17 @@ describe('sensitive local recovery bundle', () => {
         );
         expect(() => requireRecoveryResetConfirmation(db, 'RESET LOCAL DATA')).not.toThrow();
     });
+
+    test('fails closed when local state never stabilizes during export', async () => {
+        await db.put(applyWriterContract({ _id: 'task-changing', docType: 'task' }));
+        let sequence = 10;
+        jest.spyOn(db, 'info').mockImplementation(async () => ({
+            db_name: 'changing-local',
+            update_seq: sequence++
+        }));
+
+        await expect(
+            buildLocalRecoveryBundle(db, {}, { digest: fakeDigest, maxRetries: 2 })
+        ).rejects.toThrow('Local data changed during recovery export');
+    });
 });

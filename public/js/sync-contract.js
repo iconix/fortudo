@@ -2,6 +2,7 @@ import {
     DOCUMENT_CONTRACT_CHECKSUM,
     DOCUMENT_CONTRACT_DESIGN_ID,
     DOCUMENT_CONTRACT_VERSION,
+    getDocumentContractValidatorSource,
     validateLocalDocumentContract
 } from './document-contract.js';
 
@@ -67,7 +68,7 @@ export async function inspectRemoteDocumentContract(remoteDb) {
     if (
         metadata?.version !== DOCUMENT_CONTRACT_VERSION ||
         metadata?.checksum !== DOCUMENT_CONTRACT_CHECKSUM ||
-        typeof design.validate_doc_update !== 'string'
+        design.validate_doc_update !== getDocumentContractValidatorSource()
     ) {
         return {
             state: 'validator-mismatch',
@@ -87,7 +88,10 @@ export async function inspectRemoteDocumentContract(remoteDb) {
  */
 export async function enumerateCurrentLocalLeaves(localDb) {
     const changes = await localDb.changes({ since: 0, style: 'all_docs' });
-    if (!Array.isArray(changes?.results)) {
+    if (
+        !Array.isArray(changes?.results) ||
+        !Object.prototype.hasOwnProperty.call(changes, 'last_seq')
+    ) {
         throw new Error('invalid-changes-enumeration');
     }
 
@@ -138,7 +142,7 @@ export async function enumerateCurrentLocalLeaves(localDb) {
         first.id.localeCompare(second.id) || first.revision.localeCompare(second.revision);
     leaves.sort(byIdentity);
     designLeaves.sort(byIdentity);
-    return { leaves, designLeaves };
+    return { leaves, designLeaves, lastSequence: changes.last_seq };
 }
 
 async function revsDiffInBatches(remoteDb, leaves, batchSize) {
@@ -164,6 +168,11 @@ async function revsDiffInBatches(remoteDb, leaves, batchSize) {
         }
     }
     return missing;
+}
+
+export async function findRemoteMissingLeaves(remoteDb, leaves, { batchSize = 100 } = {}) {
+    const missing = await revsDiffInBatches(remoteDb, leaves, batchSize);
+    return leaves.filter((leaf) => missing.has(`${leaf.id}@${leaf.revision}`));
 }
 
 function emptyAudit(state, designLeaves = []) {
@@ -208,6 +217,9 @@ export async function auditLocalDivergence(
             return { ...emptyAudit('audit-error'), code: 'local-info-unreadable' };
         }
         if (!sameOpaqueSequence(start, finish)) {
+            continue;
+        }
+        if (!sameOpaqueSequence(start, enumeration.lastSequence)) {
             continue;
         }
 

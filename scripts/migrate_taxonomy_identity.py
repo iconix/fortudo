@@ -631,7 +631,15 @@ def create_migration_journal(
     path = _exact_artifact_path(root, f"fortudo-taxonomy-migration-journal-{timestamp}")
     entries = []
     seen: set[tuple[str, str]] = set()
-    for document in documents:
+    ordered_documents = sorted(
+        documents,
+        key=lambda document: (
+            str(document.get("_id")),
+            bool(document.get("_deleted")),
+            str(document.get("_rev")),
+        ),
+    )
+    for document in ordered_documents:
         document_id = document.get("_id")
         pre_revision = document.get("_rev")
         if not isinstance(document_id, str) or not isinstance(pre_revision, str):
@@ -704,28 +712,77 @@ def _without_revision(document: Mapping[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _revision_ancestry(leaf: Mapping[str, Any]) -> list[str]:
+    revisions = leaf.get("_revisions")
+    if not isinstance(revisions, Mapping):
+        return []
+    start = revisions.get("start")
+    identifiers = revisions.get("ids")
+    if not isinstance(start, int) or start < 1 or not isinstance(identifiers, list):
+        return []
+    if not all(isinstance(identifier, str) and identifier for identifier in identifiers):
+        return []
+    ancestry = [f"{start - index}-{identifier}" for index, identifier in enumerate(identifiers)]
+    return ancestry if ancestry and ancestry[0] == leaf.get("_rev") else []
+
+
+def _is_direct_successor(leaf: Mapping[str, Any], pre_revision: str) -> bool:
+    ancestry = _revision_ancestry(leaf)
+    return len(ancestry) >= 2 and ancestry[1] == pre_revision
+
+
 def _classify_journal_entry(
-    client: Any, database: str, entry: Mapping[str, Any]
+    leaves: Sequence[Mapping[str, Any]],
+    winners: Mapping[str, str],
+    entry: Mapping[str, Any],
 ) -> str:
     document_id = entry["documentId"]
     pre_revision = entry["preRevision"]
     intended = entry["intendedBody"]
-    leaves, winners = client.get_current_leaf_graph(database)
     matching = [leaf for leaf in leaves if leaf.get("_id") == document_id]
     if any(leaf.get("_rev") == pre_revision for leaf in matching):
         return "locked-pre-state"
     intended_body = _without_revision(intended)
     if intended.get("_deleted"):
-        # CouchDB may retain only special fields in a stored deletion stub. A deleted
-        # successor is exact because the locked pre-revision can have only one child.
-        if any(leaf.get("_deleted") for leaf in matching):
+        # CouchDB may retain only special fields in a stored deletion stub. The
+        # exact journal result is the current deleted leaf directly descending
+        # from this entry's locked conflict revision.
+        if any(
+            leaf.get("_deleted") and _is_direct_successor(leaf, pre_revision)
+            for leaf in matching
+        ):
             return "exact-intended-result"
     else:
         winner_revision = winners.get(document_id)
         winner = next((leaf for leaf in matching if leaf.get("_rev") == winner_revision), None)
-        if winner is not None and _without_revision(winner) == intended_body:
+        if (
+            winner is not None
+            and _is_direct_successor(winner, pre_revision)
+            and _without_revision(winner) == intended_body
+        ):
             return "exact-intended-result"
     return "divergent"
+
+
+def _read_stable_leaf_graph(
+    client: Any, database: str
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    before = client.get_database_info(database)
+    leaves, winners = client.get_current_leaf_graph(database)
+    after = client.get_database_info(database)
+    if (
+        before.get("uuid") != after.get("uuid")
+        or before.get("update_seq") != after.get("update_seq")
+    ):
+        raise MigrationSafetyError("database changed during journal classification")
+    return leaves, winners
+
+
+def _classify_journal_entries(
+    client: Any, database: str, entries: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    leaves, winners = _read_stable_leaf_graph(client, database)
+    return [_classify_journal_entry(leaves, winners, entry) for entry in entries]
 
 
 def apply_or_resume_journal(
@@ -733,9 +790,7 @@ def apply_or_resume_journal(
 ) -> dict[str, int]:
     _ensure_exact_database(database)
     journal = _load_migration_journal(journal_path)
-    classifications = [
-        _classify_journal_entry(client, database, entry) for entry in journal["entries"]
-    ]
+    classifications = _classify_journal_entries(client, database, journal["entries"])
     if "divergent" in classifications:
         raise MigrationSafetyError("journaled operation encountered divergent state")
 
@@ -748,7 +803,7 @@ def apply_or_resume_journal(
         # Bulk responses are advisory. Exact rereads below establish what actually committed.
         client.bulk_docs(database, pending)
 
-    final = [_classify_journal_entry(client, database, entry) for entry in journal["entries"]]
+    final = _classify_journal_entries(client, database, journal["entries"])
     if "divergent" in final:
         raise MigrationSafetyError("journaled operation diverged after a partial write")
     if "locked-pre-state" in final:
@@ -854,9 +909,14 @@ def _validate_snapshot_and_fence(
     database: str,
     expected_update_seq: str,
     snapshot_path: str | Path,
+    require_exact_state: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     # Lazy import avoids a module cycle: the operations module reuses this file's HTTP client.
-    from scripts.document_contract_ops import verify_snapshot, verify_validator
+    from scripts.document_contract_ops import (
+        security_checksum,
+        verify_snapshot,
+        verify_validator,
+    )
 
     snapshot = verify_snapshot(snapshot_path)
     if (
@@ -870,7 +930,161 @@ def _validate_snapshot_and_fence(
         raise MigrationSafetyError("compatible document validator is not installed")
     if snapshot.get("validatorRevision") != validator.get("validatorRevision"):
         raise MigrationSafetyError("validator revision differs from S1")
+
+    info_before = client.get_database_info(database)
+    security_before = client.get_security(database)
+    leaves, winners = client.get_current_leaf_graph(database)
+    info_after = client.get_database_info(database)
+    security_after = client.get_security(database)
+    unsorted_leaf_identities = [
+        [leaf.get("_id"), leaf.get("_rev"), bool(leaf.get("_deleted"))]
+        for leaf in leaves
+    ]
+    if any(
+        not isinstance(identity[0], str) or not isinstance(identity[1], str)
+        for identity in unsorted_leaf_identities
+    ):
+        raise MigrationSafetyError("live S1 leaf identity is incomplete")
+    live_leaf_identities = sorted(unsorted_leaf_identities)
+    partitioned = bool(
+        info_before.get("partitioned") is True
+        or info_before.get("props", {}).get("partitioned", False)
+    )
+    if (
+        info_before.get("db_name") != database
+        or info_before.get("uuid") != snapshot.get("databaseUuid")
+        or info_after.get("uuid") != info_before.get("uuid")
+        or info_after.get("update_seq") != info_before.get("update_seq")
+        or partitioned != bool(snapshot.get("partitioned"))
+        or security_checksum(security_before) != snapshot.get("securityChecksum")
+        or security_checksum(security_after) != snapshot.get("securityChecksum")
+    ):
+        raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
+    if require_exact_state and (
+        info_before.get("update_seq") != snapshot.get("databaseUpdateSeq")
+        or live_leaf_identities != snapshot.get("leafIdentities")
+        or dict(winners) != snapshot.get("winnerRevisions")
+    ):
+        raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
     return snapshot, validator
+
+
+def _load_snapshot_leaves(snapshot_path: str | Path) -> list[dict[str, Any]]:
+    leaf_path = Path(snapshot_path).resolve() / "leaf-graph.ndjson"
+    try:
+        return [
+            json.loads(line)
+            for line in leaf_path.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationSafetyError("S1 leaf graph is unreadable") from error
+
+
+def _snapshot_winners(
+    snapshot: Mapping[str, Any], leaves: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf
+        for leaf in leaves
+    }
+    if len(by_identity) != len(leaves):
+        raise MigrationSafetyError("S1 leaf graph contains duplicate identities")
+    winners = []
+    for document_id, revision in snapshot.get("winnerRevisions", {}).items():
+        if document_id == "_design/fortudo-document-contract":
+            continue
+        winner = by_identity.get((document_id, revision))
+        if winner is None:
+            raise MigrationSafetyError("S1 winner body is missing from the leaf graph")
+        body = copy.deepcopy(dict(winner))
+        body.pop("_revisions", None)
+        conflicts = sorted(
+            str(leaf.get("_rev"))
+            for leaf in leaves
+            if leaf.get("_id") == document_id
+            and leaf.get("_rev") != revision
+            and not leaf.get("_deleted")
+        )
+        if conflicts:
+            body["_conflicts"] = conflicts
+        winners.append(body)
+    return winners
+
+
+def _validate_resume_state_against_s1(
+    client: Any,
+    *,
+    database: str,
+    snapshot: Mapping[str, Any],
+    snapshot_leaves: Sequence[Mapping[str, Any]],
+    journal: Mapping[str, Any],
+) -> None:
+    live_leaves, live_winners = _read_stable_leaf_graph(client, database)
+    classifications = [
+        _classify_journal_entry(live_leaves, live_winners, entry)
+        for entry in journal["entries"]
+    ]
+    if "divergent" in classifications:
+        raise MigrationSafetyError("journaled resume state diverges from S1")
+
+    source_by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf for leaf in snapshot_leaves
+    }
+    live_by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf for leaf in live_leaves
+    }
+    if len(source_by_identity) != len(snapshot_leaves) or len(live_by_identity) != len(live_leaves):
+        raise MigrationSafetyError("resume leaf graph contains duplicate identities")
+
+    journal_pre_identities = {
+        (entry["documentId"], entry["preRevision"]) for entry in journal["entries"]
+    }
+    expected_identities = set(source_by_identity) - journal_pre_identities
+    expected_winners = dict(snapshot.get("winnerRevisions", {}))
+
+    for entry, state in zip(journal["entries"], classifications, strict=True):
+        pre_identity = (entry["documentId"], entry["preRevision"])
+        if pre_identity not in source_by_identity:
+            raise MigrationSafetyError("journal pre-revision is absent from S1")
+        if state == "locked-pre-state":
+            expected_identities.add(pre_identity)
+            continue
+
+        intended = entry["intendedBody"]
+        matching = [leaf for leaf in live_leaves if leaf.get("_id") == entry["documentId"]]
+        if intended.get("_deleted"):
+            candidates = [
+                leaf
+                for leaf in matching
+                if leaf.get("_deleted")
+                and _is_direct_successor(leaf, entry["preRevision"])
+            ]
+        else:
+            winner_revision = live_winners.get(entry["documentId"])
+            candidates = [
+                leaf
+                for leaf in matching
+                if leaf.get("_rev") == winner_revision
+                and _is_direct_successor(leaf, entry["preRevision"])
+                and _without_revision(leaf) == _without_revision(intended)
+            ]
+        if len(candidates) != 1:
+            raise MigrationSafetyError("journal intended successor is not unique")
+        successor = candidates[0]
+        expected_identities.add((successor["_id"], successor["_rev"]))
+        if not intended.get("_deleted"):
+            expected_winners[entry["documentId"]] = successor["_rev"]
+
+    if set(live_by_identity) != expected_identities or dict(live_winners) != expected_winners:
+        raise MigrationSafetyError("journaled resume state contains unrelated changes")
+    unchanged_identities = set(source_by_identity) - journal_pre_identities
+    if any(
+        _canonical_json(live_by_identity[identity])
+        != _canonical_json(source_by_identity[identity])
+        for identity in unchanged_identities
+    ):
+        raise MigrationSafetyError("unchanged S1 leaf body differs during resume")
 
 
 def apply_migration(
@@ -886,9 +1100,10 @@ def apply_migration(
     _ensure_exact_database(database)
     if confirmation != database:
         raise MigrationSafetyError("typed database confirmation did not match")
+    is_resume = journal_path is not None
     info = client.get_database_info(database)
     _validate_database_info(database, info)
-    if info["update_seq"] != expected_update_seq:
+    if not is_resume and info["update_seq"] != expected_update_seq:
         raise MigrationSafetyError("update_seq changed after the dry-run")
 
     snapshot, validator = _validate_snapshot_and_fence(
@@ -896,30 +1111,30 @@ def apply_migration(
         database=database,
         expected_update_seq=expected_update_seq,
         snapshot_path=snapshot_path,
+        require_exact_state=not is_resume,
     )
+    snapshot_leaves = _load_snapshot_leaves(snapshot_path)
+    winners = _snapshot_winners(snapshot, snapshot_leaves)
 
-    winners = client.get_all_documents(database, include_conflicts=True)
     plan = build_migration_plan(winners)
     if plan.running_timer_present:
         raise MigrationSafetyError("running timer must be stopped before production migration")
 
+    live_winners = client.get_all_documents(database, include_conflicts=True)
     existing_completion = next(
-        (row for row in winners if row.get("_id") == MIGRATION_COMPLETION_ID), None
+        (row for row in live_winners if row.get("_id") == MIGRATION_COMPLETION_ID), None
     )
     if existing_completion is not None:
         raise MigrationSafetyError("completion marker already exists; manual verification is required")
 
-    locked_info = client.get_database_info(database)
-    _validate_database_info(database, locked_info)
-    locked_winners = client.get_all_documents(database, include_conflicts=True)
-    _validate_locked_state(
-        expected_update_seq=expected_update_seq,
-        database_info=locked_info,
-        original_winners=winners,
-        current_winners=locked_winners,
+    writes = sorted(
+        [*plan.updates, *plan.conflict_tombstones],
+        key=lambda document: (
+            str(document.get("_id")),
+            bool(document.get("_deleted")),
+            str(document.get("_rev")),
+        ),
     )
-
-    writes = [*plan.updates, *plan.conflict_tombstones]
     if journal_path is None:
         journal_path = create_migration_journal(
             writes,
@@ -929,6 +1144,24 @@ def apply_migration(
     journal = _load_migration_journal(journal_path)
     if [entry["intendedBody"] for entry in journal["entries"]] != writes:
         raise MigrationSafetyError("migration journal does not match the current dry-run")
+    if is_resume:
+        _validate_resume_state_against_s1(
+            client,
+            database=database,
+            snapshot=snapshot,
+            snapshot_leaves=snapshot_leaves,
+            journal=journal,
+        )
+    else:
+        # Recheck immediately before the first production mutation. Creating the
+        # local journal cannot change Cloudant state.
+        _validate_snapshot_and_fence(
+            client,
+            database=database,
+            expected_update_seq=expected_update_seq,
+            snapshot_path=snapshot_path,
+            require_exact_state=True,
+        )
     apply_or_resume_journal(client, database=database, journal_path=journal_path)
     post_winners = client.get_all_documents(database, include_conflicts=True)
     _verify_post_migration(winners, post_winners)
@@ -981,11 +1214,8 @@ def apply_migration(
     if not marker_result.get("ok") or not isinstance(marker_result.get("rev"), str):
         raise MigrationSafetyError("completion marker write conflicted or failed")
     stored_marker = client.get_document(database, MIGRATION_COMPLETION_ID)
-    if (
-        stored_marker is None
-        or stored_marker.get("verifiedStateFingerprint") != fingerprint
-        or stored_marker.get("s1SnapshotChecksum") != snapshot["manifestChecksum"]
-    ):
+    expected_stored_marker = {**completion, "_rev": marker_result["rev"]}
+    if stored_marker != expected_stored_marker:
         raise MigrationSafetyError("completion marker reread failed")
     final_fingerprint, final_counts = compute_verified_state_fingerprint(
         client, database, validator["validatorRevision"]

@@ -68,7 +68,7 @@ describe('taxonomy-mutations', () => {
             key: expect.stringMatching(/^g-[0-9a-f-]{36}$/),
             label: 'Deep Focus',
             colorFamily: 'amber',
-            legacyKeys: [],
+            legacyKeys: [group.key],
             status: 'active',
             archivedAt: null
         });
@@ -118,12 +118,15 @@ describe('taxonomy-mutations', () => {
 
     test('deleteGroup blocks when tasks reference the group key', async () => {
         await initAndLoadTaxonomy();
+        const category = getGroupByKey('break');
         await putTask({
             id: 'task-break-reference',
             type: 'unscheduled',
             description: 'Break task',
             status: 'incomplete',
-            category: 'break'
+            category: category.key,
+            categoryId: category.id,
+            categoryIdentityVersion: 1
         });
 
         await expect(deleteGroup('break')).rejects.toThrow('referenced by tasks');
@@ -248,12 +251,15 @@ describe('taxonomy-mutations', () => {
         await expect(updateCategory('missing', { label: 'Nope' })).rejects.toThrow('not found');
         await expect(deleteCategory('missing')).rejects.toThrow('not found');
 
+        const category = getCategoryByKey('work/deep');
         await putTask({
             id: 'task-category-reference',
             type: 'unscheduled',
             description: 'Deep work task',
             status: 'incomplete',
-            category: 'work/deep'
+            category: category.key,
+            categoryId: category.id,
+            categoryIdentityVersion: 1
         });
 
         await expect(deleteCategory('work/deep')).rejects.toThrow('referenced by tasks');
@@ -268,6 +274,7 @@ describe('taxonomy-mutations', () => {
             startDateTime: '2026-07-21T09:00:00.000Z',
             endDateTime: '2026-07-21T09:30:00.000Z',
             duration: 30,
+            category: category.key,
             categoryId: category.id,
             categoryIdentityVersion: 1
         });

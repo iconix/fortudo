@@ -55,12 +55,26 @@ function auditClassifications(audit) {
 export async function buildLocalRecoveryBundle(
     database,
     audit,
-    { digest = sha256, now = () => new Date().toISOString() } = {}
+    { digest = sha256, now = () => new Date().toISOString(), maxRetries = 3 } = {}
 ) {
-    const [info, enumeration] = await Promise.all([
-        database.info(),
-        enumerateCurrentLocalLeaves(database)
-    ]);
+    let info;
+    let enumeration;
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+        const before = await database.info();
+        const candidate = await enumerateCurrentLocalLeaves(database);
+        const after = await database.info();
+        if (
+            canonicalJson(before.update_seq) === canonicalJson(candidate.lastSequence) &&
+            canonicalJson(before.update_seq) === canonicalJson(after.update_seq)
+        ) {
+            info = after;
+            enumeration = candidate;
+            break;
+        }
+    }
+    if (!info || !enumeration) {
+        throw new Error('Local data changed during recovery export. Please try again.');
+    }
     const allLeaves = [...enumeration.leaves, ...enumeration.designLeaves].sort(
         (first, second) =>
             first.id.localeCompare(second.id) || first.revision.localeCompare(second.revision)

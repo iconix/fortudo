@@ -182,10 +182,23 @@ async function expectDenied(operation, code) {
     throw new GateAssertionError(`expected ${code}`);
 }
 
-async function runGoldenCorpusGate(database, corpus, counts) {
+async function seedGoldenCorpusOldDocuments(database, corpus) {
+    const revisions = new Map();
+    for (const [index, testCase] of corpus.cases.entries()) {
+        if (!testCase.oldDocument) continue;
+        const oldDocument = structuredClone(testCase.oldDocument);
+        oldDocument._id = `golden-${index}-${testCase.document._id}`;
+        const result = await remoteOperation(() => database.put(oldDocument));
+        revisions.set(index, result.rev);
+    }
+    return revisions;
+}
+
+async function runGoldenCorpusGate(database, corpus, counts, seededRevisions) {
     for (const [index, testCase] of corpus.cases.entries()) {
         const document = structuredClone(testCase.document);
         document._id = `golden-${index}-${document._id}`;
+        if (seededRevisions.has(index)) document._rev = seededRevisions.get(index);
         if (document._deleted) {
             const seed = await remoteOperation(() =>
                 database.put(contracted({ _id: document._id, docType: 'task', goldenSeed: true }))
@@ -320,15 +333,45 @@ async function runCheckpointAndQuarantineGate(database, design, counts) {
         docType: 'task',
         note: 'base'
     };
+    const taxonomyBase = contracted({
+        _id: 'config-categories',
+        _rev: '1-33333333333333333333333333333333',
+        docType: 'config',
+        schemaVersion: '3.5',
+        identityVersion: 1,
+        groups: [
+            {
+                id: '3930ae01-aef6-5c5f-8db3-d91be139ea84',
+                key: 'work',
+                legacyKeys: ['work'],
+                status: 'active',
+                archivedAt: null
+            }
+        ],
+        categories: [
+            {
+                id: '9c52c0e9-c389-54e1-927f-52c16b13de99',
+                key: 'work/meetings',
+                legacyKeys: ['work/meetings', 'work/comms'],
+                groupKey: 'work',
+                groupId: '3930ae01-aef6-5c5f-8db3-d91be139ea84',
+                status: 'active',
+                archivedAt: null
+            }
+        ]
+    });
     await runSanitizedPhase('quarantine legacy seed', () =>
-        remoteOperation(() => database.bulkDocs([base, validBase], { new_edits: false }))
+        remoteOperation(() =>
+            database.bulkDocs([base, validBase, taxonomyBase], { new_edits: false })
+        )
     );
 
-    const local = new PouchDB(`contract-gate-local-${randomBytes(8).toString('hex')}`, {
+    const localName = `contract-gate-local-${randomBytes(8).toString('hex')}`;
+    let local = new PouchDB(localName, {
         adapter: 'memory'
     });
     try {
-        await local.bulkDocs([base, validBase], { new_edits: false });
+        await local.bulkDocs([base, validBase, taxonomyBase], { new_edits: false });
         await runSanitizedPhase('quarantine validator installation', () =>
             remoteOperation(() => database.put(design))
         );
@@ -363,6 +406,24 @@ async function runCheckpointAndQuarantineGate(database, design, counts) {
         const validConflict = await local.put(
             contracted({ ...localValidBase, note: 'offline current edit' })
         );
+        const remoteTaxonomyBase = await database.get(taxonomyBase._id);
+        await runSanitizedPhase('remote taxonomy successor', () =>
+            remoteOperation(() =>
+                database.put(contracted({ ...remoteTaxonomyBase, note: 'remote current edit' }))
+            )
+        );
+        const localTaxonomyBase = await local.get(taxonomyBase._id);
+        const deniedTaxonomy = contracted({
+            ...localTaxonomyBase,
+            categories: [
+                {
+                    ...localTaxonomyBase.categories[0],
+                    legacyKeys: ['work/meetings']
+                }
+            ],
+            note: 'structurally valid but remotely non-monotonic'
+        });
+        const deniedTaxonomyResult = await local.put(deniedTaxonomy);
 
         const push = await local.replicate.to(database);
         assert(push.doc_write_failures > 0, 'legacy branch was not denied');
@@ -377,9 +438,44 @@ async function runCheckpointAndQuarantineGate(database, design, counts) {
         const stranded = difference[base._id]?.missing?.includes(offlineResult.rev);
         const strandedBody = await local.get(base._id, { rev: offlineResult.rev });
         assert(stranded && !strandedBody.writerContract, 'stranded denied leaf was not detectable');
-        counts.denied += 1;
+        const deniedTaxonomyDifference = await remoteOperation(() =>
+            database.revsDiff({ [taxonomyBase._id]: [deniedTaxonomyResult.rev] })
+        );
+        assert(
+            deniedTaxonomyDifference[taxonomyBase._id]?.missing?.includes(
+                deniedTaxonomyResult.rev
+            ),
+            'structurally valid server-denied taxonomy leaf was not missing'
+        );
+        assert(
+            deniedTaxonomy.writerContract?.categoryReference === null &&
+                deniedTaxonomy.identityVersion === 1,
+            'server-denied taxonomy leaf was not structurally current'
+        );
+
+        await local.close();
+        local = new PouchDB(localName, { adapter: 'memory' });
+        await local.replicate.to(database);
+        const afterReloadDifference = await remoteOperation(() =>
+            database.revsDiff({ [taxonomyBase._id]: [deniedTaxonomyResult.rev] })
+        );
+        assert(
+            afterReloadDifference[taxonomyBase._id]?.missing?.includes(
+                deniedTaxonomyResult.rev
+            ),
+            'checkpointed server denial was not reproducible after reload'
+        );
+        const reloadedDeniedBody = await local.get(taxonomyBase._id, {
+            rev: deniedTaxonomyResult.rev
+        });
+        assert(
+            reloadedDeniedBody.writerContract?.version === 1,
+            'reloaded server-denied leaf lost its current contract'
+        );
+        counts.denied += 2;
         counts.allowed += 1;
         counts.strandedLeavesDetected += 1;
+        counts.validServerDeniedLeavesDetected += 1;
         counts.validatorLastReconstructions += 1;
     } finally {
         await local.destroy();
@@ -442,6 +538,7 @@ async function main() {
         goldenCases: 0,
         mixedBatches: 0,
         strandedLeavesDetected: 0,
+        validServerDeniedLeavesDetected: 0,
         validatorLastReconstructions: 0,
         disposableDatabases: 2
     };
@@ -458,11 +555,14 @@ async function main() {
             remoteOperation(() => quarantine.info())
         );
         quarantineCreated = true;
+        const goldenSeeds = await runSanitizedPhase('golden legacy setup', () =>
+            seedGoldenCorpusOldDocuments(primary, corpus)
+        );
         await runSanitizedPhase('primary validator installation', () =>
             remoteOperation(() => primary.put(design))
         );
         await runSanitizedPhase('golden corpus', () =>
-            runGoldenCorpusGate(primary, corpus, counts)
+            runGoldenCorpusGate(primary, corpus, counts, goldenSeeds)
         );
         await runSanitizedPhase('primary contract behavior', () => runPrimaryGate(primary, counts));
         await runSanitizedPhase('checkpoint and quarantine behavior', () =>

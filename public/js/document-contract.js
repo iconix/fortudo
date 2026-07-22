@@ -3,7 +3,7 @@ export const DOCUMENT_CONTRACT_DESIGN_ID = '_design/fortudo-document-contract';
 
 // SHA-256 of the reviewed contract source. Operational tooling recomputes and verifies it.
 export const DOCUMENT_CONTRACT_CHECKSUM =
-    '404609a41178c355464a1a78cf96b6223d63a3bb7ea1d7eca7faf964c3bd22cc';
+    'c0bf4717ff74c9daa32b850b059df95a45f2156b3491c91f5c658990c0e26a75';
 
 export const CONTRACT_REJECTION_CODES = Object.freeze({
     APPLICATION_ID: 'FDC_APPLICATION_ID',
@@ -51,6 +51,69 @@ function cloudantValidateDocUpdate(newDoc, oldDoc) {
 
     function taxonomyRows(document) {
         return document.groups.concat(document.categories);
+    }
+
+    function validateLegacyTaxonomyTransition(previous, document) {
+        if (
+            previous.schemaVersion !== '3.5' ||
+            (previous.identityVersion !== undefined && previous.identityVersion !== null) ||
+            !Array.isArray(previous.groups) ||
+            !Array.isArray(previous.categories)
+        ) {
+            deny('FDC_TAXONOMY_SCHEMA');
+        }
+
+        var oldKeys = {};
+        var newGroupByLegacyKey = {};
+        var newCategoryByLegacyKey = {};
+        var index;
+        var legacyIndex;
+        var row;
+
+        for (index = 0; index < document.groups.length; index += 1) {
+            row = document.groups[index];
+            for (legacyIndex = 0; legacyIndex < row.legacyKeys.length; legacyIndex += 1) {
+                newGroupByLegacyKey[row.legacyKeys[legacyIndex]] = row;
+            }
+        }
+        for (index = 0; index < document.categories.length; index += 1) {
+            row = document.categories[index];
+            for (legacyIndex = 0; legacyIndex < row.legacyKeys.length; legacyIndex += 1) {
+                newCategoryByLegacyKey[row.legacyKeys[legacyIndex]] = row;
+            }
+        }
+
+        for (index = 0; index < previous.groups.length; index += 1) {
+            row = previous.groups[index];
+            if (!row || !nonemptyString(row.key) || oldKeys[row.key]) {
+                deny('FDC_TAXONOMY_SCHEMA');
+            }
+            oldKeys[row.key] = true;
+            if (!newGroupByLegacyKey[row.key]) deny('FDC_TAXONOMY_STABLE_ID');
+        }
+        for (index = 0; index < previous.categories.length; index += 1) {
+            row = previous.categories[index];
+            if (
+                !row ||
+                !nonemptyString(row.key) ||
+                oldKeys[row.key] ||
+                !nonemptyString(row.groupKey) ||
+                !oldKeys[row.groupKey]
+            ) {
+                deny('FDC_TAXONOMY_SCHEMA');
+            }
+            oldKeys[row.key] = true;
+            var migratedCategory = newCategoryByLegacyKey[row.key];
+            var migratedGroup = newGroupByLegacyKey[row.groupKey];
+            if (
+                !migratedCategory ||
+                !migratedGroup ||
+                migratedCategory.groupId !== migratedGroup.id ||
+                migratedCategory.groupKey !== migratedGroup.key
+            ) {
+                deny('FDC_TAXONOMY_STABLE_ID');
+            }
+        }
     }
 
     function validateTaxonomy(document, previous) {
@@ -117,6 +180,10 @@ function cloudantValidateDocUpdate(newDoc, oldDoc) {
         if (!previous || previous._deleted) return;
         if (!Array.isArray(previous.groups) || !Array.isArray(previous.categories)) {
             deny('FDC_TAXONOMY_SCHEMA');
+        }
+        if (previous.identityVersion !== 1) {
+            validateLegacyTaxonomyTransition(previous, document);
+            return;
         }
 
         var oldRows = previous.groups.concat(previous.categories);

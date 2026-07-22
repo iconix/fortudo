@@ -4,10 +4,15 @@
 
 jest.mock('../public/js/sync-contract.js', () => ({
     inspectRemoteDocumentContract: jest.fn(),
-    auditLocalDivergence: jest.fn()
+    auditLocalDivergence: jest.fn(),
+    findRemoteMissingLeaves: jest.fn()
 }));
 
-import { auditLocalDivergence, inspectRemoteDocumentContract } from '../public/js/sync-contract.js';
+import {
+    auditLocalDivergence,
+    findRemoteMissingLeaves,
+    inspectRemoteDocumentContract
+} from '../public/js/sync-contract.js';
 
 import {
     initSync,
@@ -44,6 +49,7 @@ describe('Sync Manager', () => {
             designLeaves: [],
             updateSequence: 1
         });
+        findRemoteMissingLeaves.mockResolvedValue([]);
     });
 
     afterEach(() => {

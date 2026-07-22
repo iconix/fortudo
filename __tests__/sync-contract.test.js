@@ -36,6 +36,7 @@ describe('remote document contract inspection', () => {
         const compatible = await contractedRemote();
         const newer = database('newer');
         const corrupt = database('corrupt');
+        const forgedSource = database('forged-source');
         const partitioned = {
             info: jest.fn().mockResolvedValue({
                 db_name: 'partitioned',
@@ -49,6 +50,10 @@ describe('remote document contract inspection', () => {
         await corrupt.put({
             ...buildDocumentContractDesignDoc(),
             fortudoDocumentContract: { version: 1, checksum: 'b'.repeat(64) }
+        });
+        await forgedSource.put({
+            ...buildDocumentContractDesignDoc(),
+            validate_doc_update: `${buildDocumentContractDesignDoc().validate_doc_update} `
         });
 
         await expect(inspectRemoteDocumentContract(missing)).resolves.toMatchObject({
@@ -67,12 +72,16 @@ describe('remote document contract inspection', () => {
             state: 'validator-mismatch',
             compatible: false
         });
+        await expect(inspectRemoteDocumentContract(forgedSource)).resolves.toMatchObject({
+            state: 'validator-mismatch',
+            compatible: false
+        });
         await expect(inspectRemoteDocumentContract(partitioned)).resolves.toMatchObject({
             state: 'validator-mismatch',
             compatible: false
         });
 
-        await destroyAll(missing, compatible, newer, corrupt);
+        await destroyAll(missing, compatible, newer, corrupt, forgedSource);
     });
 
     test('classifies an absent remote database without exposing its URL', async () => {
@@ -183,6 +192,7 @@ describe('local divergence audit', () => {
         const local = {
             info: jest.fn().mockImplementation(() => Promise.resolve({ update_seq: sequence++ })),
             changes: jest.fn().mockResolvedValue({
+                last_seq: 0,
                 results: [{ id: 'task-1', changes: [{ rev: '1-a' }] }]
             }),
             get: jest.fn().mockResolvedValue(leaves[0].document)

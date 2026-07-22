@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from urllib.error import HTTPError
 from urllib.parse import urlparse
 
 import pytest
@@ -15,14 +14,14 @@ from scripts.e2e_helpers import (
     enter_room,
     launch_browser,
     read_docs,
-    seed_docs,
     wait_until,
 )
 from scripts.preview_smoke.remote import (
     build_remote_db_name,
+    create_remote_database,
     delete_remote_database,
     fetch_preview_couchdb_url,
-    fetch_remote_docs,
+    put_remote_docs,
 )
 
 LEGACY_TASK_ID = "unsched-taxonomy-identity-legacy"
@@ -174,6 +173,8 @@ def test_taxonomy_identity_compatibility_converges_across_two_preview_clients():
     room_code = f"taxonomy-identity-{int(time.time() * 1000)}"
     remote_db_name = build_remote_db_name(hostname, room_code)
     delete_remote_database(couchdb_url, remote_db_name)
+    create_remote_database(couchdb_url, remote_db_name)
+    put_remote_docs(couchdb_url, remote_db_name, compatibility_seed())
 
     try:
         with sync_playwright() as playwright:
@@ -222,32 +223,26 @@ def test_taxonomy_identity_compatibility_converges_across_two_preview_clients():
             page_a.goto(preview_url, wait_until="load")
             reset_preview_browser_state(page_a)
             clear_room_storage(page_a, room_code)
-            seed_docs(page_a, room_code, compatibility_seed())
             enter_room(page_a, room_code)
 
-            def remote_seed_ready():
+            def grandfathered_seed_pulled():
                 trigger_sync_and_wait(page_a)
-                try:
-                    remote_ids = {
-                        document.get("_id")
-                        for document in fetch_remote_docs(couchdb_url, remote_db_name)
-                    }
-                except HTTPError as error:
-                    if error.code == 404:
-                        return False
-                    raise
-                return {
-                    "config-categories",
-                    LEGACY_TASK_ID,
-                    LEGACY_ACTIVITY_ID,
-                }.issubset(remote_ids)
+                local_ids = {
+                    document.get("_id") for document in read_docs(page_a, room_code)
+                }
+                return {"config-categories", LEGACY_TASK_ID, LEGACY_ACTIVITY_ID}.issubset(
+                    local_ids
+                )
 
             try:
-                wait_until(remote_seed_ready, "compatibility seed to reach preview Cloudant")
+                wait_until(
+                    grandfathered_seed_pulled,
+                    "grandfathered compatibility seed to reach the first client",
+                )
             except TimeoutError as error:
                 sync_status = trigger_sync_and_wait(page_a)
                 raise AssertionError(
-                    "Initial preview sync did not settle; "
+                    "Initial grandfathered preview pull did not settle; "
                     f"status={sync_status!r}, diagnostics={sync_diagnostics[-20:]!r}"
                 ) from error
 

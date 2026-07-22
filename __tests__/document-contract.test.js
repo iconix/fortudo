@@ -118,14 +118,16 @@ describe('document persistence contract', () => {
 });
 
 describe('golden local/Cloudant conformance corpus', () => {
-    test.each(goldenCorpus.cases)('$name', ({ document, expected }) => {
+    test.each(goldenCorpus.cases)('$name', ({ document, oldDocument, expected }) => {
         const local = validateLocalDocumentContract(document);
         if (expected === 'allow') {
             expect(local).toEqual({ ok: true });
-            expect(() => runCloudantContractValidator(document)).not.toThrow();
+            expect(() => runCloudantContractValidator(document, oldDocument || null)).not.toThrow();
         } else {
             expect(local).toEqual({ ok: false, code: expected });
-            expect(() => runCloudantContractValidator(document)).toThrow(expected);
+            expect(() => runCloudantContractValidator(document, oldDocument || null)).toThrow(
+                expected
+            );
         }
     });
 });

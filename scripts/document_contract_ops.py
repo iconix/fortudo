@@ -380,6 +380,20 @@ def provision_database(client: Any, *, database: str, confirmation: str) -> dict
     }
 
 
+def _read_stable_leaf_graph(
+    client: Any, database: str
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    before = client.get_database_info(database)
+    leaves, winners = client.get_current_leaf_graph(database)
+    after = client.get_database_info(database)
+    if (
+        before.get("uuid") != after.get("uuid")
+        or before.get("update_seq") != after.get("update_seq")
+    ):
+        raise ContractOpsSafetyError("quarantine state changed during verification")
+    return leaves, winners
+
+
 def restore_quarantine(
     client: Any,
     *,
@@ -394,6 +408,17 @@ def restore_quarantine(
     manifest = verify_snapshot(snapshot_path)
     leaves = _read_ndjson(Path(snapshot_path) / "leaf-graph.ndjson")
     legacy_leaves = [leaf for leaf in leaves if leaf.get("_id") != CONTRACT_DESIGN_ID]
+    expected_leaf_bodies = {
+        (leaf["_id"], leaf["_rev"]): _canonical_json(leaf) for leaf in legacy_leaves
+    }
+    if len(expected_leaf_bodies) != len(legacy_leaves):
+        raise ContractOpsSafetyError("source snapshot contains duplicate legacy leaves")
+    expected_winners = {
+        document_id: revision
+        for document_id, revision in manifest.get("winnerRevisions", {}).items()
+        if document_id != CONTRACT_DESIGN_ID
+    }
+    source_security = _read_json(Path(snapshot_path) / "security.json")
 
     client.create_database(database)
     info = client.get_database_info(database)
@@ -401,9 +426,49 @@ def restore_quarantine(
         raise ContractOpsSafetyError("quarantine database was not empty")
     if legacy_leaves:
         client.bulk_docs_new_edits_false(database, legacy_leaves)
+    client.put_security(database, source_security)
+
+    restored_before_validator, winners_before_validator = _read_stable_leaf_graph(
+        client, database
+    )
+    restored_bodies = {
+        (leaf.get("_id"), leaf.get("_rev")): _canonical_json(leaf)
+        for leaf in restored_before_validator
+    }
+    if (
+        restored_bodies != expected_leaf_bodies
+        or dict(winners_before_validator) != expected_winners
+        or security_checksum(client.get_security(database)) != manifest["securityChecksum"]
+    ):
+        raise ContractOpsSafetyError("quarantine leaf reconstruction verification failed")
+
     result = client.put_document(database, load_design_document())
     if not result.get("ok") or verify_validator(client, database).get("state") != "compatible":
         raise ContractOpsSafetyError("validator-last quarantine reconstruction failed")
+    restored_after_validator, winners_after_validator = _read_stable_leaf_graph(client, database)
+    non_design_after = [
+        leaf for leaf in restored_after_validator if leaf.get("_id") != CONTRACT_DESIGN_ID
+    ]
+    final_bodies = {
+        (leaf.get("_id"), leaf.get("_rev")): _canonical_json(leaf)
+        for leaf in non_design_after
+    }
+    final_winners = {
+        document_id: revision
+        for document_id, revision in winners_after_validator.items()
+        if document_id != CONTRACT_DESIGN_ID
+    }
+    design_leaves = [
+        leaf for leaf in restored_after_validator if leaf.get("_id") == CONTRACT_DESIGN_ID
+    ]
+    if (
+        final_bodies != expected_leaf_bodies
+        or final_winners != expected_winners
+        or len(design_leaves) != 1
+        or design_leaves[0].get("_rev") != result.get("rev")
+        or security_checksum(client.get_security(database)) != manifest["securityChecksum"]
+    ):
+        raise ContractOpsSafetyError("verified quarantine state differs from the snapshot")
     return {
         "sourceSnapshotChecksum": manifest["manifestChecksum"],
         "leafCount": len(legacy_leaves),
@@ -480,6 +545,14 @@ class ContractOpsCloudantClient(CloudantClient):
     def get_security(self, database: str) -> dict[str, Any]:
         return self._request(
             "security metadata read", f"{urllib.parse.quote(database, safe='')}/_security"
+        )
+
+    def put_security(self, database: str, security: Mapping[str, Any]) -> None:
+        self._request(
+            "security metadata write",
+            f"{urllib.parse.quote(database, safe='')}/_security",
+            method="PUT",
+            body=security,
         )
 
     def get_current_leaf_graph(

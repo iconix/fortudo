@@ -18,7 +18,7 @@ jest.mock('../public/js/sync-manager.js', () => ({
     onSyncStatusChange: jest.fn()
 }));
 
-import { initStorage, destroyStorage, loadConfig, putConfig } from '../public/js/storage.js';
+import { destroyStorage, getDb, initStorage, loadConfig } from '../public/js/storage.js';
 import { COLOR_FAMILIES } from '../public/js/category-colors.js';
 import {
     loadTaxonomy,
@@ -31,6 +31,12 @@ import { getGroupByKey, getCategoryByKey } from '../public/js/taxonomy/taxonomy-
 let testDbCounter = 0;
 function uniqueRoomCode() {
     return `taxonomy-store-${testDbCounter++}-${Date.now()}`;
+}
+
+async function seedLegacyTaxonomy(config) {
+    const document = { ...config, _id: TAXONOMY_CONFIG_ID, docType: 'config' };
+    delete document.id;
+    await getDb().put(document);
 }
 
 afterEach(async () => {
@@ -82,7 +88,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy preserves empty schemaVersion 3.5 arrays', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             schemaVersion: '3.5',
             groups: [],
@@ -96,7 +102,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy projects legacy schema 3.5 identity without writing during boot', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             schemaVersion: '3.5',
             groups: [{ key: 'work', label: 'Work', colorFamily: 'blue', color: '#0ea5e9' }],
@@ -135,7 +141,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy migrates legacy rows into split group/category records', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             categories: [
                 { key: 'personal', label: 'Personal', color: '#ec4899', group: 'personal' },
@@ -157,7 +163,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy treats malformed schemaVersion 3.5 docs with missing arrays as empty arrays', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             schemaVersion: '3.5'
         });
@@ -169,7 +175,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy reseeds defaults for legacy docs with missing or empty categories', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({ id: TAXONOMY_CONFIG_ID, categories: [] });
+        await seedLegacyTaxonomy({ id: TAXONOMY_CONFIG_ID, categories: [] });
 
         await loadTaxonomy();
 
@@ -188,7 +194,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy normalizes malformed schemaVersion 3.5 rows and drops orphan child records', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             schemaVersion: '3.5',
             groups: [{ key: ' errands ', color: COLOR_FAMILIES.rose[1] }, { key: 'misc' }],
@@ -220,7 +226,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy infers group family from child colors when no standalone legacy row exists', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             categories: [
                 {
@@ -246,7 +252,7 @@ describe('taxonomy-store', () => {
 
     test('loadTaxonomy never derives display meaning from legacy key text', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             categories: [
                 {
@@ -265,7 +271,7 @@ describe('taxonomy-store', () => {
 
     test('legacy styling fallbacks also ignore semantic-looking keys', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({
+        await seedLegacyTaxonomy({
             id: TAXONOMY_CONFIG_ID,
             categories: [{ key: 'personal', group: 'personal' }]
         });

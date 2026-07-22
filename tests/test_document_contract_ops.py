@@ -68,6 +68,9 @@ class FakeCloudant:
     def get_security(self, database: str) -> dict:
         return copy.deepcopy(self.security)
 
+    def put_security(self, database: str, security: dict) -> None:
+        self.security = copy.deepcopy(security)
+
     def get_current_leaf_graph(self, database: str) -> tuple[list[dict], dict[str, str]]:
         return copy.deepcopy(self.leaves), copy.deepcopy(self.winners)
 
@@ -117,7 +120,7 @@ def test_design_document_source_and_checksum_match_the_browser_contract():
     assert design["_id"] == "_design/fortudo-document-contract"
     assert design["fortudoDocumentContract"] == {
         "version": 1,
-        "checksum": "404609a41178c355464a1a78cf96b6223d63a3bb7ea1d7eca7faf964c3bd22cc",
+        "checksum": "c0bf4717ff74c9daa32b850b059df95a45f2156b3491c91f5c658990c0e26a75",
     }
     assert "FDC_CONTRACT_VERSION" in design["validate_doc_update"]
 
@@ -232,6 +235,36 @@ def test_quarantine_restore_loads_legacy_leaves_before_validator(tmp_path):
     assert target.created == ["fortudo-quarantine-20260721"]
     assert target.write_order[-1] == "_design/fortudo-document-contract"
     assert "task-live" in target.write_order[:-1]
+    assert target.security == source.security
+
+
+def test_quarantine_restore_halts_before_validator_when_leaf_reconstruction_differs(tmp_path):
+    source = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        source,
+        database=source.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+
+    class CorruptingTarget(FakeCloudant):
+        def bulk_docs_new_edits_false(self, database: str, documents: list[dict]) -> None:
+            super().bulk_docs_new_edits_false(database, documents)
+            self.leaves[0]["private"] = "corrupted"
+
+    target = CorruptingTarget()
+    target.write_order.clear()
+    with pytest.raises(ops.ContractOpsSafetyError, match="reconstruction verification"):
+        ops.restore_quarantine(
+            target,
+            database="fortudo-quarantine-20260721",
+            confirmation="fortudo-quarantine-20260721",
+            snapshot_path=snapshot.path,
+        )
+
+    assert "_design/fortudo-document-contract" not in target.write_order
 
 
 def test_inventory_writes_private_manifest_but_returns_only_aggregates(tmp_path):

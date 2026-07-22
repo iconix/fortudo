@@ -1,4 +1,8 @@
-import { auditLocalDivergence, inspectRemoteDocumentContract } from './sync-contract.js';
+import {
+    auditLocalDivergence,
+    findRemoteMissingLeaves,
+    inspectRemoteDocumentContract
+} from './sync-contract.js';
 import { logger } from './utils.js';
 
 let localDb = null;
@@ -27,6 +31,7 @@ const rejectedLocalRevisions = new Set();
 
 const DEBOUNCE_MS = 2000;
 const RESUME_SYNC_COOLDOWN_MS = 15000;
+const REJECTED_LEAVES_LOCAL_ID = '_local/fortudo-document-contract-denials';
 const WRITE_BLOCKING_STATUSES = new Set([
     'update-required',
     'update-required-available',
@@ -215,6 +220,51 @@ function collectFailedRevisions(result, denied) {
     return denied.size > 0 || (result?.doc_write_failures || 0) > 0;
 }
 
+async function loadRejectedLocalRevisions() {
+    rejectedLocalRevisions.clear();
+    if (!localDb?.get) return;
+    try {
+        const record = await localDb.get(REJECTED_LEAVES_LOCAL_ID);
+        for (const identity of Array.isArray(record?.identities) ? record.identities : []) {
+            if (typeof identity === 'string' && identity.includes('@')) {
+                rejectedLocalRevisions.add(identity);
+            }
+        }
+    } catch (error) {
+        if (error?.status !== 404 && error?.name !== 'not_found') throw error;
+    }
+}
+
+async function persistRejectedLocalRevisions(database, identities) {
+    const merged = new Set(identities);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        let existing = null;
+        try {
+            existing = await database.get(REJECTED_LEAVES_LOCAL_ID);
+        } catch (error) {
+            if (error?.status !== 404 && error?.name !== 'not_found') throw error;
+        }
+        for (const identity of Array.isArray(existing?.identities) ? existing.identities : []) {
+            if (typeof identity === 'string' && identity.includes('@')) merged.add(identity);
+        }
+        const record = {
+            _id: REJECTED_LEAVES_LOCAL_ID,
+            formatVersion: 1,
+            identities: [...merged].sort()
+        };
+        if (existing?._rev) record._rev = existing._rev;
+        try {
+            await database.put(record);
+            if (database === localDb) {
+                for (const identity of merged) rejectedLocalRevisions.add(identity);
+            }
+            return;
+        } catch (error) {
+            if (error?.status !== 409 || attempt === 2) throw error;
+        }
+    }
+}
+
 export function assertPersistenceAllowed() {
     if (WRITE_BLOCKING_STATUSES.has(syncStatus)) {
         throw new Error(`Persistence blocked: ${syncStatus}`);
@@ -260,9 +310,15 @@ export function initSync(db, remote, options = {}) {
     observeLocalChanges();
     const currentSessionId = syncSessionId;
     preflightPromise = remoteDatabase
-        ? performFullPreflight(currentSessionId).finally(() => {
-              if (currentSessionId === syncSessionId) preflightPromise = null;
-          })
+        ? loadRejectedLocalRevisions()
+              .then(() => performFullPreflight(currentSessionId))
+              .catch(() => {
+                  if (currentSessionId === syncSessionId) setStatus('audit-error');
+                  return false;
+              })
+              .finally(() => {
+                  if (currentSessionId === syncSessionId) preflightPromise = null;
+              })
         : null;
 }
 
@@ -289,6 +345,7 @@ export async function triggerSync({
 
     const currentDb = localDb;
     const currentRemoteUrl = remoteUrl;
+    const currentRemoteDatabase = remoteDatabase;
     const currentSessionId = syncSessionId;
     syncInFlight = true;
     lastSyncStartedAt = now;
@@ -304,13 +361,44 @@ export async function triggerSync({
             if (currentSessionId !== syncSessionId) return;
 
             setStatus('syncing');
+            const auditedEligible = (lastAudit?.eligible || []).map((leaf) => ({
+                id: leaf.id,
+                revision: leaf.revision
+            }));
             const denied = new Set();
             const pushOperation = currentDb.replicate.to(currentRemoteUrl);
             observeDenied(pushOperation, denied);
-            const pushResult = await pushOperation;
-            const pushHadFailures = collectFailedRevisions(pushResult, denied);
+            let pushResult;
+            try {
+                pushResult = await pushOperation;
+            } catch (error) {
+                if (denied.size > 0) {
+                    await persistRejectedLocalRevisions(currentDb, denied);
+                }
+                throw error;
+            }
+            const resultHadFailures = collectFailedRevisions(pushResult, denied);
+            if (denied.size > 0) {
+                await persistRejectedLocalRevisions(currentDb, denied);
+            }
 
-            controlledPullSessionId = currentSessionId;
+            const missingAfterPush = await findRemoteMissingLeaves(
+                currentRemoteDatabase,
+                auditedEligible
+            );
+            if (missingAfterPush.length > 0) {
+                await persistRejectedLocalRevisions(
+                    currentDb,
+                    missingAfterPush.map((leaf) => `${leaf.id}@${leaf.revision}`)
+                );
+            }
+            const pushHadFailures = resultHadFailures || missingAfterPush.length > 0;
+            if (pushHadFailures && currentSessionId === syncSessionId) {
+                invalidateSyncAudit();
+                await performDivergenceAudit(currentSessionId);
+            }
+
+            if (currentSessionId === syncSessionId) controlledPullSessionId = currentSessionId;
             let pullResult;
             try {
                 pullResult = await currentDb.replicate.from(currentRemoteUrl);
@@ -320,26 +408,26 @@ export async function triggerSync({
                 }
             }
 
-            if (currentSessionId === syncSessionId && pushHadFailures) {
-                for (const identity of denied) rejectedLocalRevisions.add(identity);
-                invalidateSyncAudit();
-                await performDivergenceAudit(currentSessionId);
-                if (lastAudit?.state === 'compatible') {
-                    // After the mixed push, any still-missing eligible leaf is the rejected subset.
-                    for (const leaf of lastAudit.eligible || []) {
-                        rejectedLocalRevisions.add(`${leaf.id}@${leaf.revision}`);
-                    }
-                    invalidateSyncAudit();
-                    await performDivergenceAudit(currentSessionId);
-                }
-                if (lastAudit?.state === 'compatible') setStatus('audit-error');
-            } else if (currentSessionId === syncSessionId) {
-                syncSucceeded = true;
-                setStatus('synced');
-            }
-
             if (currentSessionId === syncSessionId && (pullResult?.docs_written || 0) > 0) {
                 notifyDataChange();
+            }
+            if (currentSessionId === syncSessionId) {
+                // A post-pull audit catches checkpointed denials and concurrent tab writes that
+                // arrived while controlled pull changes were being observed.
+                invalidateSyncAudit();
+                const postPullCompatible = await performDivergenceAudit(currentSessionId);
+                if (!postPullCompatible) return;
+                if ((lastAudit?.eligible || []).length > 0) {
+                    setStatus('unsynced');
+                    retryAfterInFlightFailureRequested = true;
+                    return;
+                }
+                if (pushHadFailures) {
+                    setStatus('audit-error');
+                    return;
+                }
+                syncSucceeded = true;
+                setStatus('synced');
             }
         } catch (error) {
             if (currentSessionId === syncSessionId) {

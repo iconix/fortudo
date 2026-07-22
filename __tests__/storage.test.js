@@ -762,7 +762,7 @@ describe('Storage - PouchDB', () => {
                 sourceTaskId: null
             });
             await putConfig({
-                id: 'config-categories',
+                id: 'config-taxonomy-test',
                 groups: [],
                 categories: []
             });
@@ -771,7 +771,7 @@ describe('Storage - PouchDB', () => {
 
             const tasks = await loadTasks();
             const activities = await loadActivities();
-            const categoriesConfig = await loadConfig('config-categories');
+            const categoriesConfig = await loadConfig('config-taxonomy-test');
 
             expect(tasks).toEqual([]);
             expect(activities).toEqual([
@@ -783,7 +783,7 @@ describe('Storage - PouchDB', () => {
             ]);
             expect(categoriesConfig).toEqual(
                 expect.objectContaining({
-                    id: 'config-categories',
+                    id: 'config-taxonomy-test',
                     docType: 'config'
                 })
             );

@@ -100,6 +100,22 @@ describe('storage document contract coverage', () => {
         expect(registerExpectedLocalRevision).toHaveBeenCalledWith('task-1', stored._rev);
     });
 
+    test('rejects a partial category identity before writing or registering a revision', async () => {
+        const db = await openRoom();
+
+        await expect(
+            putTask({
+                id: 'task-partial-category',
+                category: 'work/meetings',
+                categoryId: null,
+                categoryIdentityVersion: 1
+            })
+        ).rejects.toThrow('FDC_CATEGORY_CANONICAL');
+
+        await expect(db.get('task-partial-category')).rejects.toMatchObject({ status: 404 });
+        expect(registerExpectedLocalRevision).not.toHaveBeenCalled();
+    });
+
     test.each([
         ['single task', () => putTask({ id: 'task-1' }), () => deleteTask('task-1'), 'task-1'],
         [

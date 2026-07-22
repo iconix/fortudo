@@ -85,19 +85,25 @@ def losing_leaf() -> dict:
 class FakeCloudant:
     def __init__(self, *, update_seq: str = "42-seq") -> None:
         self.update_seq = update_seq
+        self.uuid = "database-uuid-1"
         self.winners = production_winners()
         self.leaves = {("activity-legacy", "3-activity-loser"): losing_leaf()}
         self.bulk_calls: list[list[dict]] = []
         self.put_calls: list[dict] = []
         self.tombstone_leaves: list[dict] = []
+        self.graph_reads = 0
         self.security = {"admins": {"names": []}, "members": {"names": []}}
         self.validator = contract_ops.load_design_document()
         self.validator["_rev"] = "1-contract"
+        self.revision_ancestries = {
+            (document["_id"], document["_rev"]): [document["_rev"]]
+            for document in [*self.winners, losing_leaf(), self.validator]
+        }
 
     def get_database_info(self, database: str) -> dict:
         return {
             "db_name": database,
-            "uuid": "database-uuid-1",
+            "uuid": self.uuid,
             "update_seq": self.update_seq,
             "doc_count": len(self.winners),
             "doc_del_count": 0,
@@ -120,22 +126,32 @@ class FakeCloudant:
         return copy.deepcopy(self.security)
 
     def get_current_leaf_graph(self, database: str) -> tuple[list[dict], dict[str, str]]:
+        self.graph_reads += 1
         leaves = [
             {key: copy.deepcopy(value) for key, value in winner.items() if key != "_conflicts"}
             for winner in self.winners
         ]
-        for winner in self.winners:
-            for revision in winner.get("_conflicts", []) or []:
-                leaves.append(copy.deepcopy(self.leaves[(winner["_id"], revision)]))
+        leaves.extend(copy.deepcopy(list(self.leaves.values())))
         leaves.extend(copy.deepcopy(self.tombstone_leaves))
         leaves.append(copy.deepcopy(self.validator))
-        return leaves, {leaf["_id"]: leaf["_rev"] for leaf in leaves if not leaf.get("_deleted")}
+        for leaf in leaves:
+            ancestry = self.revision_ancestries.get(
+                (leaf["_id"], leaf["_rev"]), [leaf["_rev"]]
+            )
+            leaf["_revisions"] = {
+                "start": int(ancestry[0].split("-", 1)[0]),
+                "ids": [revision.split("-", 1)[1] for revision in ancestry],
+            }
+        winners = {document["_id"]: document["_rev"] for document in self.winners}
+        winners[self.validator["_id"]] = self.validator["_rev"]
+        return leaves, winners
 
     def put_document(self, database: str, document: dict) -> dict:
         self.put_calls.append(copy.deepcopy(document))
         stored = copy.deepcopy(document)
         stored["_rev"] = "1-completion"
         self.winners.append(stored)
+        self.revision_ancestries[(stored["_id"], stored["_rev"])] = [stored["_rev"]]
         return {"ok": True, "id": document["_id"], "rev": stored["_rev"]}
 
     def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
@@ -143,6 +159,9 @@ class FakeCloudant:
         results = []
         for index, document in enumerate(documents):
             document_id = document["_id"]
+            pre_revision = document["_rev"]
+            generation = int(pre_revision.split("-", 1)[0]) + 1
+            new_revision = f"{generation}-next{len(self.bulk_calls)}{index}"
             if document.get("_deleted"):
                 winner = next(d for d in self.winners if d["_id"] == document_id)
                 winner["_conflicts"] = [
@@ -152,12 +171,13 @@ class FakeCloudant:
                 ]
                 if not winner["_conflicts"]:
                     winner.pop("_conflicts")
+                self.leaves.pop((document_id, pre_revision), None)
                 tombstone = copy.deepcopy(document)
-                tombstone["_rev"] = f"next-{len(self.bulk_calls)}-{index}"
+                tombstone["_rev"] = new_revision
                 self.tombstone_leaves.append(tombstone)
             else:
                 stored = copy.deepcopy(document)
-                stored["_rev"] = f"next-{len(self.bulk_calls)}-{index}"
+                stored["_rev"] = new_revision
                 stored.pop("_conflicts", None)
                 winner_index = next(
                     (
@@ -171,7 +191,12 @@ class FakeCloudant:
                     self.winners.append(stored)
                 else:
                     self.winners[winner_index] = stored
-            results.append({"id": document_id, "ok": True, "rev": f"next-{index}"})
+            parent_ancestry = self.revision_ancestries[(document_id, pre_revision)]
+            self.revision_ancestries[(document_id, new_revision)] = [
+                new_revision,
+                *parent_ancestry,
+            ]
+            results.append({"id": document_id, "ok": True, "rev": new_revision})
         return results
 
 
@@ -448,16 +473,47 @@ def test_apply_backs_up_before_writes_and_tombstones_only_losing_activity_leaf(t
     assert completion["writerContract"] == {"version": 1, "categoryReference": None}
 
 
+@pytest.mark.parametrize("drift", ["uuid", "security", "leaf", "winner"])
+def test_apply_binds_every_live_precondition_to_the_complete_s1_snapshot(tmp_path, drift):
+    client = FakeCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+
+    if drift == "uuid":
+        client.uuid = "replacement-database-uuid"
+    elif drift == "security":
+        client.security["members"]["names"] = ["changed"]
+    elif drift == "leaf":
+        extra = {"_id": "task-concurrent", "_rev": "1-concurrent", "docType": "task"}
+        client.winners.append(extra)
+        client.revision_ancestries[(extra["_id"], extra["_rev"])] = [extra["_rev"]]
+    else:
+        client.winners[0]["_rev"] = "4-concurrent"
+
+    with pytest.raises(migration.MigrationSafetyError, match="complete S1 snapshot"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+        )
+
+    assert client.bulk_calls == []
+    assert client.put_calls == []
+
+
 def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path):
     class ChangingCloudant(FakeCloudant):
-        reads = 0
+        graph_reads = 0
 
-        def get_all_documents(self, database: str, *, include_conflicts: bool) -> list[dict]:
-            rows = super().get_all_documents(database, include_conflicts=include_conflicts)
-            self.reads += 1
-            if self.reads == 2:
-                rows[0]["_rev"] = "4-concurrent-change"
-            return rows
+        def get_current_leaf_graph(self, database: str):
+            leaves, winners = super().get_current_leaf_graph(database)
+            if self.graph_reads == 4:
+                leaves[0]["_rev"] = "4-concurrent-change"
+            return leaves, winners
 
     client = ChangingCloudant()
     client.winners = [
@@ -465,7 +521,7 @@ def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path)
     ]
     snapshot = create_s1_snapshot(client, tmp_path)
 
-    with pytest.raises(migration.MigrationSafetyError, match="revisions changed"):
+    with pytest.raises(migration.MigrationSafetyError, match="complete S1 snapshot"):
         migration.apply_migration(
             client,
             database=migration.EXPECTED_DATABASE_NAME,
@@ -476,7 +532,7 @@ def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path)
         )
 
     assert client.bulk_calls == []
-    assert len(list(tmp_path.iterdir())) == 1
+    assert len(list(tmp_path.iterdir())) == 2
 
 
 def test_migration_plan_is_idempotent_after_identity_fields_exist():
@@ -582,6 +638,84 @@ def test_journal_classifies_partial_results_and_resumes_only_locked_pre_states(t
     )
     assert result["exactIntendedResults"] == len(writes)
     assert result["resumedPreStates"] == len(writes) - 1
+    assert client.graph_reads == 4
+
+
+def test_apply_migration_resumes_only_s1_or_ancestry_proven_partial_state(tmp_path):
+    class PartialCloudant(FakeCloudant):
+        first_attempt = True
+
+        def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
+            if self.first_attempt:
+                self.first_attempt = False
+                committed = super().bulk_docs(database, documents[:1])
+                return [*committed, *({"error": "forbidden"} for _ in documents[1:])]
+            return super().bulk_docs(database, documents)
+
+    client = PartialCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    snapshot = create_s1_snapshot(client, tmp_path)
+    plan = migration.build_migration_plan(client.winners)
+    journal = migration.create_migration_journal(
+        [*plan.updates, *plan.conflict_tombstones],
+        tmp_path,
+        timestamp="20260721T120001Z",
+    )
+
+    with pytest.raises(migration.MigrationSafetyError, match="safe to resume"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+            journal_path=journal,
+            timestamp="20260721T120002Z",
+        )
+
+    result = migration.apply_migration(
+        client,
+        database=migration.EXPECTED_DATABASE_NAME,
+        expected_update_seq="42-seq",
+        confirmation=migration.EXPECTED_DATABASE_NAME,
+        snapshot_path=snapshot,
+        journal_path=journal,
+        timestamp="20260721T120002Z",
+    )
+
+    assert result.mode == "apply"
+    assert client.put_calls[-1]["_id"] == migration.MIGRATION_COMPLETION_ID
+
+
+def test_journal_rejects_matching_body_without_locked_pre_revision_ancestry(tmp_path):
+    client = FakeCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    plan = migration.build_migration_plan(client.winners)
+    journal = migration.create_migration_journal(
+        plan.updates, tmp_path, timestamp="20260721T120000Z"
+    )
+    intended = copy.deepcopy(plan.updates[0])
+    pre_revision = intended["_rev"]
+    generation = int(pre_revision.split("-", 1)[0]) + 1
+    wrong_revision = f"{generation}-wrongbranch"
+    intended["_rev"] = wrong_revision
+    winner_index = next(
+        index for index, winner in enumerate(client.winners) if winner["_id"] == intended["_id"]
+    )
+    client.winners[winner_index] = intended
+    client.revision_ancestries[(intended["_id"], wrong_revision)] = [
+        wrong_revision,
+        f"{generation - 1}-differentparent",
+    ]
+
+    with pytest.raises(migration.MigrationSafetyError, match="divergent state"):
+        migration.apply_or_resume_journal(
+            client, database=migration.EXPECTED_DATABASE_NAME, journal_path=journal
+        )
 
 
 def test_journal_halts_on_divergent_remote_state(tmp_path):
