@@ -12,6 +12,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             has_code_changes: ${{ steps.filter.outputs.src }}
+            has_deploy_changes: ${{ steps.deploy_filter.outputs.deploy }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v7
@@ -34,6 +35,16 @@ jobs:
                         - '!LICENSE'
                         - '!.github/**'
                   predicate-quantifier: 'every'
+
+            - name: Detect deployable hosting changes
+              uses: dorny/paths-filter@v4
+              id: deploy_filter
+              with:
+                  base: ${{ github.event_name == 'push' && github.event.before || '' }}
+                  filters: |
+                      deploy:
+                        - 'public/**'
+                        - 'firebase.json'
 
     test:
         name: Test & Lint
@@ -207,7 +218,7 @@ jobs:
         name: Deploy Preview
         runs-on: ubuntu-latest
         needs: [test, python-tests, e2e, build, check_for_code_changes]
-        if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_code_changes == 'true' && github.actor != 'dependabot[bot]'
+        if: github.event_name == 'pull_request' && needs.check_for_code_changes.outputs.has_deploy_changes == 'true' && github.actor != 'dependabot[bot]'
         permissions:
             contents: read
             pull-requests: write
@@ -317,7 +328,7 @@ jobs:
                   done < "$cleanup_channels_file"
 
                   npx firebase-tools@latest hosting:channel:deploy "$channel" \
-                    --expires 30d \
+                    --expires 7d \
                     --project fortudo \
                     --json 2>&1 | tee "$log_file"
                   deploy_status=${PIPESTATUS[0]}
@@ -334,7 +345,7 @@ jobs:
                       --force \
                       --project fortudo
                     npx firebase-tools@latest hosting:channel:deploy "$channel" \
-                      --expires 30d \
+                      --expires 7d \
                       --project fortudo \
                       --json 2>&1 | tee "$log_file"
                     deploy_status=${PIPESTATUS[0]}
@@ -412,7 +423,7 @@ jobs:
         name: Deploy to Production
         runs-on: ubuntu-latest
         needs: [test, python-tests, e2e, build, check_for_code_changes]
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_code_changes == 'true'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.check_for_code_changes.outputs.has_deploy_changes == 'true'
 
         steps:
             - name: Checkout code
