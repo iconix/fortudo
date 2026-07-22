@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from pathlib import Path
 
 import pytest
 
 from scripts import migrate_taxonomy_identity as migration
 from scripts import document_contract_ops as contract_ops
+
+
+def test_cloudant_account_checksum_excludes_credentials_and_normalizes_host():
+    client = migration.CloudantClient(
+        "https://operator:private@ACCOUNT.example:443/cloudant/"
+    )
+
+    assert client.get_account_checksum() == hashlib.sha256(
+        b"https://account.example:443/cloudant"
+    ).hexdigest()
 
 
 def taxonomy_doc() -> dict:
@@ -85,7 +96,7 @@ def losing_leaf() -> dict:
 class FakeCloudant:
     def __init__(self, *, update_seq: str = "42-seq") -> None:
         self.update_seq = update_seq
-        self.uuid = "database-uuid-1"
+        self.account_checksum = "a" * 64
         self.winners = production_winners()
         self.leaves = {("activity-legacy", "3-activity-loser"): losing_leaf()}
         self.bulk_calls: list[list[dict]] = []
@@ -103,12 +114,14 @@ class FakeCloudant:
     def get_database_info(self, database: str) -> dict:
         return {
             "db_name": database,
-            "uuid": self.uuid,
             "update_seq": self.update_seq,
             "doc_count": len(self.winners),
             "doc_del_count": 0,
             "props": {"partitioned": False},
         }
+
+    def get_account_checksum(self) -> str:
+        return self.account_checksum
 
     def get_all_documents(self, database: str, *, include_conflicts: bool) -> list[dict]:
         assert include_conflicts is True
@@ -473,7 +486,7 @@ def test_apply_backs_up_before_writes_and_tombstones_only_losing_activity_leaf(t
     assert completion["writerContract"] == {"version": 1, "categoryReference": None}
 
 
-@pytest.mark.parametrize("drift", ["uuid", "security", "leaf", "winner"])
+@pytest.mark.parametrize("drift", ["account", "security", "leaf", "winner"])
 def test_apply_binds_every_live_precondition_to_the_complete_s1_snapshot(tmp_path, drift):
     client = FakeCloudant()
     client.winners = [
@@ -481,8 +494,8 @@ def test_apply_binds_every_live_precondition_to_the_complete_s1_snapshot(tmp_pat
     ]
     snapshot = create_s1_snapshot(client, tmp_path)
 
-    if drift == "uuid":
-        client.uuid = "replacement-database-uuid"
+    if drift == "account":
+        client.account_checksum = "b" * 64
     elif drift == "security":
         client.security["members"]["names"] = ["changed"]
     elif drift == "leaf":

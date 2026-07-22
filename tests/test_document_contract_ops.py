@@ -34,7 +34,6 @@ class FakeCloudant:
         self.database = "fortudo-dat-411"
         self.info = {
             "db_name": self.database,
-            "uuid": "database-uuid-1",
             "update_seq": "10-seq",
             "doc_count": 2,
             "doc_del_count": 1,
@@ -76,6 +75,10 @@ class FakeCloudant:
         }
         self.created: list[str] = []
         self.write_order: list[str] = []
+        self.account_checksum = "a" * 64
+
+    def get_account_checksum(self) -> str:
+        return self.account_checksum
 
     def list_databases(self) -> list[str]:
         return [self.database, "fortudo-family", "system-database"]
@@ -117,7 +120,6 @@ class FakeCloudant:
         self.database = database
         self.info = {
             "db_name": database,
-            "uuid": "new-database-uuid",
             "update_seq": "0-seq",
             "doc_count": 0,
             "doc_del_count": 0,
@@ -160,13 +162,44 @@ def test_snapshot_captures_complete_leaf_graph_security_and_stable_winners(tmp_p
 
     manifest = ops.verify_snapshot(result.path)
     assert manifest["label"] == "S0"
+    assert manifest["formatVersion"] == 2
     assert manifest["leafCount"] == 4
     assert manifest["winnerCount"] == 3
-    assert manifest["databaseUuid"] == "database-uuid-1"
+    assert "databaseUuid" not in manifest
+    assert manifest["targetBinding"]["accountChecksum"] == "a" * 64
+    assert manifest["targetBinding"]["databaseName"] == "fortudo-dat-411"
+    assert len(manifest["targetBinding"]["checksum"]) == 64
     assert manifest["securityChecksum"] == ops.security_checksum(client.security)
     assert manifest["manifestChecksum"] == result.checksum
     leaf_text = (result.path / "leaf-graph.ndjson").read_text(encoding="utf-8")
     assert "never print" in leaf_text
+    metadata = json.loads((result.path / "database-metadata.json").read_text(encoding="utf-8"))
+    assert "databaseUuid" not in metadata
+
+
+def test_target_binding_is_semantic_and_independent_of_leaf_enumeration_order():
+    client = FakeCloudant()
+    leaves, winners = client.get_current_leaf_graph(client.database)
+    info = client.get_database_info(client.database)
+
+    first = ops.capture_target_binding(
+        client,
+        database=client.database,
+        info=info,
+        security=client.security,
+        leaves=leaves,
+        winners=winners,
+    )
+    second = ops.capture_target_binding(
+        client,
+        database=client.database,
+        info=info,
+        security=client.security,
+        leaves=list(reversed(leaves)),
+        winners=dict(reversed(list(winners.items()))),
+    )
+
+    assert first == second
 
 
 def test_snapshot_deletes_incomplete_output_and_halts_on_leaf_drift(tmp_path):
@@ -193,6 +226,27 @@ def test_snapshot_deletes_incomplete_output_and_halts_on_leaf_drift(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_snapshot_halts_if_the_cloudant_account_binding_changes_during_capture(tmp_path):
+    class AccountDriftCloudant(FakeCloudant):
+        account_reads = 0
+
+        def get_account_checksum(self) -> str:
+            self.account_reads += 1
+            return ("a" if self.account_reads == 1 else "b") * 64
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="changed during snapshot"):
+        ops.create_snapshot(
+            AccountDriftCloudant(),
+            database="fortudo-dat-411",
+            backup_root=tmp_path,
+            label="S0",
+            encrypted_volume_confirmed=True,
+            timestamp="20260721T120000Z",
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_install_requires_locked_snapshot_and_changes_only_the_design_leaf(tmp_path):
     client = FakeCloudant()
     snapshot = ops.create_snapshot(
@@ -208,15 +262,49 @@ def test_install_requires_locked_snapshot_and_changes_only_the_design_leaf(tmp_p
         client,
         database=client.database,
         confirmation=client.database,
-        expected_uuid="database-uuid-1",
-        expected_update_seq="10-seq",
-        expected_security_checksum=ops.security_checksum(client.security),
+        expected_target_binding_checksum=ops.verify_snapshot(snapshot.path)[
+            "targetBinding"
+        ]["checksum"],
         snapshot_path=snapshot.path,
     )
 
     assert result["validatorRevision"] == "1-contract"
     assert client.write_order == ["_design/fortudo-document-contract"]
     assert ops.verify_validator(client, client.database)["state"] == "compatible"
+
+
+@pytest.mark.parametrize("drift", ["account", "security", "body", "winner"])
+def test_install_rejects_any_state_outside_the_locked_target_binding(tmp_path, drift):
+    client = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        client,
+        database=client.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+    manifest = ops.verify_snapshot(snapshot.path)
+
+    if drift == "account":
+        client.account_checksum = "b" * 64
+    elif drift == "security":
+        client.security["members"]["names"] = ["changed"]
+    elif drift == "body":
+        client.leaves[0]["private"] = "changed under the same revision"
+    else:
+        client.winners["activity-conflict"] = "3-loser"
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="locked snapshot"):
+        ops.install_validator(
+            client,
+            database=client.database,
+            confirmation=client.database,
+            expected_target_binding_checksum=manifest["targetBinding"]["checksum"],
+            snapshot_path=snapshot.path,
+        )
+
+    assert client.write_order == []
 
 
 def test_provision_is_empty_database_and_validator_first():
@@ -226,11 +314,26 @@ def test_provision_is_empty_database_and_validator_first():
         client,
         database="fortudo-new-room",
         confirmation="fortudo-new-room",
+        expected_account_checksum="a" * 64,
     )
 
     assert client.created == ["fortudo-new-room"]
     assert client.write_order == ["_design/fortudo-document-contract"]
-    assert result["databaseUuid"] == "new-database-uuid"
+    assert result["targetAccountChecksum"] == "a" * 64
+
+
+def test_provision_rejects_the_wrong_account_before_database_creation():
+    client = FakeCloudant()
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="approved Cloudant account"):
+        ops.provision_database(
+            client,
+            database="fortudo-new-room",
+            confirmation="fortudo-new-room",
+            expected_account_checksum="b" * 64,
+        )
+
+    assert client.created == []
 
 
 def test_quarantine_restore_loads_legacy_leaves_before_validator(tmp_path):
@@ -250,6 +353,7 @@ def test_quarantine_restore_loads_legacy_leaves_before_validator(tmp_path):
         target,
         database="fortudo-quarantine-20260721",
         confirmation="fortudo-quarantine-20260721",
+        expected_account_checksum="a" * 64,
         snapshot_path=snapshot.path,
     )
 
@@ -282,10 +386,63 @@ def test_quarantine_restore_halts_before_validator_when_leaf_reconstruction_diff
             target,
             database="fortudo-quarantine-20260721",
             confirmation="fortudo-quarantine-20260721",
+            expected_account_checksum="a" * 64,
             snapshot_path=snapshot.path,
         )
 
     assert "_design/fortudo-document-contract" not in target.write_order
+
+
+def test_quarantine_restore_rejects_snapshot_from_an_unapproved_account_before_creation(
+    tmp_path,
+):
+    source = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        source,
+        database=source.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+    target = FakeCloudant()
+    target.account_checksum = "b" * 64
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="snapshot Cloudant account"):
+        ops.restore_quarantine(
+            target,
+            database="fortudo-quarantine-20260721",
+            confirmation="fortudo-quarantine-20260721",
+            expected_account_checksum="b" * 64,
+            snapshot_path=snapshot.path,
+        )
+
+    assert target.created == []
+
+
+def test_quarantine_restore_rejects_wrong_active_account_before_database_creation(tmp_path):
+    source = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        source,
+        database=source.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+    target = FakeCloudant()
+    target.account_checksum = "b" * 64
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="approved Cloudant account"):
+        ops.restore_quarantine(
+            target,
+            database="fortudo-quarantine-20260721",
+            confirmation="fortudo-quarantine-20260721",
+            expected_account_checksum="a" * 64,
+            snapshot_path=snapshot.path,
+        )
+
+    assert target.created == []
 
 
 def test_inventory_writes_private_manifest_but_returns_only_aggregates(tmp_path):
@@ -300,11 +457,29 @@ def test_inventory_writes_private_manifest_but_returns_only_aggregates(tmp_path)
 
     assert result.counts == {"fortudoDatabases": 2, "compatible": 0, "missingValidator": 2}
     assert len(result.checksum) == 64
+    assert result.account_checksum == "a" * 64
     private = json.loads(result.path.read_text(encoding="utf-8"))
+    assert private["accountChecksum"] == "a" * 64
     assert [row["databaseName"] for row in private["databases"]] == [
         "fortudo-dat-411",
         "fortudo-family",
     ]
+    assert all("databaseUuid" not in row for row in private["databases"])
+    assert all(row["accountChecksum"] == "a" * 64 for row in private["databases"])
+
+
+def test_install_cli_uses_target_binding_and_has_no_uuid_override():
+    parser = ops._parser()
+    commands = parser._subparsers._group_actions[0].choices
+    install_parser = commands["install"]
+    provision_parser = commands["provision"]
+    quarantine_parser = commands["restore-quarantine"]
+    help_text = parser.format_help() + install_parser.format_help()
+
+    assert "--expected-target-binding-checksum" in help_text
+    assert "--expected-account-checksum" in provision_parser.format_help()
+    assert "--expected-account-checksum" in quarantine_parser.format_help()
+    assert "--expected-uuid" not in help_text
 
 
 def test_normal_operational_output_omits_private_targets_revisions_and_paths():
@@ -314,7 +489,7 @@ def test_normal_operational_output_omits_private_targets_revisions_and_paths():
             "counts": {"fortudoDatabases": 2},
             "manifestChecksum": "a" * 64,
             "manifestPath": "X:/private/manifest.json",
-            "databaseUuid": "private-uuid",
+            "targetBindingChecksum": "b" * 64,
             "validatorRevision": "1-private",
         }
     )
@@ -323,6 +498,7 @@ def test_normal_operational_output_omits_private_targets_revisions_and_paths():
         "mode": "inventory",
         "counts": {"fortudoDatabases": 2},
         "manifestChecksum": "a" * 64,
+        "targetBindingChecksum": "b" * 64,
     }
 
 
@@ -337,7 +513,12 @@ def test_encrypted_volume_confirmation_and_exact_target_are_mandatory(tmp_path):
             encrypted_volume_confirmed=False,
         )
     with pytest.raises(ops.ContractOpsSafetyError, match="confirmation"):
-        ops.provision_database(client, database="fortudo-new-room", confirmation="wrong")
+        ops.provision_database(
+            client,
+            database="fortudo-new-room",
+            confirmation="wrong",
+            expected_account_checksum="a" * 64,
+        )
     with pytest.raises(ops.ContractOpsSafetyError, match="unsafe characters"):
         ops.create_snapshot(
             client,
@@ -413,6 +594,25 @@ def test_snapshot_verification_rejects_rechecksummed_invalid_backup_protection(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ops.ContractOpsSafetyError, match="backup protection"):
+        ops.verify_snapshot(snapshot.path)
+
+
+def test_snapshot_verification_rejects_rechecksummed_target_binding_tamper(tmp_path):
+    snapshot = ops.create_snapshot(
+        FakeCloudant(),
+        database="fortudo-dat-411",
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260722T170000Z",
+    )
+    manifest_path = snapshot.path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["targetBinding"]["scheme"] = "unreviewed-binding"
+    manifest["manifestChecksum"] = ops._manifest_checksum(manifest)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="target binding"):
         ops.verify_snapshot(snapshot.path)
 
 

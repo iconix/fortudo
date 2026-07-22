@@ -41,6 +41,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_MODULE = REPOSITORY_ROOT / "public" / "js" / "document-contract.js"
 CONTRACT_DESIGN_ID = "_design/fortudo-document-contract"
 CONTRACT_VERSION = 1
+SNAPSHOT_FORMAT_VERSION = 2
+TARGET_BINDING_FORMAT_VERSION = 1
+TARGET_BINDING_SCHEME = "ibm-cloudant-account-database-state-v1"
 TEMPORARY_UNENCRYPTED_RETENTION = "delete-after-s3-and-known-client-exercise"
 
 
@@ -59,6 +62,7 @@ class InventoryResult:
     path: Path
     checksum: str
     counts: dict[str, int]
+    account_checksum: str
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -158,10 +162,29 @@ def _leaf_set(leaves: Sequence[Mapping[str, Any]]) -> list[tuple[str, str, bool]
     return sorted(identities)
 
 
+def _leaf_body_map(leaves: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, bool], str]:
+    identities = _leaf_set(leaves)
+    by_identity = {
+        _leaf_identity(leaf): _canonical_json(leaf)
+        for leaf in leaves
+    }
+    if len(by_identity) != len(identities):
+        raise ContractOpsSafetyError("leaf graph contains duplicate identities")
+    return by_identity
+
+
 def _ndjson_bytes(rows: Sequence[Mapping[str, Any]]) -> bytes:
     if not rows:
         return b""
+    _leaf_set(rows)
     return ("\n".join(_canonical_json(row) for row in rows) + "\n").encode("utf-8")
+
+
+def _canonical_leaf_graph_checksum(rows: Sequence[Mapping[str, Any]]) -> str:
+    _leaf_set(rows)
+    ordered = sorted(rows, key=_leaf_identity)
+    content = ("\n".join(_canonical_json(row) for row in ordered) + "\n").encode("utf-8")
+    return _sha256_bytes(content)
 
 
 def _read_json(path: Path) -> Any:
@@ -182,6 +205,142 @@ def _manifest_checksum(manifest: Mapping[str, Any]) -> str:
     unsigned = dict(manifest)
     unsigned.pop("manifestChecksum", None)
     return _sha256_bytes(_canonical_json(unsigned).encode("utf-8"))
+
+
+def _partitioned(info: Mapping[str, Any]) -> bool:
+    return bool(
+        info.get("partitioned") is True
+        or info.get("props", {}).get("partitioned", False)
+    )
+
+
+def _account_checksum(client: Any) -> str:
+    try:
+        checksum = client.get_account_checksum()
+    except (AttributeError, TypeError) as error:
+        raise ContractOpsSafetyError("Cloudant account identity is unavailable") from error
+    return _require_sha256(checksum, field="Cloudant account identity")
+
+
+def _require_sha256(value: Any, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ContractOpsSafetyError(f"{field} is invalid")
+    return value
+
+
+def _target_binding_from_parts(
+    *,
+    account_checksum: str,
+    database: str,
+    partitioned: bool,
+    update_seq: Any,
+    security_checksum_value: str,
+    leaf_graph_checksum: str,
+    winner_revisions: Mapping[str, str],
+) -> dict[str, Any]:
+    if not isinstance(database, str):
+        raise ContractOpsSafetyError("database identity is invalid")
+    _require_database_name(database)
+    if not isinstance(partitioned, bool):
+        raise ContractOpsSafetyError("database partitioning metadata is invalid")
+    if not isinstance(winner_revisions, Mapping):
+        raise ContractOpsSafetyError("winner metadata is invalid")
+    account_checksum = _require_sha256(
+        account_checksum, field="Cloudant account identity"
+    )
+    security_checksum_value = _require_sha256(
+        security_checksum_value, field="security checksum"
+    )
+    leaf_graph_checksum = _require_sha256(
+        leaf_graph_checksum, field="leaf graph checksum"
+    )
+    if not isinstance(update_seq, str) or not update_seq:
+        raise ContractOpsSafetyError("database update sequence is incomplete")
+    if any(
+        not isinstance(document_id, str) or not isinstance(revision, str)
+        for document_id, revision in winner_revisions.items()
+    ):
+        raise ContractOpsSafetyError("winner metadata is invalid")
+    body = {
+        "formatVersion": TARGET_BINDING_FORMAT_VERSION,
+        "scheme": TARGET_BINDING_SCHEME,
+        "accountChecksum": account_checksum,
+        "databaseName": database,
+        "partitioned": partitioned,
+        "databaseUpdateSeq": update_seq,
+        "securityChecksum": security_checksum_value,
+        "leafGraphChecksum": leaf_graph_checksum,
+        "winnerRevisionsChecksum": _sha256_bytes(
+            _canonical_json(dict(sorted(winner_revisions.items()))).encode("utf-8")
+        ),
+    }
+    return {**body, "checksum": _sha256_bytes(_canonical_json(body).encode("utf-8"))}
+
+
+def capture_target_binding(
+    client: Any,
+    *,
+    database: str,
+    info: Mapping[str, Any],
+    security: Mapping[str, Any],
+    leaves: Sequence[Mapping[str, Any]],
+    winners: Mapping[str, str],
+) -> dict[str, Any]:
+    """Bind one exact Cloudant account/database state without a database UUID."""
+    if info.get("db_name") != database:
+        raise ContractOpsSafetyError("Cloudant reported a different database name")
+    return _target_binding_from_parts(
+        account_checksum=_account_checksum(client),
+        database=database,
+        partitioned=_partitioned(info),
+        update_seq=info.get("update_seq"),
+        security_checksum_value=security_checksum(security),
+        leaf_graph_checksum=_canonical_leaf_graph_checksum(leaves),
+        winner_revisions=winners,
+    )
+
+
+def _database_observation(
+    client: Any, database: str, info: Mapping[str, Any]
+) -> dict[str, Any]:
+    if info.get("db_name") != database:
+        raise ContractOpsSafetyError("Cloudant reported a different database name")
+    update_seq = info.get("update_seq")
+    if not isinstance(update_seq, str) or not update_seq:
+        raise ContractOpsSafetyError("database update sequence is incomplete")
+    return {
+        "accountChecksum": _account_checksum(client),
+        "databaseName": database,
+        "partitioned": _partitioned(info),
+        "databaseUpdateSeq": update_seq,
+    }
+
+
+def _validate_snapshot_target_binding(
+    manifest: Mapping[str, Any], *, leaf_graph_checksum: str
+) -> None:
+    if manifest.get("formatVersion") != SNAPSHOT_FORMAT_VERSION:
+        raise ContractOpsSafetyError("snapshot format version is unsupported")
+    binding = manifest.get("targetBinding")
+    if not isinstance(binding, Mapping):
+        raise ContractOpsSafetyError("snapshot target binding is missing")
+    if not isinstance(manifest.get("partitioned"), bool):
+        raise ContractOpsSafetyError("snapshot partitioning metadata is invalid")
+    expected = _target_binding_from_parts(
+        account_checksum=binding.get("accountChecksum"),
+        database=manifest.get("databaseName"),
+        partitioned=manifest["partitioned"],
+        update_seq=manifest.get("databaseUpdateSeq"),
+        security_checksum_value=manifest.get("securityChecksum"),
+        leaf_graph_checksum=leaf_graph_checksum,
+        winner_revisions=manifest.get("winnerRevisions", {}),
+    )
+    if dict(binding) != expected:
+        raise ContractOpsSafetyError("snapshot target binding is invalid")
 
 
 def create_snapshot(
@@ -205,13 +364,19 @@ def create_snapshot(
     path = _exact_artifact_path(root, f"fortudo-contract-{label}-{timestamp}")
 
     info_before = client.get_database_info(database)
-    if info_before.get("db_name") != database or not isinstance(info_before.get("uuid"), str):
-        raise ContractOpsSafetyError("database identity metadata is incomplete")
     security_before = client.get_security(database)
     leaves, winners = client.get_current_leaf_graph(database)
     leaf_identities = _leaf_set(leaves)
     if not isinstance(winners, Mapping):
         raise ContractOpsSafetyError("winner metadata is invalid")
+    target_binding = capture_target_binding(
+        client,
+        database=database,
+        info=info_before,
+        security=security_before,
+        leaves=leaves,
+        winners=winners,
+    )
 
     try:
         path.mkdir(parents=True, mode=0o700)
@@ -227,22 +392,22 @@ def create_snapshot(
         security_bytes = (json.dumps(security_before, indent=2, sort_keys=True) + "\n").encode()
         metadata = {
             "databaseName": database,
-            "databaseUuid": info_before["uuid"],
             "databaseUpdateSeq": info_before.get("update_seq"),
             "docCount": info_before.get("doc_count"),
             "deletedDocCount": info_before.get("doc_del_count"),
-            "partitioned": bool(info_before.get("props", {}).get("partitioned", False)),
+            "partitioned": _partitioned(info_before),
         }
         metadata_bytes = (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode()
         design_leaf = next(
             (leaf for leaf in leaves if leaf.get("_id") == CONTRACT_DESIGN_ID), None
         )
         manifest_base = {
-            "formatVersion": 1,
+            "formatVersion": SNAPSHOT_FORMAT_VERSION,
             "label": label,
             "createdAt": timestamp,
             "backupProtection": backup_protection,
             **metadata,
+            "targetBinding": target_binding,
             "leafCount": len(leaves),
             "winnerCount": len(winners),
             "winnerRevisions": dict(sorted(winners.items())),
@@ -270,13 +435,15 @@ def create_snapshot(
         info_after = client.get_database_info(database)
         security_after = client.get_security(database)
         leaves_after, winners_after = client.get_current_leaf_graph(database)
-        if (
-            info_after.get("uuid") != info_before["uuid"]
-            or info_after.get("update_seq") != info_before.get("update_seq")
-            or security_checksum(security_after) != manifest["securityChecksum"]
-            or _leaf_set(leaves_after) != leaf_identities
-            or dict(winners_after) != dict(winners)
-        ):
+        target_binding_after = capture_target_binding(
+            client,
+            database=database,
+            info=info_after,
+            security=security_after,
+            leaves=leaves_after,
+            winners=winners_after,
+        )
+        if target_binding_after != target_binding:
             raise ContractOpsSafetyError("database changed during snapshot")
         verify_snapshot(path)
         return SnapshotResult(path=path, checksum=manifest["manifestChecksum"])
@@ -288,8 +455,15 @@ def create_snapshot(
 def verify_snapshot(snapshot_path: str | Path) -> dict[str, Any]:
     path = Path(snapshot_path).resolve()
     manifest = _read_json(path / "manifest.json")
+    if not isinstance(manifest, Mapping):
+        raise ContractOpsSafetyError("snapshot manifest is invalid")
     _validate_backup_protection(manifest.get("backupProtection"))
-    for filename, checksum in manifest.get("files", {}).items():
+    files = manifest.get("files")
+    expected_files = {"leaf-graph.ndjson", "security.json", "database-metadata.json"}
+    if not isinstance(files, Mapping) or set(files) != expected_files:
+        raise ContractOpsSafetyError("snapshot file manifest is invalid")
+    for filename, checksum in files.items():
+        _require_sha256(checksum, field="snapshot file checksum")
         try:
             content = (path / filename).read_bytes()
         except OSError as error:
@@ -299,13 +473,35 @@ def verify_snapshot(snapshot_path: str | Path) -> dict[str, Any]:
     if _manifest_checksum(manifest) != manifest.get("manifestChecksum"):
         raise ContractOpsSafetyError("snapshot manifest checksum mismatch")
     leaves = _read_ndjson(path / "leaf-graph.ndjson")
+    _validate_snapshot_target_binding(
+        manifest, leaf_graph_checksum=_canonical_leaf_graph_checksum(leaves)
+    )
     if len(leaves) != manifest.get("leafCount"):
         raise ContractOpsSafetyError("snapshot leaf count mismatch")
     if [list(identity) for identity in _leaf_set(leaves)] != manifest.get("leafIdentities"):
         raise ContractOpsSafetyError("snapshot leaf identity mismatch")
+    winners = manifest.get("winnerRevisions")
+    if not isinstance(winners, Mapping) or len(winners) != manifest.get("winnerCount"):
+        raise ContractOpsSafetyError("snapshot winner metadata is invalid")
+    live_identities = {(identity[0], identity[1]) for identity in _leaf_set(leaves)}
+    if any((document_id, revision) not in live_identities for document_id, revision in winners.items()):
+        raise ContractOpsSafetyError("snapshot winner identity is missing")
     security = _read_json(path / "security.json")
     if security_checksum(security) != manifest.get("securityChecksum"):
         raise ContractOpsSafetyError("snapshot security checksum mismatch")
+    metadata = _read_json(path / "database-metadata.json")
+    expected_metadata = {
+        key: manifest.get(key)
+        for key in (
+            "databaseName",
+            "databaseUpdateSeq",
+            "docCount",
+            "deletedDocCount",
+            "partitioned",
+        )
+    }
+    if metadata != expected_metadata:
+        raise ContractOpsSafetyError("snapshot database metadata mismatch")
     return manifest
 
 
@@ -329,33 +525,30 @@ def install_validator(
     *,
     database: str,
     confirmation: str,
-    expected_uuid: str,
-    expected_update_seq: Any,
-    expected_security_checksum: str,
+    expected_target_binding_checksum: str,
     snapshot_path: str | Path,
 ) -> dict[str, Any]:
     _require_database_name(database)
     _require_confirmation(database, confirmation)
     manifest = verify_snapshot(snapshot_path)
-    if (
-        manifest.get("databaseName") != database
-        or manifest.get("databaseUuid") != expected_uuid
-        or manifest.get("databaseUpdateSeq") != expected_update_seq
-        or manifest.get("securityChecksum") != expected_security_checksum
-    ):
+    expected_target_binding_checksum = _require_sha256(
+        expected_target_binding_checksum, field="expected target binding checksum"
+    )
+    if manifest.get("targetBinding", {}).get("checksum") != expected_target_binding_checksum:
         raise ContractOpsSafetyError("snapshot does not match the locked installation target")
 
     info = client.get_database_info(database)
     security_before = client.get_security(database)
     leaves_before, winners_before = client.get_current_leaf_graph(database)
-    if (
-        info.get("uuid") != expected_uuid
-        or info.get("update_seq") != expected_update_seq
-        or security_checksum(security_before) != expected_security_checksum
-        or [list(identity) for identity in _leaf_set(leaves_before)]
-        != manifest.get("leafIdentities")
-        or dict(winners_before) != manifest.get("winnerRevisions")
-    ):
+    live_target_binding = capture_target_binding(
+        client,
+        database=database,
+        info=info,
+        security=security_before,
+        leaves=leaves_before,
+        winners=winners_before,
+    )
+    if live_target_binding != manifest.get("targetBinding"):
         raise ContractOpsSafetyError("database state differs from the locked snapshot")
     if any(leaf.get("_id") == CONTRACT_DESIGN_ID for leaf in leaves_before):
         raise ContractOpsSafetyError("validator already exists; use verify instead")
@@ -367,7 +560,17 @@ def install_validator(
     if verified.get("state") != "compatible":
         raise ContractOpsSafetyError("installed validator verification failed")
 
+    info_after = client.get_database_info(database)
+    security_after = client.get_security(database)
     leaves_after, winners_after = client.get_current_leaf_graph(database)
+    after_target_binding = capture_target_binding(
+        client,
+        database=database,
+        info=info_after,
+        security=security_after,
+        leaves=leaves_after,
+        winners=winners_after,
+    )
     before_without_design = _leaf_set(
         [leaf for leaf in leaves_before if leaf.get("_id") != CONTRACT_DESIGN_ID]
     )
@@ -375,8 +578,15 @@ def install_validator(
         [leaf for leaf in leaves_after if leaf.get("_id") != CONTRACT_DESIGN_ID]
     )
     design_after = [leaf for leaf in leaves_after if leaf.get("_id") == CONTRACT_DESIGN_ID]
+    bodies_before = _leaf_body_map(
+        [leaf for leaf in leaves_before if leaf.get("_id") != CONTRACT_DESIGN_ID]
+    )
+    bodies_after = _leaf_body_map(
+        [leaf for leaf in leaves_after if leaf.get("_id") != CONTRACT_DESIGN_ID]
+    )
     if (
         before_without_design != after_without_design
+        or bodies_before != bodies_after
         or len(design_after) != 1
         or {
             key: value
@@ -384,7 +594,10 @@ def install_validator(
             if key != CONTRACT_DESIGN_ID
         }
         != dict(winners_before)
-        or security_checksum(client.get_security(database)) != expected_security_checksum
+        or any(
+            after_target_binding.get(key) != manifest["targetBinding"].get(key)
+            for key in ("accountChecksum", "databaseName", "partitioned", "securityChecksum")
+        )
     ):
         raise ContractOpsSafetyError("installation changed state beyond the design document")
     return {
@@ -394,9 +607,20 @@ def install_validator(
     }
 
 
-def provision_database(client: Any, *, database: str, confirmation: str) -> dict[str, Any]:
+def provision_database(
+    client: Any,
+    *,
+    database: str,
+    confirmation: str,
+    expected_account_checksum: str,
+) -> dict[str, Any]:
     _require_database_name(database)
     _require_confirmation(database, confirmation)
+    expected_account_checksum = _require_sha256(
+        expected_account_checksum, field="expected Cloudant account checksum"
+    )
+    if _account_checksum(client) != expected_account_checksum:
+        raise ContractOpsSafetyError("credential does not match the approved Cloudant account")
     client.create_database(database)
     info = client.get_database_info(database)
     if info.get("db_name") != database or info.get("doc_count") != 0:
@@ -411,7 +635,7 @@ def provision_database(client: Any, *, database: str, confirmation: str) -> dict
     if len(final_leaves) != 1 or final_leaves[0].get("_id") != CONTRACT_DESIGN_ID:
         raise ContractOpsSafetyError("validator was not the first database document")
     return {
-        "databaseUuid": info.get("uuid"),
+        "targetAccountChecksum": _account_checksum(client),
         "validatorRevision": result.get("rev"),
         "validatorChecksum": load_design_document()["fortudoDocumentContract"]["checksum"],
     }
@@ -423,9 +647,8 @@ def _read_stable_leaf_graph(
     before = client.get_database_info(database)
     leaves, winners = client.get_current_leaf_graph(database)
     after = client.get_database_info(database)
-    if (
-        before.get("uuid") != after.get("uuid")
-        or before.get("update_seq") != after.get("update_seq")
+    if _database_observation(client, database, before) != _database_observation(
+        client, database, after
     ):
         raise ContractOpsSafetyError("quarantine state changed during verification")
     return leaves, winners
@@ -436,13 +659,21 @@ def restore_quarantine(
     *,
     database: str,
     confirmation: str,
+    expected_account_checksum: str,
     snapshot_path: str | Path,
 ) -> dict[str, Any]:
     if not database.startswith("fortudo-quarantine-"):
         raise ContractOpsSafetyError("restore target must be a new quarantine database")
     _require_database_name(database)
     _require_confirmation(database, confirmation)
+    expected_account_checksum = _require_sha256(
+        expected_account_checksum, field="expected Cloudant account checksum"
+    )
+    if _account_checksum(client) != expected_account_checksum:
+        raise ContractOpsSafetyError("credential does not match the approved Cloudant account")
     manifest = verify_snapshot(snapshot_path)
+    if manifest["targetBinding"]["accountChecksum"] != expected_account_checksum:
+        raise ContractOpsSafetyError("snapshot Cloudant account is not the approved account")
     leaves = _read_ndjson(Path(snapshot_path) / "leaf-graph.ndjson")
     legacy_leaves = [leaf for leaf in leaves if leaf.get("_id") != CONTRACT_DESIGN_ID]
     expected_leaf_bodies = {
@@ -527,6 +758,7 @@ def create_inventory(
         temporary_unencrypted_confirmed=temporary_unencrypted_confirmed,
     )
     root = validate_backup_root(manifest_root)
+    account_checksum = _account_checksum(client)
     timestamp = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = _exact_artifact_path(root, f"fortudo-inventory-{timestamp}")
     try:
@@ -551,7 +783,7 @@ def create_inventory(
             rows.append(
                 {
                     "databaseName": database,
-                    "databaseUuid": info.get("uuid"),
+                    "accountChecksum": account_checksum,
                     "updateSequence": info.get("update_seq"),
                     "documentCount": info.get("doc_count"),
                     "deletedDocumentCount": info.get("doc_del_count"),
@@ -561,9 +793,10 @@ def create_inventory(
                 }
             )
         manifest_base = {
-            "formatVersion": 1,
+            "formatVersion": 2,
             "createdAt": timestamp,
             "backupProtection": backup_protection,
+            "accountChecksum": account_checksum,
             "counts": counts,
             "databases": rows,
         }
@@ -574,7 +807,10 @@ def create_inventory(
             (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode(),
         )
         return InventoryResult(
-            path=manifest_path, checksum=manifest["manifestChecksum"], counts=counts
+            path=manifest_path,
+            checksum=manifest["manifestChecksum"],
+            counts=counts,
+            account_checksum=account_checksum,
         )
     except Exception:
         _remove_exact_artifact(path, root)
@@ -675,18 +911,18 @@ def _parser() -> argparse.ArgumentParser:
     install = subparsers.add_parser("install")
     install.add_argument("--database", required=True)
     install.add_argument("--confirm-database", required=True)
-    install.add_argument("--expected-uuid", required=True)
-    install.add_argument("--expected-update-seq", required=True)
-    install.add_argument("--expected-security-checksum", required=True)
+    install.add_argument("--expected-target-binding-checksum", required=True)
     install.add_argument("--snapshot", required=True)
 
     provision = subparsers.add_parser("provision")
     provision.add_argument("--database", required=True)
     provision.add_argument("--confirm-database", required=True)
+    provision.add_argument("--expected-account-checksum", required=True)
 
     quarantine = subparsers.add_parser("restore-quarantine")
     quarantine.add_argument("--database", required=True)
     quarantine.add_argument("--confirm-database", required=True)
+    quarantine.add_argument("--expected-account-checksum", required=True)
     quarantine.add_argument("--snapshot", required=True)
     return parser
 
@@ -722,6 +958,7 @@ def execute(
         report = {
             "mode": args.mode,
             "counts": result.counts,
+            "accountChecksum": result.account_checksum,
             "manifestPath": str(result.path),
             "manifestChecksum": result.checksum,
         }
@@ -734,10 +971,12 @@ def execute(
             encrypted_volume_confirmed=args.confirm_encrypted_volume,
             temporary_unencrypted_confirmed=args.confirm_temporary_unencrypted,
         )
+        snapshot_manifest = verify_snapshot(result.path)
         report = {
             "mode": args.mode,
             "snapshotPath": str(result.path),
             "snapshotChecksum": result.checksum,
+            "targetBindingChecksum": snapshot_manifest["targetBinding"]["checksum"],
         }
     elif args.mode == "verify":
         report = {"mode": args.mode, **verify_validator(client, args.database)}
@@ -748,9 +987,7 @@ def execute(
                 client,
                 database=args.database,
                 confirmation=args.confirm_database,
-                expected_uuid=args.expected_uuid,
-                expected_update_seq=args.expected_update_seq,
-                expected_security_checksum=args.expected_security_checksum,
+                expected_target_binding_checksum=args.expected_target_binding_checksum,
                 snapshot_path=args.snapshot,
             ),
         }
@@ -758,7 +995,10 @@ def execute(
         report = {
             "mode": args.mode,
             **provision_database(
-                client, database=args.database, confirmation=args.confirm_database
+                client,
+                database=args.database,
+                confirmation=args.confirm_database,
+                expected_account_checksum=args.expected_account_checksum,
             ),
         }
     else:
@@ -768,6 +1008,7 @@ def execute(
                 client,
                 database=args.database,
                 confirmation=args.confirm_database,
+                expected_account_checksum=args.expected_account_checksum,
                 snapshot_path=args.snapshot,
             ),
         }
