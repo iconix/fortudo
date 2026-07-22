@@ -112,7 +112,7 @@ export function showMainApp(roomCode) {
 
 /**
  * Update the sync status UI indicator.
- * @param {string} status - 'idle' | 'syncing' | 'synced' | 'error' | 'offline' | 'unsynced'
+ * @param {string} status - Current transport/contract state
  */
 export function updateSyncStatusUI(status) {
     const icon = document.getElementById('sync-status-icon');
@@ -138,6 +138,46 @@ export function updateSyncStatusUI(status) {
             icon: 'fa-solid fa-cloud-arrow-up',
             color: 'text-amber-400',
             label: 'Pending'
+        },
+        compatible: {
+            icon: 'fa-solid fa-shield-halved',
+            color: 'text-emerald-400',
+            label: 'Ready'
+        },
+        'missing-validator': {
+            icon: 'fa-solid fa-shield',
+            color: 'text-amber-400',
+            label: 'Unfenced'
+        },
+        'validator-mismatch': {
+            icon: 'fa-solid fa-shield-halved',
+            color: 'text-rose-400',
+            label: 'Fence error'
+        },
+        unprovisioned: {
+            icon: 'fa-solid fa-cloud-slash',
+            color: 'text-slate-400',
+            label: 'Sync not provisioned'
+        },
+        'update-required': {
+            icon: 'fa-solid fa-arrows-rotate',
+            color: 'text-amber-400',
+            label: 'Update required'
+        },
+        'update-required-available': {
+            icon: 'fa-solid fa-arrows-rotate',
+            color: 'text-violet-400',
+            label: 'Reload to update'
+        },
+        'recovery-required': {
+            icon: 'fa-solid fa-triangle-exclamation',
+            color: 'text-rose-400',
+            label: 'Recovery required'
+        },
+        'audit-error': {
+            icon: 'fa-solid fa-shield-halved',
+            color: 'text-rose-400',
+            label: 'Audit blocked'
         }
     };
 

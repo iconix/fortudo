@@ -42,16 +42,16 @@ describe('Storage - config docs', () => {
     test('putConfig persists config and loadConfig returns normalized doc without internals', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         const configPayload = {
-            id: 'config-categories',
+            id: 'config-preferences',
             docType: 'config',
             categories: ['work', 'personal']
         };
         await putConfig(configPayload);
 
-        const loaded = await loadConfig('config-categories');
+        const loaded = await loadConfig('config-preferences');
         expect(loaded).not.toBeNull();
         expect(loaded).toMatchObject({
-            id: 'config-categories',
+            id: 'config-preferences',
             docType: 'config',
             categories: ['work', 'personal']
         });
@@ -66,12 +66,12 @@ describe('Storage - config docs', () => {
         expect(missing).toBeNull();
 
         await putTask({
-            id: 'config-categories',
+            id: 'config-preferences',
             type: 'unscheduled',
             description: 'I am not a config',
             status: 'incomplete'
         });
-        const wrongType = await loadConfig('config-categories');
+        const wrongType = await loadConfig('config-preferences');
         expect(wrongType).toBeNull();
     });
 
@@ -82,37 +82,37 @@ describe('Storage - config docs', () => {
         const storageError = Object.assign(new Error('boom'), { status: 500 });
         const getSpy = jest.spyOn(db, 'get').mockRejectedValueOnce(storageError);
 
-        await expect(loadConfig('config-categories')).rejects.toThrow('boom');
+        await expect(loadConfig('config-preferences')).rejects.toThrow('boom');
 
         getSpy.mockRestore();
     });
 
     test('putConfig updates existing config using revision tracking', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({ id: 'config-categories', categories: ['A'] });
-        await putConfig({ id: 'config-categories', categories: ['A', 'B'] });
+        await putConfig({ id: 'config-preferences', categories: ['A'] });
+        await putConfig({ id: 'config-preferences', categories: ['A', 'B'] });
 
-        const loaded = await loadConfig('config-categories');
+        const loaded = await loadConfig('config-preferences');
         expect(loaded).not.toBeNull();
         expect(loaded.categories).toEqual(['A', 'B']);
-        expect(loaded.id).toBe('config-categories');
+        expect(loaded.id).toBe('config-preferences');
     });
 
     test('refreshes a config revision after another writer updates it', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({ id: 'config-categories', categories: ['A'] });
+        await putConfig({ id: 'config-preferences', categories: ['A'] });
 
         const database = getDb();
-        const externalDoc = await database.get('config-categories');
+        const externalDoc = await database.get('config-preferences');
         await database.put({ ...externalDoc, categories: ['A', 'B'], externalNote: 'keep' });
 
-        const loaded = await loadConfig('config-categories');
+        const loaded = await loadConfig('config-preferences');
         await expect(
             putConfig({ ...loaded, categories: [...loaded.categories, 'C'] })
         ).resolves.toBeUndefined();
-        expect(await loadConfig('config-categories')).toEqual(
+        expect(await loadConfig('config-preferences')).toEqual(
             expect.objectContaining({
-                id: 'config-categories',
+                id: 'config-preferences',
                 categories: ['A', 'B', 'C'],
                 externalNote: 'keep'
             })
@@ -121,11 +121,11 @@ describe('Storage - config docs', () => {
 
     test('config docs survive task delta deletion', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
-        await putConfig({ id: 'config-categories', categories: ['survive'] });
+        await putConfig({ id: 'config-preferences', categories: ['survive'] });
         await putTask({ id: 'task-to-delete', type: 'unscheduled', description: 'Delete me' });
         await deleteTasks(['task-to-delete']);
 
-        const loaded = await loadConfig('config-categories');
+        const loaded = await loadConfig('config-preferences');
         expect(loaded).not.toBeNull();
         expect(loaded.categories).toEqual(['survive']);
     });

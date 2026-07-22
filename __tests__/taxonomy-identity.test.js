@@ -31,7 +31,7 @@ describe('taxonomy identity', () => {
         expect(createNewGroupIdentity(cryptoProvider)).toEqual({
             id: '123e4567-e89b-42d3-a456-426614174000',
             key: 'g-123e4567-e89b-42d3-a456-426614174000',
-            legacyKeys: []
+            legacyKeys: ['g-123e4567-e89b-42d3-a456-426614174000']
         });
     });
 
@@ -43,7 +43,7 @@ describe('taxonomy identity', () => {
         expect(createNewCategoryIdentity('g-parent', cryptoProvider)).toEqual({
             id: '123e4567-e89b-42d3-a456-426614174000',
             key: 'g-parent/c-123e4567-e89b-42d3-a456-426614174000',
-            legacyKeys: []
+            legacyKeys: ['g-parent/c-123e4567-e89b-42d3-a456-426614174000']
         });
     });
 

@@ -59,6 +59,7 @@ import { maybeShowOnboarding } from './activities/onboarding.js';
 import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
 import { prepareStorage, loadTasks } from './storage.js';
+import { createContractSafetyActions } from './contract-safety-ui.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
 import {
@@ -85,7 +86,8 @@ import {
     onSyncStatusChange,
     onSyncDataChange,
     triggerSync,
-    waitForIdleSync
+    waitForIdleSync,
+    getSyncStatus
 } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 import { WHATS_NEW_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
@@ -135,6 +137,8 @@ async function loadAppState() {
         await loadRunningActivity();
     }
 }
+
+const { handleRecoveryRequired, handleContractUpdateRequired } = createContractSafetyActions();
 
 /**
  * Initialize storage and boot the main app UI.
@@ -231,6 +235,9 @@ async function initAndBootApp(roomCode) {
         showToast,
         onSyncStatusChange,
         onSyncDataChange,
+        getSyncStatus,
+        onRecoveryRequired: handleRecoveryRequired,
+        onUpdateRequired: handleContractUpdateRequired,
         updateSyncStatusUI,
         triggerSync,
         logger

@@ -161,7 +161,8 @@ export function createLegacyTaxonomyId(kind, key) {
 
 export function createNewGroupIdentity(cryptoProvider) {
     const id = generateSecureUuid(cryptoProvider);
-    return { id, key: `g-${id}`, legacyKeys: [] };
+    const key = `g-${id}`;
+    return { id, key, legacyKeys: [key] };
 }
 
 export function createNewCategoryIdentity(groupKey, cryptoProvider) {
@@ -169,5 +170,6 @@ export function createNewCategoryIdentity(groupKey, cryptoProvider) {
         throw new Error('A parent group key is required');
     }
     const id = generateSecureUuid(cryptoProvider);
-    return { id, key: `${groupKey}/c-${id}`, legacyKeys: [] };
+    const key = `${groupKey}/c-${id}`;
+    return { id, key, legacyKeys: [key] };
 }

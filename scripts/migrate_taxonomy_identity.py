@@ -34,6 +34,7 @@ MIGRATION_COMPLETION_ID = "config-taxonomy-identity-migration-v1"
 TAXONOMY_DOCUMENT_ID = "config-categories"
 RUNNING_ACTIVITY_ID = "config-running-activity"
 TAXONOMY_IDENTITY_VERSION = 1
+DOCUMENT_CONTRACT_VERSION = 1
 TAXONOMY_NAMESPACE = uuid.UUID("8e2e8b7a-5c3f-4f3e-9c5d-7a1b2e4f6c80")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,6 +64,7 @@ class MigrationResult:
     counts: dict[str, int] = field(default_factory=dict)
     backup_path: Path | None = None
     backup_checksum: str | None = None
+    journal_path: Path | None = None
 
 
 def _canonical_json(value: Any) -> str:
@@ -206,6 +208,35 @@ def _set_if_changed(document: dict[str, Any], key: str, value: Any) -> bool:
     return True
 
 
+def _apply_writer_contract(document: Mapping[str, Any]) -> dict[str, Any]:
+    contracted = copy.deepcopy(dict(document))
+    contracted.pop("_conflicts", None)
+    if contracted.get("_deleted"):
+        contracted["writerContract"] = {"version": DOCUMENT_CONTRACT_VERSION}
+        return contracted
+
+    category = contracted.get("category")
+    category_id = contracted.get("categoryId")
+    identity_version = contracted.get("categoryIdentityVersion")
+    if category in (None, "") and category_id in (None, ""):
+        category = None
+        category_id = None
+        identity_version = None
+    contracted["category"] = category
+    contracted["categoryId"] = category_id
+    contracted["categoryIdentityVersion"] = identity_version
+    category_reference = (
+        None
+        if category is None and category_id is None and identity_version is None
+        else {"key": category, "id": category_id, "identityVersion": identity_version}
+    )
+    contracted["writerContract"] = {
+        "version": DOCUMENT_CONTRACT_VERSION,
+        "categoryReference": category_reference,
+    }
+    return contracted
+
+
 def _migrate_taxonomy_document(
     taxonomy: Mapping[str, Any],
     group_ids: Mapping[str, str],
@@ -237,7 +268,8 @@ def _migrate_taxonomy_document(
         changed_records += int(row_changed)
         changed |= row_changed
 
-    return migrated if changed else copy.deepcopy(dict(taxonomy)), changed_records
+    result = migrated if changed else copy.deepcopy(dict(taxonomy))
+    return _apply_writer_contract(result), changed_records
 
 
 def _migrate_reference(
@@ -270,7 +302,10 @@ def _migrate_reference(
     if migrated.get("categoryIdentityVersion") != TAXONOMY_IDENTITY_VERSION:
         migrated["categoryIdentityVersion"] = TAXONOMY_IDENTITY_VERSION
         changed = True
-    return migrated, changed
+    contracted = _apply_writer_contract(migrated)
+    comparable_source = copy.deepcopy(dict(document))
+    comparable_source.pop("_conflicts", None)
+    return contracted, changed or contracted != comparable_source
 
 
 def build_migration_plan(documents: Sequence[Mapping[str, Any]]) -> MigrationPlan:
@@ -308,7 +343,9 @@ def build_migration_plan(documents: Sequence[Mapping[str, Any]]) -> MigrationPla
                 raise MigrationSafetyError("invalid conflict revision metadata")
             conflicts += len(conflict_revisions)
             tombstones.extend(
-                {"_id": document_id, "_rev": revision, "_deleted": True}
+                _apply_writer_contract(
+                    {"_id": document_id, "_rev": revision, "_deleted": True}
+                )
                 for revision in conflict_revisions
             )
 
@@ -351,6 +388,24 @@ def validate_backup_root(backup_root: str | Path) -> Path:
     except ValueError:
         return resolved
     raise MigrationSafetyError("backup root must be outside the repository")
+
+
+def _exact_artifact_path(root: Path, name: str) -> Path:
+    """Resolve one private artifact immediately below its validated root."""
+
+    path = (root / name).resolve()
+    if path.parent != root or path == root:
+        raise MigrationSafetyError("private artifact path escaped its approved root")
+    return path
+
+
+def _remove_exact_artifact(path: Path, root: Path) -> None:
+    """Remove only a previously resolved direct child of the approved root."""
+
+    resolved_path = path.resolve()
+    if resolved_path.parent != root or resolved_path == root:
+        raise MigrationSafetyError("refusing to remove an unverified private artifact path")
+    shutil.rmtree(resolved_path, ignore_errors=True)
 
 
 def _write_secure(path: Path, content: bytes) -> None:
@@ -433,7 +488,7 @@ def create_backup(
             conflict_revisions.append({"id": document_id, "revision": revision})
 
     root.mkdir(parents=True, exist_ok=True)
-    backup_path = root / f"fortudo-taxonomy-identity-{timestamp}"
+    backup_path = _exact_artifact_path(root, f"fortudo-taxonomy-identity-{timestamp}")
     try:
         backup_path.mkdir(mode=0o700)
     except FileExistsError as error:
@@ -441,7 +496,7 @@ def create_backup(
     try:
         _secure_backup_directory(backup_path)
     except Exception:
-        shutil.rmtree(backup_path, ignore_errors=True)
+        _remove_exact_artifact(backup_path, root)
         raise
 
     winners_bytes = _ndjson_bytes(winners)
@@ -476,7 +531,7 @@ def create_backup(
         )
         verify_backup(backup_path)
     except Exception:
-        shutil.rmtree(backup_path, ignore_errors=True)
+        _remove_exact_artifact(backup_path, root)
         raise
     return BackupResult(path=backup_path, checksum=checksum)
 
@@ -565,10 +620,207 @@ def _bulk_write_checked(client: Any, database: str, documents: list[dict[str, An
         raise MigrationSafetyError("Cloudant bulk write did not commit every requested revision")
 
 
+def create_migration_journal(
+    documents: Sequence[Mapping[str, Any]],
+    journal_root: str | Path,
+    *,
+    timestamp: str | None = None,
+) -> Path:
+    root = validate_backup_root(journal_root)
+    timestamp = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = _exact_artifact_path(root, f"fortudo-taxonomy-migration-journal-{timestamp}")
+    entries = []
+    seen: set[tuple[str, str]] = set()
+    ordered_documents = sorted(
+        documents,
+        key=lambda document: (
+            str(document.get("_id")),
+            bool(document.get("_deleted")),
+            str(document.get("_rev")),
+        ),
+    )
+    for document in ordered_documents:
+        document_id = document.get("_id")
+        pre_revision = document.get("_rev")
+        if not isinstance(document_id, str) or not isinstance(pre_revision, str):
+            raise MigrationSafetyError("journal entry is missing its locked pre-revision")
+        identity = (document_id, pre_revision)
+        if identity in seen:
+            raise MigrationSafetyError("journal contains a duplicate pre-revision")
+        seen.add(identity)
+        intended = copy.deepcopy(dict(document))
+        entries.append(
+            {
+                "documentId": document_id,
+                "preRevision": pre_revision,
+                "intendedBody": intended,
+                "intendedBodyChecksum": _sha256_bytes(
+                    _canonical_json(intended).encode("utf-8")
+                ),
+            }
+        )
+    manifest_base = {
+        "formatVersion": 1,
+        "databaseName": EXPECTED_DATABASE_NAME,
+        "createdAt": timestamp,
+        "entryCount": len(entries),
+        "entries": entries,
+    }
+    manifest = {**manifest_base, "manifestChecksum": _backup_checksum(manifest_base)}
+    try:
+        path.mkdir(parents=True, mode=0o700)
+        _secure_backup_directory(path)
+        _write_secure(
+            path / "journal.json",
+            (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+        )
+    except FileExistsError as error:
+        raise MigrationSafetyError("migration journal already exists") from error
+    except Exception:
+        _remove_exact_artifact(path, root)
+        raise
+    return path
+
+
+def _load_migration_journal(journal_path: str | Path) -> dict[str, Any]:
+    path = Path(journal_path).resolve()
+    try:
+        manifest = json.loads((path / "journal.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationSafetyError("migration journal is unreadable") from error
+    unsigned = dict(manifest)
+    checksum = unsigned.pop("manifestChecksum", None)
+    if checksum != _backup_checksum(unsigned):
+        raise MigrationSafetyError("migration journal checksum mismatch")
+    if manifest.get("databaseName") != EXPECTED_DATABASE_NAME or manifest.get(
+        "entryCount"
+    ) != len(manifest.get("entries", [])):
+        raise MigrationSafetyError("migration journal metadata is invalid")
+    for entry in manifest["entries"]:
+        if entry.get("intendedBodyChecksum") != _sha256_bytes(
+            _canonical_json(entry.get("intendedBody")).encode("utf-8")
+        ):
+            raise MigrationSafetyError("migration journal body checksum mismatch")
+    return manifest
+
+
+def _without_revision(document: Mapping[str, Any]) -> dict[str, Any]:
+    body = copy.deepcopy(dict(document))
+    body.pop("_rev", None)
+    body.pop("_revisions", None)
+    body.pop("_conflicts", None)
+    return body
+
+
+def _revision_ancestry(leaf: Mapping[str, Any]) -> list[str]:
+    revisions = leaf.get("_revisions")
+    if not isinstance(revisions, Mapping):
+        return []
+    start = revisions.get("start")
+    identifiers = revisions.get("ids")
+    if not isinstance(start, int) or start < 1 or not isinstance(identifiers, list):
+        return []
+    if not all(isinstance(identifier, str) and identifier for identifier in identifiers):
+        return []
+    ancestry = [f"{start - index}-{identifier}" for index, identifier in enumerate(identifiers)]
+    return ancestry if ancestry and ancestry[0] == leaf.get("_rev") else []
+
+
+def _is_direct_successor(leaf: Mapping[str, Any], pre_revision: str) -> bool:
+    ancestry = _revision_ancestry(leaf)
+    return len(ancestry) >= 2 and ancestry[1] == pre_revision
+
+
+def _classify_journal_entry(
+    leaves: Sequence[Mapping[str, Any]],
+    winners: Mapping[str, str],
+    entry: Mapping[str, Any],
+) -> str:
+    document_id = entry["documentId"]
+    pre_revision = entry["preRevision"]
+    intended = entry["intendedBody"]
+    matching = [leaf for leaf in leaves if leaf.get("_id") == document_id]
+    if any(leaf.get("_rev") == pre_revision for leaf in matching):
+        return "locked-pre-state"
+    intended_body = _without_revision(intended)
+    if intended.get("_deleted"):
+        # CouchDB may retain only special fields in a stored deletion stub. The
+        # exact journal result is the current deleted leaf directly descending
+        # from this entry's locked conflict revision.
+        if any(
+            leaf.get("_deleted") and _is_direct_successor(leaf, pre_revision)
+            for leaf in matching
+        ):
+            return "exact-intended-result"
+    else:
+        winner_revision = winners.get(document_id)
+        winner = next((leaf for leaf in matching if leaf.get("_rev") == winner_revision), None)
+        if (
+            winner is not None
+            and _is_direct_successor(winner, pre_revision)
+            and _without_revision(winner) == intended_body
+        ):
+            return "exact-intended-result"
+    return "divergent"
+
+
+def _read_stable_leaf_graph(
+    client: Any, database: str
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    before = client.get_database_info(database)
+    leaves, winners = client.get_current_leaf_graph(database)
+    after = client.get_database_info(database)
+    if (
+        before.get("uuid") != after.get("uuid")
+        or before.get("update_seq") != after.get("update_seq")
+    ):
+        raise MigrationSafetyError("database changed during journal classification")
+    return leaves, winners
+
+
+def _classify_journal_entries(
+    client: Any, database: str, entries: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    leaves, winners = _read_stable_leaf_graph(client, database)
+    return [_classify_journal_entry(leaves, winners, entry) for entry in entries]
+
+
+def apply_or_resume_journal(
+    client: Any, *, database: str, journal_path: str | Path
+) -> dict[str, int]:
+    _ensure_exact_database(database)
+    journal = _load_migration_journal(journal_path)
+    classifications = _classify_journal_entries(client, database, journal["entries"])
+    if "divergent" in classifications:
+        raise MigrationSafetyError("journaled operation encountered divergent state")
+
+    pending = [
+        copy.deepcopy(entry["intendedBody"])
+        for entry, state in zip(journal["entries"], classifications, strict=True)
+        if state == "locked-pre-state"
+    ]
+    if pending:
+        # Bulk responses are advisory. Exact rereads below establish what actually committed.
+        client.bulk_docs(database, pending)
+
+    final = _classify_journal_entries(client, database, journal["entries"])
+    if "divergent" in final:
+        raise MigrationSafetyError("journaled operation diverged after a partial write")
+    if "locked-pre-state" in final:
+        raise MigrationSafetyError("journaled operation remains incomplete and is safe to resume")
+    return {
+        "exactIntendedResults": final.count("exact-intended-result"),
+        "resumedPreStates": classifications.count("locked-pre-state"),
+    }
+
+
 def _without_identity(document: Mapping[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(dict(document))
     result.pop("_rev", None)
     result.pop("_conflicts", None)
+    result.pop("writerContract", None)
+    if result.get("category") is None:
+        result.pop("category", None)
     result.pop("categoryId", None)
     result.pop("categoryIdentityVersion", None)
     if result.get("_id") == TAXONOMY_DOCUMENT_ID:
@@ -584,6 +836,8 @@ def _verify_post_migration(
 ) -> None:
     after_by_id = {row.get("_id"): row for row in after}
     for original in before:
+        if original.get("_id") == MIGRATION_COMPLETION_ID:
+            continue
         current = after_by_id.get(original.get("_id"))
         if current is None or _without_identity(current) != _without_identity(original):
             raise MigrationSafetyError("post-migration nonidentity invariant failed")
@@ -591,8 +845,283 @@ def _verify_post_migration(
     remaining = build_migration_plan(after)
     if remaining.updates or remaining.conflict_tombstones:
         raise MigrationSafetyError("post-migration identity or conflict invariant failed")
-    if MIGRATION_COMPLETION_ID not in after_by_id:
-        raise MigrationSafetyError("migration completion marker is missing")
+    if MIGRATION_COMPLETION_ID in after_by_id:
+        raise MigrationSafetyError("completion marker was written before data verification")
+
+
+def _attachment_digests(document: Mapping[str, Any]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for name, attachment in sorted((document.get("_attachments") or {}).items()):
+        digest = attachment.get("digest") if isinstance(attachment, Mapping) else None
+        if isinstance(digest, str):
+            result[name] = digest
+        elif isinstance(attachment, Mapping) and isinstance(attachment.get("data"), str):
+            result[name] = _sha256_bytes(attachment["data"].encode("utf-8"))
+        else:
+            raise MigrationSafetyError("attachment digest metadata is incomplete")
+    return result
+
+
+def compute_verified_state_fingerprint(
+    client: Any, database: str, validator_revision: str
+) -> tuple[str, dict[str, int]]:
+    leaves, _winners = _read_stable_leaf_graph(client, database)
+    filtered = [leaf for leaf in leaves if leaf.get("_id") != MIGRATION_COMPLETION_ID]
+    identities = [(leaf.get("_id"), leaf.get("_rev")) for leaf in filtered]
+    if len(identities) != len(set(identities)):
+        raise MigrationSafetyError("verified leaf graph contains duplicate identities")
+    id_counts: dict[str, int] = {}
+    canonical_leaves = []
+    for leaf in sorted(filtered, key=lambda row: (str(row.get("_id")), str(row.get("_rev")))):
+        document_id = leaf.get("_id")
+        revision = leaf.get("_rev")
+        if not isinstance(document_id, str) or not isinstance(revision, str):
+            raise MigrationSafetyError("verified leaf graph contains an invalid identity")
+        id_counts[document_id] = id_counts.get(document_id, 0) + 1
+        body = copy.deepcopy(dict(leaf))
+        body.pop("_conflicts", None)
+        canonical_leaves.append(
+            {
+                "documentId": document_id,
+                "leafRevision": revision,
+                "deleted": bool(leaf.get("_deleted")),
+                "body": body,
+                "attachmentDigests": _attachment_digests(leaf),
+            }
+        )
+    counts = {
+        "leafCount": len(filtered),
+        "liveLeafCount": sum(not bool(leaf.get("_deleted")) for leaf in filtered),
+        "deletedLeafCount": sum(bool(leaf.get("_deleted")) for leaf in filtered),
+        "conflictedDocumentCount": sum(count > 1 for count in id_counts.values()),
+    }
+    fingerprint_body = {
+        "validatorRevision": validator_revision,
+        "counts": counts,
+        "leaves": canonical_leaves,
+    }
+    return _sha256_bytes(_canonical_json(fingerprint_body).encode("utf-8")), counts
+
+
+def _completion_intent(completion: Mapping[str, Any]) -> dict[str, Any]:
+    intent = {
+        "formatVersion": 1,
+        "documentId": MIGRATION_COMPLETION_ID,
+        "preRevision": None,
+        "intendedBody": dict(completion),
+        "intendedBodyChecksum": _sha256_bytes(
+            _canonical_json(completion).encode("utf-8")
+        ),
+    }
+    intent["intentChecksum"] = _backup_checksum(intent)
+    return intent
+
+
+def _load_completion_intent(path: Path) -> dict[str, Any]:
+    try:
+        intent = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationSafetyError("completion intent journal is unreadable") from error
+    if not isinstance(intent, dict):
+        raise MigrationSafetyError("completion intent journal is invalid")
+    unsigned = dict(intent)
+    intent_checksum = unsigned.pop("intentChecksum", None)
+    body = intent.get("intendedBody")
+    if (
+        intent.get("formatVersion") != 1
+        or intent.get("documentId") != MIGRATION_COMPLETION_ID
+        or intent.get("preRevision") is not None
+        or not isinstance(body, dict)
+        or intent.get("intendedBodyChecksum")
+        != _sha256_bytes(_canonical_json(body).encode("utf-8"))
+        or intent_checksum != _backup_checksum(unsigned)
+    ):
+        raise MigrationSafetyError("completion intent journal is invalid")
+    return intent
+
+
+def _validate_snapshot_and_fence(
+    client: Any,
+    *,
+    database: str,
+    expected_update_seq: str,
+    snapshot_path: str | Path,
+    require_exact_state: bool = True,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    # Lazy import avoids a module cycle: the operations module reuses this file's HTTP client.
+    from scripts.document_contract_ops import (
+        security_checksum,
+        verify_snapshot,
+        verify_validator,
+    )
+
+    snapshot = verify_snapshot(snapshot_path)
+    if (
+        snapshot.get("databaseName") != database
+        or snapshot.get("databaseUpdateSeq") != expected_update_seq
+        or snapshot.get("label") != "S1"
+    ):
+        raise MigrationSafetyError("S1 snapshot does not match the locked migration state")
+    validator = verify_validator(client, database)
+    if validator.get("state") != "compatible":
+        raise MigrationSafetyError("compatible document validator is not installed")
+    if snapshot.get("validatorRevision") != validator.get("validatorRevision"):
+        raise MigrationSafetyError("validator revision differs from S1")
+
+    info_before = client.get_database_info(database)
+    security_before = client.get_security(database)
+    leaves, winners = client.get_current_leaf_graph(database)
+    info_after = client.get_database_info(database)
+    security_after = client.get_security(database)
+    unsorted_leaf_identities = [
+        [leaf.get("_id"), leaf.get("_rev"), bool(leaf.get("_deleted"))]
+        for leaf in leaves
+    ]
+    if any(
+        not isinstance(identity[0], str) or not isinstance(identity[1], str)
+        for identity in unsorted_leaf_identities
+    ):
+        raise MigrationSafetyError("live S1 leaf identity is incomplete")
+    live_leaf_identities = sorted(unsorted_leaf_identities)
+    partitioned = bool(
+        info_before.get("partitioned") is True
+        or info_before.get("props", {}).get("partitioned", False)
+    )
+    if (
+        info_before.get("db_name") != database
+        or info_before.get("uuid") != snapshot.get("databaseUuid")
+        or info_after.get("uuid") != info_before.get("uuid")
+        or info_after.get("update_seq") != info_before.get("update_seq")
+        or partitioned != bool(snapshot.get("partitioned"))
+        or security_checksum(security_before) != snapshot.get("securityChecksum")
+        or security_checksum(security_after) != snapshot.get("securityChecksum")
+    ):
+        raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
+    if require_exact_state and (
+        info_before.get("update_seq") != snapshot.get("databaseUpdateSeq")
+        or live_leaf_identities != snapshot.get("leafIdentities")
+        or dict(winners) != snapshot.get("winnerRevisions")
+    ):
+        raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
+    return snapshot, validator
+
+
+def _load_snapshot_leaves(snapshot_path: str | Path) -> list[dict[str, Any]]:
+    leaf_path = Path(snapshot_path).resolve() / "leaf-graph.ndjson"
+    try:
+        return [
+            json.loads(line)
+            for line in leaf_path.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationSafetyError("S1 leaf graph is unreadable") from error
+
+
+def _snapshot_winners(
+    snapshot: Mapping[str, Any], leaves: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf
+        for leaf in leaves
+    }
+    if len(by_identity) != len(leaves):
+        raise MigrationSafetyError("S1 leaf graph contains duplicate identities")
+    winners = []
+    for document_id, revision in snapshot.get("winnerRevisions", {}).items():
+        if document_id == "_design/fortudo-document-contract":
+            continue
+        winner = by_identity.get((document_id, revision))
+        if winner is None:
+            raise MigrationSafetyError("S1 winner body is missing from the leaf graph")
+        body = copy.deepcopy(dict(winner))
+        body.pop("_revisions", None)
+        conflicts = sorted(
+            str(leaf.get("_rev"))
+            for leaf in leaves
+            if leaf.get("_id") == document_id
+            and leaf.get("_rev") != revision
+            and not leaf.get("_deleted")
+        )
+        if conflicts:
+            body["_conflicts"] = conflicts
+        winners.append(body)
+    return winners
+
+
+def _validate_resume_state_against_s1(
+    client: Any,
+    *,
+    database: str,
+    snapshot: Mapping[str, Any],
+    snapshot_leaves: Sequence[Mapping[str, Any]],
+    journal: Mapping[str, Any],
+) -> None:
+    live_leaves, live_winners = _read_stable_leaf_graph(client, database)
+    classifications = [
+        _classify_journal_entry(live_leaves, live_winners, entry)
+        for entry in journal["entries"]
+    ]
+    if "divergent" in classifications:
+        raise MigrationSafetyError("journaled resume state diverges from S1")
+
+    source_by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf for leaf in snapshot_leaves
+    }
+    live_by_identity = {
+        (leaf.get("_id"), leaf.get("_rev")): leaf for leaf in live_leaves
+    }
+    if len(source_by_identity) != len(snapshot_leaves) or len(live_by_identity) != len(live_leaves):
+        raise MigrationSafetyError("resume leaf graph contains duplicate identities")
+
+    journal_pre_identities = {
+        (entry["documentId"], entry["preRevision"]) for entry in journal["entries"]
+    }
+    expected_identities = set(source_by_identity) - journal_pre_identities
+    expected_winners = dict(snapshot.get("winnerRevisions", {}))
+
+    for entry, state in zip(journal["entries"], classifications, strict=True):
+        pre_identity = (entry["documentId"], entry["preRevision"])
+        if pre_identity not in source_by_identity:
+            raise MigrationSafetyError("journal pre-revision is absent from S1")
+        if state == "locked-pre-state":
+            expected_identities.add(pre_identity)
+            continue
+
+        intended = entry["intendedBody"]
+        matching = [leaf for leaf in live_leaves if leaf.get("_id") == entry["documentId"]]
+        if intended.get("_deleted"):
+            candidates = [
+                leaf
+                for leaf in matching
+                if leaf.get("_deleted")
+                and _is_direct_successor(leaf, entry["preRevision"])
+            ]
+        else:
+            winner_revision = live_winners.get(entry["documentId"])
+            candidates = [
+                leaf
+                for leaf in matching
+                if leaf.get("_rev") == winner_revision
+                and _is_direct_successor(leaf, entry["preRevision"])
+                and _without_revision(leaf) == _without_revision(intended)
+            ]
+        if len(candidates) != 1:
+            raise MigrationSafetyError("journal intended successor is not unique")
+        successor = candidates[0]
+        expected_identities.add((successor["_id"], successor["_rev"]))
+        if not intended.get("_deleted"):
+            expected_winners[entry["documentId"]] = successor["_rev"]
+
+    if set(live_by_identity) != expected_identities or dict(live_winners) != expected_winners:
+        raise MigrationSafetyError("journaled resume state contains unrelated changes")
+    unchanged_identities = set(source_by_identity) - journal_pre_identities
+    if any(
+        _canonical_json(live_by_identity[identity])
+        != _canonical_json(source_by_identity[identity])
+        for identity in unchanged_identities
+    ):
+        raise MigrationSafetyError("unchanged S1 leaf body differs during resume")
 
 
 def apply_migration(
@@ -601,91 +1130,192 @@ def apply_migration(
     database: str,
     expected_update_seq: str,
     confirmation: str,
-    backup_root: str | Path,
+    snapshot_path: str | Path,
+    journal_path: str | Path | None = None,
     timestamp: str | None = None,
 ) -> MigrationResult:
     _ensure_exact_database(database)
     if confirmation != database:
         raise MigrationSafetyError("typed database confirmation did not match")
+    is_resume = journal_path is not None
     info = client.get_database_info(database)
     _validate_database_info(database, info)
-    if info["update_seq"] != expected_update_seq:
+    if not is_resume and info["update_seq"] != expected_update_seq:
         raise MigrationSafetyError("update_seq changed after the dry-run")
 
-    winners = client.get_all_documents(database, include_conflicts=True)
+    snapshot, validator = _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=not is_resume,
+    )
+    snapshot_leaves = _load_snapshot_leaves(snapshot_path)
+    winners = _snapshot_winners(snapshot, snapshot_leaves)
+
     plan = build_migration_plan(winners)
     if plan.running_timer_present:
         raise MigrationSafetyError("running timer must be stopped before production migration")
 
+    live_winners = client.get_all_documents(database, include_conflicts=True)
     existing_completion = next(
-        (row for row in winners if row.get("_id") == MIGRATION_COMPLETION_ID), None
+        (row for row in live_winners if row.get("_id") == MIGRATION_COMPLETION_ID), None
     )
     if existing_completion is not None:
-        checksum = existing_completion.get("backupChecksum")
-        if (
-            existing_completion.get("migration") != "taxonomy-identity-v1"
-            or not isinstance(checksum, str)
-            or len(checksum) != 64
-            or any(character not in "0123456789abcdef" for character in checksum.lower())
-        ):
-            raise MigrationSafetyError("existing migration completion marker is invalid")
+        raise MigrationSafetyError("completion marker already exists; manual verification is required")
 
-    if not plan.updates and not plan.conflict_tombstones and existing_completion is not None:
-        locked_info = client.get_database_info(database)
-        _validate_database_info(database, locked_info)
-        locked_winners = client.get_all_documents(database, include_conflicts=True)
-        _validate_locked_state(
-            expected_update_seq=expected_update_seq,
-            database_info=locked_info,
-            original_winners=winners,
-            current_winners=locked_winners,
-        )
-        locked_plan = build_migration_plan(locked_winners)
-        if locked_plan.running_timer_present:
-            raise MigrationSafetyError("running timer must be stopped before production migration")
-        if locked_plan.updates or locked_plan.conflict_tombstones:
-            raise MigrationSafetyError("migration state changed during idempotency verification")
-        return MigrationResult(
-            mode="apply",
-            update_seq=expected_update_seq,
-            counts=locked_plan.counts,
-            backup_checksum=existing_completion["backupChecksum"],
-        )
-
-    backup = create_backup(client, database, info, winners, backup_root, timestamp=timestamp)
-    locked_info = client.get_database_info(database)
-    _validate_database_info(database, locked_info)
-    locked_winners = client.get_all_documents(database, include_conflicts=True)
-    _validate_locked_state(
-        expected_update_seq=expected_update_seq,
-        database_info=locked_info,
-        original_winners=winners,
-        current_winners=locked_winners,
+    writes = sorted(
+        [*plan.updates, *plan.conflict_tombstones],
+        key=lambda document: (
+            str(document.get("_id")),
+            bool(document.get("_deleted")),
+            str(document.get("_rev")),
+        ),
     )
+    if journal_path is None:
+        journal_path = create_migration_journal(
+            writes,
+            Path(snapshot_path).resolve().parent,
+            timestamp=timestamp,
+        )
+    journal = _load_migration_journal(journal_path)
+    if [entry["intendedBody"] for entry in journal["entries"]] != writes:
+        raise MigrationSafetyError("migration journal does not match the current dry-run")
+    if is_resume:
+        _validate_resume_state_against_s1(
+            client,
+            database=database,
+            snapshot=snapshot,
+            snapshot_leaves=snapshot_leaves,
+            journal=journal,
+        )
+    else:
+        # Recheck immediately before the first production mutation. Creating the
+        # local journal cannot change Cloudant state.
+        _validate_snapshot_and_fence(
+            client,
+            database=database,
+            expected_update_seq=expected_update_seq,
+            snapshot_path=snapshot_path,
+            require_exact_state=True,
+        )
+    apply_or_resume_journal(client, database=database, journal_path=journal_path)
+    _validate_resume_state_against_s1(
+        client,
+        database=database,
+        snapshot=snapshot,
+        snapshot_leaves=snapshot_leaves,
+        journal=journal,
+    )
+    snapshot, validator = _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
+    post_winners = client.get_all_documents(database, include_conflicts=True)
+    _verify_post_migration(winners, post_winners)
 
-    completion = {
+    fingerprint, verified_counts = compute_verified_state_fingerprint(
+        client, database, validator["validatorRevision"]
+    )
+    repeated_fingerprint, repeated_counts = compute_verified_state_fingerprint(
+        client, database, validator["validatorRevision"]
+    )
+    if fingerprint != repeated_fingerprint or verified_counts != repeated_counts:
+        raise MigrationSafetyError("verified state changed before completion")
+
+    # Re-establish the exact S1-derived graph and metadata fence immediately before
+    # fixing the completion intent. A later race is detected by the post-marker checks.
+    _validate_resume_state_against_s1(
+        client,
+        database=database,
+        snapshot=snapshot,
+        snapshot_leaves=snapshot_leaves,
+        journal=journal,
+    )
+    snapshot, validator = _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
+    locked_fingerprint, locked_counts = compute_verified_state_fingerprint(
+        client, database, validator["validatorRevision"]
+    )
+    if locked_fingerprint != fingerprint or locked_counts != verified_counts:
+        raise MigrationSafetyError("verified state changed before completion")
+
+    completion_fields = {
         "_id": MIGRATION_COMPLETION_ID,
         "id": MIGRATION_COMPLETION_ID,
         "docType": "config",
         "migration": "taxonomy-identity-v1",
-        "completedAt": timestamp or datetime.now(UTC).isoformat(),
-        "databaseUpdateSeq": expected_update_seq,
-        "backupChecksum": backup.checksum,
+        "s1SnapshotChecksum": snapshot["manifestChecksum"],
+        "verifiedStateFingerprint": fingerprint,
+        "validatorRevision": validator["validatorRevision"],
         "counts": plan.counts,
+        "verifiedCounts": verified_counts,
     }
-    if existing_completion and existing_completion.get("_rev"):
-        completion["_rev"] = existing_completion["_rev"]
-
-    writes = [*plan.updates, *plan.conflict_tombstones, completion]
-    _bulk_write_checked(client, database, writes)
-    post_winners = client.get_all_documents(database, include_conflicts=True)
-    _verify_post_migration(winners, post_winners)
+    completion_intent_path = Path(journal_path) / "completion-intent.json"
+    if completion_intent_path.exists():
+        existing_intent = _load_completion_intent(completion_intent_path)
+        completed_at = existing_intent["intendedBody"].get("completedAt")
+        if not isinstance(completed_at, str) or not completed_at:
+            raise MigrationSafetyError("completion intent journal is invalid")
+        completion = _apply_writer_contract(
+            {**completion_fields, "completedAt": completed_at}
+        )
+        completion_intent = _completion_intent(completion)
+        if existing_intent != completion_intent:
+            raise MigrationSafetyError("completion intent journal diverges from verified state")
+    else:
+        completion = _apply_writer_contract(
+            {
+                **completion_fields,
+                "completedAt": timestamp or datetime.now(UTC).isoformat(),
+            }
+        )
+        completion_intent = _completion_intent(completion)
+        _write_secure(
+            completion_intent_path,
+            (json.dumps(completion_intent, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+        )
+    marker_result = client.put_document(database, completion)
+    if not marker_result.get("ok") or not isinstance(marker_result.get("rev"), str):
+        raise MigrationSafetyError("completion marker write conflicted or failed")
+    stored_marker = client.get_document(database, MIGRATION_COMPLETION_ID)
+    expected_stored_marker = {**completion, "_rev": marker_result["rev"]}
+    if stored_marker != expected_stored_marker:
+        raise MigrationSafetyError("completion marker reread failed")
+    _validate_snapshot_and_fence(
+        client,
+        database=database,
+        expected_update_seq=expected_update_seq,
+        snapshot_path=snapshot_path,
+        require_exact_state=False,
+    )
+    final_fingerprint, final_counts = compute_verified_state_fingerprint(
+        client, database, validator["validatorRevision"]
+    )
+    if final_fingerprint != fingerprint or final_counts != verified_counts:
+        raise MigrationSafetyError("verified state changed after completion")
+    final_winners = client.get_all_documents(database, include_conflicts=True)
+    final_without_marker = [
+        document for document in final_winners if document.get("_id") != MIGRATION_COMPLETION_ID
+    ]
+    remaining = build_migration_plan(final_without_marker)
+    if remaining.updates or remaining.conflict_tombstones:
+        raise MigrationSafetyError("post-completion invariants are incomplete")
     return MigrationResult(
         mode="apply",
         update_seq=expected_update_seq,
         counts=plan.counts,
-        backup_path=backup.path,
-        backup_checksum=backup.checksum,
+        backup_path=Path(snapshot_path).resolve(),
+        backup_checksum=snapshot["manifestChecksum"],
+        journal_path=Path(journal_path).resolve(),
     )
 
 
@@ -697,33 +1327,8 @@ def restore_backup(
     confirmation: str,
     backup_path: str | Path,
 ) -> MigrationResult:
-    _ensure_exact_database(database)
-    if confirmation != database:
-        raise MigrationSafetyError("typed database confirmation did not match")
-    manifest = verify_backup(backup_path)
-    info = client.get_database_info(database)
-    _validate_database_info(database, info)
-    if info["update_seq"] != expected_update_seq:
-        raise MigrationSafetyError("update_seq changed before restore")
-
-    original_winners = _load_ndjson(Path(backup_path) / "winning-documents.ndjson")
-    restored: list[dict[str, Any]] = []
-    for original in original_winners:
-        document = copy.deepcopy(original)
-        document.pop("_conflicts", None)
-        current = client.get_document(database, document["_id"])
-        if current and current.get("_rev"):
-            document["_rev"] = current["_rev"]
-        else:
-            document.pop("_rev", None)
-        restored.append(document)
-    _bulk_write_checked(client, database, restored)
-    return MigrationResult(
-        mode="restore",
-        update_seq=expected_update_seq,
-        counts={"documentsRestored": len(restored)},
-        backup_path=Path(backup_path).resolve(),
-        backup_checksum=manifest["backupChecksum"],
+    raise MigrationSafetyError(
+        "direct production restore is disabled; reconstruct a validator-last quarantine database"
     )
 
 
@@ -803,6 +1408,42 @@ class CloudantClient:
                 return None
             raise
 
+    def get_current_leaf_graph(
+        self, database: str
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        encoded = urllib.parse.quote(database, safe="")
+        changes = self._request(
+            "verified leaf inventory", f"{encoded}/_changes?since=0&style=all_docs"
+        )
+        leaves: list[dict[str, Any]] = []
+        for row in changes.get("results", []):
+            document_id = row.get("id")
+            if not isinstance(document_id, str) or document_id.startswith("_local/"):
+                continue
+            for item in row.get("changes", []):
+                revision = item.get("rev")
+                path = (
+                    f"{encoded}/{urllib.parse.quote(document_id, safe='')}?"
+                    f"rev={urllib.parse.quote(revision, safe='')}&revs=true&attachments=true"
+                )
+                leaves.append(self._request("verified leaf read", path))
+        winner_payload = self._request("verified winner read", f"{encoded}/_all_docs")
+        winners = {
+            row["id"]: row["value"]["rev"]
+            for row in winner_payload.get("rows", [])
+            if isinstance(row.get("value", {}).get("rev"), str)
+        }
+        return leaves, winners
+
+    def put_document(self, database: str, document: Mapping[str, Any]) -> dict[str, Any]:
+        return self._request(
+            "guarded single document write",
+            f"{urllib.parse.quote(database, safe='')}/"
+            f"{urllib.parse.quote(str(document['_id']), safe='')}",
+            method="PUT",
+            body=document,
+        )
+
     def bulk_docs(self, database: str, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return self._request(
             "guarded bulk write",
@@ -816,25 +1457,23 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", required=True)
     parser.add_argument("--backup-root")
+    parser.add_argument("--s1-snapshot")
+    parser.add_argument("--journal")
     parser.add_argument("--expected-update-seq")
     parser.add_argument("--confirm-database")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--apply", action="store_true")
-    modes.add_argument("--restore", metavar="BACKUP_PATH")
     return parser
 
 
 def _safe_report(result: MigrationResult, *, running_timer_present: bool = False) -> None:
     report = {
         "mode": result.mode,
-        "databaseName": EXPECTED_DATABASE_NAME,
-        "updateSeq": result.update_seq,
         "counts": result.counts,
         "runningTimerPresent": running_timer_present,
     }
     if result.backup_path is not None:
-        report["backupPath"] = str(result.backup_path)
-        report["backupChecksum"] = result.backup_checksum
+        report["s1SnapshotChecksum"] = result.backup_checksum
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
@@ -855,31 +1494,17 @@ def execute(
     client = client_factory(credential_url)
 
     if args.apply:
-        if not args.expected_update_seq or not args.confirm_database or not args.backup_root:
+        if not args.expected_update_seq or not args.confirm_database or not args.s1_snapshot:
             raise MigrationSafetyError(
-                "apply requires --expected-update-seq, --confirm-database, and --backup-root"
+                "apply requires --expected-update-seq, --confirm-database, and --s1-snapshot"
             )
         result = apply_migration(
             client,
             database=args.database,
             expected_update_seq=args.expected_update_seq,
             confirmation=args.confirm_database,
-            backup_root=args.backup_root,
-        )
-        _safe_report(result)
-        return result
-
-    if args.restore:
-        if not args.expected_update_seq or not args.confirm_database:
-            raise MigrationSafetyError(
-                "restore requires --expected-update-seq and --confirm-database"
-            )
-        result = restore_backup(
-            client,
-            database=args.database,
-            expected_update_seq=args.expected_update_seq,
-            confirmation=args.confirm_database,
-            backup_path=args.restore,
+            snapshot_path=args.s1_snapshot,
+            journal_path=args.journal,
         )
         _safe_report(result)
         return result

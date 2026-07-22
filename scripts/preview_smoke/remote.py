@@ -60,6 +60,37 @@ def delete_remote_database(couchdb_url: str, db_name: str) -> None:
         raise
 
 
+def create_remote_database(couchdb_url: str, db_name: str) -> None:
+    """Provision an exact disposable preview database outside the browser client."""
+    base_url, headers = build_couchdb_request_parts(couchdb_url)
+    request = Request(f"{base_url}/{db_name}", headers=headers, method="PUT")
+    try:
+        with urlopen(request):
+            return
+    except HTTPError as error:
+        if error.code == 412:
+            return
+        raise
+
+
+def put_remote_docs(couchdb_url: str, db_name: str, docs: list[dict[str, Any]]) -> None:
+    """Seed exact disposable preview documents through the administrative test path."""
+    base_url, headers = build_couchdb_request_parts(couchdb_url)
+    request_headers = {**headers, "Content-Type": "application/json"}
+    payload = json.dumps({"docs": docs}).encode("utf-8")
+    request = Request(
+        f"{base_url}/{db_name}/_bulk_docs",
+        headers=request_headers,
+        data=payload,
+        method="POST",
+    )
+    with urlopen(request) as response:
+        results = json.loads(response.read().decode("utf-8"))
+    failures = [result for result in results if result.get("error")]
+    if failures:
+        raise RuntimeError(f"remote preview seed rejected {len(failures)} document(s)")
+
+
 def fetch_remote_docs(
     couchdb_url: str, db_name: str, *, include_conflicts: bool = False
 ) -> list[dict[str, Any]]:

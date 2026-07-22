@@ -28,7 +28,97 @@ export const DEFAULT_CHILD_CATEGORY_DEFINITIONS = Object.freeze([
 let groups = [];
 let categories = [];
 
+const ROOT_OWNED_FIELDS = new Set([
+    'id',
+    'docType',
+    'category',
+    'categoryId',
+    'categoryIdentityVersion',
+    'schemaVersion',
+    'identityVersion',
+    'groups',
+    'categories'
+]);
+const GROUP_OWNED_FIELDS = new Set([
+    'id',
+    'key',
+    'legacyKeys',
+    'label',
+    'colorFamily',
+    'color',
+    'status',
+    'archivedAt'
+]);
+const CATEGORY_OWNED_FIELDS = new Set([
+    'id',
+    'key',
+    'legacyKeys',
+    'label',
+    'color',
+    'groupKey',
+    'groupId',
+    'isLinkedToGroupFamily',
+    'status',
+    'archivedAt'
+]);
+
+let rootExtensions = {};
+let groupExtensions = new Map();
+let categoryExtensions = new Map();
+
+function cloneJson(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    return JSON.parse(JSON.stringify(value));
+}
+
+function extractExtensions(record, ownedFields) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        return {};
+    }
+    return Object.fromEntries(
+        Object.entries(record)
+            .filter(([key]) => !ownedFields.has(key))
+            .map(([key, value]) => [key, cloneJson(value)])
+    );
+}
+
+function resetExtensionState() {
+    rootExtensions = {};
+    groupExtensions = new Map();
+    categoryExtensions = new Map();
+}
+
+function captureRowExtensions(sourceRows, normalizedRows, ownedFields) {
+    const result = new Map();
+    const normalizedById = new Map(normalizedRows.map((row) => [row.id, row]));
+    const normalizedByKey = new Map(normalizedRows.map((row) => [row.key, row]));
+    for (const source of Array.isArray(sourceRows) ? sourceRows : []) {
+        const normalized = normalizedById.get(source?.id) || normalizedByKey.get(source?.key);
+        if (!normalized) {
+            continue;
+        }
+        const extensions = extractExtensions(source, ownedFields);
+        if (Object.keys(extensions).length > 0) {
+            result.set(normalized.id, extensions);
+        }
+    }
+    return result;
+}
+
+function captureExtensionState(config) {
+    rootExtensions = extractExtensions(config, ROOT_OWNED_FIELDS);
+    groupExtensions = captureRowExtensions(config.groups, groups, GROUP_OWNED_FIELDS);
+    categoryExtensions = captureRowExtensions(config.categories, categories, CATEGORY_OWNED_FIELDS);
+}
+
+function mergeExtensions(extensions, canonical) {
+    return { ...cloneJson(extensions || {}), ...canonical };
+}
+
 export async function loadTaxonomy() {
+    resetExtensionState();
     const config = await loadConfig(TAXONOMY_CONFIG_ID);
 
     if (!config) {
@@ -41,6 +131,7 @@ export async function loadTaxonomy() {
         const hasIdentity = config.identityVersion === TAXONOMY_IDENTITY_VERSION;
         groups = normalizeGroups(config.groups, hasIdentity);
         categories = normalizeCategories(config.categories, groups, hasIdentity);
+        captureExtensionState(config);
         return;
     }
 
@@ -68,18 +159,32 @@ export function getMutableTaxonomyState() {
 }
 
 export function replaceTaxonomyState(nextState) {
+    resetExtensionState();
     groups = normalizeGroups(nextState?.groups, true);
     categories = normalizeCategories(nextState?.categories, groups, true);
 }
 
 export async function persistTaxonomyState() {
-    await putConfig({
-        id: TAXONOMY_CONFIG_ID,
-        schemaVersion: TAXONOMY_SCHEMA_VERSION,
-        identityVersion: TAXONOMY_IDENTITY_VERSION,
-        groups: groups.map(cloneGroup),
-        categories: categories.map(cloneCategory)
-    });
+    const currentGroupIds = new Set(groups.map((group) => group.id));
+    const currentCategoryIds = new Set(categories.map((category) => category.id));
+    groupExtensions = new Map([...groupExtensions].filter(([id]) => currentGroupIds.has(id)));
+    categoryExtensions = new Map(
+        [...categoryExtensions].filter(([id]) => currentCategoryIds.has(id))
+    );
+
+    await putConfig(
+        mergeExtensions(rootExtensions, {
+            id: TAXONOMY_CONFIG_ID,
+            schemaVersion: TAXONOMY_SCHEMA_VERSION,
+            identityVersion: TAXONOMY_IDENTITY_VERSION,
+            groups: groups.map((group) =>
+                mergeExtensions(groupExtensions.get(group.id), cloneGroup(group))
+            ),
+            categories: categories.map((category) =>
+                mergeExtensions(categoryExtensions.get(category.id), cloneCategory(category))
+            )
+        })
+    );
 }
 
 export async function isTaxonomyKeyReferencedByTasks(key) {

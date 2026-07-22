@@ -1,0 +1,149 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "name": "valid uncategorized task",
+      "expected": "allow",
+      "document": {
+        "_id": "task-valid-null",
+        "docType": "task",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null,
+        "writerContract": { "version": 1, "categoryReference": null }
+      }
+    },
+    {
+      "name": "valid categorized activity",
+      "expected": "allow",
+      "document": {
+        "_id": "activity-valid-category",
+        "docType": "activity",
+        "category": "work/meetings",
+        "categoryId": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+        "categoryIdentityVersion": 1,
+        "writerContract": {
+          "version": 1,
+          "categoryReference": {
+            "key": "work/meetings",
+            "id": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+            "identityVersion": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy revision without contract",
+      "expected": "FDC_CONTRACT_VERSION",
+      "document": {
+        "_id": "task-legacy",
+        "docType": "task",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null
+      }
+    },
+    {
+      "name": "stale inherited category witness",
+      "expected": "FDC_CATEGORY_REFERENCE",
+      "document": {
+        "_id": "task-stale-witness",
+        "docType": "task",
+        "category": "work/comms",
+        "categoryId": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+        "categoryIdentityVersion": 1,
+        "writerContract": {
+          "version": 1,
+          "categoryReference": {
+            "key": "work/meetings",
+            "id": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+            "identityVersion": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "bare tombstone",
+      "expected": "FDC_TOMBSTONE_CONTRACT",
+      "document": { "_id": "task-bare-delete", "_rev": "2-a", "_deleted": true }
+    },
+    {
+      "name": "versioned tombstone",
+      "expected": "allow",
+      "document": {
+        "_id": "task-versioned-delete",
+        "_rev": "2-a",
+        "_deleted": true,
+        "writerContract": { "version": 1 }
+      }
+    },
+    {
+      "name": "unsupported application type",
+      "expected": "FDC_UNSUPPORTED_TYPE",
+      "document": {
+        "_id": "unknown-type",
+        "docType": "room",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null,
+        "writerContract": { "version": 1, "categoryReference": null }
+      }
+    },
+    {
+      "name": "legacy taxonomy to identity-v1 transition",
+      "expected": "allow",
+      "oldDocument": {
+        "_id": "config-categories",
+        "docType": "config",
+        "schemaVersion": "3.5",
+        "groups": [{ "key": "work", "label": "Work" }],
+        "categories": [
+          { "key": "work/meetings", "label": "Comms", "groupKey": "work" },
+          { "key": "work/comms", "label": "Meetings", "groupKey": "work" }
+        ]
+      },
+      "document": {
+        "_id": "config-categories",
+        "docType": "config",
+        "schemaVersion": "3.5",
+        "identityVersion": 1,
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null,
+        "writerContract": { "version": 1, "categoryReference": null },
+        "groups": [
+          {
+            "id": "3930ae01-aef6-5c5f-8db3-d91be139ea84",
+            "key": "work",
+            "legacyKeys": ["work"],
+            "label": "Work",
+            "status": "active",
+            "archivedAt": null
+          }
+        ],
+        "categories": [
+          {
+            "id": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+            "key": "work/meetings",
+            "legacyKeys": ["work/meetings"],
+            "label": "Comms",
+            "groupKey": "work",
+            "groupId": "3930ae01-aef6-5c5f-8db3-d91be139ea84",
+            "status": "active",
+            "archivedAt": null
+          },
+          {
+            "id": "d7c3267e-3f6f-5603-a952-f92eab6de988",
+            "key": "work/comms",
+            "legacyKeys": ["work/comms"],
+            "label": "Meetings",
+            "groupKey": "work",
+            "groupId": "3930ae01-aef6-5c5f-8db3-d91be139ea84",
+            "status": "active",
+            "archivedAt": null
+          }
+        ]
+      }
+    }
+  ]
+}

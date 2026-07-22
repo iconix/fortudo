@@ -24,12 +24,26 @@ from scripts.e2e_helpers import (
 )
 from scripts.preview_smoke.remote import (
     build_remote_db_name,
+    create_remote_database,
     delete_remote_database,
     fetch_preview_couchdb_url,
     fetch_remote_docs,
 )
 
 SEQUENCE_ID = "config-unscheduled-sequence"
+WHATS_NEW_KEY = "fortudo-whats-new-v1"
+
+
+def reset_preview_browser_state(page: Page) -> None:
+    page.evaluate(
+        """
+        (whatsNewKey) => {
+            localStorage.clear();
+            localStorage.setItem(whatsNewKey, 'dismissed');
+        }
+        """,
+        WHATS_NEW_KEY,
+    )
 
 
 def task_doc(task_id: str, description: str) -> dict:
@@ -42,6 +56,10 @@ def task_doc(task_id: str, description: str) -> dict:
         "priority": "medium",
         "estDuration": 30,
         "acceptanceSentinel": f"preserve-{task_id}",
+        "category": None,
+        "categoryId": None,
+        "categoryIdentityVersion": None,
+        "writerContract": {"version": 1, "categoryReference": None},
     }
 
 
@@ -51,6 +69,10 @@ def sequence_doc(task_ids: list[str]) -> dict:
         "docType": "config",
         "schemaVersion": 1,
         "orderedTaskIds": task_ids,
+        "category": None,
+        "categoryId": None,
+        "categoryIdentityVersion": None,
+        "writerContract": {"version": 1, "categoryReference": None},
     }
 
 
@@ -249,6 +271,7 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
     room_code = f"order-sync-{int(time.time() * 1000)}"
     remote_db_name = build_remote_db_name(hostname, room_code)
     delete_remote_database(couchdb_url, remote_db_name)
+    create_remote_database(couchdb_url, remote_db_name)
 
     browser = None
     try:
@@ -291,7 +314,7 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
             )
 
             page_a.goto(preview_url, wait_until="load")
-            page_a.evaluate("localStorage.clear()")
+            reset_preview_browser_state(page_a)
             clear_room_storage(page_a, room_code)
             seed_docs(
                 page_a,
@@ -324,7 +347,7 @@ def test_two_client_sequence_sync_preserves_task_edits_and_cleans_order_conflict
                 ) from error
 
             page_b.goto(preview_url, wait_until="load")
-            page_b.evaluate("localStorage.clear()")
+            reset_preview_browser_state(page_b)
             clear_room_storage(page_b, room_code)
             enter_room(page_b, room_code)
 

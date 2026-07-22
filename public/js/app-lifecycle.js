@@ -17,6 +17,9 @@ export function createRoomSessionLifecycle({
     showToast,
     onSyncStatusChange,
     onSyncDataChange,
+    getSyncStatus,
+    onRecoveryRequired,
+    onUpdateRequired,
     updateSyncStatusUI,
     triggerSync,
     logger
@@ -202,15 +205,25 @@ export function createRoomSessionLifecycle({
     }
 
     function start({ signal }) {
-        unsubscribeSyncStatus = onSyncStatusChange((status) => {
+        const handleSyncStatus = (status) => {
             updateSyncStatusUI(status);
+            if (status === 'recovery-required') {
+                onRecoveryRequired?.();
+            }
+            if (status === 'update-required' || status === 'update-required-available') {
+                onUpdateRequired?.();
+            }
             if (status === 'synced' && shouldRestoreRunningTimerAfterInitialSync) {
                 shouldRestoreRunningTimerAfterInitialSync = false;
                 refreshFromStorage({ restoreRunningTimer: true }).catch((err) => {
                     logger.error('Failed to refresh tasks after sync:', err);
                 });
             }
-        });
+        };
+        unsubscribeSyncStatus = onSyncStatusChange(handleSyncStatus);
+        if (typeof getSyncStatus === 'function') {
+            handleSyncStatus(getSyncStatus());
+        }
         unsubscribeSyncDataChange = onSyncDataChange?.(refreshFromExternalChange) || null;
 
         document.addEventListener(
