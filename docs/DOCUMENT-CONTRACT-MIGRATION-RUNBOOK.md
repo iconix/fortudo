@@ -1,6 +1,6 @@
 # Document-contract migration runbook
 
-This runbook is the operational companion to the entity and taxonomy identity hardening. It does not authorize a production write by itself. Stop whenever a database name, UUID, opaque update sequence, `_security` hash, validator revision, leaf set, or required approval differs from the locked private manifest.
+This runbook is the operational companion to the entity and taxonomy identity hardening. It does not authorize a production write by itself. Stop whenever a target-binding checksum, database name, opaque update sequence, `_security` hash, validator revision, leaf set, or required approval differs from the locked private manifest.
 
 Never paste the Cloudant credential URL, document bodies, descriptions, or private manifests into a terminal transcript, issue, pull request, or chat. Set `FORTUDO_CLOUDANT_URL` only in the local process environment. Store inventories, snapshots, and journals on an encrypted user-only volume outside the repository by default.
 
@@ -54,12 +54,14 @@ python scripts/document_contract_ops.py inventory `
 
 For the approved temporary-unencrypted exception, replace the final flag with `--confirm-temporary-unencrypted`.
 
-The normal output contains aggregate counts and the manifest checksum only. Locate the private manifest inside the operator-supplied root; its path and exact database list stay off normal command output. Obtain explicit approval for the fresh database list. Do not reuse an older count.
+The normal output contains aggregate counts, the credential-free account checksum, and the manifest checksum only. Locate the private manifest inside the operator-supplied root; its path and exact database list stay off normal command output. Obtain explicit approval for the fresh database list and account checksum. Do not reuse an older count.
+
+IBM Cloudant does not expose the per-database UUID returned by Apache CouchDB. Snapshot format 2 therefore uses a versioned target binding over the credential-free account-endpoint hash, exact database name, partitioning state, opaque update sequence, `_security` checksum, canonical complete leaf-graph checksum, and winner-revision-map checksum. The binding checksum is the operator-visible lock; credentials and the account endpoint remain private.
 
 ## Fence and migrate `fortudo-dat-411`
 
 1. Stop the timer and close known active clients.
-2. Lock the database name, UUID, opaque update sequence, `_security` checksum, taxonomy mapping, current winners, and every conflict leaf from the private inventory/dry-run.
+2. Lock the target-binding checksum, opaque update sequence, taxonomy mapping, current winners, and every conflict leaf from the private inventory/dry-run.
 3. Create `S0` before installing the fence:
 
    ```powershell
@@ -78,9 +80,7 @@ The normal output contains aggregate counts and the manifest checksum only. Loca
    python scripts/document_contract_ops.py install `
      --database fortudo-dat-411 `
      --confirm-database fortudo-dat-411 `
-     --expected-uuid <private-uuid> `
-     --expected-update-seq <private-opaque-sequence> `
-     --expected-security-checksum <private-hash> `
+     --expected-target-binding-checksum <private-S0-binding-checksum> `
      --snapshot <S0-path>
    ```
 
@@ -103,7 +103,17 @@ The tool applies identity revisions and conflict tombstones first, verifies all 
 
 8. Create `S2` only after marker, fingerprint, counts, winners, conflict resolution, locked labels, and nonidentity invariants all verify.
 
-Direct production restore is disabled. Reconstruct a new `fortudo-quarantine-*` database with `restore-quarantine`; legacy leaf trees load before the validator. Reconciliation back into production remains manual and selective.
+Direct production restore is disabled. Reconstruct a new `fortudo-quarantine-*` database only in the approved Cloudant account; legacy leaf trees load before the validator:
+
+```powershell
+python scripts/document_contract_ops.py restore-quarantine `
+  --database fortudo-quarantine-<id> `
+  --confirm-database fortudo-quarantine-<id> `
+  --expected-account-checksum <approved-private-inventory-account-checksum> `
+  --snapshot <snapshot-path>
+```
+
+The external account checksum must match both the active credential and the snapshot binding before the quarantine database is created. Direct cross-account reconstruction is not authorized by this runbook. Reconciliation back into production remains manual and selective.
 
 ## Other existing rooms
 
@@ -124,9 +134,10 @@ Provision future remote rooms manually and fence-first:
 ```powershell
 python scripts/document_contract_ops.py provision `
   --database fortudo-<room> `
-  --confirm-database fortudo-<room>
+  --confirm-database fortudo-<room> `
+  --expected-account-checksum <approved-private-inventory-account-checksum>
 ```
 
 Exercise each known client. It must either pass a stable divergence audit and sync, or export/reset, pull, and then pass. Create `S3` after that exercise; it is an aggregate observation, not proof that no dormant replica exists.
 
-The final record must include exact test and coverage results, CI and deployment status, commit and service-worker SHAs, live asset hashes, inventory/snapshot/journal paths and checksums, migration and fence counts, validator revision, completion fingerprint, and every post-migration invariant.
+The final record must include exact test and coverage results, CI and deployment status, commit and service-worker SHAs, live asset hashes, inventory/snapshot/journal paths and checksums, target-binding checksums, migration and fence counts, validator revision, completion fingerprint, and every post-migration invariant.

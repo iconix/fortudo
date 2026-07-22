@@ -770,12 +770,37 @@ def _read_stable_leaf_graph(
     before = client.get_database_info(database)
     leaves, winners = client.get_current_leaf_graph(database)
     after = client.get_database_info(database)
-    if (
-        before.get("uuid") != after.get("uuid")
-        or before.get("update_seq") != after.get("update_seq")
+    if _database_observation(client, database, before) != _database_observation(
+        client, database, after
     ):
         raise MigrationSafetyError("database changed during journal classification")
     return leaves, winners
+
+
+def _database_observation(
+    client: Any, database: str, info: Mapping[str, Any]
+) -> dict[str, Any]:
+    try:
+        account_checksum = client.get_account_checksum()
+    except (AttributeError, TypeError) as error:
+        raise MigrationSafetyError("Cloudant account identity is unavailable") from error
+    if (
+        not isinstance(account_checksum, str)
+        or len(account_checksum) != 64
+        or any(character not in "0123456789abcdef" for character in account_checksum)
+        or info.get("db_name") != database
+        or not isinstance(info.get("update_seq"), str)
+    ):
+        raise MigrationSafetyError("database identity metadata is incomplete")
+    return {
+        "accountChecksum": account_checksum,
+        "databaseName": database,
+        "partitioned": bool(
+            info.get("partitioned") is True
+            or info.get("props", {}).get("partitioned", False)
+        ),
+        "databaseUpdateSeq": info["update_seq"],
+    }
 
 
 def _classify_journal_entries(
@@ -950,19 +975,27 @@ def _validate_snapshot_and_fence(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     # Lazy import avoids a module cycle: the operations module reuses this file's HTTP client.
     from scripts.document_contract_ops import (
+        ContractOpsSafetyError,
+        capture_target_binding,
         security_checksum,
         verify_snapshot,
         verify_validator,
     )
 
-    snapshot = verify_snapshot(snapshot_path)
+    try:
+        snapshot = verify_snapshot(snapshot_path)
+    except ContractOpsSafetyError as error:
+        raise MigrationSafetyError("S1 snapshot verification failed") from error
     if (
         snapshot.get("databaseName") != database
         or snapshot.get("databaseUpdateSeq") != expected_update_seq
         or snapshot.get("label") != "S1"
     ):
         raise MigrationSafetyError("S1 snapshot does not match the locked migration state")
-    validator = verify_validator(client, database)
+    try:
+        validator = verify_validator(client, database)
+    except ContractOpsSafetyError as error:
+        raise MigrationSafetyError("document validator verification failed") from error
     if validator.get("state") != "compatible":
         raise MigrationSafetyError("compatible document validator is not installed")
     if snapshot.get("validatorRevision") != validator.get("validatorRevision"):
@@ -973,35 +1006,31 @@ def _validate_snapshot_and_fence(
     leaves, winners = client.get_current_leaf_graph(database)
     info_after = client.get_database_info(database)
     security_after = client.get_security(database)
-    unsorted_leaf_identities = [
-        [leaf.get("_id"), leaf.get("_rev"), bool(leaf.get("_deleted"))]
-        for leaf in leaves
-    ]
-    if any(
-        not isinstance(identity[0], str) or not isinstance(identity[1], str)
-        for identity in unsorted_leaf_identities
-    ):
-        raise MigrationSafetyError("live S1 leaf identity is incomplete")
-    live_leaf_identities = sorted(unsorted_leaf_identities)
-    partitioned = bool(
-        info_before.get("partitioned") is True
-        or info_before.get("props", {}).get("partitioned", False)
-    )
+    before_observation = _database_observation(client, database, info_before)
+    after_observation = _database_observation(client, database, info_after)
+    try:
+        live_target_binding = capture_target_binding(
+            client,
+            database=database,
+            info=info_before,
+            security=security_before,
+            leaves=leaves,
+            winners=winners,
+        )
+    except ContractOpsSafetyError as error:
+        raise MigrationSafetyError("live target binding is invalid") from error
+    snapshot_target_binding = snapshot.get("targetBinding", {})
     if (
-        info_before.get("db_name") != database
-        or info_before.get("uuid") != snapshot.get("databaseUuid")
-        or info_after.get("uuid") != info_before.get("uuid")
-        or info_after.get("update_seq") != info_before.get("update_seq")
-        or partitioned != bool(snapshot.get("partitioned"))
+        before_observation != after_observation
         or security_checksum(security_before) != snapshot.get("securityChecksum")
         or security_checksum(security_after) != snapshot.get("securityChecksum")
+        or any(
+            live_target_binding.get(key) != snapshot_target_binding.get(key)
+            for key in ("accountChecksum", "databaseName", "partitioned")
+        )
     ):
         raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
-    if require_exact_state and (
-        info_before.get("update_seq") != snapshot.get("databaseUpdateSeq")
-        or live_leaf_identities != snapshot.get("leafIdentities")
-        or dict(winners) != snapshot.get("winnerRevisions")
-    ):
+    if require_exact_state and live_target_binding != snapshot_target_binding:
         raise MigrationSafetyError("live database state differs from the complete S1 snapshot")
     return snapshot, validator
 
@@ -1349,6 +1378,10 @@ class CloudantClient:
             f"{urllib.parse.unquote(parsed.username)}:{urllib.parse.unquote(parsed.password)}".encode()
         ).decode("ascii")
         self._authorization = f"Basic {token}"
+
+    def get_account_checksum(self) -> str:
+        """Return a credential-free binding for the exact Cloudant account endpoint."""
+        return _sha256_bytes(self._base_url.encode("utf-8"))
 
     def _request(
         self,
