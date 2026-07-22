@@ -2,6 +2,13 @@
  * @jest-environment jsdom
  */
 
+jest.mock('../public/js/sync-contract.js', () => ({
+    inspectRemoteDocumentContract: jest.fn(),
+    auditLocalDivergence: jest.fn()
+}));
+
+import { auditLocalDivergence, inspectRemoteDocumentContract } from '../public/js/sync-contract.js';
+
 import {
     initSync,
     triggerSync,
@@ -9,18 +16,41 @@ import {
     onSyncStatusChange,
     onSyncDataChange,
     getSyncStatus,
-    debouncedSync
+    debouncedSync,
+    waitForSyncPreflight
 } from '../public/js/sync-manager.js';
+
+async function waitForCallCount(mock, count) {
+    for (let attempt = 0; attempt < 20 && mock.mock.calls.length < count; attempt += 1) {
+        await Promise.resolve();
+    }
+    expect(mock).toHaveBeenCalledTimes(count);
+}
 
 describe('Sync Manager', () => {
     beforeEach(() => {
         jest.useFakeTimers();
+        window.PouchDB = jest.fn(() => ({}));
+        inspectRemoteDocumentContract.mockResolvedValue({
+            state: 'compatible',
+            compatible: true,
+            contractRevision: '1-contract'
+        });
+        auditLocalDivergence.mockResolvedValue({
+            state: 'compatible',
+            remotePresent: [],
+            eligible: [],
+            recoveryRequired: [],
+            designLeaves: [],
+            updateSequence: 1
+        });
     });
 
     afterEach(() => {
         teardownSync();
         jest.restoreAllMocks();
         jest.useRealTimers();
+        delete window.PouchDB;
     });
 
     describe('getSyncStatus', () => {
@@ -262,11 +292,12 @@ describe('Sync Manager', () => {
             };
 
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
 
             const firstTrigger = triggerSync();
             const secondTrigger = triggerSync();
 
-            expect(mockDb.replicate.to).toHaveBeenCalledTimes(1);
+            await waitForCallCount(mockDb.replicate.to, 1);
 
             resolveFirstSync({});
             await firstTrigger;
@@ -290,6 +321,7 @@ describe('Sync Manager', () => {
             };
 
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
             const firstTrigger = triggerSync();
             const reconnectTrigger = triggerSync({
                 respectCooldown: false,
@@ -324,6 +356,7 @@ describe('Sync Manager', () => {
             };
 
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
             const firstTrigger = triggerSync();
             const reconnectTrigger = triggerSync({
                 respectCooldown: false,
@@ -361,13 +394,12 @@ describe('Sync Manager', () => {
             };
 
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
             const firstTrigger = triggerSync();
             triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
 
             rejectFirstSync(new Error('original attempt failed'));
-            await Promise.resolve();
-            await Promise.resolve();
-            expect(mockDb.replicate.to).toHaveBeenCalledTimes(2);
+            await waitForCallCount(mockDb.replicate.to, 2);
 
             triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
             rejectRetrySync(new Error('follow-up attempt failed'));
@@ -399,12 +431,11 @@ describe('Sync Manager', () => {
             };
 
             initSync(dbA, 'http://remote:5984/a');
+            await waitForSyncPreflight();
             const sessionATrigger = triggerSync();
             triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
             rejectAOriginal(new Error('session A original failed'));
-            await Promise.resolve();
-            await Promise.resolve();
-            expect(dbA.replicate.to).toHaveBeenCalledTimes(2);
+            await waitForCallCount(dbA.replicate.to, 2);
 
             let rejectBOriginal;
             let rejectBRetry;
@@ -426,12 +457,11 @@ describe('Sync Manager', () => {
             };
 
             initSync(dbB, 'http://remote:5984/b');
+            await waitForSyncPreflight();
             const sessionBTrigger = triggerSync();
             triggerSync({ respectCooldown: false, retryAfterInFlightFailure: true });
             rejectBOriginal(new Error('session B original failed'));
-            await Promise.resolve();
-            await Promise.resolve();
-            expect(dbB.replicate.to).toHaveBeenCalledTimes(2);
+            await waitForCallCount(dbB.replicate.to, 2);
 
             resolveARetry({});
             await sessionATrigger;
@@ -485,7 +515,9 @@ describe('Sync Manager', () => {
             };
 
             initSync(firstDb, 'http://remote:5984/alpha');
+            await waitForSyncPreflight();
             const firstTrigger = triggerSync();
+            await waitForCallCount(firstDb.replicate.to, 1);
 
             initSync(secondDb, 'http://remote:5984/beta');
             resolveFirstPush({});
@@ -517,7 +549,10 @@ describe('Sync Manager', () => {
             };
 
             initSync(firstDb, 'http://remote:5984/alpha');
+            await waitForSyncPreflight();
             const staleTrigger = triggerSync();
+            staleTrigger.catch(() => {});
+            await waitForCallCount(firstDb.replicate.to, 1);
 
             initSync(secondDb, 'http://remote:5984/beta');
             rejectFirstPush(new Error('database is closed'));
@@ -546,7 +581,7 @@ describe('Sync Manager', () => {
             expect(getSyncStatus()).toBe('unsynced');
         });
 
-        test('triggers sync after debounce delay', () => {
+        test('triggers sync after debounce delay', async () => {
             const mockDb = {
                 replicate: {
                     to: jest.fn().mockResolvedValue({}),
@@ -554,16 +589,18 @@ describe('Sync Manager', () => {
                 }
             };
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
             debouncedSync();
 
             expect(mockDb.replicate.to).not.toHaveBeenCalled();
 
             jest.advanceTimersByTime(2000);
+            await waitForCallCount(mockDb.replicate.to, 1);
 
             expect(mockDb.replicate.to).toHaveBeenCalledWith('http://remote:5984/db');
         });
 
-        test('resets debounce timer on rapid calls', () => {
+        test('resets debounce timer on rapid calls', async () => {
             const mockDb = {
                 replicate: {
                     to: jest.fn().mockResolvedValue({}),
@@ -571,6 +608,7 @@ describe('Sync Manager', () => {
                 }
             };
             initSync(mockDb, 'http://remote:5984/db');
+            await waitForSyncPreflight();
 
             debouncedSync();
             jest.advanceTimersByTime(1500);
@@ -581,6 +619,7 @@ describe('Sync Manager', () => {
             expect(mockDb.replicate.to).not.toHaveBeenCalled();
 
             jest.advanceTimersByTime(500);
+            await waitForCallCount(mockDb.replicate.to, 1);
 
             // Now 2000ms since last debouncedSync call
             expect(mockDb.replicate.to).toHaveBeenCalledTimes(1);

@@ -1,0 +1,295 @@
+"""Safety gates for document-contract provisioning and complete-leaf snapshots."""
+
+from __future__ import annotations
+
+import copy
+import json
+import pytest
+
+from scripts import document_contract_ops as ops
+
+
+class FakeCloudant:
+    def __init__(self) -> None:
+        self.database = "fortudo-dat-411"
+        self.info = {
+            "db_name": self.database,
+            "uuid": "database-uuid-1",
+            "update_seq": "10-seq",
+            "doc_count": 2,
+            "doc_del_count": 1,
+            "props": {"partitioned": False},
+        }
+        self.security = {"admins": {"names": []}, "members": {"names": []}}
+        self.leaves = [
+            {
+                "_id": "task-live",
+                "_rev": "2-live",
+                "_revisions": {"start": 2, "ids": ["live", "parent"]},
+                "docType": "task",
+                "private": "never print",
+            },
+            {
+                "_id": "activity-conflict",
+                "_rev": "3-winner",
+                "_revisions": {"start": 3, "ids": ["winner", "p2", "p1"]},
+                "docType": "activity",
+            },
+            {
+                "_id": "activity-conflict",
+                "_rev": "3-loser",
+                "_revisions": {"start": 3, "ids": ["loser", "p2", "p1"]},
+                "docType": "activity",
+            },
+            {
+                "_id": "task-deleted",
+                "_rev": "2-deleted",
+                "_deleted": True,
+                "_revisions": {"start": 2, "ids": ["deleted", "parent"]},
+                "writerContract": {"version": 1},
+            },
+        ]
+        self.winners = {
+            "task-live": "2-live",
+            "activity-conflict": "3-winner",
+            "task-deleted": "2-deleted",
+        }
+        self.created: list[str] = []
+        self.write_order: list[str] = []
+
+    def list_databases(self) -> list[str]:
+        return [self.database, "fortudo-family", "system-database"]
+
+    def get_database_info(self, database: str) -> dict:
+        result = copy.deepcopy(self.info)
+        result["db_name"] = database
+        return result
+
+    def get_security(self, database: str) -> dict:
+        return copy.deepcopy(self.security)
+
+    def get_current_leaf_graph(self, database: str) -> tuple[list[dict], dict[str, str]]:
+        return copy.deepcopy(self.leaves), copy.deepcopy(self.winners)
+
+    def get_document(self, database: str, document_id: str) -> dict | None:
+        return next(
+            (copy.deepcopy(leaf) for leaf in self.leaves if leaf["_id"] == document_id),
+            None,
+        )
+
+    def put_document(self, database: str, document: dict) -> dict:
+        self.write_order.append(document["_id"])
+        stored = copy.deepcopy(document)
+        stored["_rev"] = "1-contract"
+        self.leaves = [leaf for leaf in self.leaves if leaf["_id"] != document["_id"]]
+        self.leaves.append(stored)
+        self.winners[document["_id"]] = stored["_rev"]
+        self.info["update_seq"] = "11-seq"
+        self.info["doc_count"] += 1
+        return {"ok": True, "id": document["_id"], "rev": stored["_rev"]}
+
+    def create_database(self, database: str) -> None:
+        self.created.append(database)
+        self.database = database
+        self.info = {
+            "db_name": database,
+            "uuid": "new-database-uuid",
+            "update_seq": "0-seq",
+            "doc_count": 0,
+            "doc_del_count": 0,
+            "props": {"partitioned": False},
+        }
+        self.leaves = []
+        self.winners = {}
+
+    def bulk_docs_new_edits_false(self, database: str, documents: list[dict]) -> None:
+        self.write_order.extend(document["_id"] for document in documents)
+        self.leaves.extend(copy.deepcopy(documents))
+        for document in documents:
+            self.winners.setdefault(document["_id"], document["_rev"])
+        self.info["doc_count"] = len(self.winners)
+        self.info["update_seq"] = "restored-seq"
+
+
+def test_design_document_source_and_checksum_match_the_browser_contract():
+    design = ops.load_design_document()
+
+    assert design["_id"] == "_design/fortudo-document-contract"
+    assert design["fortudoDocumentContract"] == {
+        "version": 1,
+        "checksum": "404609a41178c355464a1a78cf96b6223d63a3bb7ea1d7eca7faf964c3bd22cc",
+    }
+    assert "FDC_CONTRACT_VERSION" in design["validate_doc_update"]
+
+
+def test_snapshot_captures_complete_leaf_graph_security_and_stable_winners(tmp_path):
+    client = FakeCloudant()
+
+    result = ops.create_snapshot(
+        client,
+        database=client.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+
+    manifest = ops.verify_snapshot(result.path)
+    assert manifest["label"] == "S0"
+    assert manifest["leafCount"] == 4
+    assert manifest["winnerCount"] == 3
+    assert manifest["databaseUuid"] == "database-uuid-1"
+    assert manifest["securityChecksum"] == ops.security_checksum(client.security)
+    assert manifest["manifestChecksum"] == result.checksum
+    leaf_text = (result.path / "leaf-graph.ndjson").read_text(encoding="utf-8")
+    assert "never print" in leaf_text
+
+
+def test_snapshot_deletes_incomplete_output_and_halts_on_leaf_drift(tmp_path):
+    class DriftingCloudant(FakeCloudant):
+        reads = 0
+
+        def get_current_leaf_graph(self, database: str):
+            leaves, winners = super().get_current_leaf_graph(database)
+            self.reads += 1
+            if self.reads == 2:
+                leaves[0]["_rev"] = "3-concurrent"
+            return leaves, winners
+
+    with pytest.raises(ops.ContractOpsSafetyError, match="changed during snapshot"):
+        ops.create_snapshot(
+            DriftingCloudant(),
+            database="fortudo-dat-411",
+            backup_root=tmp_path,
+            label="S0",
+            encrypted_volume_confirmed=True,
+            timestamp="20260721T120000Z",
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_install_requires_locked_snapshot_and_changes_only_the_design_leaf(tmp_path):
+    client = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        client,
+        database=client.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+
+    result = ops.install_validator(
+        client,
+        database=client.database,
+        confirmation=client.database,
+        expected_uuid="database-uuid-1",
+        expected_update_seq="10-seq",
+        expected_security_checksum=ops.security_checksum(client.security),
+        snapshot_path=snapshot.path,
+    )
+
+    assert result["validatorRevision"] == "1-contract"
+    assert client.write_order == ["_design/fortudo-document-contract"]
+    assert ops.verify_validator(client, client.database)["state"] == "compatible"
+
+
+def test_provision_is_empty_database_and_validator_first():
+    client = FakeCloudant()
+
+    result = ops.provision_database(
+        client,
+        database="fortudo-new-room",
+        confirmation="fortudo-new-room",
+    )
+
+    assert client.created == ["fortudo-new-room"]
+    assert client.write_order == ["_design/fortudo-document-contract"]
+    assert result["databaseUuid"] == "new-database-uuid"
+
+
+def test_quarantine_restore_loads_legacy_leaves_before_validator(tmp_path):
+    source = FakeCloudant()
+    snapshot = ops.create_snapshot(
+        source,
+        database=source.database,
+        backup_root=tmp_path,
+        label="S0",
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+    target = FakeCloudant()
+    target.write_order.clear()
+
+    ops.restore_quarantine(
+        target,
+        database="fortudo-quarantine-20260721",
+        confirmation="fortudo-quarantine-20260721",
+        snapshot_path=snapshot.path,
+    )
+
+    assert target.created == ["fortudo-quarantine-20260721"]
+    assert target.write_order[-1] == "_design/fortudo-document-contract"
+    assert "task-live" in target.write_order[:-1]
+
+
+def test_inventory_writes_private_manifest_but_returns_only_aggregates(tmp_path):
+    client = FakeCloudant()
+
+    result = ops.create_inventory(
+        client,
+        manifest_root=tmp_path,
+        encrypted_volume_confirmed=True,
+        timestamp="20260721T120000Z",
+    )
+
+    assert result.counts == {"fortudoDatabases": 2, "compatible": 0, "missingValidator": 2}
+    assert len(result.checksum) == 64
+    private = json.loads(result.path.read_text(encoding="utf-8"))
+    assert [row["databaseName"] for row in private["databases"]] == [
+        "fortudo-dat-411",
+        "fortudo-family",
+    ]
+
+
+def test_normal_operational_output_omits_private_targets_revisions_and_paths():
+    report = ops._public_operational_report(
+        {
+            "mode": "inventory",
+            "counts": {"fortudoDatabases": 2},
+            "manifestChecksum": "a" * 64,
+            "manifestPath": "X:/private/manifest.json",
+            "databaseUuid": "private-uuid",
+            "validatorRevision": "1-private",
+        }
+    )
+
+    assert report == {
+        "mode": "inventory",
+        "counts": {"fortudoDatabases": 2},
+        "manifestChecksum": "a" * 64,
+    }
+
+
+def test_encrypted_volume_confirmation_and_exact_target_are_mandatory(tmp_path):
+    client = FakeCloudant()
+    with pytest.raises(ops.ContractOpsSafetyError, match="encrypted user-only volume"):
+        ops.create_snapshot(
+            client,
+            database=client.database,
+            backup_root=tmp_path,
+            label="S0",
+            encrypted_volume_confirmed=False,
+        )
+    with pytest.raises(ops.ContractOpsSafetyError, match="confirmation"):
+        ops.provision_database(client, database="fortudo-new-room", confirmation="wrong")
+    with pytest.raises(ops.ContractOpsSafetyError, match="unsafe characters"):
+        ops.create_snapshot(
+            client,
+            database=client.database,
+            backup_root=tmp_path,
+            label="../escaped",
+            encrypted_volume_confirmed=True,
+        )
+    assert list(tmp_path.iterdir()) == []

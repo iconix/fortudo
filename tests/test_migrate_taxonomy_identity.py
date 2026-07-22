@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from scripts import migrate_taxonomy_identity as migration
+from scripts import document_contract_ops as contract_ops
 
 
 def taxonomy_doc() -> dict:
@@ -87,13 +88,20 @@ class FakeCloudant:
         self.winners = production_winners()
         self.leaves = {("activity-legacy", "3-activity-loser"): losing_leaf()}
         self.bulk_calls: list[list[dict]] = []
+        self.put_calls: list[dict] = []
+        self.tombstone_leaves: list[dict] = []
+        self.security = {"admins": {"names": []}, "members": {"names": []}}
+        self.validator = contract_ops.load_design_document()
+        self.validator["_rev"] = "1-contract"
 
     def get_database_info(self, database: str) -> dict:
         return {
             "db_name": database,
+            "uuid": "database-uuid-1",
             "update_seq": self.update_seq,
             "doc_count": len(self.winners),
             "doc_del_count": 0,
+            "props": {"partitioned": False},
         }
 
     def get_all_documents(self, database: str, *, include_conflicts: bool) -> list[dict]:
@@ -104,7 +112,31 @@ class FakeCloudant:
         return copy.deepcopy(self.leaves[(document_id, revision)])
 
     def get_document(self, database: str, document_id: str) -> dict | None:
+        if document_id == contract_ops.CONTRACT_DESIGN_ID:
+            return copy.deepcopy(self.validator)
         return copy.deepcopy(next((d for d in self.winners if d["_id"] == document_id), None))
+
+    def get_security(self, database: str) -> dict:
+        return copy.deepcopy(self.security)
+
+    def get_current_leaf_graph(self, database: str) -> tuple[list[dict], dict[str, str]]:
+        leaves = [
+            {key: copy.deepcopy(value) for key, value in winner.items() if key != "_conflicts"}
+            for winner in self.winners
+        ]
+        for winner in self.winners:
+            for revision in winner.get("_conflicts", []) or []:
+                leaves.append(copy.deepcopy(self.leaves[(winner["_id"], revision)]))
+        leaves.extend(copy.deepcopy(self.tombstone_leaves))
+        leaves.append(copy.deepcopy(self.validator))
+        return leaves, {leaf["_id"]: leaf["_rev"] for leaf in leaves if not leaf.get("_deleted")}
+
+    def put_document(self, database: str, document: dict) -> dict:
+        self.put_calls.append(copy.deepcopy(document))
+        stored = copy.deepcopy(document)
+        stored["_rev"] = "1-completion"
+        self.winners.append(stored)
+        return {"ok": True, "id": document["_id"], "rev": stored["_rev"]}
 
     def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
         self.bulk_calls.append(copy.deepcopy(documents))
@@ -120,6 +152,9 @@ class FakeCloudant:
                 ]
                 if not winner["_conflicts"]:
                     winner.pop("_conflicts")
+                tombstone = copy.deepcopy(document)
+                tombstone["_rev"] = f"next-{len(self.bulk_calls)}-{index}"
+                self.tombstone_leaves.append(tombstone)
             else:
                 stored = copy.deepcopy(document)
                 stored["_rev"] = f"next-{len(self.bulk_calls)}-{index}"
@@ -140,6 +175,17 @@ class FakeCloudant:
         return results
 
 
+def create_s1_snapshot(client: FakeCloudant, root: Path, suffix: str = "120000") -> Path:
+    return contract_ops.create_snapshot(
+        client,
+        database=migration.EXPECTED_DATABASE_NAME,
+        backup_root=root,
+        label="S1",
+        encrypted_volume_confirmed=True,
+        timestamp=f"20260721T{suffix}Z",
+    ).path
+
+
 def test_dry_run_is_default_and_never_writes_or_creates_a_backup(tmp_path, capsys):
     client = FakeCloudant()
 
@@ -157,6 +203,8 @@ def test_dry_run_is_default_and_never_writes_or_creates_a_backup(tmp_path, capsy
     assert "private task text" not in output
     assert "private activity text" not in output
     assert "secret" not in output
+    assert migration.EXPECTED_DATABASE_NAME not in output
+    assert "dry-run-seq" not in output
 
 
 def test_plan_preserves_ids_labels_and_nonidentity_fields():
@@ -185,6 +233,12 @@ def test_plan_preserves_ids_labels_and_nonidentity_fields():
     assert task_update["id"] == "unsched-legacy"
     assert task_update["description"] == "private task text"
     assert task_update["categoryIdentityVersion"] == 1
+    assert task_update["writerContract"]["categoryReference"] == {
+        "key": "work/meetings",
+        "id": task_update["categoryId"],
+        "identityVersion": 1,
+    }
+    assert all(tombstone["writerContract"] == {"version": 1} for tombstone in plan.conflict_tombstones)
 
 
 def test_plan_maps_direct_group_references_without_inferring_from_key_text():
@@ -331,19 +385,20 @@ def test_apply_requires_matching_seq_typed_database_and_no_running_timer(tmp_pat
             database=migration.EXPECTED_DATABASE_NAME,
             expected_update_seq="dry-run-seq",
             confirmation=migration.EXPECTED_DATABASE_NAME,
-            backup_root=tmp_path,
+            snapshot_path=tmp_path / "not-needed-before-sequence-lock",
         )
     assert client.bulk_calls == []
     assert list(tmp_path.iterdir()) == []
 
     client = FakeCloudant()
+    snapshot = create_s1_snapshot(client, tmp_path)
     with pytest.raises(migration.MigrationSafetyError, match="running timer"):
         migration.apply_migration(
             client,
             database=migration.EXPECTED_DATABASE_NAME,
             expected_update_seq="42-seq",
             confirmation=migration.EXPECTED_DATABASE_NAME,
-            backup_root=tmp_path,
+            snapshot_path=snapshot,
         )
     assert client.bulk_calls == []
 
@@ -353,13 +408,14 @@ def test_apply_backs_up_before_writes_and_tombstones_only_losing_activity_leaf(t
     client.winners = [
         document for document in client.winners if document["_id"] != "config-running-activity"
     ]
+    snapshot = create_s1_snapshot(client, tmp_path)
 
     result = migration.apply_migration(
         client,
         database=migration.EXPECTED_DATABASE_NAME,
         expected_update_seq="42-seq",
         confirmation=migration.EXPECTED_DATABASE_NAME,
-        backup_root=tmp_path,
+        snapshot_path=snapshot,
         timestamp="20260721T120000Z",
     )
 
@@ -373,6 +429,7 @@ def test_apply_backs_up_before_writes_and_tombstones_only_losing_activity_leaf(t
             "_id": "activity-legacy",
             "_rev": "3-activity-loser",
             "_deleted": True,
+            "writerContract": {"version": 1},
         }
     ]
     activity_update = next(
@@ -383,10 +440,12 @@ def test_apply_backs_up_before_writes_and_tombstones_only_losing_activity_leaf(t
     assert activity_update["_rev"] == "4-activity-winner"
     assert activity_update["description"] == "private activity text"
     assert activity_update["categoryId"] == "0dfac102-30f3-56d9-86c0-c3b414aeaf6e"
-    completion = next(
-        document for document in written if document["_id"] == migration.MIGRATION_COMPLETION_ID
-    )
-    assert completion["backupChecksum"] == result.backup_checksum
+    assert all(document["_id"] != migration.MIGRATION_COMPLETION_ID for document in written)
+    completion = client.put_calls[-1]
+    assert completion["_id"] == migration.MIGRATION_COMPLETION_ID
+    assert completion["s1SnapshotChecksum"] == result.backup_checksum
+    assert len(completion["verifiedStateFingerprint"]) == 64
+    assert completion["writerContract"] == {"version": 1, "categoryReference": None}
 
 
 def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path):
@@ -404,6 +463,7 @@ def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path)
     client.winners = [
         document for document in client.winners if document["_id"] != "config-running-activity"
     ]
+    snapshot = create_s1_snapshot(client, tmp_path)
 
     with pytest.raises(migration.MigrationSafetyError, match="revisions changed"):
         migration.apply_migration(
@@ -411,7 +471,7 @@ def test_apply_retains_backup_but_aborts_if_a_winning_revision_changes(tmp_path)
             database=migration.EXPECTED_DATABASE_NAME,
             expected_update_seq="42-seq",
             confirmation=migration.EXPECTED_DATABASE_NAME,
-            backup_root=tmp_path,
+            snapshot_path=snapshot,
             timestamp="20260721T120000Z",
         )
 
@@ -433,7 +493,7 @@ def test_migration_plan_is_idempotent_after_identity_fields_exist():
     assert second.counts["referencesMigrated"] == 0
 
 
-def test_apply_is_a_zero_write_noop_after_completed_identity_migration(tmp_path):
+def test_existing_completion_marker_requires_manual_verified_state_review(tmp_path):
     client = FakeCloudant()
     client.winners = [
         document for document in client.winners if document["_id"] != "config-running-activity"
@@ -453,23 +513,22 @@ def test_apply_is_a_zero_write_noop_after_completed_identity_migration(tmp_path)
             "backupChecksum": "a" * 64,
         }
     )
+    snapshot = create_s1_snapshot(client, tmp_path)
 
-    result = migration.apply_migration(
-        client,
-        database=migration.EXPECTED_DATABASE_NAME,
-        expected_update_seq="42-seq",
-        confirmation=migration.EXPECTED_DATABASE_NAME,
-        backup_root=tmp_path,
-    )
+    with pytest.raises(migration.MigrationSafetyError, match="manual verification"):
+        migration.apply_migration(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            snapshot_path=snapshot,
+        )
 
-    assert result.mode == "apply"
-    assert result.backup_path is None
-    assert result.backup_checksum == "a" * 64
     assert client.bulk_calls == []
-    assert list(tmp_path.iterdir()) == []
+    assert client.put_calls == []
 
 
-def test_restore_verifies_backup_then_reapplies_winner_content_as_new_revisions(tmp_path):
+def test_direct_production_restore_is_disabled_in_favor_of_quarantine(tmp_path):
     client = FakeCloudant()
     backup = migration.create_backup(
         client,
@@ -480,30 +539,83 @@ def test_restore_verifies_backup_then_reapplies_winner_content_as_new_revisions(
         timestamp="20260721T120000Z",
     )
     client.bulk_calls.clear()
-    current_task_revision = next(d["_rev"] for d in client.winners if d["_id"] == "unsched-legacy")
+    with pytest.raises(migration.MigrationSafetyError, match="quarantine"):
+        migration.restore_backup(
+            client,
+            database=migration.EXPECTED_DATABASE_NAME,
+            expected_update_seq="42-seq",
+            confirmation=migration.EXPECTED_DATABASE_NAME,
+            backup_path=backup.path,
+        )
 
-    result = migration.restore_backup(
-        client,
-        database=migration.EXPECTED_DATABASE_NAME,
-        expected_update_seq="42-seq",
-        confirmation=migration.EXPECTED_DATABASE_NAME,
-        backup_path=backup.path,
+    assert client.bulk_calls == []
+
+
+def test_journal_classifies_partial_results_and_resumes_only_locked_pre_states(tmp_path):
+    class PartialCloudant(FakeCloudant):
+        first_attempt = True
+
+        def bulk_docs(self, database: str, documents: list[dict]) -> list[dict]:
+            if self.first_attempt:
+                self.first_attempt = False
+                committed = super().bulk_docs(database, documents[:1])
+                return [*committed, *({"error": "forbidden"} for _ in documents[1:])]
+            return super().bulk_docs(database, documents)
+
+    client = PartialCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    plan = migration.build_migration_plan(client.winners)
+    writes = [*plan.updates, *plan.conflict_tombstones]
+    journal = migration.create_migration_journal(
+        writes, tmp_path, timestamp="20260721T120000Z"
     )
 
-    assert result.mode == "restore"
-    restored = [document for batch in client.bulk_calls for document in batch]
-    assert len(restored) == len(client.winners)
-    original_task = next(d for d in client.winners if d["_id"] == "unsched-legacy")
-    restored_task = next(d for d in restored if d["_id"] == "unsched-legacy")
-    assert restored_task["description"] == original_task["description"]
-    assert restored_task["_rev"] == current_task_revision
-    assert all("_conflicts" not in document for document in restored)
+    with pytest.raises(migration.MigrationSafetyError, match="safe to resume"):
+        migration.apply_or_resume_journal(
+            client, database=migration.EXPECTED_DATABASE_NAME, journal_path=journal
+        )
+
+    result = migration.apply_or_resume_journal(
+        client, database=migration.EXPECTED_DATABASE_NAME, journal_path=journal
+    )
+    assert result["exactIntendedResults"] == len(writes)
+    assert result["resumedPreStates"] == len(writes) - 1
+
+
+def test_journal_halts_on_divergent_remote_state(tmp_path):
+    client = FakeCloudant()
+    client.winners = [
+        document for document in client.winners if document["_id"] != "config-running-activity"
+    ]
+    plan = migration.build_migration_plan(client.winners)
+    journal = migration.create_migration_journal(
+        plan.updates, tmp_path, timestamp="20260721T120000Z"
+    )
+    client.winners[0]["_rev"] = "4-concurrent"
+    client.winners[0]["label"] = "concurrent semantic change"
+
+    with pytest.raises(migration.MigrationSafetyError, match="divergent state"):
+        migration.apply_or_resume_journal(
+            client, database=migration.EXPECTED_DATABASE_NAME, journal_path=journal
+        )
 
 
 def test_backup_must_be_outside_repository(tmp_path):
     repository_backup = Path(__file__).resolve().parents[1] / "unsafe-backups"
     with pytest.raises(migration.MigrationSafetyError, match="outside the repository"):
         migration.validate_backup_root(repository_backup)
+
+
+def test_private_artifact_path_must_remain_a_direct_child(tmp_path):
+    root = tmp_path.resolve()
+
+    assert migration._exact_artifact_path(root, "snapshot-S0").parent == root
+    with pytest.raises(migration.MigrationSafetyError, match="escaped"):
+        migration._exact_artifact_path(root, "../escaped")
+    with pytest.raises(migration.MigrationSafetyError, match="unverified"):
+        migration._remove_exact_artifact(root.parent, root)
 
 
 def test_cli_rejects_wrong_database_and_never_echoes_credentials(capsys, tmp_path):

@@ -268,11 +268,25 @@ describe('Storage - PouchDB', () => {
                         _id: winner._id,
                         _rev: '3-winner',
                         docType: 'config',
+                        category: null,
+                        categoryId: null,
+                        categoryIdentityVersion: null,
+                        writerContract: { version: 1, categoryReference: null },
                         schemaVersion: 1,
                         orderedTaskIds: ['gamma', 'alpha', 'beta']
                     },
-                    { _id: winner._id, _rev: '2-loser-a', _deleted: true },
-                    { _id: winner._id, _rev: '2-loser-b', _deleted: true }
+                    {
+                        _id: winner._id,
+                        _rev: '2-loser-a',
+                        _deleted: true,
+                        writerContract: { version: 1 }
+                    },
+                    {
+                        _id: winner._id,
+                        _rev: '2-loser-b',
+                        _deleted: true,
+                        writerContract: { version: 1 }
+                    }
                 ]);
                 expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
             } finally {
@@ -326,6 +340,10 @@ describe('Storage - PouchDB', () => {
                     _id: id,
                     _rev: '4-newer',
                     docType: 'config',
+                    category: null,
+                    categoryId: null,
+                    categoryIdentityVersion: null,
+                    writerContract: { version: 1, categoryReference: null },
                     orderedTaskIds: ['beta', 'alpha']
                 });
                 expect(mockDebouncedSync).toHaveBeenCalledTimes(1);

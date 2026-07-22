@@ -3,9 +3,20 @@ import {
     initSync,
     debouncedSync,
     triggerSync,
+    waitForSyncPreflight,
     waitForIdleSync,
-    teardownSync
+    teardownSync,
+    assertPersistenceAllowed,
+    isPersistenceAllowed,
+    registerExpectedLocalRevision,
+    getLastDivergenceAudit
 } from './sync-manager.js';
+import { applyWriterContract, stripWriterContract } from './document-contract.js';
+import {
+    buildLocalRecoveryBundle,
+    downloadLocalRecoveryBundle,
+    requireRecoveryResetConfirmation
+} from './local-recovery.js';
 
 const DOC_TYPES = Object.freeze({
     TASK: 'task',
@@ -89,17 +100,34 @@ function getStoredDocType(doc) {
 }
 
 function normalizeStoredDoc(doc) {
-    const normalized = { ...doc };
+    const normalized = stripWriterContract(doc);
     normalized.id = normalized._id;
     delete normalized._id;
     delete normalized._rev;
+    if (
+        normalized.category === null &&
+        normalized.categoryId === null &&
+        normalized.categoryIdentityVersion === null
+    ) {
+        delete normalized.category;
+        delete normalized.categoryId;
+        delete normalized.categoryIdentityVersion;
+    }
     return normalized;
 }
 
 function toStoredDoc(record, docType) {
     const doc = { ...record, _id: record.id, docType };
     delete doc.id;
-    return doc;
+    return applyWriterContract(doc);
+}
+
+function assertCanPersist() {
+    assertPersistenceAllowed?.();
+}
+
+function recordExpectedRevision(id, revision) {
+    registerExpectedLocalRevision?.(id, revision);
 }
 
 async function loadAllRows() {
@@ -189,6 +217,7 @@ async function getTrackedRevision(id, docType) {
 
 async function putTypedDoc(record, docType) {
     ensureStorageInitialized();
+    assertCanPersist();
 
     const doc = toStoredDoc(record, docType);
     const existingRev = await getTrackedRevision(record.id, docType);
@@ -198,11 +227,13 @@ async function putTypedDoc(record, docType) {
 
     const result = await db.put(doc);
     getRevStore(docType).set(record.id, result.rev);
+    recordExpectedRevision(record.id, result.rev);
     debouncedSync();
 }
 
 async function deleteTypedDoc(id, docType, logLabel) {
     ensureStorageInitialized();
+    assertCanPersist();
 
     const revStore = getRevStore(docType);
     const rev = await getTrackedRevision(id, docType);
@@ -212,8 +243,9 @@ async function deleteTypedDoc(id, docType, logLabel) {
     }
 
     try {
-        await db.remove(id, rev);
+        const result = await db.put(applyWriterContract({ _id: id, _rev: rev, _deleted: true }));
         revStore.delete(id);
+        recordExpectedRevision(id, result.rev);
     } catch (err) {
         if (err.status !== 404) {
             throw err;
@@ -251,7 +283,7 @@ async function loadTypedDocById(id, predicate, docType) {
  * @param {Object} [options] - PouchDB options (e.g., { adapter: 'memory' } for tests)
  * @param {string|null} [remoteUrl] - Remote CouchDB URL for sync (null to disable)
  */
-export async function initStorage(roomCode, options = {}, remoteUrl = null) {
+export async function initStorage(roomCode, options = {}, remoteUrl = null, lifecycle = {}) {
     if (db) {
         await waitForIdleSync();
         teardownSync();
@@ -267,8 +299,9 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
     seedRevisionStore(rows);
 
     initSync(db, remoteUrl);
-    if (remoteUrl) {
-        triggerSync();
+    await waitForSyncPreflight?.();
+    if (remoteUrl && !lifecycle.deferInitialSync) {
+        await triggerSync?.();
     }
     logger.info(`Storage initialized for room: ${roomCode}`);
 }
@@ -280,8 +313,13 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null) {
  * @param {string|null} [remoteUrl]
  */
 export async function prepareStorage(roomCode, options = {}, remoteUrl = null) {
-    await initStorage(roomCode, options, remoteUrl);
-    await migrateDocTypes();
+    await initStorage(roomCode, options, remoteUrl, { deferInitialSync: true });
+    if (isPersistenceAllowed?.() !== false) {
+        await migrateDocTypes();
+    }
+    if (remoteUrl) {
+        await triggerSync?.();
+    }
 }
 
 /**
@@ -318,6 +356,7 @@ export class TaskBatchWriteError extends Error {
  */
 export async function putTasks(tasksToPut) {
     ensureStorageInitialized();
+    assertCanPersist();
     if (tasksToPut.length === 0) {
         return { succeededIds: [] };
     }
@@ -339,6 +378,7 @@ export async function putTasks(tasksToPut) {
         if (result.ok) {
             taskRevMap.set(result.id, result.rev);
             succeededIds.push(result.id);
+            recordExpectedRevision(result.id, result.rev);
         }
     }
 
@@ -387,6 +427,7 @@ export async function deleteTask(id) {
  */
 export async function deleteTasks(taskIds) {
     ensureStorageInitialized();
+    assertCanPersist();
     const uniqueTaskIds = [...new Set(taskIds)];
     if (uniqueTaskIds.length === 0) {
         return { succeededIds: [] };
@@ -405,7 +446,9 @@ export async function deleteTasks(taskIds) {
     }
 
     const results = await db.bulkDocs(
-        existing.map(({ id, revision }) => ({ _id: id, _rev: revision, _deleted: true }))
+        existing.map(({ id, revision }) =>
+            applyWriterContract({ _id: id, _rev: revision, _deleted: true })
+        )
     );
     const succeededIds = [...alreadyDeletedIds];
 
@@ -413,6 +456,7 @@ export async function deleteTasks(taskIds) {
         if (result.ok) {
             taskRevMap.delete(result.id);
             succeededIds.push(result.id);
+            recordExpectedRevision(result.id, result.rev);
         }
     }
 
@@ -519,6 +563,7 @@ function isConflictResult(result) {
  */
 export async function resolveConfigConflicts(configId, maxAttempts = 5) {
     ensureStorageInitialized();
+    assertCanPersist();
     let wroteDocuments = false;
 
     try {
@@ -545,15 +590,17 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
                 return normalizeConfigWinner(winner);
             }
 
-            const successor = { ...winner };
+            const successor = applyWriterContract({ ...winner });
             delete successor._conflicts;
             const documents = [
                 successor,
-                ...conflictRevisions.map((revision) => ({
-                    _id: configId,
-                    _rev: revision,
-                    _deleted: true
-                }))
+                ...conflictRevisions.map((revision) =>
+                    applyWriterContract({
+                        _id: configId,
+                        _rev: revision,
+                        _deleted: true
+                    })
+                )
             ];
             const results = await db.bulkDocs(documents);
             if (results.some((result) => result.ok)) {
@@ -573,6 +620,11 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
             if (winnerResult?.ok && configRevMap.get(configId) === winner._rev) {
                 configRevMap.set(configId, winnerResult.rev);
             }
+            for (const result of results) {
+                if (result.ok) {
+                    recordExpectedRevision(result.id, result.rev);
+                }
+            }
         }
 
         throw new Error('Config conflict cleanup did not converge.');
@@ -589,6 +641,36 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
  */
 export function getDb() {
     return db;
+}
+
+/**
+ * Download the sensitive current-leaf recovery bundle without logging its contents.
+ */
+export async function exportLocalRecoveryBundle() {
+    ensureStorageInitialized();
+    const bundle = await buildLocalRecoveryBundle(db, getLastDivergenceAudit?.());
+    downloadLocalRecoveryBundle(db, bundle);
+    return {
+        leafCount: bundle.manifest.leafCount,
+        manifestChecksum: bundle.manifestChecksum
+    };
+}
+
+/**
+ * Destroy a stranded local replica only after its bundle was downloaded and the
+ * caller supplied the exact destructive confirmation. Reloading then pulls the
+ * authoritative remote state through the normal preflight.
+ */
+export async function resetLocalReplicaAfterRecovery(confirmation) {
+    ensureStorageInitialized();
+    requireRecoveryResetConfirmation(db, confirmation);
+    await waitForIdleSync();
+    teardownSync();
+    const databaseToDestroy = db;
+    db = null;
+    clearRevStores();
+    await databaseToDestroy.destroy();
+    window.location.reload();
 }
 
 /**
@@ -620,14 +702,18 @@ export async function migrateDocTypes() {
         return;
     }
 
-    const docsToUpdate = legacyDocs.map((doc) => ({
-        ...doc,
-        docType: DOC_TYPES.TASK
-    }));
+    assertCanPersist();
+    const docsToUpdate = legacyDocs.map((doc) =>
+        applyWriterContract({
+            ...doc,
+            docType: DOC_TYPES.TASK
+        })
+    );
     const responses = await db.bulkDocs(docsToUpdate);
     for (const response of responses) {
         if (response.ok) {
             taskRevMap.set(response.id, response.rev);
+            recordExpectedRevision(response.id, response.rev);
         }
     }
 

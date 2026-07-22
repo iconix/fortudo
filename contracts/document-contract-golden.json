@@ -1,0 +1,93 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "name": "valid uncategorized task",
+      "expected": "allow",
+      "document": {
+        "_id": "task-valid-null",
+        "docType": "task",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null,
+        "writerContract": { "version": 1, "categoryReference": null }
+      }
+    },
+    {
+      "name": "valid categorized activity",
+      "expected": "allow",
+      "document": {
+        "_id": "activity-valid-category",
+        "docType": "activity",
+        "category": "work/meetings",
+        "categoryId": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+        "categoryIdentityVersion": 1,
+        "writerContract": {
+          "version": 1,
+          "categoryReference": {
+            "key": "work/meetings",
+            "id": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+            "identityVersion": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "legacy revision without contract",
+      "expected": "FDC_CONTRACT_VERSION",
+      "document": {
+        "_id": "task-legacy",
+        "docType": "task",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null
+      }
+    },
+    {
+      "name": "stale inherited category witness",
+      "expected": "FDC_CATEGORY_REFERENCE",
+      "document": {
+        "_id": "task-stale-witness",
+        "docType": "task",
+        "category": "work/comms",
+        "categoryId": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+        "categoryIdentityVersion": 1,
+        "writerContract": {
+          "version": 1,
+          "categoryReference": {
+            "key": "work/meetings",
+            "id": "9c52c0e9-c389-54e1-927f-52c16b13de99",
+            "identityVersion": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "bare tombstone",
+      "expected": "FDC_TOMBSTONE_CONTRACT",
+      "document": { "_id": "task-bare-delete", "_rev": "2-a", "_deleted": true }
+    },
+    {
+      "name": "versioned tombstone",
+      "expected": "allow",
+      "document": {
+        "_id": "task-versioned-delete",
+        "_rev": "2-a",
+        "_deleted": true,
+        "writerContract": { "version": 1 }
+      }
+    },
+    {
+      "name": "unsupported application type",
+      "expected": "FDC_UNSUPPORTED_TYPE",
+      "document": {
+        "_id": "unknown-type",
+        "docType": "room",
+        "category": null,
+        "categoryId": null,
+        "categoryIdentityVersion": null,
+        "writerContract": { "version": 1, "categoryReference": null }
+      }
+    }
+  ]
+}
