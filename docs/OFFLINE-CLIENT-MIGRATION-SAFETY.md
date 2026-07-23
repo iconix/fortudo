@@ -10,7 +10,12 @@ Fortudo's offline-first foundation is reasonable: every browser keeps a local Po
 
 Deploying a new Fortudo release does not atomically update every browser. Each device has its own cached application, service worker, local revision tree, and update lifecycle. An old client can therefore reconnect after a migration and upload documents that predate or omit newly required identity fields.
 
-The current identity migration compensates with an operational gate: update all clients that may reconnect to the target room, stop active writes, back up every revision leaf, lock the database update sequence, migrate, and verify. This can be safe, but it is more fragile and labor-intensive than a fail-closed compatibility architecture.
+The original identity-migration plan compensated with an operational gate around client updates,
+local revision-graph snapshots, and opaque update-sequence equality. Production observation showed
+that the Cloudant update sequence can change without an application leaf change, and the custom
+snapshot/restore layer was larger than this one migration justified. That tooling has been retired.
+The replacement design uses a server-enforced document contract plus a temporary Cloudant-native
+replication quarantine.
 
 ## Current production scope
 
@@ -21,9 +26,21 @@ A metadata-only inventory on 2026-07-21 found:
 - 7 non-preview, nonempty databases with schema 3.5 legacy taxonomy.
 - 0 non-preview databases already carrying taxonomy `identityVersion: 1`.
 
-The current migration tool deliberately accepts only `fortudo-dat-411`. This is a safety fence derived from the rollout's explicit authorization for the guarded `dat-411` migration, not a Cloudant limitation. The other six non-preview databases have not been classified as active rooms, abandoned rooms, or tests, and they are not authorized migration targets.
+The current tooling has no write mode. Its read-only planner accepts an explicitly named valid
+`fortudo-*` database so operators can compare legacy schema-3.5 rooms without changing them. The
+planner reads and preserves each room's own taxonomy; it does not contain a hardcoded `dat-411`
+taxonomy.
 
-If more rooms require migration, each should receive an independent dry-run, client-quiescence window, update-sequence lock, backup, checksum, apply, and verification cycle. The tool must not silently generalize to every database whose name starts with `fortudo-`.
+The future mutation executor remains deliberately locked to `fortudo-dat-411`. That is a safety
+fence derived from the rollout's explicit authorization for the guarded `dat-411` migration, not a
+Cloudant limitation. The other six non-preview databases have not been classified as active rooms,
+abandoned rooms, or tests, and they are not authorized migration targets merely because a read-only
+plan succeeds.
+
+If more rooms require fencing, each needs an independently approved client-quiescence, native
+quarantine capture, content-state fingerprint, fence installation, and verification cycle. The
+taxonomy migration remains locked to `fortudo-dat-411`; tooling must not silently generalize it to
+every database whose name starts with `fortudo-`.
 
 ## What is not inherently wrong
 
@@ -121,18 +138,20 @@ A device whose Fortudo site data has been cleared no longer holds a local revisi
 
 ## Current operational mitigation
 
-Until writer-version enforcement exists, the safe migration sequence is:
+Production is paused while the minimum replacement machinery is implemented. The intended sequence
+is:
 
 1. Deploy the forward-compatible release.
-2. Reload every device that retains the target room and may reconnect.
-3. Let each device complete synchronization on the compatible release.
-4. Stop the running timer and close all other Fortudo sessions.
-5. Run a fresh read-only dry-run and capture the exact update sequence.
-6. Back up every winning document and every conflict leaf outside the repository.
-7. Verify the backup manifest and checksum.
-8. Apply only while the update sequence and document revisions remain unchanged.
-9. Verify counts, durations, labels, existing IDs, identity fields, and absence of conflict leaves.
-10. Reopen a compatible client, complete a normal sync, and repeat read-only verification.
+2. Prove the exact native-quarantine and migration implementation on disposable Cloudant databases.
+3. Stop the running timer, close known active Fortudo sessions, and require the live timer
+   configuration to be absent before any quarantine or source write.
+4. Run a fresh read-only dry-run.
+5. Create and verify a Cloudant-native one-shot quarantine containing every current leaf.
+6. Recheck the exact source leaf set and `_security` hash immediately before fencing.
+7. Install and verify the server-side document contract as the only application-state change.
+8. Apply deterministic compare-and-set successors and conflict tombstones.
+9. Verify counts, durations, labels, existing IDs, identity fields, and absence of live conflict leaves.
+10. Reopen compatible clients, complete normal sync, and repeat read-only verification.
 
 This gate is scoped per room. Updating one device is sufficient only when it is the sole remaining device with a local copy of that room.
 
@@ -170,7 +189,7 @@ Future migrations should use explicit phases:
 1. Deploy readers and writers that tolerate both old and new fields and preserve unknown data.
 2. Establish or enforce the minimum compatible writer version.
 3. Observe that active clients are compatible where useful, without treating absence as proof that no dormant clients exist.
-4. Migrate data under revision and backup gates.
+4. Migrate data under revision and verified native-quarantine gates.
 5. Retain compatibility until the rollback window closes.
 
 ### Reduce singleton blast radius
@@ -197,7 +216,9 @@ A privacy-conscious client-capability record could report a random device instal
 - `public/js/sync-manager.js`: push-before-pull replication order.
 - `public/js/sw-register.js`: per-browser service-worker activation.
 - `public/js/taxonomy/taxonomy-store.js`: taxonomy normalization and singleton persistence.
-- `scripts/migrate_taxonomy_identity.py`: exact database fence, backup, revision, conflict, and invariant gates.
+- `scripts/migrate_taxonomy_identity.py`: namespace-scoped, read-only transformation planner.
+- `docs/plans/design/2026-07-22-cloudant-quarantine-migration-design.md`: proposed minimal
+  production recovery and migration gates.
 
 ## Appendix A: DDIA learning guide
 
@@ -216,7 +237,7 @@ The central lesson is:
 | Every browser owns a writable local replica                     | Sync engines and local-first software                                | Chapter 6, “Replication”                                                       |
 | Offline devices create divergent revision branches              | Multi-leader behavior, conflicting writes, and concurrency detection | Chapter 6, “Dealing with Conflicting Writes” and “Detecting Concurrent Writes” |
 | Cloudant selects one revision leaf as winner                    | Storage convergence versus application-level correctness             | Chapter 6                                                                      |
-| Revision and update-sequence gates prevent overwrites           | Compare-and-set, lost-update prevention, and transaction boundaries  | Chapter 8, “Transactions”                                                      |
+| Revision compare-and-set gates prevent overwrites               | Compare-and-set, lost-update prevention, and transaction boundaries  | Chapter 8, “Transactions”                                                      |
 | A dormant device cannot be distinguished from a retired device  | Partial failure and the limits of distributed knowledge              | Chapter 9, “The Trouble with Distributed Systems”                              |
 | Reload, quiesce, migrate, and verify is an operational protocol | Reliability, evolvability, and operability                           | Chapter 2, “Defining Nonfunctional Requirements”                               |
 
@@ -351,7 +372,9 @@ The exercise leads to a stronger migration protocol:
 4. Check that contract before a client pushes.
 5. Enforce it at a trusted write boundary so pre-protocol clients fail closed.
 6. Preserve rejected local work for controlled recovery.
-7. Migrate under revision, backup, and quiescence gates.
+7. Migrate under revision, verified native-quarantine, and quiescence gates.
 8. Verify application invariants, not only replication success.
 
-DDIA supplies the conceptual tools for deriving this protocol, but it is not a PWA migration runbook. Service-worker activation, Cloudant permissions, backup construction, and the exact recovery UX remain application-specific engineering work.
+DDIA supplies the conceptual tools for deriving this protocol, but it is not a PWA migration
+runbook. Service-worker activation, Cloudant permissions, quarantine verification, and the exact
+recovery UX remain application-specific engineering work.

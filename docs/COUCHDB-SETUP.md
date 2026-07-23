@@ -22,6 +22,7 @@ Cloudant is a managed CouchDB-compatible database from IBM. The Lite plan is per
    - `username` and `password` — legacy credentials for PouchDB
 
 The URL with embedded credentials looks like:
+
 ```
 https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud
 ```
@@ -37,6 +38,7 @@ The browser needs permission to make cross-origin requests to Cloudant.
 3. Enable CORS and add your Firebase Hosting domains.
 
 For this repo (`fortudo`), allowlist:
+
 - Production: `https://fortudo.web.app` and `https://fortudo.firebaseapp.com`
 - Preview channels: `https://fortudo--*.web.app` and `https://fortudo--*.firebaseapp.com` (if wildcards are allowed)
 
@@ -44,24 +46,36 @@ If Cloudant does not accept wildcard domains, add each preview URL explicitly. Y
 
 Do **not** use "All domains" in production — restrict to your exact origin.
 
-## 4. Database creation
+## 4. Manual database provisioning
 
-Fortudo creates a database per room code (e.g., `fortudo-fox-742`). Databases need to exist on Cloudant before PouchDB can replicate to them. Two approaches:
+Fortudo uses one database per room code (for example, `fortudo-fox-742`), but the browser does not
+create Cloudant databases. Replication uses PouchDB's `skip_setup: true`; entering a room whose remote
+database does not exist leaves that room local-only and reports that sync is not provisioned.
 
-### Option A: Admin credentials in the URL (simplest)
+The database must be created by an operator before the room can sync. At present this repository
+intentionally provides no supported production provisioning command. Do not infer that entering a
+room code, possessing the shared credential, or creating local data has provisioned its remote.
 
-Include your service credentials in `COUCHDB_URL`. When PouchDB connects as an admin, Cloudant auto-creates databases on first write.
+Two credential arrangements remain possible after manual provisioning:
+
+### Option A: Shared service credentials in the URL (simplest)
+
+Create the database through the Cloudant Dashboard or an explicitly approved administrative
+request, then include the existing service credentials in `COUCHDB_URL`.
 
 In `public/js/config.js`:
 
 ```js
-export const COUCHDB_URL = 'https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud';
+export const COUCHDB_URL =
+  'https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud';
 ```
 
-**Pros:** Zero setup per room. New room codes just work.
-**Cons:** Credentials are visible in the browser (network tab, JS source). Acceptable for personal/household use; not suitable for a public-facing app.
+**Pros:** No separate API key per room.
+**Cons:** Every room still needs manual provisioning, and the credentials are visible in the browser
+(network tab and JavaScript source). This is an accepted risk for the current personal/household
+deployment, not a suitable public-facing design.
 
-### Option B: Pre-create databases with scoped API keys
+### Option B: Manually provision with scoped API keys
 
 Keep admin credentials out of the browser. Create each room's database ahead of time and grant access via a scoped API key.
 
@@ -88,17 +102,21 @@ curl -X PUT "$HOST/fortudo-fox-742/_security" \
 Then in `public/js/config.js`, use the API key credentials:
 
 ```js
-export const COUCHDB_URL = 'https://<api_key>:<api_password>@<host>.cloudantnosqldb.appdomain.cloud';
+export const COUCHDB_URL =
+  'https://<api_key>:<api_password>@<host>.cloudantnosqldb.appdomain.cloud';
 ```
 
 You can reuse the same API key across multiple databases by adding it to each database's `_security` document.
 
 **Pros:** Scoped access — the API key can only read/write databases you've explicitly granted.
-**Cons:** Manual step to create each database and grant permissions.
+**Cons:** Manual database creation and permission grants are required.
 
 ### Recommendation
 
-For personal/household use, **Option A** is the pragmatic choice. If you add more rooms rarely, **Option B** is worth the extra step for better security.
+The current personal deployment accepts Option A's shared-credential risk. Prefer Option B for any
+new security design. In either case, database creation is an operator action, not browser behavior.
+After document-contract enforcement becomes fail-closed, a new production database must also receive
+and verify the required validator before any client is allowed to replicate.
 
 ## 5. Connect Fortudo
 
@@ -107,7 +125,8 @@ The repo tracks `public/js/config.js` with `COUCHDB_URL = null`, which means loc
 To enable sync locally, edit `public/js/config.js`:
 
 ```js
-export const COUCHDB_URL = 'https://<credentials>@<host>.cloudantnosqldb.appdomain.cloud';
+export const COUCHDB_URL =
+  'https://<credentials>@<host>.cloudantnosqldb.appdomain.cloud';
 ```
 
 The app constructs the full database URL automatically (e.g., appending `/fortudo-fox-742`).
@@ -171,12 +190,14 @@ firebase deploy
 Credentials (admin or API key) are embedded in `config.js`, which is served as a static file. Anyone who can load the site can view source and extract them. This means they could read, modify, or delete your Cloudant data, or consume your free-tier quota.
 
 **Why this is acceptable for Fortudo:**
+
 - The site URL is not publicly shared — only known to household members
 - The data is non-sensitive (daily to-do items)
 - Room codes add a layer of obscurity (someone would need to know or guess a code to find your data)
 - The app works fully offline without sync, so a compromised Cloudant instance is an inconvenience, not a data loss event (your local PouchDB is the source of truth)
 
 **If your threat model changes** (e.g., you share the URL more broadly), consider:
+
 1. **Firebase Cloud Function as a proxy** — holds Cloudant credentials server-side, the browser never sees them. Firebase Functions has a free tier.
 2. **Firebase Authentication** — gate the app behind Google sign-in. Only authenticated users get the sync URL (served dynamically, not as a static file).
 3. **HTTP gateway** — put Cloudflare Access or similar in front of the site to require a password before the app loads at all.
@@ -196,6 +217,7 @@ db.replicate.to(remoteUrl, { batch_size: 5, batches_limit: 1 });
 ### Cloudant vs CouchDB differences
 
 Cloudant is CouchDB-compatible but has some limits:
+
 - Max request size: 11 MB (vs CouchDB's 4 GB default)
 - Max attachment size: 10 MB
 - No `_users` database (auth is via IAM or Cloudant API keys, not CouchDB users)
