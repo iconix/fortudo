@@ -26,7 +26,16 @@ A metadata-only inventory on 2026-07-21 found:
 - 7 non-preview, nonempty databases with schema 3.5 legacy taxonomy.
 - 0 non-preview databases already carrying taxonomy `identityVersion: 1`.
 
-The current migration tool deliberately accepts only `fortudo-dat-411`. This is a safety fence derived from the rollout's explicit authorization for the guarded `dat-411` migration, not a Cloudant limitation. The other six non-preview databases have not been classified as active rooms, abandoned rooms, or tests, and they are not authorized migration targets.
+The current tooling has no write mode. Its read-only planner accepts an explicitly named valid
+`fortudo-*` database so operators can compare legacy schema-3.5 rooms without changing them. The
+planner reads and preserves each room's own taxonomy; it does not contain a hardcoded `dat-411`
+taxonomy.
+
+The future mutation executor remains deliberately locked to `fortudo-dat-411`. That is a safety
+fence derived from the rollout's explicit authorization for the guarded `dat-411` migration, not a
+Cloudant limitation. The other six non-preview databases have not been classified as active rooms,
+abandoned rooms, or tests, and they are not authorized migration targets merely because a read-only
+plan succeeds.
 
 If more rooms require fencing, each needs an independently approved client-quiescence, native
 quarantine capture, content-state fingerprint, fence installation, and verification cycle. The
@@ -207,7 +216,7 @@ A privacy-conscious client-capability record could report a random device instal
 - `public/js/sync-manager.js`: push-before-pull replication order.
 - `public/js/sw-register.js`: per-browser service-worker activation.
 - `public/js/taxonomy/taxonomy-store.js`: taxonomy normalization and singleton persistence.
-- `scripts/migrate_taxonomy_identity.py`: exact database fence and read-only transformation planner.
+- `scripts/migrate_taxonomy_identity.py`: namespace-scoped, read-only transformation planner.
 - `docs/plans/design/2026-07-22-cloudant-quarantine-migration-design.md`: proposed minimal
   production recovery and migration gates.
 

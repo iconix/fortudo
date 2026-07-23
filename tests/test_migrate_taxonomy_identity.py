@@ -13,6 +13,9 @@ import pytest
 from scripts import migrate_taxonomy_identity as migration
 
 
+TARGET_DATABASE = "fortudo-dat-411"
+
+
 def taxonomy_doc() -> dict:
     return {
         "_id": "config-categories",
@@ -110,8 +113,8 @@ def test_cloudant_transport_issues_get_requests_only(monkeypatch) -> None:
     monkeypatch.setattr(migration.urllib.request, "urlopen", open_request)
     client = migration.CloudantClient("https://user:secret@example.invalid")
 
-    client.get_database_info(migration.EXPECTED_DATABASE_NAME)
-    client.get_all_documents(migration.EXPECTED_DATABASE_NAME, include_conflicts=True)
+    client.get_database_info(TARGET_DATABASE)
+    client.get_all_documents(TARGET_DATABASE, include_conflicts=True)
 
     assert methods == ["GET", "GET"]
 
@@ -132,9 +135,9 @@ def test_cloudant_reads_reject_malformed_payloads_without_echoing_them(
 
     with pytest.raises(migration.MigrationSafetyError, match=message) as error:
         if operation == "info":
-            client.get_database_info(migration.EXPECTED_DATABASE_NAME)
+            client.get_database_info(TARGET_DATABASE)
         else:
-            client.get_all_documents(migration.EXPECTED_DATABASE_NAME, include_conflicts=True)
+            client.get_all_documents(TARGET_DATABASE, include_conflicts=True)
 
     assert "private" not in str(error.value)
 
@@ -188,7 +191,7 @@ def test_dry_run_is_the_only_mode_and_never_writes_or_exposes_private_values(cap
     client = ReadOnlyCloudant()
 
     result = migration.execute(
-        ["--database", migration.EXPECTED_DATABASE_NAME],
+        ["--database", TARGET_DATABASE],
         environ={migration.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
         client_factory=lambda _url: client,
     )
@@ -203,14 +206,29 @@ def test_dry_run_is_the_only_mode_and_never_writes_or_exposes_private_values(cap
         "documentsUpdated": 4,
     }
     assert client.calls == [
-        ("info", migration.EXPECTED_DATABASE_NAME),
-        ("documents", migration.EXPECTED_DATABASE_NAME, True),
+        ("info", TARGET_DATABASE),
+        ("documents", TARGET_DATABASE, True),
     ]
     output = capsys.readouterr().out
     assert "private task text" not in output
     assert "private activity text" not in output
     assert "secret" not in output
-    assert migration.EXPECTED_DATABASE_NAME not in output
+    assert TARGET_DATABASE not in output
+
+
+def test_dry_run_accepts_another_explicit_fortudo_database(capsys) -> None:
+    client = ReadOnlyCloudant()
+    database = "fortudo-family-123"
+
+    result = migration.execute(
+        ["--database", database],
+        environ={migration.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
+        client_factory=lambda _url: client,
+    )
+
+    assert result.mode == "dry-run"
+    assert client.calls == [("info", database), ("documents", database, True)]
+    assert database not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -221,13 +239,13 @@ def test_dry_run_is_the_only_mode_and_never_writes_or_exposes_private_values(cap
         ["--s1-snapshot", "private/S1"],
         ["--journal", "private/journal.json"],
         ["--expected-update-seq", "opaque"],
-        ["--confirm-database", migration.EXPECTED_DATABASE_NAME],
+        ["--confirm-database", TARGET_DATABASE],
     ],
 )
 def test_parser_rejects_all_retired_mutation_and_backup_flags(retired_arguments) -> None:
     with pytest.raises(SystemExit):
         migration._parser().parse_args(
-            ["--database", migration.EXPECTED_DATABASE_NAME, *retired_arguments]
+            ["--database", TARGET_DATABASE, *retired_arguments]
         )
 
 
@@ -374,15 +392,19 @@ def test_unknown_reference_and_duplicate_taxonomy_identity_fail_closed() -> None
         migration.build_migration_plan([migrated])
 
 
-def test_wrong_database_and_missing_credential_fail_before_remote_reads() -> None:
-    with pytest.raises(migration.MigrationSafetyError, match="expected exactly"):
+@pytest.mark.parametrize("database", ["_users", "dat-411", "fortudo-", "fortudo-UPPER"])
+def test_non_fortudo_database_fails_before_remote_reads(database) -> None:
+    with pytest.raises(migration.MigrationSafetyError, match="Fortudo namespace"):
         migration.execute(
-            ["--database", "fortudo-other"],
+            ["--database", database],
             environ={migration.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
         )
 
+
+def test_missing_credential_fails_before_remote_reads() -> None:
+
     with pytest.raises(migration.MigrationSafetyError, match=migration.CREDENTIAL_ENV_VAR):
-        migration.execute(["--database", migration.EXPECTED_DATABASE_NAME], environ={})
+        migration.execute(["--database", TARGET_DATABASE], environ={})
 
 
 def test_main_sanitizes_cloudant_failures(monkeypatch, capsys) -> None:

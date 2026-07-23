@@ -12,6 +12,7 @@ import base64
 import copy
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -21,7 +22,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 
-EXPECTED_DATABASE_NAME = "fortudo-dat-411"
 CREDENTIAL_ENV_VAR = "FORTUDO_CLOUDANT_URL"
 TAXONOMY_DOCUMENT_ID = "config-categories"
 RUNNING_ACTIVITY_ID = "config-running-activity"
@@ -66,11 +66,9 @@ def _document_kind(document: Mapping[str, Any]) -> str:
     return "unknown"
 
 
-def _ensure_exact_database(database: str) -> None:
-    if database != EXPECTED_DATABASE_NAME:
-        raise MigrationSafetyError(
-            f'unexpected database name; expected exactly "{EXPECTED_DATABASE_NAME}"'
-        )
+def _ensure_fortudo_database(database: str) -> None:
+    if not re.fullmatch(r"fortudo-[a-z0-9][a-z0-9-]*", database):
+        raise MigrationSafetyError("database name is outside the Fortudo namespace")
 
 
 def _find_taxonomy_document(documents: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
@@ -422,7 +420,7 @@ class CloudantClient:
 
 
 def _validate_database_info(database: str, database_info: Mapping[str, Any]) -> None:
-    _ensure_exact_database(database)
+    _ensure_fortudo_database(database)
     if database_info.get("db_name") != database:
         raise MigrationSafetyError("Cloudant reported a different database name")
 
@@ -454,7 +452,7 @@ def execute(
     client_factory: Callable[[str], Any] = CloudantClient,
 ) -> MigrationResult:
     args = _parser().parse_args(argv)
-    _ensure_exact_database(args.database)
+    _ensure_fortudo_database(args.database)
     environment = os.environ if environ is None else environ
     credential_url = environment.get(CREDENTIAL_ENV_VAR)
     if not credential_url:

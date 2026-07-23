@@ -129,6 +129,17 @@ Afterward, require:
 
 Any difference stops the operation before taxonomy writes.
 
+## Read-only planning scope
+
+The existing planner may inspect any explicitly named database in the `fortudo-*` namespace. Its
+rules are not room-specific: it reads the selected schema-3.5 taxonomy, preserves its labels and
+nonidentity fields, derives identities from its current rows, and reports aggregate intended
+changes. It performs GET requests only and emits no document bodies or database name.
+
+A successful plan is evidence that the database fits the transformation's structural assumptions,
+not authorization to mutate it. The executor described below remains separately and exactly locked
+to `fortudo-dat-411`; supporting another room would require its own approval and production gates.
+
 ## Minimal migration executor
 
 The executor remains locked to `fortudo-dat-411` and the approved taxonomy mapping. It recomputes a

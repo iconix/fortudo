@@ -31,15 +31,20 @@ Inspect whether a named Fortudo database contains the exact reviewed validator:
 python scripts/document_contract_ops.py verify --database fortudo-dat-411
 ```
 
-Generate aggregate dry-run counts for the locked `fortudo-dat-411` taxonomy migration:
+Generate aggregate dry-run counts—for example, for the currently authorized target:
 
 ```powershell
 python scripts/migrate_taxonomy_identity.py --database fortudo-dat-411
 ```
 
-The migration planner accepts no other database and has no apply mode. Both commands print only a
-state or aggregate counts. They do not print the database name, credentials, document bodies,
-descriptions, revision identifiers, or opaque database metadata.
+The read-only planner accepts any explicit, valid `fortudo-*` database name and has no apply mode.
+Its transformation rules are application-wide: it reads and preserves the selected database's
+current taxonomy rather than hardcoding the `dat-411` labels. This permits comparison and auditing;
+it does not authorize taxonomy migration in another room. The future production executor remains
+locked to `fortudo-dat-411`.
+
+Both commands print only a state or aggregate counts. They do not print the database name,
+credentials, document bodies, descriptions, revision identifiers, or opaque database metadata.
 
 ## Compatibility-release verification
 
