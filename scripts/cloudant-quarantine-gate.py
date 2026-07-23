@@ -217,6 +217,26 @@ def stop_timer_compatibly(client: OperationalCloudantClient, database: str) -> N
     )
 
 
+def capture_with_current_bindings(
+    client: OperationalCloudantClient,
+    source_database: str,
+    quarantine_database: str,
+    *,
+    resume_existing: bool = False,
+):
+    preflight_state = client.get_state_model(source_database)
+    preflight_security_hash = client.get_security_hash(source_database)
+    return capture_quarantine(
+        client,
+        source_database,
+        quarantine_database,
+        allow_disposable_preview=True,
+        resume_existing=resume_existing,
+        expected_source_fingerprint=preflight_state.fingerprint,
+        expected_security_hash=preflight_security_hash,
+    )
+
+
 def attachment_revision(client: OperationalCloudantClient, database: str) -> tuple[str, str]:
     matches = [
         document
@@ -273,6 +293,58 @@ class AmbiguousReplicationOnce:
         return result
 
 
+class DriftDuringCapturePreconditions:
+    """Create a real source revision between capture's two state reads."""
+
+    def __init__(self, client: OperationalCloudantClient, database: str) -> None:
+        self.client = client
+        self.database = database
+        self.drifted = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.client, name)
+
+    def get_all_documents(self, database: str, *, include_conflicts: bool):
+        documents = self.client.get_all_documents(database, include_conflicts=include_conflicts)
+        if not self.drifted:
+            require(database == self.database, "capture precondition drift target differs")
+            task = self.client.get_document(database, "task-preview")
+            require(
+                task is not None and isinstance(task.get("_rev"), str),
+                "preview task is absent before capture precondition drift",
+            )
+            task["description"] = "private capture precondition drift"
+            self.client.put_document(database, task, create_only=False)
+            self.drifted = True
+        return documents
+
+
+class SecurityDriftDuringCapturePreconditions:
+    """Change preview `_security` between capture's two security reads."""
+
+    def __init__(
+        self,
+        client: DisposablePreviewCloudantClient,
+        database: str,
+        drifted_security: Mapping[str, Any],
+    ) -> None:
+        self.client = client
+        self.database = database
+        self.drifted_security = drifted_security
+        self.drifted = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.client, name)
+
+    def get_all_documents(self, database: str, *, include_conflicts: bool):
+        documents = self.client.get_all_documents(database, include_conflicts=include_conflicts)
+        if not self.drifted:
+            require(database == self.database, "capture security drift target differs")
+            self.client.put_preview_security(database, self.drifted_security)
+            self.drifted = True
+        return documents
+
+
 def safe_report(
     *,
     capture: Any,
@@ -319,6 +391,10 @@ def main() -> int:
     report_values = None
     counts = {
         "timerZeroWritePreflights": 0,
+        "taxonomyMeaningZeroWritePreflights": 0,
+        "captureBindingMismatchBlocks": 0,
+        "capturePreconditionDriftBlocks": 0,
+        "capturePreconditionSecurityDriftBlocks": 0,
         "ambiguousReplicationRetries": 0,
         "leafDriftBlocks": 0,
         "securityDriftBlocks": 0,
@@ -356,11 +432,10 @@ def main() -> int:
         before_timer_gate = client.get_state_model(source_database)
         quarantine_may_be_owned = True
         try:
-            capture_quarantine(
+            capture_with_current_bindings(
                 client,
                 source_database,
                 quarantine_database,
-                allow_disposable_preview=True,
             )
         except QuarantineSafetyError as error:
             require("running timer" in str(error), "timer preflight failed for another reason")
@@ -374,14 +449,155 @@ def main() -> int:
         counts["timerZeroWritePreflights"] += 1
         stop_timer_compatibly(client, source_database)
 
+        phase = "taxonomy meaning zero-write preflight"
+        taxonomy = client.get_document(source_database, "config-categories")
+        require(
+            taxonomy is not None and isinstance(taxonomy.get("_rev"), str),
+            "preview taxonomy is absent before meaning drift",
+        )
+        meeting_row = next(
+            (
+                row
+                for row in taxonomy.get("categories", [])
+                if isinstance(row, dict) and row.get("key") == "work/meetings"
+            ),
+            None,
+        )
+        require(meeting_row is not None, "preview locked taxonomy row is absent")
+        meeting_row["label"] = "Meetings"
+        drift_response = client.put_document(source_database, taxonomy, create_only=False)
+        require(
+            isinstance(drift_response, Mapping) and isinstance(drift_response.get("rev"), str),
+            "preview taxonomy drift response is invalid",
+        )
+        taxonomy["_rev"] = drift_response["rev"]
+        try:
+            capture_with_current_bindings(
+                client,
+                source_database,
+                quarantine_database,
+            )
+        except QuarantineSafetyError as error:
+            require(
+                "locked taxonomy meaning" in str(error),
+                "taxonomy meaning preflight failed for another reason",
+            )
+        else:
+            raise QuarantineSafetyError("taxonomy meaning drift did not block capture")
+        require(
+            not client.database_exists(quarantine_database),
+            "taxonomy meaning preflight created a quarantine database",
+        )
+        meeting_row["label"] = "Comms"
+        restore_response = client.put_document(source_database, taxonomy, create_only=False)
+        require(
+            isinstance(restore_response, Mapping) and isinstance(restore_response.get("rev"), str),
+            "preview taxonomy restore response is invalid",
+        )
+        counts["taxonomyMeaningZeroWritePreflights"] += 1
+
+        phase = "capture binding mismatch gates"
+        binding_state = client.get_state_model(source_database)
+        binding_security_hash = client.get_security_hash(source_database)
+        for changed_binding in ("source", "security"):
+            try:
+                capture_quarantine(
+                    client,
+                    source_database,
+                    quarantine_database,
+                    allow_disposable_preview=True,
+                    expected_source_fingerprint=(
+                        "0" * 64
+                        if changed_binding == "source"
+                        else binding_state.fingerprint
+                    ),
+                    expected_security_hash=(
+                        "0" * 64
+                        if changed_binding == "security"
+                        else binding_security_hash
+                    ),
+                )
+            except QuarantineSafetyError as error:
+                require(
+                    "preflight expectation" in str(error),
+                    "capture binding mismatch failed for another reason",
+                )
+            else:
+                raise QuarantineSafetyError("capture binding mismatch did not block capture")
+            require(
+                not client.database_exists(quarantine_database),
+                "capture binding mismatch created a quarantine database",
+            )
+            counts["captureBindingMismatchBlocks"] += 1
+
+        phase = "capture precondition drift gate"
+        drift_client = DriftDuringCapturePreconditions(client, source_database)
+        try:
+            capture_with_current_bindings(
+                drift_client,
+                source_database,
+                quarantine_database,
+            )
+        except QuarantineSafetyError as error:
+            require(
+                "capture preconditions" in str(error),
+                "capture precondition drift failed for another reason",
+            )
+        else:
+            raise QuarantineSafetyError("capture precondition drift did not block capture")
+        require(
+            drift_client.drifted and not client.database_exists(quarantine_database),
+            "capture precondition drift created a quarantine database",
+        )
+        counts["capturePreconditionDriftBlocks"] += 1
+
+        phase = "capture precondition security drift gate"
+        original_capture_security = client.get_security_document(source_database)
+        drifted_capture_security = copy.deepcopy(original_capture_security)
+        capture_cloudant_roles = drifted_capture_security.setdefault("cloudant", {})
+        require(
+            isinstance(capture_cloudant_roles, dict),
+            "preview capture security shape is unsupported",
+        )
+        capture_cloudant_roles[f"preview-capture-drift-{nonce}"] = ["_reader"]
+        security_drift_client = SecurityDriftDuringCapturePreconditions(
+            client,
+            source_database,
+            drifted_capture_security,
+        )
+        try:
+            try:
+                capture_with_current_bindings(
+                    security_drift_client,
+                    source_database,
+                    quarantine_database,
+                )
+            except QuarantineSafetyError as error:
+                require(
+                    "security drifted during capture preconditions" in str(error),
+                    "capture precondition security drift failed for another reason",
+                )
+            else:
+                raise QuarantineSafetyError(
+                    "capture precondition security drift did not block capture"
+                )
+        finally:
+            client.put_preview_security(source_database, original_capture_security)
+        require(
+            security_drift_client.drifted
+            and not client.database_exists(quarantine_database)
+            and client.get_security_document(source_database) == original_capture_security,
+            "capture precondition security drift was not restored exactly",
+        )
+        counts["capturePreconditionSecurityDriftBlocks"] += 1
+
         phase = "ambiguous quarantine capture"
         ambiguous_client = AmbiguousReplicationOnce(client)
         try:
-            capture_quarantine(
+            capture_with_current_bindings(
                 ambiguous_client,
                 source_database,
                 quarantine_database,
-                allow_disposable_preview=True,
             )
         except QuarantineSafetyError as error:
             require(
@@ -397,11 +613,10 @@ def main() -> int:
         )
 
         phase = "retained-target quarantine retry"
-        capture = capture_quarantine(
+        capture = capture_with_current_bindings(
             client,
             source_database,
             quarantine_database,
-            allow_disposable_preview=True,
             resume_existing=True,
         )
         source_attachment = attachment_revision(client, source_database)
@@ -435,11 +650,10 @@ def main() -> int:
         )
 
         phase = "resumed quarantine capture"
-        capture = capture_quarantine(
+        capture = capture_with_current_bindings(
             client,
             source_database,
             quarantine_database,
-            allow_disposable_preview=True,
             resume_existing=True,
         )
 

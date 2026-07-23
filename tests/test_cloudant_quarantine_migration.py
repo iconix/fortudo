@@ -146,6 +146,7 @@ class CaptureCloudant:
         security=None,
         database_exists=False,
         fail_replication=False,
+        documents=None,
     ):
         self.timer = timer
         self.source_states = list(source_states or [])
@@ -154,6 +155,7 @@ class CaptureCloudant:
         self.security = security or {"cloudant": {"accepted-user": ["_reader"]}}
         self._database_exists = database_exists
         self.fail_replication = fail_replication
+        self.documents = copy.deepcopy(documents if documents is not None else migration_winners())
         self.calls: list[tuple] = []
 
     def get_document(self, database, document_id):
@@ -169,6 +171,10 @@ class CaptureCloudant:
     def get_security_hash(self, database):
         self.calls.append(("security", database))
         return quarantine.canonical_hash(self.security)
+
+    def get_all_documents(self, database, *, include_conflicts):
+        self.calls.append(("all-documents", database, include_conflicts))
+        return copy.deepcopy(self.documents)
 
     def database_exists(self, database):
         self.calls.append(("exists", database))
@@ -188,6 +194,17 @@ class CaptureCloudant:
         return {"ok": True, "history": [{"doc_write_failures": 0}]}
 
 
+def capture_with_bindings(client, expected_state, **kwargs):
+    return quarantine.capture_quarantine(
+        client,
+        SOURCE,
+        QUARANTINE,
+        expected_source_fingerprint=expected_state.fingerprint,
+        expected_security_hash=quarantine.canonical_hash(client.security),
+        **kwargs,
+    )
+
+
 def test_running_timer_blocks_before_any_remote_mutation() -> None:
     client = CaptureCloudant(timer={"_id": "config-running-activity"})
 
@@ -197,23 +214,66 @@ def test_running_timer_blocks_before_any_remote_mutation() -> None:
     assert client.calls == [("get-document", SOURCE, "config-running-activity")]
 
 
-def test_capture_creates_one_exact_database_and_uses_transient_replication() -> None:
-    captured = state(
-        ("_design/existing", "1-design", False),
-        ("task-a", "2-live", False),
-        ("activity-a", "3-winner", False),
-        ("activity-a", "2-loser", False),
-        ("task-deleted", "2-deleted", True),
-        winners={
-            "_design/existing": "1-design",
-            "task-a": "2-live",
-            "activity-a": "3-winner",
-            "task-deleted": "2-deleted",
-        },
+def test_locked_taxonomy_meaning_drift_blocks_before_quarantine_creation() -> None:
+    documents = migration_winners()
+    documents[0]["categories"][0]["label"] = "Meetings"
+    captured = migration_base_state()
+    client = CaptureCloudant(
+        documents=documents,
+        source_states=[captured],
     )
-    client = CaptureCloudant(source_states=[captured, captured], quarantine_state=captured)
 
-    receipt = quarantine.capture_quarantine(client, SOURCE, QUARANTINE)
+    with pytest.raises(quarantine.QuarantineSafetyError, match="locked taxonomy meaning"):
+        capture_with_bindings(client, captured)
+
+    assert not any(call[0] in {"create-database", "replicate-once"} for call in client.calls)
+
+
+def test_source_drift_during_capture_preconditions_blocks_before_quarantine_creation() -> None:
+    documents = migration_winners()
+    before = state_for_winner_documents(documents)
+    changed_documents = copy.deepcopy(documents)
+    changed_documents[1]["_rev"] = "3-task-drift"
+    after = state_for_winner_documents(changed_documents)
+    client = CaptureCloudant(source_states=[before, after], documents=documents)
+
+    with pytest.raises(quarantine.QuarantineSafetyError, match="preconditions"):
+        capture_with_bindings(client, before)
+
+    assert not any(call[0] in {"create-database", "replicate-once"} for call in client.calls)
+
+
+@pytest.mark.parametrize("changed_binding", ["source", "security"])
+def test_capture_binding_mismatch_blocks_before_quarantine_creation(changed_binding) -> None:
+    captured = migration_base_state()
+    client = CaptureCloudant(
+        source_states=[captured],
+        security={},
+    )
+    expected_source = "0" * 64 if changed_binding == "source" else captured.fingerprint
+    actual_security = quarantine.canonical_hash({})
+    expected_security = "0" * 64 if changed_binding == "security" else actual_security
+
+    with pytest.raises(quarantine.QuarantineSafetyError, match="expectation"):
+        quarantine.capture_quarantine(
+            client,
+            SOURCE,
+            QUARANTINE,
+            expected_source_fingerprint=expected_source,
+            expected_security_hash=expected_security,
+        )
+
+    assert not any(call[0] in {"create-database", "replicate-once"} for call in client.calls)
+
+
+def test_capture_creates_one_exact_database_and_uses_transient_replication() -> None:
+    captured = migration_base_state()
+    client = CaptureCloudant(
+        source_states=[captured, captured, captured],
+        quarantine_state=captured,
+    )
+
+    receipt = capture_with_bindings(client, captured)
 
     assert receipt.source_database == SOURCE
     assert receipt.quarantine_database == QUARANTINE
@@ -225,46 +285,56 @@ def test_capture_creates_one_exact_database_and_uses_transient_replication() -> 
 
 
 def test_capture_halts_on_source_drift_without_a_persistent_job() -> None:
-    before = state(("task-a", "1-a", False))
-    after = state(("task-a", "2-a", False))
-    client = CaptureCloudant(source_states=[before, after], quarantine_state=before)
+    documents = migration_winners()
+    before = state_for_winner_documents(documents)
+    changed_documents = copy.deepcopy(documents)
+    changed_documents[1]["_rev"] = "3-task-drift"
+    after = state_for_winner_documents(changed_documents)
+    client = CaptureCloudant(
+        source_states=[before, before, after],
+        quarantine_state=before,
+        documents=documents,
+    )
 
     with pytest.raises(quarantine.QuarantineSafetyError, match="source state drifted"):
-        quarantine.capture_quarantine(client, SOURCE, QUARANTINE)
+        capture_with_bindings(client, before)
 
     assert ("replicate-once", SOURCE, QUARANTINE) in client.calls
     assert not any(call[0] == "delete-database" for call in client.calls)
 
 
 def test_uncertain_transient_replication_is_safe_to_resume() -> None:
-    source_state = state(("task-a", "1-a", False))
+    source_state = migration_base_state()
     client = CaptureCloudant(
-        source_states=[source_state],
+        source_states=[source_state, source_state],
         quarantine_state=source_state,
         fail_replication=True,
     )
 
     with pytest.raises(quarantine.QuarantineSafetyError, match="uncertain"):
-        quarantine.capture_quarantine(client, SOURCE, QUARANTINE)
+        capture_with_bindings(client, source_state)
 
     client.fail_replication = False
     client._database_exists = True
-    client.source_states = [source_state, source_state]
-    receipt = quarantine.capture_quarantine(client, SOURCE, QUARANTINE, resume_existing=True)
+    client.source_states = [source_state, source_state, source_state]
+    receipt = capture_with_bindings(client, source_state, resume_existing=True)
     assert receipt.state == source_state
 
 
 def test_interrupted_capture_reruns_after_an_existing_source_document_was_edited() -> None:
-    source_state = state(("task-a", "2-edited", False), ("task-b", "1-b", False))
-    stale_quarantine = state(("task-a", "1-original", False))
+    documents = migration_winners()
+    documents[1]["_rev"] = "3-task-edited"
+    source_state = state_for_winner_documents(documents)
+    stale_quarantine = migration_base_state()
     client = CaptureCloudant(
-        source_states=[source_state, source_state],
+        source_states=[source_state, source_state, source_state],
         quarantine_state=stale_quarantine,
         post_replication_quarantine_state=source_state,
         database_exists=True,
+        documents=documents,
     )
 
-    receipt = quarantine.capture_quarantine(client, SOURCE, QUARANTINE, resume_existing=True)
+    receipt = capture_with_bindings(client, source_state, resume_existing=True)
 
     assert receipt.state == source_state
     assert not any(call[0] == "create-database" for call in client.calls)
@@ -272,12 +342,13 @@ def test_interrupted_capture_reruns_after_an_existing_source_document_was_edited
 
     unrelated = state(("task-other", "1-other", False))
     blocked = CaptureCloudant(
-        source_states=[source_state, source_state],
+        source_states=[source_state, source_state, source_state],
         quarantine_state=unrelated,
         database_exists=True,
+        documents=documents,
     )
     with pytest.raises(quarantine.QuarantineSafetyError, match="differs from the source"):
-        quarantine.capture_quarantine(blocked, SOURCE, QUARANTINE, resume_existing=True)
+        capture_with_bindings(blocked, source_state, resume_existing=True)
     assert ("replicate-once", SOURCE, QUARANTINE) in blocked.calls
 
 
@@ -760,18 +831,23 @@ def migration_winners() -> list[dict]:
     ]
 
 
+def state_for_winner_documents(documents):
+    leaves = []
+    winners = {}
+    for document in documents:
+        document_id = document["_id"]
+        revision = document["_rev"]
+        leaves.append((document_id, revision, document.get("_deleted") is True))
+        winners[document_id] = revision
+        leaves.extend((document_id, conflict, False) for conflict in document.get("_conflicts", []))
+        leaves.extend(
+            (document_id, conflict, True) for conflict in document.get("_deleted_conflicts", [])
+        )
+    return state(*leaves, winners=winners)
+
+
 def migration_base_state():
-    return state(
-        ("config-categories", "3-taxonomy", False),
-        ("task-a", "2-task", False),
-        ("activity-a", "4-winner", False),
-        ("activity-a", "3-loser", False),
-        winners={
-            "config-categories": "3-taxonomy",
-            "task-a": "2-task",
-            "activity-a": "4-winner",
-        },
-    )
+    return state_for_winner_documents(migration_winners())
 
 
 def successor(document: dict, revision: str, parent: str) -> dict:
@@ -1168,13 +1244,43 @@ def test_mutating_cli_requires_account_binding_source_confirmation_and_approval(
         )
 
 
+@pytest.mark.parametrize(
+    "omitted_flag",
+    ["--expected-source-fingerprint", "--expected-security-hash"],
+)
+def test_capture_cli_requires_both_exact_preflight_bindings(omitted_flag) -> None:
+    arguments = [
+        "capture",
+        "--quarantine-database",
+        QUARANTINE,
+        "--expected-source-fingerprint",
+        "b" * 64,
+        "--expected-security-hash",
+        "c" * 64,
+        "--expected-account-checksum",
+        "a" * 64,
+        "--confirm-source",
+        SOURCE,
+        "--approve-remote-writes",
+    ]
+    omitted_index = arguments.index(omitted_flag)
+    del arguments[omitted_index : omitted_index + 2]
+
+    with pytest.raises(SystemExit):
+        quarantine._parser().parse_args(arguments)
+
+
 def test_preflight_reports_exact_validator_state_without_database_or_private_values(capsys) -> None:
+    validator_document = {**load_design_document(), "_rev": "1-validator"}
+    documents = [*migration_winners(), validator_document]
+    locked_state = state_for_winner_documents(documents)
+
     class PreflightClient:
         account_checksum = "a" * 64
 
         def get_state_model(self, database):
             assert database == SOURCE
-            return state(("task-a", "1-a", False))
+            return locked_state
 
         def get_security_hash(self, database):
             assert database == SOURCE
@@ -1184,7 +1290,12 @@ def test_preflight_reports_exact_validator_state_without_database_or_private_val
             assert database == SOURCE
             if document_id == migration.RUNNING_ACTIVITY_ID:
                 return None
-            return {**load_design_document(), "_rev": "1-validator"}
+            return validator_document
+
+        def get_all_documents(self, database, *, include_conflicts):
+            assert database == SOURCE
+            assert include_conflicts is True
+            return copy.deepcopy(documents)
 
     result = quarantine.execute_cli(
         ["preflight"],
@@ -1194,9 +1305,106 @@ def test_preflight_reports_exact_validator_state_without_database_or_private_val
 
     assert result["validatorState"] == "compatible"
     assert result["validatorRevision"] == "1-validator"
+    assert result["lockedTaxonomyMeanings"] == "verified"
+    assert result["migrationCounts"]["documentsUpdated"] == 3
     output = capsys.readouterr().out
     assert SOURCE not in output
     assert "secret" not in output
+
+
+def test_preflight_blocks_before_remote_writes_when_locked_taxonomy_meanings_differ() -> None:
+    documents = migration_winners()
+    locked_state = state_for_winner_documents(documents)
+
+    class PreflightClient:
+        account_checksum = "a" * 64
+
+        def get_state_model(self, _database):
+            return locked_state
+
+        def get_security_hash(self, _database):
+            return "b" * 64
+
+        def get_document(self, _database, document_id):
+            if document_id == migration.RUNNING_ACTIVITY_ID:
+                return None
+            return None
+
+        def get_all_documents(self, _database, *, include_conflicts):
+            assert include_conflicts is True
+            mismatched = copy.deepcopy(documents)
+            mismatched[0]["categories"][0]["label"] = "Meetings"
+            return mismatched
+
+    with pytest.raises(quarantine.QuarantineSafetyError, match="locked taxonomy meaning"):
+        quarantine.execute_cli(
+            ["preflight"],
+            environ={quarantine.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
+            client_factory=lambda _url: PreflightClient(),
+        )
+
+
+def test_preflight_rejects_a_report_built_across_source_state_drift() -> None:
+    documents = migration_winners()
+    before = state_for_winner_documents(documents)
+    changed_documents = copy.deepcopy(documents)
+    changed_documents[1]["_rev"] = "3-task-drift"
+    after = state_for_winner_documents(changed_documents)
+
+    class PreflightClient:
+        account_checksum = "a" * 64
+
+        def __init__(self):
+            self.states = [before, after]
+
+        def get_state_model(self, _database):
+            return self.states.pop(0)
+
+        def get_security_hash(self, _database):
+            return "b" * 64
+
+        def get_document(self, _database, _document_id):
+            return None
+
+        def get_all_documents(self, _database, *, include_conflicts):
+            assert include_conflicts is True
+            return copy.deepcopy(documents)
+
+    with pytest.raises(quarantine.QuarantineSafetyError, match="preflight"):
+        quarantine.execute_cli(
+            ["preflight"],
+            environ={quarantine.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
+            client_factory=lambda _url: PreflightClient(),
+        )
+
+
+def test_preflight_rejects_stale_winner_bodies_between_stable_state_reads() -> None:
+    locked = migration_base_state()
+
+    class PreflightClient:
+        account_checksum = "a" * 64
+
+        def get_state_model(self, _database):
+            return locked
+
+        def get_security_hash(self, _database):
+            return "b" * 64
+
+        def get_document(self, _database, _document_id):
+            return None
+
+        def get_all_documents(self, _database, *, include_conflicts):
+            assert include_conflicts is True
+            documents = migration_winners()
+            documents[1]["_rev"] = "1-stale-task"
+            return documents
+
+    with pytest.raises(quarantine.QuarantineSafetyError, match="locked source"):
+        quarantine.execute_cli(
+            ["preflight"],
+            environ={quarantine.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
+            client_factory=lambda _url: PreflightClient(),
+        )
 
 
 def test_delete_quarantine_requires_exact_name_fingerprint_and_confirmation() -> None:

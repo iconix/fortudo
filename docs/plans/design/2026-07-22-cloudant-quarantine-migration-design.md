@@ -87,6 +87,12 @@ native replication protocol. Attachments travel as part of those replicated revi
 does not duplicate every body and attachment into a second local archive merely to reimplement that
 integrity check.
 
+Planner inputs are also revision-bound to this state model. Every winning body returned for
+planning must have the exact locked winning `_rev`; its live `_conflicts` set must equal the locked
+nonwinning, nondeleted leaf revisions; and the complete set of live winners must agree. Equal state
+reads around an unbound `_all_docs` response are insufficient because Cloudant may serve an older
+body between them.
+
 The tool does not record or compare Cloudant's opaque `update_seq`.
 
 ## `_security`
@@ -105,8 +111,15 @@ is outside this document. Any intentional security change is a separate approved
    require `config-running-activity` to be absent. A live timer blocks before any remote mutation,
    including quarantine database creation. Stopping the timer through a compatible client deletes
    that live configuration; merely closing its UI is insufficient.
+   Read the current taxonomy rows, verify the two locked Meetings/Comms meanings, and require the
+   complete migration planner to accept the current winners and conflict metadata before creating
+   the quarantine. Repeat these checks inside the capture command rather than trusting that a
+   separately run preflight is still applicable. Re-read the source leaf state and `_security`
+   after those checks; drift invalidates the preflight report or blocks capture before database
+   creation.
 2. Lock the exact Cloudant account endpoint and source database name in process memory. Normal
-   output exposes neither.
+   output exposes neither. Require the exact source fingerprint and `_security` hash from the
+   operator-approved preflight; either mismatch blocks before database creation.
 3. Create one empty, nonpartitioned database with a random high-entropy
    `fortudo-quarantine-<random>` name. Abort if it already exists or is not empty.
 4. Send one transient `POST /_replicate` request from `fortudo-dat-411` to that exact database. Use
@@ -130,6 +143,12 @@ fingerprint. Do not require the old quarantine leaves to be a subset of the sour
 normal source update replaces a leaf with its child while the quarantine still exposes the parent
 as a leaf. Replication can converge that ancestry safely. Unexpected quarantine-only leaves remain
 after replication and fail final equality; do not destructively clean or trust that target.
+
+The second pre-creation state/security read is an observed stability point, not an atomic write
+fence. A source write immediately afterward can still race with database creation. The
+post-replication equality checks prevent that target from producing a trusted capture receipt, and
+the retained target must be treated as untrusted until a later exact retry converges. Operational
+client quiescence therefore remains required.
 
 ## Fence installation
 
@@ -232,13 +251,15 @@ The exercise must prove:
 3. `winning_revs_only`, filters, selectors, `doc_ids`, and continuous mode are absent;
 4. source leaf drift after capture blocks validator installation without a validator or migration
    write;
-5. a deliberate `_security` change after capture blocks validator installation, and the successful
+5. wrong preflight source/security bindings and deliberate source or `_security` drift during
+   capture preconditions block before quarantine creation;
+6. a deliberate `_security` change after capture blocks validator installation, and the successful
    path finishes with the original source `_security` hash unchanged;
-6. validator installation changes exactly one expected design leaf;
-7. a forced interruption leaves a state that a fresh run safely classifies and completes;
-8. invalid legacy writes are denied after fencing while compatible writes succeed;
-9. the final invariant and completion checks detect any unexpected revision; and
-10. no `_replicator` document is created, output remains sanitized, and cleanup deletes only the two
+7. validator installation changes exactly one expected design leaf;
+8. a forced interruption leaves a state that a fresh run safely classifies and completes;
+9. invalid legacy writes are denied after fencing while compatible writes succeed;
+10. the final invariant and completion checks detect any unexpected revision; and
+11. no `_replicator` document is created, output remains sanitized, and cleanup deletes only the two
     exact disposable databases.
 
 Record only aggregate counts, state fingerprints, validator checksum/revision, test result, and
