@@ -1,8 +1,10 @@
 """Read-only planner for Fortudo taxonomy identity version 1.
 
-This command validates the exact production database and reports aggregate dry-run
-counts. It has no backup, restore, or write capability. Document bodies, database
-names, opaque database metadata, and credentials are never printed.
+This command validates one explicitly selected ``fortudo-*`` database and reports
+aggregate dry-run counts. Its transformation is derived from that database's current
+taxonomy rows; no room labels are hardcoded here. It has no backup, restore, or write
+capability. Document bodies, database names, opaque database metadata, and credentials
+are never printed.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ TAXONOMY_NAMESPACE = uuid.UUID("8e2e8b7a-5c3f-4f3e-9c5d-7a1b2e4f6c80")
 
 
 class MigrationSafetyError(RuntimeError):
-    """Raised when a read-only migration-planning precondition is not satisfied."""
+    """Raised when a migration-planning precondition is not satisfied."""
 
 
 @dataclass(frozen=True)
