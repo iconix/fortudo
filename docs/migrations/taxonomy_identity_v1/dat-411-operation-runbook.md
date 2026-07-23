@@ -1,4 +1,4 @@
-# Document-contract migration runbook
+# Taxonomy identity v1: dat-411 operation runbook
 
 ## Current status
 
@@ -18,12 +18,14 @@ Production observation showed that `update_seq` can change while the application
 so it is not a valid equality gate for this deployment. Maintaining a second replication and restore
 implementation in Python was also unnecessary when Cloudant already implements CouchDB replication.
 
-The replacement design is [Cloudant Quarantine Migration Design](plans/design/2026-07-22-cloudant-quarantine-migration-design.md).
+The replacement design is
+[Cloudant Quarantine Migration Design](../../plans/design/2026-07-22-cloudant-quarantine-migration-design.md).
 It uses Cloudant-native quarantine replication without a local backup format, reverse restore,
 durable `_replicator` document, or `update_seq` lock.
 
 Reusable primitives, versioned operation boundaries, and future migration requirements are
-documented in [Cloudant migration toolkit boundaries](CLOUDANT-MIGRATION-TOOLKIT.md).
+documented in
+[Cloudant migration toolkit boundaries](../../CLOUDANT-MIGRATION-TOOLKIT.md).
 
 Never paste the Cloudant credential URL, document bodies, descriptions, or private database
 metadata into a terminal transcript, issue, pull request, or chat. Set `FORTUDO_CLOUDANT_URL` only

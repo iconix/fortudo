@@ -12,8 +12,8 @@ operation, and which code belongs only to the completed `fortudo-dat-411` taxono
 migration.
 
 The exact completed operation remains documented in
-[Document-contract migration runbook](DOCUMENT-CONTRACT-MIGRATION-RUNBOOK.md). Architectural
-motivation and the offline-replica case study remain in
+[Taxonomy identity v1: dat-411 operation runbook](migrations/taxonomy_identity_v1/dat-411-operation-runbook.md).
+Architectural motivation and the offline-replica case study remain in
 [Offline-client migration safety](OFFLINE-CLIENT-MIGRATION-SAFETY.md).
 
 ## Ownership map
