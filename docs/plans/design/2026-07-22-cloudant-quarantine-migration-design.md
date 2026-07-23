@@ -1,6 +1,6 @@
 # Cloudant quarantine migration design
 
-**Status:** Design for a later implementation pull request. It is not an operational authorization.
+**Status:** Implemented by a guarded migration pull request. It is not production authorization.
 
 ## Decision
 
@@ -11,9 +11,22 @@ then install the document validator and run a narrowly scoped, resumable taxonom
 Do not build or retain a local snapshot format, portable dump, general restore engine, database
 inventory system, or opaque-`update_seq` lock.
 
-IBM recommends managed `_replicator` jobs over the transient `/_replicate` endpoint because jobs are
-restartable and observable. Normal CouchDB replication transfers all current leaf revisions;
-`winning_revs_only` must not be enabled because it intentionally discards conflicting leaves.
+Use the transient `POST /_replicate` endpoint. A persistent `_replicator` document would retain its
+credential in CouchDB revision history after deletion and a retry could not recreate the deleted
+document ID without its tombstone revision. Scheduler restartability is not worth those risks for
+this bounded operation. A transient request is safely rerunnable into the retained quarantine;
+exact verified state, not the request response alone, establishes success.
+
+The request uses the existing accepted legacy credential as structured authentication inside its
+TLS request body. This creates no new authority and no durable replication document. It is an
+explicitly approved exception to IBM's general preference for scoped replication credentials,
+proportionate to Fortudo's existing browser-visible Manager credential documented in
+[COUCHDB-SETUP.md](../../COUCHDB-SETUP.md) and
+[ROOM-IDENTITY-AND-ACCESS-RISK.md](../../ROOM-IDENTITY-AND-ACCESS-RISK.md). The request body,
+credential, URLs, and response details must never be logged.
+
+Normal CouchDB replication transfers all current leaf revisions; `winning_revs_only` must not be
+enabled because it intentionally discards conflicting leaves.
 
 References:
 
@@ -64,13 +77,17 @@ The set includes application and design documents. `_local/*` documents are excl
 replication checkpoints are local implementation metadata and replication itself can change them.
 Derived `_conflicts` arrays are not hashed separately because the leaf set already represents them.
 
+Enumerate current leaves with `_changes?style=all_docs`, fetch their exact bodies through bounded
+`_bulk_get` batches, and obtain winners with a keyed `_all_docs` request over those IDs. The keyed
+request is required because an unkeyed `_all_docs` scan omits deleted documents. Cloudant 429
+responses receive bounded backoff; exhausted retries fail closed with sanitized output.
+
 Matching revision identities across source and quarantine are the verification boundary for the
 native replication protocol. Attachments travel as part of those replicated revisions. The design
 does not duplicate every body and attachment into a second local archive merely to reimplement that
 integrity check.
 
-Cloudant's `update_seq` may be recorded diagnostically but must never be compared for equality or
-used as a content-stability gate.
+The tool does not record or compare Cloudant's opaque `update_seq`.
 
 ## `_security`
 
@@ -92,24 +109,27 @@ is outside this document. Any intentional security change is a separate approved
    output exposes neither.
 3. Create one empty, nonpartitioned database with a random high-entropy
    `fortudo-quarantine-<random>` name. Abort if it already exists or is not empty.
-4. Create a one-shot `_replicator` job from `fortudo-dat-411` to that exact database. Use no selector,
-   filter, `doc_ids`, `winning_revs_only`, or continuous mode. Any replication credential must be
-   temporary and narrowly scoped, must never be logged or committed, and must be revoked after the
-   job is removed.
-5. Wait for the scheduler to report completion. A terminal error or timeout blocks the operation.
+4. Send one transient `POST /_replicate` request from `fortudo-dat-411` to that exact database. Use
+   no selector, filter, `doc_ids`, `winning_revs_only`, or continuous mode. Authenticate both legs
+   with the existing accepted credential as structured authentication; never put it in a URL or
+   output.
+5. Require a successful response with zero document write failures. A timeout or disconnect is
+   ambiguous, not proof of failure: retain the quarantine and rerun before trusting state.
 6. Read the source and quarantine state models. Require exact leaf-set, winner-map, count, and
    fingerprint equality.
 7. Re-read and compare the source `_security` hash.
-8. Remove the completed replication job and revoke its temporary credential. Retain the quarantine
-   database through the known-client exercise.
+8. Retain the quarantine database through the known-client exercise. No `_replicator` document or
+   temporary credential exists to clean up.
 
 The replication may write `_local` checkpoints to the source. Those writes are expected and do not
 invalidate the application-state comparison.
 
-If source state changes before the validator is installed, do not proceed. Repeat the one-shot
+If source state changes before the validator is installed, do not proceed. Repeat transient
 replication into the same quarantine database, reverify exact equality, and establish a new locked
-fingerprint. Unexpected quarantine-only leaves or any ambiguous result require a new empty
-quarantine database rather than destructive cleanup.
+fingerprint. Do not require the old quarantine leaves to be a subset of the source before retry: a
+normal source update replaces a leaf with its child while the quarantine still exposes the parent
+as a leaf. Replication can converge that ancestry safely. Unexpected quarantine-only leaves remain
+after replication and fail final equality; do not destructively clean or trust that target.
 
 ## Fence installation
 
@@ -198,25 +218,28 @@ The fixture must initially include:
 - a running-timer configuration document used only to prove the zero-write preflight.
 
 First run the production preflight with that live timer. It must fail before creating a quarantine
-database, replication job, validator revision, or migration revision. The preview harness then stops
-the timer through the same compatible persistence behavior used by the application and proves the
-configuration is absent before starting the successful capture path.
+database, transient replication request, validator revision, or migration revision. The preview
+harness then stops the timer through the same compatible persistence behavior used by the
+application and proves the configuration is absent before starting the successful capture path.
 
 The exercise must prove:
 
 1. default one-shot replication preserves the exact leaf set, winners, deletions, conflicts, and
    attachment-bearing revisions;
-2. `winning_revs_only`, filters, selectors, `doc_ids`, and continuous mode are absent;
-3. source leaf drift after capture blocks validator installation without a validator or migration
+2. a successful replication whose client response is deliberately treated as lost can be rerun
+   into the retained target and converge exactly, including after an existing source document is
+   edited;
+3. `winning_revs_only`, filters, selectors, `doc_ids`, and continuous mode are absent;
+4. source leaf drift after capture blocks validator installation without a validator or migration
    write;
-4. a deliberate `_security` change after capture blocks validator installation, and the successful
+5. a deliberate `_security` change after capture blocks validator installation, and the successful
    path finishes with the original source `_security` hash unchanged;
-5. validator installation changes exactly one expected design leaf;
-6. a forced interruption leaves a state that a fresh run safely classifies and completes;
-7. invalid legacy writes are denied after fencing while compatible writes succeed;
-8. the final invariant and completion checks detect any unexpected revision; and
-9. cleanup deletes only the two exact disposable databases and the exact replication job, and
-   verifies revocation of the exact temporary replication credential.
+6. validator installation changes exactly one expected design leaf;
+7. a forced interruption leaves a state that a fresh run safely classifies and completes;
+8. invalid legacy writes are denied after fencing while compatible writes succeed;
+9. the final invariant and completion checks detect any unexpected revision; and
+10. no `_replicator` document is created, output remains sanitized, and cleanup deletes only the two
+    exact disposable databases.
 
 Record only aggregate counts, state fingerprints, validator checksum/revision, test result, and
 cleanup confirmation in the pull request. Credentials, URLs, descriptions, bodies, attachment
