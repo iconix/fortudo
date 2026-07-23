@@ -1,5 +1,7 @@
 # CouchDB Sync Setup (IBM Cloudant)
 
+**Document type:** Operational setup reference
+
 This guide walks through setting up IBM Cloudant (free tier) as the CouchDB sync relay for Fortudo.
 
 Cloudant is a managed CouchDB-compatible database from IBM. The Lite plan is permanently free (not a trial) with 1 GB storage, 20 reads/sec, and 10 writes/sec — more than enough for a personal to-do app.

@@ -203,7 +203,7 @@ describe('Fortudo brand system', () => {
     });
 
     test('renders the branded Jelly dedication heart without orphaning it', () => {
-        const brandGuide = read('docs/BRAND.md');
+        const brandGuide = read('docs/reference/BRAND.md');
 
         expect(indexHtml).toMatch(
             /<span class="whitespace-nowrap"\s*>\s*For Cristell\s*<span\s+class="dedication-heart"[\s\S]*?data-dedication-heart[\s\S]*?<\/svg>[\s\S]*?<\/span>\s*<\/span>/
@@ -244,7 +244,7 @@ describe('Fortudo brand system', () => {
 
     test('gives Unscheduled a restrained indigo identity', () => {
         const unscheduledRenderer = read('public/js/tasks/unscheduled-renderer.js');
-        const brandGuide = read('docs/BRAND.md');
+        const brandGuide = read('docs/reference/BRAND.md');
 
         expect(indexHtml).toContain('peer-focus-visible:ring-indigo-400');
         expect(indexHtml).toContain('fa-solid fa-list-ul mr-0.5 sm:mr-1 text-indigo-400/75');
@@ -287,7 +287,7 @@ describe('Fortudo brand system', () => {
     test('uses emerald for positive readiness and documents the complete semantic palette', () => {
         const roomRenderer = read('public/js/room-renderer.js');
         const modalManager = read('public/js/modal-manager.js');
-        const brandGuide = read('docs/BRAND.md');
+        const brandGuide = read('docs/reference/BRAND.md');
 
         expect(roomRenderer).toMatch(
             /synced:\s*\{[^}]*color: 'text-emerald-400'[^}]*label: 'Synced'/s

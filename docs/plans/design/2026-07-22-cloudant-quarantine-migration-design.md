@@ -21,8 +21,8 @@ The request uses the existing accepted legacy credential as structured authentic
 TLS request body. This creates no new authority and no durable replication document. It is an
 explicitly approved exception to IBM's general preference for scoped replication credentials,
 proportionate to Fortudo's existing browser-visible Manager credential documented in
-[COUCHDB-SETUP.md](../../COUCHDB-SETUP.md) and
-[ROOM-IDENTITY-AND-ACCESS-RISK.md](../../ROOM-IDENTITY-AND-ACCESS-RISK.md). The request body,
+[COUCHDB-SETUP.md](../../reference/COUCHDB-SETUP.md) and
+[ROOM-IDENTITY-AND-ACCESS-RISK.md](../../architecture/ROOM-IDENTITY-AND-ACCESS-RISK.md). The request body,
 credential, URLs, and response details must never be logged.
 
 Normal CouchDB replication transfers all current leaf revisions; `winning_revs_only` must not be

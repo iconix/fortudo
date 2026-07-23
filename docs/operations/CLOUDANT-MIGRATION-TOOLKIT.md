@@ -12,9 +12,9 @@ operation, and which code belongs only to the completed `fortudo-dat-411` taxono
 migration.
 
 The exact completed operation remains documented in
-[Taxonomy identity v1: dat-411 operation runbook](migrations/taxonomy_identity_v1/dat-411-operation-runbook.md).
+[Taxonomy identity v1: dat-411 operation runbook](../migrations/taxonomy_identity_v1/dat-411-operation-runbook.md).
 Architectural motivation and the offline-replica case study remain in
-[Offline-client migration safety](OFFLINE-CLIENT-MIGRATION-SAFETY.md).
+[Offline-client migration safety](../architecture/OFFLINE-CLIENT-MIGRATION-SAFETY.md).
 
 ## Ownership map
 
@@ -102,8 +102,8 @@ and browser recovery foundations. It still needs:
 - Independent room-by-room installation and verification.
 
 The possible policy change that would prohibit deleting persisted taxonomy identities is recorded
-in [Taxonomy Manager UX Point of View](TAXONOMY-MANAGER-UX-POV.md). That note is product context,
-not migration authorization.
+in [Taxonomy Manager UX Point of View](../product/TAXONOMY-MANAGER-UX-POV.md). That note is product
+context, not migration authorization.
 
 If the persisted writer envelope changes, the operation also needs version-aware encoding, local
 validation, divergence classification, offline behavior, and an explicit expand/contract or strict
@@ -111,7 +111,7 @@ cutover decision. Existing remote leaves may remain grandfathered unless the new
 a backfill. A backfill reuses revision and verification mechanics, not the v1 transformation.
 
 The follow-up browser organization is specified in
-[Phase 2: document-contract version boundaries](plans/implementation/2026-07-23-document-contract-version-boundaries.md).
+[Phase 2: document-contract version boundaries](../plans/implementation/2026-07-23-document-contract-version-boundaries.md).
 
 ## Adapter checklist for a future operation
 

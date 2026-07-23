@@ -218,4 +218,4 @@ identity, or the taxonomy data model without an explicit architecture decision.
 - `public/js/taxonomy/taxonomy-identity.js`
 - `public/js/taxonomy/taxonomy-selectors.js`
 - `public/js/document-contract.js`
-- `docs/OFFLINE-CLIENT-MIGRATION-SAFETY.md`
+- `docs/architecture/OFFLINE-CLIENT-MIGRATION-SAFETY.md`

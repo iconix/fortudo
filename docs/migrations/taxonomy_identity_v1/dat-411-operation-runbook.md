@@ -25,7 +25,7 @@ durable `_replicator` document, or `update_seq` lock.
 
 Reusable primitives, versioned operation boundaries, and future migration requirements are
 documented in
-[Cloudant migration toolkit boundaries](../../CLOUDANT-MIGRATION-TOOLKIT.md).
+[Cloudant migration toolkit boundaries](../../operations/CLOUDANT-MIGRATION-TOOLKIT.md).
 
 Never paste the Cloudant credential URL, document bodies, descriptions, or private database
 metadata into a terminal transcript, issue, pull request, or chat. Set `FORTUDO_CLOUDANT_URL` only

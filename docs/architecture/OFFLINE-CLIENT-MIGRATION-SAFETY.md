@@ -2,7 +2,9 @@
 
 ## Status
 
-This document records an architectural diagnosis discovered during the entity and taxonomy identity hardening rollout. It is not an authorization to broaden the current production migration or to redesign room identity.
+This document is an architectural diagnosis and case study discovered during the entity and
+taxonomy identity hardening rollout. It is not an authorization to broaden the current production
+migration or to redesign room identity.
 
 ## Executive summary
 

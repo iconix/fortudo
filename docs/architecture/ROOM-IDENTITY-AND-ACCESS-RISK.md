@@ -2,7 +2,9 @@
 
 ## Status
 
-This document records an architectural and security diagnosis of Fortudo's room model as observed on 2026-07-21. It does not authorize a room migration, Cloudant permission change, credential rotation, or production write.
+This document records an architectural and security diagnosis of Fortudo's room model as observed
+on 2026-07-21. It does not authorize a room migration, Cloudant permission change, credential
+rotation, or production write.
 
 The repository already accepts browser-visible Cloudant administrator credentials for personal and household use. This diagnosis preserves that historical decision while separating it from additional room-identity risks that were not fully analyzed when the decision was recorded.
 
@@ -19,7 +21,8 @@ The room code is not a true authentication secret. The deployed static applicati
 
 This creates two related but distinct risks:
 
-1. **Accepted credential exposure:** `docs/COUCHDB-SETUP.md` explicitly accepts administrator credentials in the browser for a personal or household threat model.
+1. **Accepted credential exposure:** `docs/reference/COUCHDB-SETUP.md` explicitly accepts
+   administrator credentials in the browser for a personal or household threat model.
 2. **Unresolved room coupling:** display name, immutable database identity, sharing, and access control are not separate concepts. This prevents safe renaming, collision avoidance, scoped authorization, invitation revocation, and independent credential rotation.
 
 Increasing room-code entropy alone would address guessing and accidental collision, but it would not fix account-wide credential exposure or provide room-level authorization.
@@ -87,7 +90,7 @@ The practical security boundary is therefore the shared Cloudant credential, not
 
 ## Existing accepted-risk decision
 
-`docs/COUCHDB-SETUP.md` explicitly documents two deployment options:
+`docs/reference/COUCHDB-SETUP.md` explicitly documents two deployment options:
 
 - **Option A:** embed administrator service credentials for zero-setup room creation;
 - **Option B:** pre-create databases and use database-scoped API keys.
@@ -156,7 +159,8 @@ There is no invitation object or member-specific credential to revoke. Changing 
 Risk severity and risk disposition are different:
 
 - **Inherent blast radius:** high to critical because the deployed credential can affect confidentiality, integrity, and availability across the account.
-- **Current disposition:** accepted for the personal or household threat model documented in `COUCHDB-SETUP.md`.
+- **Current disposition:** accepted for the personal or household threat model documented in
+  `docs/reference/COUCHDB-SETUP.md`.
 - **Residual uncertainty:** the repository does not prove that the threat-model assumptions remain true or that every non-preview database belongs to one trusted household.
 - **Incident status:** no evidence of unauthorized access was established by this diagnosis. Confirming or excluding past access would require a separate audit-log investigation.
 
@@ -221,7 +225,8 @@ The following changes are insufficient on their own:
 ## Recommended follow-up
 
 1. Reaffirm or revise the accepted personal/household threat model and assign an owner and review trigger to the decision.
-2. Correct `COUCHDB-SETUP.md` so room-code obscurity and local-copy recovery are not described as stronger guarantees than they provide.
+2. Correct `docs/reference/COUCHDB-SETUP.md` so room-code obscurity and local-copy recovery are not
+   described as stronger guarantees than they provide.
 3. Classify the non-preview Cloudant databases before designing a room migration scope.
 4. Write a dedicated room identity and authorization design covering backend trust, database ACLs, invitations, revocation, and offline migration.
 5. Prefer an incremental transition from account-wide credentials to room-scoped capabilities before changing database identities.
@@ -230,7 +235,8 @@ The following changes are insufficient on their own:
 
 ## Evidence map
 
-- `docs/COUCHDB-SETUP.md`: accepted credential-exposure decision and security assumptions.
+- `docs/reference/COUCHDB-SETUP.md`: accepted credential-exposure decision and security
+  assumptions.
 - `public/js/room-manager.js`: generated namespace and local saved-room state.
 - `public/js/room-renderer.js`: unrestricted room-code entry flow.
 - `public/js/storage.js`: local database naming.
