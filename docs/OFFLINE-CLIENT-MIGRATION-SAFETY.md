@@ -216,7 +216,8 @@ A privacy-conscious client-capability record could report a random device instal
 - `public/js/sync-manager.js`: push-before-pull replication order.
 - `public/js/sw-register.js`: per-browser service-worker activation.
 - `public/js/taxonomy/taxonomy-store.js`: taxonomy normalization and singleton persistence.
-- `scripts/migrate_taxonomy_identity.py`: namespace-scoped, read-only transformation planner.
+- `scripts/migrations/taxonomy_identity_v1/planner.py`: namespace-scoped, read-only
+  transformation planner.
 - `docs/plans/design/2026-07-22-cloudant-quarantine-migration-design.md`: proposed minimal
   production recovery and migration gates.
 

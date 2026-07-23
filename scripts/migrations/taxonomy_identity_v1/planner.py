@@ -5,6 +5,10 @@ aggregate dry-run counts. Its transformation is derived from that database's cur
 taxonomy rows; no room labels are hardcoded here. It has no backup, restore, or write
 capability. Document bodies, database names, opaque database metadata, and credentials
 are never printed.
+
+This module is reusable only for the taxonomy-identity-v1 migration family. It is
+deliberately separate from product-neutral Cloudant migration primitives and from the
+exact dat-411 production operation.
 """
 
 from __future__ import annotations

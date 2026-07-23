@@ -17,7 +17,7 @@ from typing import Any, Mapping, Sequence
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.migrate_taxonomy_identity import (
+from scripts.migrations.taxonomy_identity_v1.planner import (
     CREDENTIAL_ENV_VAR,
     CloudantClient,
     MigrationSafetyError,

@@ -1,36 +1,43 @@
-"""Minimal Cloudant-native quarantine and migration safety operations.
+"""Completed dat-411 taxonomy-identity-v1 quarantine and migration operation.
 
 This module deliberately delegates revision-tree transfer to Cloudant replication.
 It does not implement a local backup format or a reverse-restore path.
+
+Reusable Cloudant state and client primitives live under ``scripts.cloudant_migration``.
+The source lock, taxonomy meanings, completion protocol, and CLI in this module are
+intentionally one-off.
 """
 
 from __future__ import annotations
 
 import argparse
 import copy
-import base64
-import hashlib
 import json
 import os
 import re
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from scripts.document_contract_ops import (
     CONTRACT_DESIGN_ID,
     load_design_document,
     verify_validator,
 )
-from scripts.migrate_taxonomy_identity import (
+from scripts.cloudant_migration.client import CloudantMigrationClient
+from scripts.cloudant_migration.state import (
+    CaptureReceipt,
+    CloudantMigrationSafetyError,
+    LeafRevision,
+    StateModel,
+    build_state_model,
+    remove_document_from_state as _remove_document_from_state,
+)
+from scripts.migrations.taxonomy_identity_v1.planner import (
     CREDENTIAL_ENV_VAR,
     MigrationSafetyError,
     RUNNING_ACTIVITY_ID,
@@ -46,41 +53,8 @@ PREVIEW_QUARANTINE_PATTERN = re.compile(
 )
 QUARANTINE_PATTERN = re.compile(r"fortudo-quarantine-[a-f0-9]{24,64}")
 COMPLETION_MARKER_ID = "config-taxonomy-identity-migration-v1"
-LEAF_READ_BATCH_SIZE = 100
-RATE_LIMIT_RETRIES = 6
-RATE_LIMIT_BASE_DELAY_SECONDS = 0.5
 
-
-class QuarantineSafetyError(RuntimeError):
-    """Raised when a remote mutation safety gate does not hold."""
-
-
-@dataclass(frozen=True, order=True)
-class LeafRevision:
-    """One current non-local revision-tree leaf."""
-
-    document_id: str
-    revision: str
-    deleted: bool
-
-
-@dataclass(frozen=True)
-class StateModel:
-    """Canonical current revision state."""
-
-    leaves: tuple[LeafRevision, ...]
-    winners: tuple[tuple[str, str], ...]
-    counts: dict[str, int]
-    fingerprint: str
-
-
-@dataclass(frozen=True)
-class CaptureReceipt:
-    source_database: str
-    quarantine_database: str
-    state: StateModel
-    security_hash: str
-    disposable_preview: bool = False
+QuarantineSafetyError = CloudantMigrationSafetyError
 
 
 @dataclass(frozen=True)
@@ -105,111 +79,8 @@ class MigrationExecutionResult:
     marker_revision: str
 
 
-class OperationalCloudantClient:
-    """Small write-capable client limited to this migration's Cloudant endpoints."""
-
-    def __init__(self, credential_url: str) -> None:
-        parsed = urllib.parse.urlsplit(credential_url)
-        if parsed.scheme != "https" or not parsed.hostname:
-            raise QuarantineSafetyError("Cloudant credential URL must use HTTPS")
-        if parsed.username is None or parsed.password is None:
-            raise QuarantineSafetyError("Cloudant credential URL is missing credentials")
-        port = f":{parsed.port}" if parsed.port else ""
-        self._endpoint = urllib.parse.urlunsplit(
-            (parsed.scheme, f"{parsed.hostname}{port}", parsed.path.rstrip("/"), "", "")
-        )
-        self._username = urllib.parse.unquote(parsed.username)
-        self._password = urllib.parse.unquote(parsed.password)
-        token = base64.b64encode(f"{self._username}:{self._password}".encode("utf-8")).decode(
-            "ascii"
-        )
-        self._authorization = f"Basic {token}"
-
-    @property
-    def account_checksum(self) -> str:
-        """Stable non-secret binding for the credential's account endpoint."""
-
-        return hashlib.sha256(self._endpoint.encode("utf-8")).hexdigest()
-
-    def _request(
-        self,
-        method: str,
-        operation: str,
-        path: str,
-        *,
-        body: Mapping[str, Any] | None = None,
-        allow_not_found: bool = False,
-    ) -> Any:
-        encoded_body = None
-        headers = {"Authorization": self._authorization, "Accept": "application/json"}
-        if body is not None:
-            encoded_body = json.dumps(body, separators=(",", ":")).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(
-            f"{self._endpoint}/{path.lstrip('/')}",
-            data=encoded_body,
-            method=method,
-            headers=headers,
-        )
-        for attempt in range(RATE_LIMIT_RETRIES + 1):
-            try:
-                with urllib.request.urlopen(request, timeout=60) as response:
-                    payload = response.read()
-                return json.loads(payload) if payload else {}
-            except urllib.error.HTTPError as error:
-                if allow_not_found and error.code == 404:
-                    return None
-                if error.code == 429 and attempt < RATE_LIMIT_RETRIES:
-                    delay = RATE_LIMIT_BASE_DELAY_SECONDS * (2**attempt)
-                    retry_after = error.headers.get("Retry-After") if error.headers else None
-                    try:
-                        delay = max(delay, float(retry_after))
-                    except (TypeError, ValueError):
-                        pass
-                    time.sleep(min(delay, 8.0))
-                    continue
-                raise QuarantineSafetyError(
-                    f"Cloudant request failed with HTTP {error.code} during {operation}"
-                ) from None
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-                raise QuarantineSafetyError(
-                    f"Cloudant request failed during {operation}"
-                ) from None
-        raise AssertionError("unreachable Cloudant retry state")
-
-    @staticmethod
-    def _database_path(database: str) -> str:
-        return urllib.parse.quote(database, safe="")
-
-    def get_document(self, database: str, document_id: str) -> dict[str, Any] | None:
-        path = f"{self._database_path(database)}/{urllib.parse.quote(document_id, safe='')}"
-        payload = self._request("GET", "document read", path, allow_not_found=True)
-        if payload is None:
-            return None
-        if not isinstance(payload, Mapping):
-            raise QuarantineSafetyError("Cloudant returned an invalid document response")
-        return dict(payload)
-
-    def get_security_hash(self, database: str) -> str:
-        payload = self._request(
-            "GET", "security read", f"{self._database_path(database)}/_security"
-        )
-        if not isinstance(payload, Mapping):
-            raise QuarantineSafetyError("Cloudant returned an invalid security response")
-        return canonical_hash(payload)
-
-    def database_exists(self, database: str) -> bool:
-        payload = self._request(
-            "GET",
-            "database existence read",
-            self._database_path(database),
-            allow_not_found=True,
-        )
-        if payload is None:
-            return False
-        if not isinstance(payload, Mapping) or payload.get("db_name") != database:
-            raise QuarantineSafetyError("Cloudant reported a different database identity")
-        return True
+class OperationalCloudantClient(CloudantMigrationClient):
+    """Write-capable client with lifecycle targets locked by this operation."""
 
     def create_database(
         self,
@@ -237,14 +108,6 @@ class OperationalCloudantClient:
         payload = self._request("DELETE", "database delete", self._database_path(database))
         if not isinstance(payload, Mapping) or payload.get("ok") is not True:
             raise QuarantineSafetyError("Cloudant returned an invalid database delete response")
-
-    def get_security_document(self, database: str) -> dict[str, Any]:
-        payload = self._request(
-            "GET", "security read", f"{self._database_path(database)}/_security"
-        )
-        if not isinstance(payload, Mapping):
-            raise QuarantineSafetyError("Cloudant returned an invalid security response")
-        return dict(payload)
 
     def replicate_once(
         self,
@@ -282,267 +145,6 @@ class OperationalCloudantClient:
         if not isinstance(latest, Mapping) or latest.get("doc_write_failures", 0) != 0:
             raise QuarantineSafetyError("replication completed with document write failures")
         return dict(payload)
-
-    def put_document(
-        self, database: str, document: Mapping[str, Any], *, create_only: bool = False
-    ) -> dict[str, Any]:
-        document_id = document.get("_id")
-        if not isinstance(document_id, str) or not document_id:
-            raise QuarantineSafetyError("document write is missing an ID")
-        if create_only and "_rev" in document:
-            raise QuarantineSafetyError("create-only document must not contain a revision")
-        operation = "document create" if create_only else "document update"
-        payload = self._request(
-            "PUT",
-            operation,
-            f"{self._database_path(database)}/{urllib.parse.quote(document_id, safe='')}",
-            body=document,
-        )
-        if not isinstance(payload, Mapping) or payload.get("ok") is not True:
-            raise QuarantineSafetyError("Cloudant returned an invalid document write response")
-        return dict(payload)
-
-    def get_all_documents(self, database: str, *, include_conflicts: bool) -> list[dict[str, Any]]:
-        query = "include_docs=true"
-        if include_conflicts:
-            query += "&conflicts=true"
-        payload = self._request(
-            "GET",
-            "winning document read",
-            f"{self._database_path(database)}/_all_docs?{query}",
-        )
-        if not isinstance(payload, Mapping) or not isinstance(payload.get("rows"), list):
-            raise QuarantineSafetyError("Cloudant returned an invalid winning document response")
-        documents: list[dict[str, Any]] = []
-        for row in payload["rows"]:
-            if not isinstance(row, Mapping):
-                raise QuarantineSafetyError(
-                    "Cloudant returned an invalid winning document response"
-                )
-            document = row.get("doc")
-            if document is None:
-                continue
-            if not isinstance(document, Mapping):
-                raise QuarantineSafetyError(
-                    "Cloudant returned an invalid winning document response"
-                )
-            documents.append(dict(document))
-        return documents
-
-    def _get_current_leaf_documents(
-        self, database: str, *, include_ancestry: bool
-    ) -> list[dict[str, Any]]:
-        database_path = self._database_path(database)
-        changes = self._request(
-            "GET",
-            "leaf enumeration",
-            f"{database_path}/_changes?since=0&style=all_docs&include_docs=false",
-        )
-        if not isinstance(changes, Mapping) or not isinstance(changes.get("results"), list):
-            raise QuarantineSafetyError("Cloudant returned an invalid leaf enumeration")
-        expected: set[tuple[str, str]] = set()
-        for row in changes["results"]:
-            document_id = row.get("id") if isinstance(row, Mapping) else None
-            revision_rows = row.get("changes") if isinstance(row, Mapping) else None
-            if (
-                not isinstance(document_id, str)
-                or not isinstance(revision_rows, list)
-                or not revision_rows
-            ):
-                raise QuarantineSafetyError("Cloudant returned an invalid leaf enumeration")
-            for revision_row in revision_rows:
-                revision = revision_row.get("rev") if isinstance(revision_row, Mapping) else None
-                identity = (document_id, revision)
-                if not isinstance(revision, str) or not revision or identity in expected:
-                    raise QuarantineSafetyError("Cloudant returned an invalid leaf enumeration")
-                expected.add((document_id, revision))
-
-        leaf_documents: list[dict[str, Any]] = []
-        returned: set[tuple[str, str]] = set()
-        requested = sorted(expected)
-        for offset in range(0, len(requested), LEAF_READ_BATCH_SIZE):
-            batch = requested[offset : offset + LEAF_READ_BATCH_SIZE]
-            payload = self._request(
-                "POST",
-                "leaf body read",
-                f"{database_path}/_bulk_get"
-                f"?revs={'true' if include_ancestry else 'false'}&attachments=false",
-                body={
-                    "docs": [
-                        {"id": document_id, "rev": revision} for document_id, revision in batch
-                    ]
-                },
-            )
-            if not isinstance(payload, Mapping) or not isinstance(payload.get("results"), list):
-                raise QuarantineSafetyError("Cloudant returned an invalid leaf body response")
-            for result in payload["results"]:
-                result_id = result.get("id") if isinstance(result, Mapping) else None
-                documents = result.get("docs") if isinstance(result, Mapping) else None
-                if not isinstance(result_id, str) or not isinstance(documents, list):
-                    raise QuarantineSafetyError("Cloudant returned an invalid leaf body response")
-                for document_result in documents:
-                    document = (
-                        document_result.get("ok") if isinstance(document_result, Mapping) else None
-                    )
-                    revision = document.get("_rev") if isinstance(document, Mapping) else None
-                    identity = (result_id, revision)
-                    if (
-                        not isinstance(document, Mapping)
-                        or document.get("_id") != result_id
-                        or not isinstance(revision, str)
-                        or identity not in expected
-                        or identity in returned
-                    ):
-                        raise QuarantineSafetyError("Cloudant returned an inconsistent leaf body")
-                    returned.add((result_id, revision))
-                    leaf_documents.append(dict(document))
-        if returned != expected:
-            raise QuarantineSafetyError("Cloudant omitted a current leaf body")
-        return leaf_documents
-
-    def get_leaf_documents(self, database: str) -> list[dict[str, Any]]:
-        return self._get_current_leaf_documents(database, include_ancestry=True)
-
-    def get_state_model(self, database: str) -> StateModel:
-        database_path = self._database_path(database)
-        metadata = self._request("GET", "database metadata read", database_path)
-        leaf_documents = self._get_current_leaf_documents(database, include_ancestry=False)
-        all_documents = self._request(
-            "POST",
-            "winner enumeration",
-            f"{database_path}/_all_docs",
-            body={"keys": sorted({document["_id"] for document in leaf_documents})},
-        )
-        if not isinstance(metadata, Mapping) or metadata.get("db_name") != database:
-            raise QuarantineSafetyError("Cloudant returned invalid database metadata")
-        if not isinstance(all_documents, Mapping) or not isinstance(
-            all_documents.get("rows"), list
-        ):
-            raise QuarantineSafetyError("Cloudant returned an invalid winner enumeration")
-
-        leaf_rows = [
-            {
-                "id": document["_id"],
-                "rev": document["_rev"],
-                "deleted": document.get("_deleted") is True,
-            }
-            for document in leaf_documents
-        ]
-
-        winners: dict[str, str] = {}
-        for row in all_documents["rows"]:
-            value = row.get("value") if isinstance(row, Mapping) else None
-            document_id = row.get("id") if isinstance(row, Mapping) else None
-            revision = value.get("rev") if isinstance(value, Mapping) else None
-            if not isinstance(document_id, str) or not isinstance(revision, str):
-                raise QuarantineSafetyError("Cloudant returned an invalid winner enumeration")
-            winners[document_id] = revision
-        return build_state_model(leaf_rows, winners)
-
-
-def canonical_hash(value: Any) -> str:
-    """Hash a JSON value with deterministic object-key and whitespace handling."""
-
-    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
-        "utf-8"
-    )
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def build_state_model(
-    leaf_rows: Sequence[Mapping[str, Any]],
-    winner_revisions: Mapping[str, str],
-) -> StateModel:
-    """Validate and canonicalize the current non-``_local`` leaf graph."""
-
-    leaves: list[LeafRevision] = []
-    seen: set[tuple[str, str]] = set()
-    revisions_by_document: dict[str, set[str]] = {}
-    for row in leaf_rows:
-        document_id = row.get("id")
-        revision = row.get("rev")
-        deleted = row.get("deleted")
-        if isinstance(document_id, str) and document_id.startswith("_local/"):
-            continue
-        if not isinstance(document_id, str) or not document_id:
-            raise QuarantineSafetyError("leaf enumeration contains an invalid document ID")
-        if not isinstance(revision, str) or not revision:
-            raise QuarantineSafetyError("leaf enumeration contains an invalid revision")
-        if not isinstance(deleted, bool):
-            raise QuarantineSafetyError("leaf enumeration contains an invalid deletion state")
-        identity = (document_id, revision)
-        if identity in seen:
-            raise QuarantineSafetyError("leaf enumeration contains a duplicate revision")
-        seen.add(identity)
-        revisions_by_document.setdefault(document_id, set()).add(revision)
-        leaves.append(LeafRevision(document_id, revision, deleted))
-
-    winners: dict[str, str] = {}
-    for document_id, revision in winner_revisions.items():
-        if document_id.startswith("_local/"):
-            continue
-        if not document_id or not isinstance(revision, str) or not revision:
-            raise QuarantineSafetyError("winner enumeration is invalid")
-        winners[document_id] = revision
-
-    if set(winners) != set(revisions_by_document):
-        raise QuarantineSafetyError("winner enumeration does not match the leaf documents")
-    for document_id, revision in winners.items():
-        if revision not in revisions_by_document[document_id]:
-            raise QuarantineSafetyError("winner revision is absent from the current leaf set")
-
-    canonical_leaves = tuple(sorted(leaves))
-    canonical_winners = tuple(sorted(winners.items()))
-    counts = {
-        "documents": len(revisions_by_document),
-        "liveLeaves": sum(not leaf.deleted for leaf in canonical_leaves),
-        "deletedLeaves": sum(leaf.deleted for leaf in canonical_leaves),
-        "conflictLeaves": sum(
-            max(0, len(revisions) - 1) for revisions in revisions_by_document.values()
-        ),
-    }
-    fingerprint_payload = {
-        "leaves": [[leaf.document_id, leaf.revision, leaf.deleted] for leaf in canonical_leaves],
-        "winners": [list(winner) for winner in canonical_winners],
-    }
-    return StateModel(
-        leaves=canonical_leaves,
-        winners=canonical_winners,
-        counts=counts,
-        fingerprint=canonical_hash(fingerprint_payload),
-    )
-
-
-def add_leaf_to_state(
-    source: StateModel,
-    document_id: str,
-    revision: str,
-    *,
-    deleted: bool,
-) -> StateModel:
-    """Return a state with one new document leaf, failing on identity reuse."""
-
-    if document_id in dict(source.winners):
-        raise QuarantineSafetyError("cannot add a leaf for an existing document")
-    rows = [
-        {"id": leaf.document_id, "rev": leaf.revision, "deleted": leaf.deleted}
-        for leaf in source.leaves
-    ]
-    rows.append({"id": document_id, "rev": revision, "deleted": deleted})
-    winners = dict(source.winners)
-    winners[document_id] = revision
-    return build_state_model(rows, winners)
-
-
-def _remove_document_from_state(source: StateModel, document_id: str) -> StateModel:
-    rows = [
-        {"id": leaf.document_id, "rev": leaf.revision, "deleted": leaf.deleted}
-        for leaf in source.leaves
-        if leaf.document_id != document_id
-    ]
-    winners = dict(source.winners)
-    winners.pop(document_id, None)
-    return build_state_model(rows, winners)
 
 
 def _require_source_database(database: str, *, allow_disposable_preview: bool = False) -> None:

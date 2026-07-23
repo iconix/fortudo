@@ -11,8 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts import cloudant_quarantine_migration as quarantine
-from scripts import migrate_taxonomy_identity as migration
+from scripts.cloudant_migration import client as cloudant_client
+from scripts.cloudant_migration import state as cloudant_state
+from scripts.migrations.taxonomy_identity_v1 import dat_411_operation as quarantine
+from scripts.migrations.taxonomy_identity_v1 import planner as migration
 from scripts.document_contract_ops import CONTRACT_DESIGN_ID, load_design_document
 
 
@@ -29,7 +31,7 @@ def state(*leaves: tuple[str, str, bool], winners: dict[str, str] | None = None)
         winners = {}
         for row in rows:
             winners.setdefault(row["id"], row["rev"])
-    return quarantine.build_state_model(rows, winners)
+    return cloudant_state.build_state_model(rows, winners)
 
 
 def test_state_model_is_order_independent_and_covers_deleted_and_conflicting_leaves() -> None:
@@ -46,8 +48,8 @@ def test_state_model_is_order_independent_and_covers_deleted_and_conflicting_lea
         "_design/example": "1-design",
     }
 
-    first = quarantine.build_state_model(leaves, winners)
-    second = quarantine.build_state_model(
+    first = cloudant_state.build_state_model(leaves, winners)
+    second = cloudant_state.build_state_model(
         list(reversed(leaves)), dict(reversed(list(winners.items())))
     )
 
@@ -77,7 +79,7 @@ def test_state_model_is_order_independent_and_covers_deleted_and_conflicting_lea
 )
 def test_state_model_rejects_inconsistent_enumeration(leaves, winners, message) -> None:
     with pytest.raises(quarantine.QuarantineSafetyError, match=message):
-        quarantine.build_state_model(leaves, winners)
+        cloudant_state.build_state_model(leaves, winners)
 
 
 def test_replication_document_is_one_shot_unfiltered_and_uses_structured_auth() -> None:
@@ -170,7 +172,7 @@ class CaptureCloudant:
 
     def get_security_hash(self, database):
         self.calls.append(("security", database))
-        return quarantine.canonical_hash(self.security)
+        return cloudant_state.canonical_hash(self.security)
 
     def get_all_documents(self, database, *, include_conflicts):
         self.calls.append(("all-documents", database, include_conflicts))
@@ -200,7 +202,7 @@ def capture_with_bindings(client, expected_state, **kwargs):
         SOURCE,
         QUARANTINE,
         expected_source_fingerprint=expected_state.fingerprint,
-        expected_security_hash=quarantine.canonical_hash(client.security),
+        expected_security_hash=cloudant_state.canonical_hash(client.security),
         **kwargs,
     )
 
@@ -251,7 +253,7 @@ def test_capture_binding_mismatch_blocks_before_quarantine_creation(changed_bind
         security={},
     )
     expected_source = "0" * 64 if changed_binding == "source" else captured.fingerprint
-    actual_security = quarantine.canonical_hash({})
+    actual_security = cloudant_state.canonical_hash({})
     expected_security = "0" * 64 if changed_binding == "security" else actual_security
 
     with pytest.raises(quarantine.QuarantineSafetyError, match="expectation"):
@@ -278,7 +280,7 @@ def test_capture_creates_one_exact_database_and_uses_transient_replication() -> 
     assert receipt.source_database == SOURCE
     assert receipt.quarantine_database == QUARANTINE
     assert receipt.state == captured
-    assert receipt.security_hash == quarantine.canonical_hash(client.security)
+    assert receipt.security_hash == cloudant_state.canonical_hash(client.security)
     assert ("create-database", QUARANTINE, False) in client.calls
     assert ("replicate-once", SOURCE, QUARANTINE) in client.calls
     assert all("job" not in call[0] for call in client.calls)
@@ -629,7 +631,7 @@ def test_operational_client_reads_leaf_bodies_in_bounded_batches(monkeypatch) ->
     monkeypatch.setattr(client, "_request", request)
 
     assert len(client.get_leaf_documents(SOURCE)) == 101
-    assert batch_sizes == [quarantine.LEAF_READ_BATCH_SIZE, 1]
+    assert batch_sizes == [cloudant_client.LEAF_READ_BATCH_SIZE, 1]
 
 
 def test_operational_client_writes_only_exact_database_replication_and_document_targets(
@@ -717,7 +719,7 @@ def test_operational_transport_sanitizes_http_error_bodies_credentials_and_urls(
             private_body,
         )
 
-    monkeypatch.setattr(quarantine.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(cloudant_client.urllib.request, "urlopen", fail)
 
     with pytest.raises(quarantine.QuarantineSafetyError) as error:
         client.create_database(QUARANTINE, partitioned=False)
@@ -762,8 +764,8 @@ def test_operational_transport_retries_rate_limits_without_exposing_response(
             )
         return Response()
 
-    monkeypatch.setattr(quarantine.urllib.request, "urlopen", rate_limited_then_succeed)
-    monkeypatch.setattr(quarantine.time, "sleep", delays.append)
+    monkeypatch.setattr(cloudant_client.urllib.request, "urlopen", rate_limited_then_succeed)
+    monkeypatch.setattr(cloudant_client.time, "sleep", delays.append)
 
     assert client.database_exists(QUARANTINE) is True
     assert attempts == 3
@@ -1081,7 +1083,7 @@ class MigrationCloudant:
         if database == QUARANTINE:
             return migration_base_state()
         if self.marker is not None:
-            return quarantine.add_leaf_to_state(
+            return cloudant_state.add_leaf_to_state(
                 self.complete_state,
                 quarantine.COMPLETION_MARKER_ID,
                 self.marker["_rev"],
@@ -1160,7 +1162,7 @@ def test_executor_writes_taxonomy_entities_tombstone_then_separate_completion_ma
 
 def test_executor_blocks_unexpected_final_revision_before_writing_marker() -> None:
     _base, _plan, _settled, leaves, complete = fully_migrated_fixture()
-    unexpected = quarantine.add_leaf_to_state(
+    unexpected = cloudant_state.add_leaf_to_state(
         complete, "task-unexpected", "1-unexpected", deleted=False
     )
     client = MigrationCloudant(final_state_override=unexpected)
