@@ -3,9 +3,11 @@
 ## Current status
 
 The production entity and taxonomy migration is paused until the guarded quarantine implementation
-has passed its disposable Cloudant proof, merged, deployed, and received a fresh production
-approval. This repository now contains a narrowly scoped write-capable command for that later
-operation. Its presence is not authorization to run it against production.
+has passed its disposable Cloudant proof, merged, and received a fresh production approval. The
+browser compatibility release must be deployed and verified separately; operational-only changes
+under `scripts/` and `docs/` do not require or trigger a Firebase deployment. This repository now
+contains a narrowly scoped write-capable command for that later operation. Its presence is not
+authorization to run it against production.
 
 This is deliberate. The retired tooling attempted to implement a complete revision-graph snapshot
 and restore format locally and treated Cloudant's opaque `update_seq` as a stable content lock.
@@ -23,6 +25,16 @@ in the local process environment.
 
 ## Read-only commands
 
+Run the production operational preflight:
+
+```powershell
+python scripts/cloudant_quarantine_migration.py preflight
+```
+
+It verifies winning bodies, conflict arrays, locked labels, and timer state against one
+revision-bound source state, then reports the associated migration counts, source fingerprint, and
+`_security` hash. These are the authoritative production approval values.
+
 Inspect whether a named Fortudo database contains the exact reviewed validator:
 
 ```powershell
@@ -38,10 +50,10 @@ python scripts/migrate_taxonomy_identity.py --database fortudo-dat-411
 The read-only planner accepts any explicit, valid `fortudo-*` database name and has no apply mode.
 Its transformation rules are application-wide: it reads and preserves the selected database's
 current taxonomy rather than hardcoding the `dat-411` labels. This permits comparison and auditing;
-it does not authorize taxonomy migration in another room. The production executor remains
-locked to `fortudo-dat-411`.
+it is not a replacement for the revision-bound operational preflight and does not authorize
+taxonomy migration in another room. The production executor remains locked to `fortudo-dat-411`.
 
-Both commands print only a state or aggregate counts. They do not print the database name,
+These commands print only a state or aggregate counts. They do not print the database name,
 credentials, document bodies, descriptions, revision identifiers, or opaque database metadata.
 
 ## Guarded migration commands
@@ -49,8 +61,10 @@ credentials, document bodies, descriptions, revision identifiers, or opaque data
 `scripts/cloudant_quarantine_migration.py` provides `preflight`, `capture`, `fence`, `migrate`, and
 `delete-quarantine`. Production mutations are hard-locked to `fortudo-dat-411`; every mutating mode
 requires the expected account checksum, an exact source confirmation where applicable, and
-`--approve-remote-writes`. Capture creates one exact quarantine database and uses transient
-`POST /_replicate`; it never writes a durable replication document.
+`--approve-remote-writes`. Capture additionally requires the exact source fingerprint and
+`_security` hash emitted by the approved preflight, and rejects either mismatch before database
+creation. It creates one exact quarantine database and uses transient `POST /_replicate`; it never
+writes a durable replication document.
 
 Before this command may be used on production, run the exact disposable proof:
 
@@ -89,7 +103,8 @@ Production writes remain blocked until all of the following are true:
    including conflict leaves, tombstones, attachments, source-drift detection, partial migration
    recovery, and exact cleanup.
 3. The implementation pull request passes the complete repository suite and GitHub CI and is merged.
-4. The compatible release containing that exact commit is deployed and its live assets are verified.
+4. The compatible browser release is deployed and its live assets are verified byte-for-byte
+   against its exact source commit.
 5. A fresh read-only production dry-run matches the approved target, mappings, winner/conflict
    expectations, and reports no running timer.
 6. The operational preflight rechecks that the live timer configuration is absent and fails before

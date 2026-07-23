@@ -621,6 +621,77 @@ def require_locked_taxonomy_meanings(documents: Sequence[Mapping[str, Any]]) -> 
         raise QuarantineSafetyError("locked taxonomy meaning differs from the approved mapping")
 
 
+def _require_documents_match_locked_state(
+    documents: Sequence[Mapping[str, Any]],
+    locked_state: StateModel,
+) -> None:
+    """Bind planner winner bodies and conflict arrays to the locked leaf graph."""
+
+    winners = dict(locked_state.winners)
+    leaves_by_document: dict[str, list[LeafRevision]] = {}
+    for leaf in locked_state.leaves:
+        leaves_by_document.setdefault(leaf.document_id, []).append(leaf)
+
+    expected_live_winners: dict[str, str] = {}
+    expected_conflicts: dict[str, list[str]] = {}
+    for document_id, winner_revision in winners.items():
+        winner_leaf = next(
+            (
+                leaf
+                for leaf in leaves_by_document.get(document_id, [])
+                if leaf.revision == winner_revision
+            ),
+            None,
+        )
+        if winner_leaf is None:
+            raise QuarantineSafetyError("locked source winner is absent from its leaf graph")
+        if winner_leaf.deleted:
+            continue
+        expected_live_winners[document_id] = winner_revision
+        expected_conflicts[document_id] = sorted(
+            leaf.revision
+            for leaf in leaves_by_document[document_id]
+            if leaf.revision != winner_revision and not leaf.deleted
+        )
+
+    observed: dict[str, str] = {}
+    for document in documents:
+        document_id = document.get("_id")
+        revision = document.get("_rev")
+        conflicts = document.get("_conflicts", [])
+        if (
+            not isinstance(document_id, str)
+            or not isinstance(revision, str)
+            or document.get("_deleted") is True
+            or document_id in observed
+            or not isinstance(conflicts, list)
+            or not all(isinstance(conflict, str) for conflict in conflicts)
+            or len(conflicts) != len(set(conflicts))
+            or expected_live_winners.get(document_id) != revision
+            or sorted(conflicts) != expected_conflicts.get(document_id)
+        ):
+            raise QuarantineSafetyError("winning document read differs from locked source")
+        observed[document_id] = revision
+    if observed != expected_live_winners:
+        raise QuarantineSafetyError("winning document read differs from locked source")
+
+
+def _require_migration_preconditions(
+    client: Any,
+    database: str,
+    locked_state: StateModel,
+) -> Any:
+    """Verify read-only taxonomy and planner gates before any remote mutation."""
+
+    documents = client.get_all_documents(database, include_conflicts=True)
+    _require_documents_match_locked_state(documents, locked_state)
+    require_locked_taxonomy_meanings(documents)
+    plan = _checked_migration_plan(documents)
+    if plan.running_timer_present:
+        raise QuarantineSafetyError("running timer must be stopped before any remote mutation")
+    return plan
+
+
 def _checked_migration_plan(documents: Sequence[Mapping[str, Any]]) -> Any:
     try:
         return build_migration_plan(documents)
@@ -1000,6 +1071,8 @@ def capture_quarantine(
     *,
     allow_disposable_preview: bool = False,
     resume_existing: bool = False,
+    expected_source_fingerprint: str | None = None,
+    expected_security_hash: str | None = None,
 ) -> CaptureReceipt:
     """Create and verify one Cloudant-native quarantine copy."""
 
@@ -1008,9 +1081,20 @@ def capture_quarantine(
         quarantine_database, allow_disposable_preview=allow_disposable_preview
     )
     _require_no_running_timer(client, source_database)
-
-    security_hash = client.get_security_hash(source_database)
     locked_source = client.get_state_model(source_database)
+    security_hash = client.get_security_hash(source_database)
+    if expected_source_fingerprint is None or expected_security_hash is None:
+        raise QuarantineSafetyError("capture requires exact preflight bindings")
+    if locked_source.fingerprint != expected_source_fingerprint:
+        raise QuarantineSafetyError("source fingerprint differs from preflight expectation")
+    if security_hash != expected_security_hash:
+        raise QuarantineSafetyError("source security differs from preflight expectation")
+    _require_migration_preconditions(client, source_database, locked_source)
+    if client.get_state_model(source_database) != locked_source:
+        raise QuarantineSafetyError("source state drifted during capture preconditions")
+    if client.get_security_hash(source_database) != security_hash:
+        raise QuarantineSafetyError("source security drifted during capture preconditions")
+
     if client.database_exists(quarantine_database):
         if not resume_existing:
             raise QuarantineSafetyError("quarantine database already exists")
@@ -1131,6 +1215,8 @@ def _parser() -> argparse.ArgumentParser:
     capture = modes.add_parser("capture")
     capture.add_argument("--quarantine-database", required=True)
     capture.add_argument("--resume-existing", action="store_true")
+    capture.add_argument("--expected-source-fingerprint", required=True, type=_sha256_argument)
+    capture.add_argument("--expected-security-hash", required=True, type=_sha256_argument)
     _add_mutation_gates(capture)
 
     fence = modes.add_parser("fence")
@@ -1195,14 +1281,27 @@ def execute_cli(
         source_state = client.get_state_model(SOURCE_DATABASE)
         security_hash = client.get_security_hash(SOURCE_DATABASE)
         timer_present = client.get_document(SOURCE_DATABASE, RUNNING_ACTIVITY_ID) is not None
+        migration_plan = None
+        if not timer_present:
+            migration_plan = _require_migration_preconditions(
+                client,
+                SOURCE_DATABASE,
+                source_state,
+            )
         validator = verify_validator(client, SOURCE_DATABASE)
+        if client.get_state_model(SOURCE_DATABASE) != source_state:
+            raise QuarantineSafetyError("source state drifted during preflight")
+        if client.get_security_hash(SOURCE_DATABASE) != security_hash:
+            raise QuarantineSafetyError("source security drifted during preflight")
         report = {
             "mode": "preflight",
             "accountChecksum": client.account_checksum,
             "sourceFingerprint": source_state.fingerprint,
             "securityHash": security_hash,
             "counts": source_state.counts,
+            "migrationCounts": migration_plan.counts if migration_plan is not None else None,
             "runningTimerPresent": timer_present,
+            "lockedTaxonomyMeanings": "verified" if not timer_present else "blocked-by-timer",
             "validatorState": validator["state"],
             "validatorRevision": validator["validatorRevision"],
         }
@@ -1219,6 +1318,8 @@ def execute_cli(
             SOURCE_DATABASE,
             args.quarantine_database,
             resume_existing=args.resume_existing,
+            expected_source_fingerprint=args.expected_source_fingerprint,
+            expected_security_hash=args.expected_security_hash,
         )
         report = {
             "mode": "capture",
