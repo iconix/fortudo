@@ -66,6 +66,10 @@ produced them:
 See `docs/plans/README.md` for the current convention. Do not create new plans under
 `docs/superpowers/`.
 
+Other durable repository documentation is organized by purpose under `docs/reference/`,
+`docs/architecture/`, `docs/operations/`, `docs/product/`, and `docs/migrations/`. Read
+`docs/README.md` before adding or moving documentation. Keep the `docs/` root limited to that index.
+
 ## Commands
 
 ```bash

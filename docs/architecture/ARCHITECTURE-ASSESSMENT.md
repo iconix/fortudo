@@ -1,5 +1,7 @@
 # Architecture Assessment
 
+**Document type:** Point-in-time architecture assessment
+
 ## Strengths
 
 **Clear domain split** - The current structure is materially better than the earlier single-file shape. Task state lives in `tasks/manager.js`, scheduling logic lives in `reschedule-engine.js`, render concerns live in `dom-renderer.js` plus the task renderers, and boot wiring lives in `app.js`.

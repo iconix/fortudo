@@ -2,7 +2,9 @@
 
 ## Status
 
-This document records an architectural diagnosis discovered during the entity and taxonomy identity hardening rollout. It is not an authorization to broaden the current production migration or to redesign room identity.
+This document is an architectural diagnosis and case study discovered during the entity and
+taxonomy identity hardening rollout. It is not an authorization to broaden the current production
+migration or to redesign room identity.
 
 ## Executive summary
 
@@ -216,7 +218,8 @@ A privacy-conscious client-capability record could report a random device instal
 - `public/js/sync-manager.js`: push-before-pull replication order.
 - `public/js/sw-register.js`: per-browser service-worker activation.
 - `public/js/taxonomy/taxonomy-store.js`: taxonomy normalization and singleton persistence.
-- `scripts/migrate_taxonomy_identity.py`: namespace-scoped, read-only transformation planner.
+- `scripts/migrations/taxonomy_identity_v1/planner.py`: namespace-scoped, read-only
+  transformation planner.
 - `docs/plans/design/2026-07-22-cloudant-quarantine-migration-design.md`: proposed minimal
   production recovery and migration gates.
 

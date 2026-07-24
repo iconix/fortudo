@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import migrate_taxonomy_identity as migration
+from scripts.migrations.taxonomy_identity_v1 import planner as migration
 
 
 TARGET_DATABASE = "fortudo-dat-411"

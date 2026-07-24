@@ -42,7 +42,7 @@
 
 **Optional docs touched if behavior/naming changes**
 - `README.md`
-- `docs/ARCHITECTURE-ASSESSMENT.md`
+- `docs/architecture/ARCHITECTURE-ASSESSMENT.md`
 
 ---
 
@@ -438,7 +438,7 @@ git commit -m "refactor: resolve placeholder day-boundary behavior"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/ARCHITECTURE-ASSESSMENT.md` (if architecture language is now stale)
+- Modify: `docs/architecture/ARCHITECTURE-ASSESSMENT.md` (if architecture language is now stale)
 
 - [ ] **Step 1: Run full coverage suite**
 
@@ -473,7 +473,7 @@ Confirm README and any architecture notes describe:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add README.md docs/ARCHITECTURE-ASSESSMENT.md
+git add README.md docs/architecture/ARCHITECTURE-ASSESSMENT.md
 git commit -m "docs: align cleanup architecture and verification guidance"
 ```
 

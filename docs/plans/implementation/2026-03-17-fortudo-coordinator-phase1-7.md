@@ -35,7 +35,7 @@
 
 **Optional docs**
 - `docs/plans/design/2026-03-16-fortudo-activities-design.md`
-- `docs/ARCHITECTURE-ASSESSMENT.md`
+- `docs/architecture/ARCHITECTURE-ASSESSMENT.md`
 
 ---
 
@@ -295,7 +295,7 @@ git commit -m "test: lock in coordinator integration boundaries"
 
 **Files:**
 - Modify: `docs/plans/design/2026-03-16-fortudo-activities-design.md`
-- Optionally modify: `docs/ARCHITECTURE-ASSESSMENT.md`
+- Optionally modify: `docs/architecture/ARCHITECTURE-ASSESSMENT.md`
 - Optionally modify: `README.md`
 
 - [ ] **Step 1: Update the design doc to match the actual pre-Activities boundary**
@@ -307,7 +307,8 @@ In `docs/plans/design/2026-03-16-fortudo-activities-design.md`:
 
 - [ ] **Step 2: Update architecture notes only if they are stale**
 
-If `docs/ARCHITECTURE-ASSESSMENT.md` still implies scattered post-action logic in a way that is no longer accurate, tighten the wording. Do not rewrite the whole assessment.
+If `docs/architecture/ARCHITECTURE-ASSESSMENT.md` still implies scattered post-action logic in a
+way that is no longer accurate, tighten the wording. Do not rewrite the whole assessment.
 
 - [ ] **Step 3: Run doc formatting and repo checks**
 
@@ -320,7 +321,7 @@ Expected:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/plans/design/2026-03-16-fortudo-activities-design.md docs/ARCHITECTURE-ASSESSMENT.md README.md
+git add docs/plans/design/2026-03-16-fortudo-activities-design.md docs/architecture/ARCHITECTURE-ASSESSMENT.md README.md
 git commit -m "docs: align coordinator architecture guidance"
 ```
 

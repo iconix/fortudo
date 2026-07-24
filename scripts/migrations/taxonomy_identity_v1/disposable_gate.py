@@ -1,4 +1,4 @@
-"""Disposable real-Cloudant proof for the minimal quarantine migration machinery."""
+"""Disposable real-Cloudant proof for the dat-411 taxonomy-identity-v1 operation."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from scripts.cloudant_quarantine_migration import (
+from scripts.migrations.taxonomy_identity_v1.dat_411_operation import (
     COMPLETION_MARKER_ID,
     PREVIEW_QUARANTINE_PATTERN,
     PREVIEW_SOURCE_PATTERN,
@@ -27,7 +27,10 @@ from scripts.cloudant_quarantine_migration import (
     install_fence,
 )
 from scripts.document_contract_ops import CONTRACT_DESIGN_ID, load_design_document
-from scripts.migrate_taxonomy_identity import CREDENTIAL_ENV_VAR, RUNNING_ACTIVITY_ID
+from scripts.migrations.taxonomy_identity_v1.planner import (
+    CREDENTIAL_ENV_VAR,
+    RUNNING_ACTIVITY_ID,
+)
 
 
 def require(condition: bool, message: str) -> None:

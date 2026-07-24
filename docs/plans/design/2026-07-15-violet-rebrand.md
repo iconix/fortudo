@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 Repo: `~/code/fortudo` (deployed at https://fortudo.web.app/)
-Companion doc: `docs/BRAND.md` (durable brand reference — tokens, naming rules, mark provenance)
+Companion doc: `docs/reference/BRAND.md` (durable brand reference — tokens, naming rules, mark provenance)
 
 **Claude sessions:**
 
@@ -22,7 +22,11 @@ Companion doc: `docs/BRAND.md` (durable brand reference — tokens, naming rules
 
 ## Context
 
-The app's brand was the 💪🏾 emoji (screenshotted into PNGs by `scripts/generate_icons.py`) plus an amber "Fortu-do" wordmark and teal accents. The rebrand replaces this with an owned mark — a flexed-arm silhouette (MDI `arm-flex`, Apache 2.0) with a checkmark knocked out of the bicep — and a violet-on-slate color system. Design rationale and all decisions are in `fortudo-BRAND.md`; this doc is the execution plan.
+The app's brand was the 💪🏾 emoji (screenshotted into PNGs by `scripts/generate_icons.py`) plus an
+amber "Fortu-do" wordmark and teal accents. The rebrand replaces this with an owned mark—a
+flexed-arm silhouette (MDI `arm-flex`, Apache 2.0) with a checkmark knocked out of the bicep—and a
+violet-on-slate color system. Design rationale and all decisions are in
+`docs/reference/BRAND.md`; this doc is the execution plan.
 
 ## Repo state — read first
 
@@ -39,7 +43,7 @@ Production assets are placed at their final paths on the rebrand branch; confirm
 | `public/icons/mark.svg`                                                                      | Transparent mark for the in-app header lockup                                         |
 | `public/icons/icon.svg`                                                                      | Canonical vector source for the icon set                                              |
 | `public/og-image.png`                                                                        | 1200×630 social preview card                                                          |
-| `docs/BRAND.md`                                                                              | Durable brand reference                                                               |
+| `docs/reference/BRAND.md`                                                                    | Durable brand reference                                                               |
 | `docs/plans/design/assets/2026-07-15-logo-concept.svg`                                       | Design artifact (hero, size ladder, lockups)                                          |
 
 If any are missing, stop and ask — do not regenerate assets.

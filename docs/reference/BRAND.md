@@ -1,5 +1,7 @@
 # Fortudo brand reference
 
+**Document type:** Durable product reference
+
 ## Name
 
 - **Prose / metadata:** `Fortudo` — capital F, no hyphen, no period. Used in `<title>`, manifest, alt text, running text.
