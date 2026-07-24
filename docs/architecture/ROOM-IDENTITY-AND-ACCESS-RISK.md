@@ -92,35 +92,40 @@ The practical security boundary is therefore the shared Cloudant credential, not
 
 `docs/reference/COUCHDB-SETUP.md` explicitly documents two deployment options:
 
-- **Option A:** embed administrator service credentials for zero-setup room creation;
-- **Option B:** pre-create databases and use database-scoped API keys.
+- **Option A:** manually provision databases and embed one Manager-equivalent service credential
+  that every browser and room shares;
+- **Option B:** manually provision databases and grant one browser credential access to a fixed
+  database or set of databases.
 
 The document recommends Option A as a pragmatic choice for personal or household use and acknowledges that anyone who loads the application can extract the credentials and potentially read, modify, or delete Cloudant data.
 
 That is a real accepted-risk decision. The technical blast radius remains high, but it should not be described as a newly discovered or unaccepted production defect while the documented threat model still applies.
 
-### Assumptions behind the acceptance
+### Current acceptance and corrected boundaries
 
-The recorded decision relies on these assumptions:
+The recorded decision now relies on these explicit assumptions:
 
-- the site URL is not broadly shared;
-- only trusted household members load the application;
-- task data is considered non-sensitive;
-- compromise of remote sync is tolerable because local PouchDB copies exist;
-- room-code obscurity adds a meaningful barrier.
+- Only trusted household members are expected to load the application.
+- The application URL is not intentionally advertised, while URL secrecy is not treated as
+  authentication.
+- The operator accepts that Option A exposes account-wide Cloudant capability to those browsers.
+- The deployment is personal, while task and activity descriptions may still contain private
+  information.
+- The operator accepts the current lack of per-room credentials, invitations, and revocation.
+- The decision must be revisited if users cross trust boundaries, the data becomes more sensitive,
+  the room count grows, or remote loss becomes unacceptable.
 
-### Limitations in the recorded rationale
+The acceptance does **not** rely on any of these as security or recovery guarantees:
 
-Some of those assumptions need correction or explicit reaffirmation:
+- Room-code obscurity: the deployed credential can enumerate databases.
+- A static site URL or CORS allowlist: neither constrains a credential after a browser receives it.
+- Local PouchDB as a backup: remote deletion tombstones and bad revisions can replicate into
+  connected local databases. A disconnected copy may aid manual recovery but is not a backup
+  guarantee.
 
-- A static site URL is not an authentication boundary.
-- Database enumeration by the deployed credential defeats room-code obscurity for a technically capable user.
-- Users may put private information in task or activity descriptions even if the product is intended for low-sensitivity data.
-- Local PouchDB does not categorically prevent data loss. Remote deletion tombstones and malicious revisions can replicate into connected local databases.
-- Offline clients that do not reconnect may retain recoverable copies, but that is not a backup guarantee.
-- The decision did not explicitly evaluate generator collisions, room renaming, per-room blast radius, invitations, or revocation.
-
-The accepted risk should therefore be treated as conditional and periodically reviewed, not as evidence that the architecture has no security debt.
+Generator collisions, room renaming, per-room blast radius, invitations, and revocation remain
+unresolved architectural concerns. The accepted risk is conditional and periodically reviewed, not
+evidence that the architecture has no security debt.
 
 ## Threat and failure scenarios
 
@@ -225,8 +230,8 @@ The following changes are insufficient on their own:
 ## Recommended follow-up
 
 1. Reaffirm or revise the accepted personal/household threat model and assign an owner and review trigger to the decision.
-2. Correct `docs/reference/COUCHDB-SETUP.md` so room-code obscurity and local-copy recovery are not
-   described as stronger guarantees than they provide.
+2. Keep `docs/reference/COUCHDB-SETUP.md` aligned with this diagnosis: room codes, CORS, static URL
+   secrecy, and local replicas must not be described as authentication or backup guarantees.
 3. Classify the non-preview Cloudant databases before designing a room migration scope.
 4. Write a dedicated room identity and authorization design covering backend trust, database ACLs, invitations, revocation, and offline migration.
 5. Prefer an incremental transition from account-wide credentials to room-scoped capabilities before changing database identities.

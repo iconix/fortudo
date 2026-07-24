@@ -2,16 +2,33 @@
 
 **Document type:** Operational setup reference
 
-This guide walks through setting up IBM Cloudant (free tier) as the CouchDB sync relay for Fortudo.
+This guide walks through setting up IBM Cloudant as the CouchDB sync relay for Fortudo.
 
-Cloudant is a managed CouchDB-compatible database from IBM. The Lite plan is permanently free (not a trial) with 1 GB storage, 20 reads/sec, and 10 writes/sec — more than enough for a personal to-do app.
+Service facts and links in this guide were last checked on **2026-07-23**. Recheck IBM's
+current documentation before provisioning an instance or changing production access.
+
+Cloudant is a managed CouchDB-compatible database from IBM. IBM currently describes the
+[Lite plan](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-ibm-cloud-public) as a free
+evaluation and testing tier with 1 GB of storage, 20 reads/sec, 10 writes/sec, and 5 global
+queries/sec. Those limits are sufficient for Fortudo's observed personal use, but Lite is not
+IBM's recommended production tier. Lite instances created on or after 2025-03-03 are also
+limited to 20 databases; older instances are currently exempt from that database-count limit.
+Because Fortudo uses one database per room, verify the instance's current database capacity
+before adding rooms. See IBM's
+[database-limit notice](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-deprecations-for-ibm-cloudant).
 
 ## 1. Create a Cloudant instance
 
-1. Sign up at [IBM Cloud](https://cloud.ibm.com/registration) (no credit card required for Lite plan).
+1. Sign up at [IBM Cloud](https://cloud.ibm.com/registration).
 2. Go to the [Cloudant catalog page](https://cloud.ibm.com/catalog/services/cloudant).
 3. Select the **Lite** plan.
-4. **Important:** Under authentication, choose **"Use both legacy credentials and IAM"**. PouchDB does not support IAM-only authentication.
+4. **Important for the current Fortudo client:** Under authentication, choose
+   **"Use both legacy credentials and IAM"**. Fortudo's direct browser sync currently uses
+   legacy HTTP Basic credentials and does not implement IBM IAM token exchange or refresh.
+   PouchDB's [remote database options](https://pouchdb.com/api.html) can inject other authorization
+   headers through a custom `fetch`, so IAM-only support is possible with application changes; it
+   is not supported by Fortudo today. IBM recommends IAM-only access where possible, so treat
+   combined mode as an explicit compatibility tradeoff.
 5. Click **Create**.
 
 ## 2. Get your credentials
@@ -29,7 +46,10 @@ The URL with embedded credentials looks like:
 https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud
 ```
 
-> **Note:** Service credentials always have Manager-level access. For more restricted access, generate a Cloudant API key (see "Option B" below).
+> **Note:** In combined legacy-and-IAM mode, the generated legacy username and password are
+> equivalent to Manager access. IBM documents this in
+> [Managing access for IBM Cloudant](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-managing-access-for-cloudant).
+> For database-scoped legacy access, see "Option B" below.
 
 ## 3. Enable CORS
 
@@ -39,14 +59,20 @@ The browser needs permission to make cross-origin requests to Cloudant.
 2. Go to **Account** > **CORS**.
 3. Enable CORS and add your Firebase Hosting domains.
 
-For this repo (`fortudo`), allowlist:
+For this repo (`fortudo`), allowlist exact origins:
 
 - Production: `https://fortudo.web.app` and `https://fortudo.firebaseapp.com`
-- Preview channels: `https://fortudo--*.web.app` and `https://fortudo--*.firebaseapp.com` (if wildcards are allowed)
+- Preview channels: each exact active preview URL that needs browser-based Cloudant access
 
-If Cloudant does not accept wildcard domains, add each preview URL explicitly. You can copy the preview URL from the GitHub Actions deploy step or from Firebase Console > Hosting > Channels.
+Cloudant's restricted-origin mode documents exact origins, not glob patterns such as
+`https://fortudo--*.web.app`. Copy the exact preview URL from the GitHub Actions deploy step or
+Firebase Console > Hosting > Channels, add it only while needed, and remove it when the preview
+channel is deleted.
 
-Do **not** use "All domains" in production — restrict to your exact origin.
+Do **not** use "All domains" in production. CORS controls which browser origins may issue
+requests; it does not authenticate users, hide a credential shipped to the browser, or restrict
+non-browser clients. See IBM's
+[CORS security guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-cross-origin-resource-sharing).
 
 ## 4. Manual database provisioning
 
@@ -57,6 +83,23 @@ database does not exist leaves that room local-only and reports that sync is not
 The database must be created by an operator before the room can sync. At present this repository
 intentionally provides no supported production provisioning command. Do not infer that entering a
 room code, possessing the shared credential, or creating local data has provisioned its remote.
+
+The current compatibility release deliberately allows an existing database with no Fortudo
+document-contract validator to sync while reporting `missing-validator`. A missing database,
+partitioned database, corrupt or mismatched validator, or validator newer than the client blocks
+sync. See [sync-contract.js](../../public/js/sync-contract.js).
+
+That tolerance is a rollout state, not the target provisioning design. A future production room is
+intended to be provisioned fence-first:
+
+1. Create the exact empty, nonpartitioned database.
+2. Install and verify the exact current Fortudo validator.
+3. Only then enable client replication.
+
+Until a general fence-first production operation is reviewed, creating a new unfenced remote is an
+explicit compatibility exception rather than routine room setup. An existing nonempty database
+needs its own inventory, state binding, recovery decision, approval, and verified validator
+installation; do not copy the completed `dat-411` write command to another room.
 
 Two credential arrangements remain possible after manual provisioning:
 
@@ -72,53 +115,68 @@ export const COUCHDB_URL =
   'https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud';
 ```
 
-**Pros:** No separate API key per room.
-**Cons:** Every room still needs manual provisioning, and the credentials are visible in the browser
-(network tab and JavaScript source). This is an accepted risk for the current personal/household
-deployment, not a suitable public-facing design.
+**Pros:** No separate API-key grant step.
+
+**Cons:** Every room still needs manual provisioning. The Manager-equivalent credential is visible
+in the browser and can operate across the Cloudant account rather than only the active room. This
+is an accepted risk for the current personal/household deployment, not a suitable public-facing
+design.
 
 ### Option B: Manually provision with scoped API keys
 
-Keep admin credentials out of the browser. Create each room's database ahead of time and grant access via a scoped API key.
+Keep the account-wide credential out of the browser. Create the database ahead of time and grant a
+legacy Cloudant API key access only to the database or fixed set of databases the deployment needs.
 
 ```bash
 HOST="https://<username>:<password>@<host>.cloudantnosqldb.appdomain.cloud"
 
-# Create the database
-curl -X PUT "$HOST/fortudo-fox-742"
-
-# Generate a Cloudant API key
+# For an already approved database, generate a Cloudant API key
 curl -X POST "$HOST/_api/v2/api_keys"
 # Returns: {"key": "...", "password": "...", "ok": true}
-
-# Grant the API key read/write/replicate access to the database
-curl -X PUT "$HOST/fortudo-fox-742/_security" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "cloudant": {
-      "YOUR_API_KEY": ["_reader", "_writer", "_replicator"]
-    }
-  }'
 ```
 
-Then in `public/js/config.js`, use the API key credentials:
+Treat both the response and the current database `_security` document as private. Read the current
+`_security` value, add this entry to its existing `cloudant` mapping, then `PUT` the complete merged
+document and reread it:
+
+```json
+"YOUR_API_KEY": ["_reader", "_writer", "_replicator"]
+```
+
+Do not submit a replacement object containing only that entry: doing so can remove existing
+principals or roles. Verify that the intended entry was added and every pre-existing entry is
+unchanged. The three roles are the union needed when the same database participates in both
+directions of PouchDB synchronization: document reads, document writes, and replication
+checkpoints. See IBM's
+[replication permissions](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-replication-guide#permissions).
+
+Then in `public/js/config.js`, use the scoped API-key credentials:
 
 ```js
 export const COUCHDB_URL =
   'https://<api_key>:<api_password>@<host>.cloudantnosqldb.appdomain.cloud';
 ```
 
-You can reuse the same API key across multiple databases by adding it to each database's `_security` document.
+Fortudo currently has one global `COUCHDB_URL`. It can therefore use one scoped API key granted to
+one database or a fixed set of databases, but it cannot select a different credential for each room.
+Granting the same key to more databases broadens that key's blast radius. Distinct room credentials,
+invitations, and revocation require the separate room identity and access redesign.
 
-**Pros:** Scoped access — the API key can only read/write databases you've explicitly granted.
-**Cons:** Manual database creation and permission grants are required.
+**Pros:** The browser credential is limited to the databases explicitly granted.
+
+**Cons:** Manual database creation and permission grants are required; the present client still
+shares one credential across every room it can sync.
 
 ### Recommendation
 
-The current personal deployment accepts Option A's shared-credential risk. Prefer Option B for any
-new security design. In either case, database creation is an operator action, not browser behavior.
-After document-contract enforcement becomes fail-closed, a new production database must also receive
-and verify the required validator before any client is allowed to replicate.
+The current personal deployment accepts Option A's account-wide shared-credential risk. Option B can
+reduce that blast radius for a fixed deployment, but it is not a per-room invitation system. In
+either case, database creation is an operator action, not browser behavior, and fence-first
+provisioning is the intended production posture.
+
+For an existing nonempty room or a migration, start with
+[Cloudant migration toolkit boundaries](../operations/CLOUDANT-MIGRATION-TOOLKIT.md). Its reusable
+read-only components are not blanket authorization to provision, fence, or migrate a database.
 
 ## 5. Connect Fortudo
 
@@ -150,6 +208,10 @@ If you use the GitHub Actions workflow in this repo, the tracked `public/js/conf
 2. Set it to your full Cloudant URL (with credentials).
 
 During the build job, the workflow overwrites `public/js/config.js` only when the secret is present. If the secret is missing (for example on PRs from forks), the tracked local-only default remains in place.
+
+The GitHub repository secret protects the value during CI configuration, but it does **not** remain
+a secret at runtime. The deployed browser must receive `config.js`, so any user who can load the
+application can recover the Cloudant credential.
 
 ## 6. Update Firebase Hosting headers
 
@@ -189,55 +251,110 @@ firebase deploy
 
 ## Security considerations
 
-Credentials (admin or API key) are embedded in `config.js`, which is served as a static file. Anyone who can load the site can view source and extract them. This means they could read, modify, or delete your Cloudant data, or consume your free-tier quota.
+The browser credential is embedded in deployed `config.js`. Anyone who can load the application can
+extract it from the source or network configuration and operate outside the Fortudo UI.
 
-**Why this is acceptable for Fortudo:**
+With Option A, that credential is Manager-equivalent and the potential impact spans the Cloudant
+account: database enumeration, reads, writes, deletion, provisioning, and quota consumption. With
+Option B, impact is limited to the databases and roles granted to that API key.
 
-- The site URL is not publicly shared — only known to household members
-- The data is non-sensitive (daily to-do items)
-- Room codes add a layer of obscurity (someone would need to know or guess a code to find your data)
-- The app works fully offline without sync, so a compromised Cloudant instance is an inconvenience, not a data loss event (your local PouchDB is the source of truth)
+The current personal/household deployment explicitly accepts Option A under this threat model:
 
-**If your threat model changes** (e.g., you share the URL more broadly), consider:
+- Only trusted household members are expected to load the application.
+- The application URL is not intentionally advertised, while recognizing that URL secrecy is not
+  authentication.
+- The operator accepts the account-wide blast radius of exposing the shared credential.
+- Task and activity data may contain private descriptions even though the deployment is intended for
+  personal use.
+- A room code is a database selector and friendly label, not an access-control boundary.
+- Local PouchDB replicas support offline use but are not backups. Remote deletion tombstones or bad
+  revisions can replicate into connected clients; an offline copy may help manual recovery but
+  provides no guarantee.
 
-1. **Firebase Cloud Function as a proxy** — holds Cloudant credentials server-side, the browser never sees them. Firebase Functions has a free tier.
-2. **Firebase Authentication** — gate the app behind Google sign-in. Only authenticated users get the sync URL (served dynamically, not as a static file).
-3. **HTTP gateway** — put Cloudflare Access or similar in front of the site to require a password before the app loads at all.
+Reassess this decision if the audience broadens, rooms cross trust boundaries, the data becomes more
+sensitive, the database count grows, or remote loss is no longer tolerable. The architectural debt
+and future direction are documented in
+[Room identity and access risk](../architecture/ROOM-IDENTITY-AND-ACCESS-RISK.md).
+
+Possible mitigations have different strengths:
+
+1. **Authenticated server-side proxy or control plane:** Keep Cloudant credentials on the server and
+   authorize each user and room operation there. Firebase Authentication can establish identity, but
+   authentication alone is not sufficient if the backend then hands the raw Cloudant credential to
+   the browser.
+2. **Scoped legacy API key:** Limit the current deployment credential to a fixed set of databases.
+   This reduces account-wide blast radius but does not add distinct per-room invitations or
+   revocation to the current client.
+3. **HTTP access gateway:** Reduce who can load the site. This is useful defense in depth but does
+   not constrain a Cloudant credential after an authorized browser receives it.
+4. **Independent recovery copy:** Use a reviewed replication or export process and test recovery.
+   Cloudant's intra-service redundancy provides availability, while IBM recommends
+   [replication or export](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-security#protection-against-data-loss-or-corruption)
+   for additional data redundancy.
 
 ## Gotchas
 
-### Rate limiting looks like CORS errors
+### Distinguish rate limiting from CORS
 
-Cloudant's Lite plan enforces 20 reads/sec and 10 writes/sec. When you hit these limits, the 429 response is missing CORS headers, so the browser reports it as a CORS error — not a rate limit error.
+Cloudant returns HTTP `429 Too Many Requests` when an instance exceeds a request-class capacity
+limit. Fortudo can surface transport failures as a generic sync error, so do not diagnose every
+browser-reported network or CORS failure as either CORS or rate limiting without evidence.
 
-If you see unexpected CORS errors during sync, this is likely the cause. The current sync implementation uses single-shot replication which should stay well within limits for a personal app, but if you hit issues, reduce PouchDB's batch size:
-
-```js
-db.replicate.to(remoteUrl, { batch_size: 5, batches_limit: 1 });
-```
+Check the browser network response when it is available and inspect the instance's Cloudant
+Monitoring metrics for 429s. Ordinary application changes remain in local PouchDB and can sync after
+capacity is available. Operator tooling must use bounded batching and retry with backoff; Fortudo's
+reusable Cloudant client does so. Do not change PouchDB batch settings ad hoc without exercising the
+sync and recovery tests. See IBM's
+[429 guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-usage-and-charges#provisioned-throughput-capacity-and-429-http-responses).
 
 ### Cloudant vs CouchDB differences
 
 Cloudant is CouchDB-compatible but has some limits:
 
+- Max JSON document size: 1 MB
 - Max request size: 11 MB (vs CouchDB's 4 GB default)
 - Max attachment size: 10 MB
-- No `_users` database (auth is via IAM or Cloudant API keys, not CouchDB users)
+- Provisioned throughput limits can return HTTP 429
+- Authentication and authorization include IBM IAM and Cloudant legacy controls; do not assume a
+  self-hosted CouchDB access configuration transfers unchanged
 - No `couch_peruser` plugin
 
-None of these affect Fortudo's use case (small JSON task documents, no attachments).
+The size limits do not affect Fortudo's current small JSON documents, but access configuration,
+throughput, database count, and the current nonpartitioned-database requirement all matter
+operationally. See IBM's
+[Cloudant and CouchDB comparison](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-couchdb-and-cloudant).
 
 ## Cost
 
-**Free.** The Cloudant Lite plan is permanently free with no expiration. If you exceed 1 GB storage, writes are blocked until you delete data or upgrade.
+As of the verification date at the top of this guide, IBM lists Lite as free. This is a current
+service-plan fact, not a promise that pricing or terms can never change.
+
+At more than 1 GB of measured storage, Lite blocks document creates and updates while reads and
+deletes remain available. After data is deleted below the limit, IBM says write access can take up
+to 24 hours to return. Recheck
+[plans and provisioning](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-ibm-cloud-public) and
+[usage and charges](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-usage-and-charges) before
+depending on current limits.
 
 ## Migrating away
 
-If you outgrow Cloudant or want to self-host, you can move to any CouchDB instance:
+Cloudant provides replication and JSON export paths for data portability. Moving to a compatible
+CouchDB is practical, but it is an operation to verify rather than a URL-only switch:
 
 1. Set up CouchDB elsewhere (Docker, Fly.io, a home server, etc.)
-2. Use Cloudant's built-in replication to copy your databases to the new CouchDB
-3. Update `COUCHDB_URL` in `config.js` to point to the new host
-4. Redeploy
+2. Use a reviewed replication or export process with a narrow, rotatable credential.
+3. Verify the expected live, deleted, and conflicting revisions and design documents at the target.
+4. Recreate and verify authorization, `_security`, CORS, validator, provisioning, and hosting
+   configuration; those operational controls do not transfer merely by copying documents.
+5. Update `COUCHDB_URL`, deploy, and exercise synchronization before retiring the source.
 
-The CouchDB replication protocol is an open standard — your data is never locked in.
+Do not put Fortudo's long-lived shared Manager credential into a durable `_replicator` document. A
+deleted replication document can retain credential material in revision history. The completed
+taxonomy migration instead used a bounded transient replication request and verified target state;
+future operator work should choose and review its credential lifecycle explicitly. See
+[Cloudant migration toolkit boundaries](../operations/CLOUDANT-MIGRATION-TOOLKIT.md) and IBM's
+[replication security guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-replication-guide).
+
+The CouchDB replication model gives Fortudo strong data portability, but Cloudant-specific access,
+limits, and operational configuration still require migration work. See IBM's
+[data-portability guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-data-portability).
