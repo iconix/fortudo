@@ -6,6 +6,7 @@ import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { syncActivitiesViewToggle } from './view-toggle.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
+import { detectActivityDataIssues, groupIssuesByActivityId } from './insights-issues.js';
 
 const activityUiState = {
     editingActivityId: null,
@@ -14,8 +15,7 @@ const activityUiState = {
     inFlightActivitySaveIds: new Set()
 };
 
-function getActivitiesForSummary() {
-    const todaysActivities = getTodaysActivities();
+function getActivitiesForSummary(todaysActivities = getTodaysActivities()) {
     const liveRunningSummary = getLiveTodayActivitySummary();
 
     return liveRunningSummary ? [...todaysActivities, liveRunningSummary] : todaysActivities;
@@ -84,10 +84,12 @@ export function renderTodayActivities(enabled) {
     }
 
     const todaysActivities = getTodaysActivities();
+    const summaryActivities = getActivitiesForSummary(todaysActivities);
+    const activityIssuesById = groupIssuesByActivityId(detectActivityDataIssues(summaryActivities));
     renderActivities(
         todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        getActivityRenderOptions({ summaryActivities: getActivitiesForSummary() })
+        getActivityRenderOptions({ summaryActivities, activityIssuesById })
     );
 }
 
