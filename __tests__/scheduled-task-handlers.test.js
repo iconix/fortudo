@@ -255,7 +255,7 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleDeleteTask', () => {
-        test('triggers confirmation on first click', async () => {
+        test('keeps the task when modal confirmation is declined', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
@@ -265,20 +265,24 @@ describe('Scheduled Task Handlers', () => {
 
             await handleDeleteTask(task.id, 0);
 
-            // First click triggers confirmation, task should still exist
+            expect(askConfirmation).toHaveBeenCalledWith(
+                'Delete "Delete Test"? This cannot be undone.',
+                { ok: 'Delete', cancel: 'Cancel' },
+                'rose'
+            );
             expect(getTaskState()).toHaveLength(1);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
             expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
-        test('deletes task on confirmed click', async () => {
+        test('deletes the task after modal confirmation', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
-                duration: 60,
-                confirmingDelete: true
+                duration: 60
             });
             updateTaskState([task]);
+            askConfirmation.mockResolvedValueOnce(true);
 
             await handleDeleteTask(task.id, 0);
 

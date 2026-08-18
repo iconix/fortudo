@@ -302,7 +302,7 @@ describe('App.js Callback Functions', () => {
             expect(mockRenderUnscheduledList).toHaveBeenCalled();
         });
 
-        test('a real list click inside the same task card preserves pending delete confirmation', async () => {
+        test('a real list click uses modal deletion without mutating task confirmation state', async () => {
             const unscheduledTask = {
                 id: 'unsched-keep-confirming',
                 type: 'unscheduled',
@@ -327,16 +327,21 @@ describe('App.js Callback Functions', () => {
             );
             const actualList = jest.requireActual('../public/js/tasks/unscheduled-list.js');
             const mountOptions = mockMountUnscheduledList.mock.calls.at(-1)[0];
+            confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
 
             try {
                 actualList.mountUnscheduledList(mountOptions);
                 actualList.renderUnscheduledList();
 
                 document.querySelector('.btn-delete-unscheduled').click();
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                expect(confirmSpy).toHaveBeenCalledWith(
+                    'Confirmation: Delete "Backlog task"? This cannot be undone.'
+                );
+                expect(getTaskState()[0].confirmingDelete).toBe(false);
 
                 document.querySelector('.btn-unscheduled-task-actions-menu i').click();
-                expect(getTaskState()[0].confirmingDelete).toBe(true);
+                expect(getTaskState()[0].confirmingDelete).toBe(false);
             } finally {
                 actualList.destroyUnscheduledList();
             }
@@ -361,21 +366,23 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-            confirmSpy = jest.spyOn(window, 'confirm');
+            confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
             mockPutTasks.mockClear();
             mockPutTasks.mockReset();
             mockPutTasks.mockResolvedValue({ succeededIds: [] });
         };
 
-        test('should show confirmation dialog when clicking delete button first time', async () => {
+        test('should show confirmation dialog without mutating task state', async () => {
             await setupTasksForDelete();
 
             const clicked = await clickDeleteButton(0);
             expect(clicked).toBe(true);
 
-            // Verify that the task is now in confirmingDelete state
+            expect(confirmSpy).toHaveBeenCalledWith(
+                'Confirmation: Delete "Task 1"? This cannot be undone.'
+            );
             const tasks = getTaskState();
-            expect(tasks[0].confirmingDelete).toBe(true);
+            expect(tasks[0].confirmingDelete).toBe(false);
             expect(tasks[1].confirmingDelete).toBe(false);
 
             // Verify UI reflects the confirmation state
@@ -387,13 +394,10 @@ describe('App.js Callback Functions', () => {
             expect(renderedTasks[1].description).toBe('Task 2');
         });
 
-        test('should delete task when clicking delete button while in confirmingDelete state', async () => {
+        test('should delete task when modal confirmation is accepted', async () => {
             await setupTasksForDelete();
+            confirmSpy.mockReturnValue(true);
 
-            // First click to set confirmingDelete = true
-            await clickDeleteButton(0);
-
-            // Second click should actually delete the task
             await clickDeleteButton(0);
 
             // Verify task was deleted
@@ -412,6 +416,7 @@ describe('App.js Callback Functions', () => {
 
         test('should show alert if delete operation fails', async () => {
             await setupTasksForDelete();
+            confirmSpy.mockReturnValue(true);
 
             // Mock deleteTask to fail
             deleteTaskSpy = jest
@@ -1247,6 +1252,7 @@ describe('App.js Callback Functions', () => {
             await setupAppWithTasks(tasks);
 
             alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+            confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
             mockPutTasks.mockClear();
 
             // Cancel edit on first task
@@ -1260,20 +1266,8 @@ describe('App.js Callback Functions', () => {
             // Wait for any potential DOM updates
             await new Promise((resolve) => setTimeout(resolve, 10));
 
-            // First click on delete button for second task - should set confirmingDelete to true
-            const firstDeleteClick = await clickDeleteButton(1);
-            expect(firstDeleteClick).toBe(true);
-
-            // Verify confirmingDelete is set
-            updatedTasks = getTaskState();
-            expect(updatedTasks[1].confirmingDelete).toBe(true);
-
-            // Wait for DOM update
-            await new Promise((resolve) => setTimeout(resolve, 10));
-
-            // Second click - should actually delete the task
-            const secondDeleteClick = await clickDeleteButton(1);
-            expect(secondDeleteClick).toBe(true);
+            const deleteClicked = await clickDeleteButton(1);
+            expect(deleteClicked).toBe(true);
 
             // Verify second task was deleted
             updatedTasks = getTaskState();
@@ -2310,16 +2304,10 @@ describe('App.js Callback Functions', () => {
 
                 await setupAppWithTasks(tasks);
 
-                // Mock deleteTask to return success on second call (after confirmation)
+                confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
                 const deleteTaskSpy = jest
                     .spyOn(require('../public/js/tasks/manager.js'), 'deleteTask')
-                    .mockReturnValueOnce({
-                        success: false,
-                        requiresConfirmation: true
-                    })
-                    .mockReturnValueOnce({
-                        success: true
-                    });
+                    .mockReturnValueOnce({ success: true });
 
                 updateStartTimeFieldSpy.mockClear();
                 const startTimeInput = document.querySelector(
@@ -2329,23 +2317,14 @@ describe('App.js Callback Functions', () => {
                     startTimeInput.value = '15:33';
                 }
 
-                // Click delete button twice (once to confirm, once to actually delete)
+                // Confirm and delete the task through the modal-backed handler.
                 const deleteButtons = document.querySelectorAll('.btn-delete');
                 if (deleteButtons[0]) {
                     deleteButtons[0].dispatchEvent(new Event('click', { bubbles: true }));
                     await new Promise((resolve) => setTimeout(resolve, 10));
-
-                    // Click again to confirm deletion
-                    const confirmDeleteButtons = document.querySelectorAll('.btn-delete');
-                    if (confirmDeleteButtons[0]) {
-                        confirmDeleteButtons[0].dispatchEvent(
-                            new Event('click', { bubbles: true })
-                        );
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    }
                 }
 
-                expect(deleteTaskSpy).toHaveBeenCalledTimes(2);
+                expect(deleteTaskSpy).toHaveBeenCalledTimes(1);
                 if (startTimeInput instanceof HTMLInputElement) {
                     expect(startTimeInput.value).toBe(getSuggestedStartTime());
                     expect(startTimeInput.value).not.toBe('15:33');

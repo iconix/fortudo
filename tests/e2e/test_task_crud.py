@@ -216,7 +216,7 @@ def test_task_crud_flow(app_server):
         screenshot(page, "04_priority_sorted")
 
         # =========================================================================
-        # TEST 5: Delete a scheduled task (two-click confirmation)
+        # TEST 5: Delete a scheduled task (modal confirmation)
         # =========================================================================
         print("\nTEST 5: Delete a scheduled task", flush=True)
         page.locator("#scheduled + span").click()
@@ -226,12 +226,10 @@ def test_task_crud_flow(app_server):
         del_count = delete_buttons.count()
         if del_count >= 2:
             click_scheduled_action(page, 1, ".btn-delete")
-            page.wait_for_timeout(300)
-            screenshot(page, "05a_delete_confirm_state")
-
-            delete_buttons_after = page.locator("#scheduled-task-list .btn-delete")
-            if delete_buttons_after.count() >= 2:
-                click_scheduled_action(page, 1, ".btn-delete")
+            confirm_modal = page.locator("#custom-confirm-modal")
+            if confirm_modal.is_visible():
+                screenshot(page, "05a_delete_confirm_state")
+                page.locator("#ok-custom-confirm-modal").click()
                 page.wait_for_timeout(500)
 
             scheduled_tasks_after = page.locator("#scheduled-task-list > [data-task-id]")
@@ -252,14 +250,9 @@ def test_task_crud_flow(app_server):
             open_unscheduled_action_menu_for_text(page, "Fix login bug").locator(
                 ".btn-delete-unscheduled"
             ).evaluate("el => el.click()")
-            confirm_delete = page.get_by_text("Confirm delete").first
-            try:
-                confirm_delete.wait_for(state="visible", timeout=5000)
-            except Exception:
-                page.wait_for_timeout(300)
-            confirming_task = open_unscheduled_action_menu_for_text(page, "Fix login bug")
-            if "Confirm delete" in (confirming_task.text_content() or ""):
-                confirming_task.locator(".btn-delete-unscheduled").evaluate("el => el.click()")
+            confirm_modal = page.locator("#custom-confirm-modal")
+            if confirm_modal.is_visible():
+                page.locator("#ok-custom-confirm-modal").click()
                 page.wait_for_function(
                     f"document.querySelectorAll('#unscheduled-task-list .task-card').length < {initial_unsched_count}",
                     timeout=5000,

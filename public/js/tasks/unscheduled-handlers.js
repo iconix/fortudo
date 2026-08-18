@@ -90,11 +90,26 @@ export function handleEditUnscheduledTask(taskId) {
 
 export async function handleDeleteUnscheduledTask(taskId) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
-    const result = await deleteUnscheduledTask(taskId);
+    const taskToDelete = getTaskById(taskId);
+    if (!taskToDelete || taskToDelete.type !== 'unscheduled') {
+        showAlert('Unscheduled task not found.', 'rose');
+        return;
+    }
+
+    const confirmed = await askConfirmation(
+        `Delete "${taskToDelete.description}"? This cannot be undone.`,
+        { ok: 'Delete', cancel: 'Cancel' },
+        'rose'
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    const result = await deleteUnscheduledTask(taskId, true);
     if (result.success) {
         showToast(result.message || 'Task deleted.', { theme: 'rose' });
         onTaskDeleted({
-            task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
+            task: result.task || taskToDelete
         });
     } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, 'rose');

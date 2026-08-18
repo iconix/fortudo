@@ -3262,6 +3262,24 @@ describe('Task Management Functions (task-manager.js)', () => {
             expect(result.requiresConfirmation).toBe(true);
         });
 
+        test('accepts confirmation supplied by a modal-backed caller', async () => {
+            const task = {
+                id: 'unsched-modal-confirmed',
+                type: 'unscheduled',
+                description: 'Test',
+                priority: 'medium',
+                estDuration: 30,
+                status: 'incomplete',
+                confirmingDelete: false
+            };
+            updateTaskState([task]);
+
+            const result = await deleteUnscheduledTask('unsched-modal-confirmed', true);
+
+            expect(result.success).toBe(true);
+            expect(getTaskState()).toHaveLength(0);
+        });
+
         test('returns error for non-existent task', async () => {
             updateTaskState([]);
             const result = await deleteUnscheduledTask('nonexistent');

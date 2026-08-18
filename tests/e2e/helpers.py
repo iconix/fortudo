@@ -38,10 +38,18 @@ BASE_URL = f"http://{HOST}:{PORT}"
 WHATS_NEW_KEY = "fortudo-whats-new-v1"
 
 
-def launch_e2e_page(playwright, *, viewport: dict | None = None):
+def launch_e2e_page(
+    playwright,
+    *,
+    viewport: dict | None = None,
+    context_options: dict | None = None,
+):
     """Launch a browser page for local E2E tests."""
     browser = launch_browser(playwright)
-    context = browser.new_context(viewport=viewport or {"width": 1280, "height": 900})
+    context = browser.new_context(
+        viewport=viewport or {"width": 1280, "height": 900},
+        **(context_options or {}),
+    )
     page = context.new_page()
     page.add_init_script(
         f"""

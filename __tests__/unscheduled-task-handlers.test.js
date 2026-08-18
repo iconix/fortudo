@@ -263,23 +263,26 @@ describe('Unscheduled Task Handlers', () => {
     });
 
     describe('handleDeleteUnscheduledTask', () => {
-        test('triggers delete confirmation on first click', async () => {
+        test('keeps the task when modal confirmation is declined', async () => {
             const task = createUnscheduledTask();
             updateTaskState([task]);
 
             await handleDeleteUnscheduledTask(task.id);
 
-            // First click triggers confirmation, task should still exist
+            expect(askConfirmation).toHaveBeenCalledWith(
+                'Delete "Test Unscheduled"? This cannot be undone.',
+                { ok: 'Delete', cancel: 'Cancel' },
+                'rose'
+            );
             expect(getTaskState()).toHaveLength(1);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(refreshUI).not.toHaveBeenCalled();
+            expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
-        test('shows default delete-success toast and calls coordinator after confirmed delete', async () => {
+        test('shows default delete-success toast and calls coordinator after modal confirmation', async () => {
             const task = createUnscheduledTask({ id: 'unsched-confirmed-delete' });
             updateTaskState([task]);
-
-            await handleDeleteUnscheduledTask(task.id);
-            jest.clearAllMocks();
+            askConfirmation.mockResolvedValueOnce(true);
 
             await handleDeleteUnscheduledTask(task.id);
 
@@ -291,6 +294,9 @@ describe('Unscheduled Task Handlers', () => {
         });
 
         test('shows delete-success toast when delete operation returns a success message', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-task-id' });
+            updateTaskState([task]);
+            askConfirmation.mockResolvedValueOnce(true);
             jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
                 success: true,
                 message: 'Task deleted.'
@@ -306,6 +312,9 @@ describe('Unscheduled Task Handlers', () => {
         });
 
         test('uses the error theme when deletion fails', async () => {
+            const task = createUnscheduledTask({ id: 'unsched-task-id' });
+            updateTaskState([task]);
+            askConfirmation.mockResolvedValueOnce(true);
             jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
                 success: false,
                 requiresConfirmation: false,
@@ -316,6 +325,13 @@ describe('Unscheduled Task Handlers', () => {
 
             expect(showAlert).toHaveBeenCalledWith('Could not delete task.', 'rose');
             expect(refreshUI).toHaveBeenCalled();
+        });
+
+        test('shows an error without opening confirmation for a missing task', async () => {
+            await handleDeleteUnscheduledTask('missing-unscheduled');
+
+            expect(askConfirmation).not.toHaveBeenCalled();
+            expect(showAlert).toHaveBeenCalledWith('Unscheduled task not found.', 'rose');
         });
     });
 

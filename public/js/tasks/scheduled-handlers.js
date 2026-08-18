@@ -131,8 +131,18 @@ export async function handleDeleteTask(taskId, _taskIndex) {
         logger.warn('handleDeleteTask for non-scheduled', taskId);
         return;
     }
+
+    const confirmed = await askConfirmation(
+        `Delete "${taskToDelete.description}"? This cannot be undone.`,
+        { ok: 'Delete', cancel: 'Cancel' },
+        'rose'
+    );
+    if (!confirmed) {
+        return;
+    }
+
     const originalIndex = getTaskIndex(taskId);
-    const result = await deleteTask(originalIndex, taskToDelete.confirmingDelete);
+    const result = await deleteTask(originalIndex, true);
     if (result.success) onTaskDeleted({ task: result.task || taskToDelete });
     else if (!result.requiresConfirmation && result.reason)
         showAlert(result.reason, getThemeForTaskId(taskId));
