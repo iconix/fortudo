@@ -98,6 +98,17 @@ describe('settings-manager', () => {
         expect(config.activitiesEnabled).toBe(true);
     });
 
+    test('read-only startup projects legacy settings without persisting them', async () => {
+        localStorage.setItem('fortudo-activities-enabled', 'true');
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+        await loadSettings({ readOnly: true });
+
+        expect(isActivitiesEnabled()).toBe(true);
+        await expect(loadConfig(SETTINGS_CONFIG_ID)).resolves.toBeNull();
+        expect(localStorage.getItem('fortudo-activities-enabled')).toBe('true');
+    });
+
     test('loadSettings removes localStorage key after migration', async () => {
         localStorage.setItem('fortudo-activities-enabled', 'true');
         await initAndLoadSettings();

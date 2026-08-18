@@ -21,8 +21,11 @@ import {
     onSyncStatusChange,
     onSyncDataChange,
     getSyncStatus,
+    assertPersistenceAllowed,
     debouncedSync,
-    waitForSyncPreflight
+    waitForSyncPreflight,
+    reportStoragePreparationError,
+    resumeStoragePreparation
 } from '../public/js/sync-manager.js';
 
 async function waitForCallCount(mock, count) {
@@ -64,9 +67,47 @@ describe('Sync Manager', () => {
             expect(getSyncStatus()).toBe('idle');
         });
 
-        test('returns "idle" after initSync', () => {
+        test('returns "checking" while a remote preflight is starting', () => {
             initSync({}, 'http://localhost:5984/test');
-            expect(getSyncStatus()).toBe('idle');
+            expect(getSyncStatus()).toBe('checking');
+        });
+
+        test('blocks local persistence until remote compatibility is known', () => {
+            initSync({}, 'http://localhost:5984/test');
+
+            expect(() => assertPersistenceAllowed()).toThrow('Persistence blocked: checking');
+        });
+
+        test('reports and retries a storage preparation failure through preflight', async () => {
+            initSync({}, 'http://localhost:5984/test');
+            await waitForSyncPreflight();
+
+            reportStoragePreparationError();
+            expect(getSyncStatus()).toBe('preparation-error');
+            expect(() => assertPersistenceAllowed()).toThrow('preparation-error');
+
+            const inspectionsBeforeRetry = inspectRemoteDocumentContract.mock.calls.length;
+            await resumeStoragePreparation();
+
+            expect(getSyncStatus()).toBe('compatible');
+            expect(inspectRemoteDocumentContract).toHaveBeenCalledTimes(inspectionsBeforeRetry + 1);
+        });
+
+        test('does not let direct sync bypass a storage preparation failure', async () => {
+            const mockDb = {
+                replicate: {
+                    to: jest.fn().mockResolvedValue({}),
+                    from: jest.fn().mockResolvedValue({})
+                }
+            };
+            initSync(mockDb, 'http://localhost:5984/test');
+            await waitForSyncPreflight();
+            reportStoragePreparationError();
+
+            await triggerSync();
+
+            expect(getSyncStatus()).toBe('preparation-error');
+            expect(mockDb.replicate.to).not.toHaveBeenCalled();
         });
     });
 
@@ -193,7 +234,7 @@ describe('Sync Manager', () => {
         test('does nothing when no local db', async () => {
             initSync(null, 'http://localhost:5984/test');
             await triggerSync();
-            expect(getSyncStatus()).toBe('idle');
+            expect(getSyncStatus()).toBe('checking');
         });
 
         test('performs bidirectional sync and sets status to synced', async () => {
@@ -575,7 +616,7 @@ describe('Sync Manager', () => {
     });
 
     describe('debouncedSync', () => {
-        test('sets status to unsynced immediately', () => {
+        test('does not schedule local writes while compatibility is still checking', () => {
             const mockDb = {
                 replicate: {
                     to: jest.fn().mockResolvedValue({}),
@@ -584,7 +625,7 @@ describe('Sync Manager', () => {
             };
             initSync(mockDb, 'http://remote:5984/db');
             debouncedSync();
-            expect(getSyncStatus()).toBe('unsynced');
+            expect(getSyncStatus()).toBe('checking');
         });
 
         test('triggers sync after debounce delay', async () => {
@@ -642,7 +683,7 @@ describe('Sync Manager', () => {
             };
             initSync(mockDb, 'http://remote:5984/db');
             debouncedSync();
-            expect(getSyncStatus()).toBe('unsynced');
+            expect(getSyncStatus()).toBe('checking');
 
             teardownSync();
             expect(getSyncStatus()).toBe('idle');

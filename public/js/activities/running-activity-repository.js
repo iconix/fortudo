@@ -26,8 +26,8 @@ export async function loadRunningActivityConfig() {
     return normalizeRunningActivityConfig(config);
 }
 
-export async function saveRunningActivityConfig(runningActivity) {
-    await putConfig({
+export async function saveRunningActivityConfig(runningActivity, storageOptions = {}) {
+    const config = {
         id: RUNNING_ACTIVITY_CONFIG_ID,
         ...(runningActivity.id ? { activityId: runningActivity.id } : {}),
         description: runningActivity.description,
@@ -39,9 +39,18 @@ export async function saveRunningActivityConfig(runningActivity) {
         startDateTime: runningActivity.startDateTime,
         source: runningActivity.source || 'timer',
         sourceTaskId: runningActivity.sourceTaskId || null
-    });
+    };
+    if (storageOptions.allowDuringPreparation) {
+        await putConfig(config, storageOptions);
+    } else {
+        await putConfig(config);
+    }
 }
 
-export async function deleteRunningActivityConfig() {
-    await deleteConfig(RUNNING_ACTIVITY_CONFIG_ID);
+export async function deleteRunningActivityConfig(storageOptions = {}) {
+    if (storageOptions.allowDuringPreparation) {
+        await deleteConfig(RUNNING_ACTIVITY_CONFIG_ID, storageOptions);
+    } else {
+        await deleteConfig(RUNNING_ACTIVITY_CONFIG_ID);
+    }
 }

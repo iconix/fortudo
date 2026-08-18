@@ -86,6 +86,15 @@ describe('taxonomy-store', () => {
         );
     });
 
+    test('read-only startup projects defaults without persisting them', async () => {
+        await initStorage(uniqueRoomCode(), { adapter: 'memory' });
+
+        await loadTaxonomy({ readOnly: true });
+
+        expect(getTaxonomyState().groups).toHaveLength(3);
+        await expect(loadConfig(TAXONOMY_CONFIG_ID)).resolves.toBeNull();
+    });
+
     test('loadTaxonomy preserves empty schemaVersion 3.5 arrays', async () => {
         await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         await seedLegacyTaxonomy({

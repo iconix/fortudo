@@ -131,7 +131,7 @@ describe('Fortudo brand system', () => {
             /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-indigo-400\/75[\s\S]*?Unscheduled Tasks/
         );
         expect(indexHtml).toMatch(
-            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-sky-400\/75[\s\S]*?Today's Activities/
+            /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-sky-400\/75[\s\S]*?Today's\s+Activities/
         );
         expect(indexHtml).toMatch(
             /text-lg sm:text-xl font-normal text-slate-200[\s\S]*?text-sky-400\/75[\s\S]*?Activity Log/
@@ -228,12 +228,12 @@ describe('Fortudo brand system', () => {
         expect(indexHtml).toMatch(/id="close-settings-modal"[\s\S]*?aria-label="Close settings"/);
     });
 
-    test('raises mobile helper and idle-status contrast without changing desktop tone', () => {
+    test('raises mobile helper and startup-status contrast without changing desktop tone', () => {
         const roomRenderer = read('public/js/room-renderer.js');
         const activityRenderer = read('public/js/activities/renderer.js');
         const insightsRenderer = read('public/js/activities/insights-renderer.js');
 
-        expect(indexHtml).toMatch(/id="sync-status-text" class="text-slate-400 sm:text-slate-500"/);
+        expect(indexHtml).toMatch(/id="sync-status-text" class="text-sky-400">Connecting/);
         expect(indexHtml).toMatch(
             /<footer class="text-sm pt-6 pb-4 text-slate-400 sm:text-slate-500">/
         );

@@ -54,6 +54,23 @@ test('resolves conflict leaves and returns the latest durable winner', async () 
     expect(resolveConfigConflicts).toHaveBeenCalledWith(UNSCHEDULED_SEQUENCE_CONFIG_ID);
 });
 
+test('read-only startup projects the winner without resolving conflict leaves', async () => {
+    const winner = {
+        id: UNSCHEDULED_SEQUENCE_CONFIG_ID,
+        schemaVersion: 1,
+        orderedTaskIds: ['alpha', 'beta']
+    };
+    loadConfigWithConflicts.mockResolvedValue({
+        config: winner,
+        conflictRevisions: ['2-loser']
+    });
+
+    await expect(loadUnscheduledSequenceDocument({ resolveConflicts: false })).resolves.toBe(
+        winner
+    );
+    expect(resolveConfigConflicts).not.toHaveBeenCalled();
+});
+
 test('persists exactly one sequence config document', async () => {
     const sequence = {
         id: UNSCHEDULED_SEQUENCE_CONFIG_ID,

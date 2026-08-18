@@ -319,11 +319,18 @@ function enterUnscheduledSequence(task) {
 
 /**
  * Hydrate sequence state after room load or replication, resolving conflict leaves first.
+ * @param {{readOnly?: boolean, allowDuringPreparation?: boolean}} [options]
  * @returns {Promise<Object|null>} Loaded sequence document
  */
-export async function refreshUnscheduledSequenceState() {
+export async function refreshUnscheduledSequenceState({
+    readOnly = false,
+    allowDuringPreparation = false
+} = {}) {
     await waitForUnscheduledMoveSettlement();
-    const sequenceDocument = await loadUnscheduledSequenceDocument();
+    const sequenceDocument = await loadUnscheduledSequenceDocument({
+        resolveConflicts: !readOnly,
+        allowDuringPreparation
+    });
     getUnscheduledSequence().hydrate(sequenceDocument);
     return sequenceDocument;
 }
