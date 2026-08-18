@@ -12,8 +12,13 @@ import {
     getRunningActivity,
     truncateActivityOverlapsForDate
 } from './manager.js';
-import { askConfirmation } from '../modal-manager.js';
+import { askConfirmation, showAlert } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
+import {
+    calculateHoursAndMinutes,
+    convertTo12HourTime,
+    extractTimeFromDateTime
+} from '../utils.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
@@ -150,15 +155,66 @@ function getTruncatedActivitiesMessage(count) {
         : `Truncated ${count} overlapping activities.`;
 }
 
+function formatOverlapPreviewTime(dateTime) {
+    return convertTo12HourTime(extractTimeFromDateTime(new Date(dateTime)));
+}
+
+function buildOverlapPreviewMessage(preview) {
+    const changes = preview.changes || [];
+    const changeLines = changes.map(
+        (change) =>
+            `• ${change.description}: ends ${formatOverlapPreviewTime(change.previousEndDateTime)} → ${formatOverlapPreviewTime(change.nextEndDateTime)} (${calculateHoursAndMinutes(change.previousDuration)} → ${calculateHoursAndMinutes(change.nextDuration)}) before ${change.overlappingActivityDescription}.`
+    );
+
+    const unresolvedNote = preview.unresolvedOverlapCount
+        ? [
+              '',
+              `${preview.unresolvedOverlapCount} additional ${preview.unresolvedOverlapCount === 1 ? 'overlap starts' : 'overlaps start'} at the same time and will be left unchanged for manual review.`
+          ]
+        : [];
+
+    return [
+        'Review each proposed change:',
+        '',
+        ...changeLines,
+        ...unresolvedNote,
+        '',
+        'Only these end times and durations will change. No activities will be deleted or moved.'
+    ].join('\n');
+}
+
+function buildUnresolvedOverlapMessage(preview) {
+    const overlapLines = (preview.unresolvedOverlaps || []).map(
+        (overlap) => `• ${overlap.description} and ${overlap.overlappingActivityDescription}`
+    );
+
+    return [
+        'These activities start at the same time, so they cannot be shortened safely:',
+        '',
+        ...overlapLines,
+        '',
+        'Edit or delete one of each pair manually.'
+    ].join('\n');
+}
+
 async function handleTruncateActivityOverlaps(date, { refreshUI }) {
     const preview = getActivityOverlapTruncationPreviewForDate(date);
-    if (!preview?.success || !preview.truncatedCount) {
+    if (!preview?.success) {
+        if (preview?.reason) {
+            await showAlert(preview.reason, 'amber');
+        }
         return;
     }
 
-    const activityLabel = preview.truncatedCount === 1 ? 'activity' : 'activities';
+    if (!preview.truncatedCount) {
+        if (preview.unresolvedOverlapCount) {
+            await showAlert(buildUnresolvedOverlapMessage(preview), 'amber');
+        }
+        return;
+    }
+
     const confirmed = await askConfirmation(
-        `This will shorten ${preview.truncatedCount} ${activityLabel} so each one ends when the next one starts.`,
+        buildOverlapPreviewMessage(preview),
         { ok: 'Fix overlaps', cancel: 'Cancel' },
         'amber'
     );
@@ -167,8 +223,14 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
         return;
     }
 
-    const result = await truncateActivityOverlapsForDate(date);
+    const result = await truncateActivityOverlapsForDate(date, preview);
     if (!result?.success) {
+        refreshUI();
+        await showAlert(
+            result?.reason ||
+                'The overlap changes could not be saved. Review the warnings and try again.',
+            'amber'
+        );
         return;
     }
 

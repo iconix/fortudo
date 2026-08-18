@@ -271,6 +271,8 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
         .sort((left, right) => new Date(left.startDateTime) - new Date(right.startDateTime));
 
     const truncatedActivities = [];
+    const changes = [];
+    const unresolvedOverlaps = [];
 
     for (let index = 0; index < selectedActivities.length - 1; index += 1) {
         const activity = selectedActivities[index];
@@ -283,24 +285,53 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
             !isFinite(startDate.getTime()) ||
             !isFinite(endDate.getTime()) ||
             !isFinite(nextStartDate.getTime()) ||
-            endDate <= nextStartDate ||
-            nextStartDate <= startDate
+            endDate <= nextStartDate
         ) {
             continue;
         }
 
-        truncatedActivities.push(
-            normalizeActivity({
-                ...activity,
-                endDateTime: nextStartDate.toISOString(),
-                duration: calculateDurationMinutes(activity.startDateTime, nextStartDate)
-            })
-        );
+        if (nextStartDate <= startDate) {
+            unresolvedOverlaps.push({
+                activityId: activity.id,
+                description: activity.description || 'Untitled activity',
+                overlappingActivityId: nextActivity.id,
+                overlappingActivityDescription: nextActivity.description || 'Untitled activity',
+                reason: 'same-start'
+            });
+            continue;
+        }
+
+        const truncatedActivity = normalizeActivity({
+            ...activity,
+            endDateTime: nextStartDate.toISOString(),
+            duration: calculateDurationMinutes(activity.startDateTime, nextStartDate)
+        });
+        truncatedActivities.push(truncatedActivity);
+        changes.push({
+            activityId: activity.id,
+            description: activity.description || 'Untitled activity',
+            previousEndDateTime: activity.endDateTime,
+            nextEndDateTime: truncatedActivity.endDateTime,
+            previousDuration: activity.duration,
+            nextDuration: truncatedActivity.duration,
+            overlappingActivityId: nextActivity.id,
+            overlappingActivityDescription: nextActivity.description || 'Untitled activity'
+        });
     }
 
     return {
         success: true,
-        truncatedActivities
+        truncatedActivities,
+        changes,
+        unresolvedOverlaps,
+        previewToken: JSON.stringify(
+            selectedActivities.map((activity) => [
+                activity.id,
+                activity.startDateTime,
+                activity.endDateTime,
+                activity.duration
+            ])
+        )
     };
 }
 
@@ -311,6 +342,10 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
  *   success: boolean,
  *   truncatedCount?: number,
  *   truncatedActivityIds?: Array<string>,
+ *   changes?: Array<Object>,
+ *   unresolvedOverlapCount?: number,
+ *   unresolvedOverlaps?: Array<Object>,
+ *   previewToken?: string,
  *   reason?: string
  * }}
  */
@@ -323,13 +358,18 @@ export function getActivityOverlapTruncationPreviewForDate(selectedDate) {
     return {
         success: true,
         truncatedCount: result.truncatedActivities.length,
-        truncatedActivityIds: result.truncatedActivities.map((activity) => activity.id)
+        truncatedActivityIds: result.truncatedActivities.map((activity) => activity.id),
+        changes: result.changes,
+        unresolvedOverlapCount: result.unresolvedOverlaps.length,
+        unresolvedOverlaps: result.unresolvedOverlaps,
+        previewToken: result.previewToken
     };
 }
 
 /**
  * Truncates overlapping saved activities for a selected local day.
  * @param {string} selectedDate - Local date in YYYY-MM-DD format.
+ * @param {{previewToken?: string}|null} expectedPreview - Preview approved by the user.
  * @returns {Promise<{
  *   success: boolean,
  *   truncatedCount?: number,
@@ -337,31 +377,61 @@ export function getActivityOverlapTruncationPreviewForDate(selectedDate) {
  *   reason?: string
  * }>}
  */
-export async function truncateActivityOverlapsForDate(selectedDate) {
+export async function truncateActivityOverlapsForDate(selectedDate, expectedPreview = null) {
     const result = buildActivityOverlapTruncationsForDate(selectedDate);
     if (!result.success) {
         return result;
     }
 
+    if (!expectedPreview?.previewToken) {
+        return {
+            success: false,
+            code: 'preview-required',
+            reason: 'Review the proposed overlap changes before applying them.'
+        };
+    }
+
+    if (expectedPreview.previewToken !== result.previewToken) {
+        return {
+            success: false,
+            code: 'preview-stale',
+            reason: 'Activity data changed after the preview. Review the updated changes before fixing overlaps.'
+        };
+    }
+
     const { truncatedActivities } = result;
+    const truncatedActivityIds = [];
 
     for (const activity of truncatedActivities) {
         Object.assign(activity, getCategoryReferenceFields(activity));
-        await putActivity(activity);
+        try {
+            await putActivity(activity);
+        } catch {
+            const truncatedCount = truncatedActivityIds.length;
+            return {
+                success: false,
+                code: truncatedCount > 0 ? 'partial-failure' : 'write-failure',
+                reason:
+                    truncatedCount > 0
+                        ? `Fixed ${truncatedCount} overlap ${truncatedCount === 1 ? 'change' : 'changes'}, but another activity could not be saved. Review the remaining warnings before retrying.`
+                        : 'No overlap changes were saved. Review the activity data and try again.',
+                truncatedCount,
+                truncatedActivityIds
+            };
+        }
+
+        activities = activities.map((existingActivity) =>
+            existingActivity.id === activity.id ? activity : existingActivity
+        );
+        truncatedActivityIds.push(activity.id);
     }
 
-    if (truncatedActivities.length > 0) {
-        const truncatedById = new Map(
-            truncatedActivities.map((activity) => [activity.id, activity])
-        );
-        activities = activities.map((activity) => truncatedById.get(activity.id) || activity);
-        sortByStartDateTime(activities);
-    }
+    sortByStartDateTime(activities);
 
     return {
         success: true,
-        truncatedCount: truncatedActivities.length,
-        truncatedActivityIds: truncatedActivities.map((activity) => activity.id)
+        truncatedCount: truncatedActivityIds.length,
+        truncatedActivityIds
     };
 }
 

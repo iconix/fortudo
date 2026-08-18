@@ -287,7 +287,7 @@ function renderActivityLogActions(
     actions.className = 'mb-3 flex justify-end px-2';
     actions.innerHTML = `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(model.date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
         <i class="fa-solid fa-scissors" aria-hidden="true"></i>
-        <span>Fix overlaps</span>
+        <span>Review overlap fixes</span>
     </button>`;
 
     const listContainer = document.getElementById('insights-activity-list');

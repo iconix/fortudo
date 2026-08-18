@@ -580,7 +580,7 @@ describe('activity insights renderer', () => {
         const action = document.querySelector('[data-truncate-activity-overlaps]');
         expect(action).not.toBeNull();
         expect(action.dataset.truncateActivityOverlapsDate).toBe('2026-05-07');
-        expect(action.textContent).toContain('Fix overlaps');
+        expect(action.textContent).toContain('Review overlap fixes');
 
         renderWith({
             selectedDate: '2026-05-07',
