@@ -12,6 +12,7 @@ import {
     deleteGroup,
     addCategory,
     updateCategory,
+    cycleLinkedCategoryColor,
     archiveCategory,
     restoreCategory,
     archiveAndCreateCategoryReplacement,
@@ -24,16 +25,20 @@ let isAddGroupFormVisible = false;
 let isAddCategoryFormVisible = false;
 let editingGroupKey = null;
 let editingCategoryKey = null;
+const SHOW_ARCHIVED_TAXONOMY_KEY = 'fortudo-show-archived-taxonomy';
+let showArchivedTaxonomy = readShowArchivedTaxonomyPreference();
 
 export function resetTaxonomySettingsViewState() {
     isAddGroupFormVisible = false;
     isAddCategoryFormVisible = false;
     editingGroupKey = null;
     editingCategoryKey = null;
+    showArchivedTaxonomy = readShowArchivedTaxonomyPreference();
 }
 
 export function renderTaxonomyManagementContent() {
     return `
+        ${renderArchivedVisibilityControl()}
         <section data-taxonomy-section="groups" class="space-y-3 text-left">
             <div class="flex items-start justify-between gap-3 text-left">
                 <div class="min-w-0 text-left">
@@ -69,6 +74,7 @@ export function renderTaxonomyManagementContent() {
 }
 
 export function bindTaxonomySettingsEvents(options = {}) {
+    bindArchivedVisibilityControl(options);
     bindGroupEvents(options);
     bindCategoryEvents(options);
 }
@@ -104,11 +110,14 @@ export function refreshTaskCategoryDropdownUI() {
 
 function renderGroupsList() {
     const { groups } = getTaxonomySnapshot();
-    if (groups.length === 0) {
-        return '<p class="text-sm text-slate-400">No groups yet.</p>';
+    const visibleGroups = groups.filter(
+        (group) => showArchivedTaxonomy || group.status === 'active'
+    );
+    if (visibleGroups.length === 0) {
+        return `<p class="text-sm text-slate-400">${groups.length ? 'No active groups.' : 'No groups yet.'}</p>`;
     }
 
-    return groups
+    return visibleGroups
         .map((group) => {
             if (editingGroupKey === group.key && group.status === 'active') {
                 return renderGroupEditor(group);
@@ -221,13 +230,19 @@ function renderAddGroupForm() {
 
 function renderCategoriesList() {
     const { groups, categories } = getTaxonomySnapshot();
-    if (categories.length === 0) {
-        return '<p class="text-sm text-slate-400">No child categories yet.</p>';
+    const visibleGroups = groups.filter(
+        (group) => showArchivedTaxonomy || group.status === 'active'
+    );
+    const visibleCategories = categories.filter(
+        (category) => showArchivedTaxonomy || category.status === 'active'
+    );
+    if (visibleCategories.length === 0) {
+        return `<p class="text-sm text-slate-400">${categories.length ? 'No active categories.' : 'No child categories yet.'}</p>`;
     }
 
-    return groups
+    return visibleGroups
         .map((group) => {
-            const childCategories = categories.filter(
+            const childCategories = visibleCategories.filter(
                 (category) => category.groupKey === group.key
             );
             if (childCategories.length === 0) {
@@ -289,7 +304,14 @@ function renderCategoryRow(category, group) {
             <div class="flex shrink-0 items-center gap-1">
                 ${
                     category.status === 'active'
-                        ? `<button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Edit ${escapeAttribute(category.label)} category">
+                        ? `${
+                              category.isLinkedToGroupFamily
+                                  ? `<button type="button" class="btn-regenerate-category-color text-slate-400 hover:text-violet-300 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Try another ${escapeAttribute(colorFamilyLabel)} tone for ${escapeAttribute(category.label)} category" title="Try another ${escapeAttribute(colorFamilyLabel)} tone">
+                                    <i class="fa-solid fa-shuffle"></i>
+                                </button>`
+                                  : ''
+                          }
+                        <button type="button" class="btn-edit-category text-slate-400 hover:text-slate-200 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Edit ${escapeAttribute(category.label)} category">
                             <i class="fa-solid fa-pen"></i>
                         </button>
                         <button type="button" class="btn-archive-category text-slate-400 hover:text-amber-300 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Archive ${escapeAttribute(category.label)} category">
@@ -421,6 +443,36 @@ function renderStatusBadge(record) {
         return '';
     }
     return '<span class="shrink-0 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">Archived</span>';
+}
+
+function renderArchivedVisibilityControl() {
+    const { groups, categories } = getTaxonomySnapshot();
+    const hasArchivedTaxonomy = [...groups, ...categories].some(
+        (record) => record.status === 'archived'
+    );
+    if (!hasArchivedTaxonomy) {
+        return '';
+    }
+
+    return `
+        <label class="flex items-center gap-2 text-sm text-slate-300 text-left">
+            <input id="show-archived-taxonomy" type="checkbox" ${showArchivedTaxonomy ? 'checked' : ''} class="accent-violet-500" />
+            Show archived
+        </label>
+    `;
+}
+
+function bindArchivedVisibilityControl(options) {
+    const toggle = document.getElementById('show-archived-taxonomy');
+    if (!toggle) {
+        return;
+    }
+
+    toggle.addEventListener('change', () => {
+        showArchivedTaxonomy = toggle.checked;
+        writeShowArchivedTaxonomyPreference(showArchivedTaxonomy);
+        refreshTaxonomySettingsSection(options);
+    });
 }
 
 function bindGroupEvents(options) {
@@ -628,6 +680,23 @@ function bindCategoryEvents(options) {
             editingCategoryKey = button.dataset.key || null;
             isAddCategoryFormVisible = false;
             refreshTaxonomySettingsSection(options);
+        });
+    });
+
+    document.querySelectorAll('.btn-regenerate-category-color').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const key = button.dataset.key;
+            if (!key) {
+                return;
+            }
+
+            try {
+                await applyAndRefresh(() => cycleLinkedCategoryColor(key), options);
+            } catch (error) {
+                showToast(error.message || 'Failed to regenerate category color', {
+                    theme: 'rose'
+                });
+            }
         });
     });
 
@@ -858,6 +927,22 @@ function restoreFormDraftState(formSelector, draftState, shouldRestore, useQuery
 
 function titleCase(value) {
     return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function readShowArchivedTaxonomyPreference() {
+    try {
+        return globalThis.localStorage?.getItem(SHOW_ARCHIVED_TAXONOMY_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeShowArchivedTaxonomyPreference(value) {
+    try {
+        globalThis.localStorage?.setItem(SHOW_ARCHIVED_TAXONOMY_KEY, String(value));
+    } catch {
+        // The view preference is optional when storage is unavailable.
+    }
 }
 
 function escapeHtml(value) {

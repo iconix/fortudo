@@ -139,9 +139,9 @@ async function saveEditedCategoryColor(key, color) {
 
 beforeEach(() => {
     setupSettingsDOM();
-    resetTaxonomySettingsViewState();
     localStorage.clear();
     sessionStorage.clear();
+    resetTaxonomySettingsViewState();
     jest.clearAllMocks();
 });
 
@@ -587,6 +587,55 @@ describe('settings-renderer', () => {
             expect(
                 document.querySelector('[data-category-key="work/deep"] .btn-edit-category')
             ).not.toBeNull();
+        });
+
+        test('show archived preference hides archived taxonomy across reopen', async () => {
+            await renderEnabledSettings();
+            await clickAndWait(
+                document.querySelector('.btn-archive-category[data-key="work/deep"]')
+            );
+            await waitForCondition(() => getCategoryByKey('work/deep')?.status === 'archived');
+            await waitForCondition(() => document.getElementById('show-archived-taxonomy'));
+
+            const toggle = document.getElementById('show-archived-taxonomy');
+            expect(toggle).not.toBeNull();
+            expect(toggle.checked).toBe(true);
+            toggle.checked = false;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(document.querySelector('[data-category-key="work/deep"]')).toBeNull();
+            expect(localStorage.getItem('fortudo-show-archived-taxonomy')).toBe('false');
+
+            resetTaxonomySettingsViewState();
+            renderSettingsContent();
+            expect(document.getElementById('show-archived-taxonomy').checked).toBe(false);
+            expect(document.querySelector('[data-category-key="work/deep"]')).toBeNull();
+
+            const persistedToggle = document.getElementById('show-archived-taxonomy');
+            persistedToggle.checked = true;
+            persistedToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(document.querySelector('[data-category-key="work/deep"]')).not.toBeNull();
+        });
+
+        test('linked categories offer one-click tone regeneration and stay linked', async () => {
+            const onTaxonomyChanged = jest.fn();
+            await renderEnabledSettings({ onTaxonomyChanged });
+            const previousColor = getCategoryByKey('work/deep').color;
+
+            await clickAndWait(
+                document.querySelector('.btn-regenerate-category-color[data-key="work/deep"]')
+            );
+            await waitForCondition(() => getCategoryByKey('work/deep').color !== previousColor);
+            await waitForCondition(() => onTaxonomyChanged.mock.calls.length > 0);
+
+            const updated = getCategoryByKey('work/deep');
+            expect(updated.isLinkedToGroupFamily).toBe(true);
+            expect(COLOR_FAMILIES.blue).toContain(updated.color);
+            expect(
+                document.querySelector('[data-category-key="work/deep"] .category-dot').style
+                    .backgroundColor
+            ).not.toBe('');
+            expect(onTaxonomyChanged).toHaveBeenCalled();
         });
 
         test('keeps group cards compact while naming color dots accessibly', async () => {

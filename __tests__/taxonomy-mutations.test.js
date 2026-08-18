@@ -40,7 +40,8 @@ import {
     deleteCategory,
     archiveCategory,
     restoreCategory,
-    archiveAndCreateCategoryReplacement
+    archiveAndCreateCategoryReplacement,
+    cycleLinkedCategoryColor
 } from '../public/js/taxonomy/taxonomy-mutations.js';
 
 let testDbCounter = 0;
@@ -188,6 +189,38 @@ describe('taxonomy-mutations', () => {
 
         expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
         expect(COLOR_FAMILIES.blue).toContain(getCategoryByKey('work/deep').color);
+    });
+
+    test('cycleLinkedCategoryColor changes tone while preserving the family link', async () => {
+        await initAndLoadTaxonomy();
+        const previousColor = getCategoryByKey('work/deep').color;
+
+        const updated = await cycleLinkedCategoryColor('work/deep');
+
+        expect(updated.color).not.toBe(previousColor);
+        expect(COLOR_FAMILIES.blue).toContain(updated.color);
+        expect(updated.isLinkedToGroupFamily).toBe(true);
+        expect(getCategoryByKey('work/deep')).toMatchObject(updated);
+    });
+
+    test('cycleLinkedCategoryColor rejects custom and missing categories', async () => {
+        await initAndLoadTaxonomy();
+        await updateCategory('work/deep', { color: '#22c55e' });
+
+        await expect(cycleLinkedCategoryColor('work/deep')).rejects.toThrow(
+            'Only linked category colors can be regenerated'
+        );
+        await expect(cycleLinkedCategoryColor('missing/category')).rejects.toThrow('not found');
+    });
+
+    test('renaming a group preserves regenerated linked category colors', async () => {
+        await initAndLoadTaxonomy();
+        const regenerated = await cycleLinkedCategoryColor('work/deep');
+
+        await updateGroup('work', { label: 'Work Updated', colorFamily: 'blue' });
+
+        expect(getCategoryByKey('work/deep').color).toBe(regenerated.color);
+        expect(getCategoryByKey('work/deep').isLinkedToGroupFamily).toBe(true);
     });
 
     test('addCategory validates inputs and can create compatibility groups', async () => {
