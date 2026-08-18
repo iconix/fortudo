@@ -131,6 +131,22 @@ describe('Room Renderer', () => {
     });
 
     describe('updateSyncStatusUI', () => {
+        test('shows that startup sync checks are in progress', () => {
+            updateSyncStatusUI('checking');
+
+            expect(document.getElementById('sync-status-text').textContent).toBe('Connecting');
+            expect(document.getElementById('sync-status-icon').className).toContain('fa-spin');
+        });
+
+        test('shows a retryable preparation failure', () => {
+            updateSyncStatusUI('preparation-error');
+
+            expect(document.getElementById('sync-status-text').textContent).toBe('Startup error');
+            expect(document.getElementById('sync-status-icon').className).toContain(
+                'fa-triangle-exclamation'
+            );
+        });
+
         test('updates icon and text for syncing status', () => {
             updateSyncStatusUI('syncing');
             const icon = document.getElementById('sync-status-icon');

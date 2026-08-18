@@ -117,13 +117,19 @@ function mergeExtensions(extensions, canonical) {
     return { ...cloneJson(extensions || {}), ...canonical };
 }
 
-export async function loadTaxonomy() {
+/**
+ * Load taxonomy state, optionally projecting migrations without persisting them.
+ * @param {{readOnly?: boolean, allowDuringPreparation?: boolean}} [options]
+ */
+export async function loadTaxonomy({ readOnly = false, allowDuringPreparation = false } = {}) {
     resetExtensionState();
     const config = await loadConfig(TAXONOMY_CONFIG_ID);
 
     if (!config) {
         seedDefaultTaxonomy();
-        await persistTaxonomyState();
+        if (!readOnly) {
+            await persistTaxonomyState({ allowDuringPreparation });
+        }
         return;
     }
 
@@ -137,14 +143,18 @@ export async function loadTaxonomy() {
 
     if (!Array.isArray(config.categories) || config.categories.length === 0) {
         seedDefaultTaxonomy();
-        await persistTaxonomyState();
+        if (!readOnly) {
+            await persistTaxonomyState({ allowDuringPreparation });
+        }
         return;
     }
 
     const migratedTaxonomy = migrateLegacyTaxonomy(config.categories);
     groups = normalizeGroups(migratedTaxonomy.groups, false);
     categories = normalizeCategories(migratedTaxonomy.categories, groups, false);
-    await persistTaxonomyState();
+    if (!readOnly) {
+        await persistTaxonomyState({ allowDuringPreparation });
+    }
 }
 
 export function getTaxonomyState() {
@@ -164,7 +174,7 @@ export function replaceTaxonomyState(nextState) {
     categories = normalizeCategories(nextState?.categories, groups, true);
 }
 
-export async function persistTaxonomyState() {
+export async function persistTaxonomyState(storageOptions = {}) {
     const currentGroupIds = new Set(groups.map((group) => group.id));
     const currentCategoryIds = new Set(categories.map((category) => category.id));
     groupExtensions = new Map([...groupExtensions].filter(([id]) => currentGroupIds.has(id)));
@@ -172,19 +182,22 @@ export async function persistTaxonomyState() {
         [...categoryExtensions].filter(([id]) => currentCategoryIds.has(id))
     );
 
-    await putConfig(
-        mergeExtensions(rootExtensions, {
-            id: TAXONOMY_CONFIG_ID,
-            schemaVersion: TAXONOMY_SCHEMA_VERSION,
-            identityVersion: TAXONOMY_IDENTITY_VERSION,
-            groups: groups.map((group) =>
-                mergeExtensions(groupExtensions.get(group.id), cloneGroup(group))
-            ),
-            categories: categories.map((category) =>
-                mergeExtensions(categoryExtensions.get(category.id), cloneCategory(category))
-            )
-        })
-    );
+    const taxonomyConfig = mergeExtensions(rootExtensions, {
+        id: TAXONOMY_CONFIG_ID,
+        schemaVersion: TAXONOMY_SCHEMA_VERSION,
+        identityVersion: TAXONOMY_IDENTITY_VERSION,
+        groups: groups.map((group) =>
+            mergeExtensions(groupExtensions.get(group.id), cloneGroup(group))
+        ),
+        categories: categories.map((category) =>
+            mergeExtensions(categoryExtensions.get(category.id), cloneCategory(category))
+        )
+    });
+    if (storageOptions.allowDuringPreparation) {
+        await putConfig(taxonomyConfig, storageOptions);
+    } else {
+        await putConfig(taxonomyConfig);
+    }
 }
 
 export async function isTaxonomyKeyReferencedByTasks(key) {

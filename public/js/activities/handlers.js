@@ -6,8 +6,15 @@ import {
     editActivity,
     removeActivity,
     startTimerReplacingCurrent,
-    stopTimer
+    startTimerReplacingCurrentAt,
+    stopTimerAt,
+    getRunningActivity
 } from './manager.js';
+import {
+    runTimerTransitionWhenReady,
+    runTimerStopWhenReady,
+    waitForStoragePreparation
+} from '../storage.js';
 import { consumeUnscheduledTask } from '../tasks/manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
@@ -120,9 +127,44 @@ export async function handleDeleteActivity(activityId) {
 }
 
 export async function handleStartTimer(timerData) {
+    const requestedTransitionDateTime = new Date().toISOString();
+    const requestedTimer = getRunningActivity();
+    const requestedTimerIdentity = requestedTimer
+        ? `${requestedTimer.id || ''}|${requestedTimer.startDateTime || ''}`
+        : null;
+    let queuedDuringPreparation = false;
     try {
-        const result = await startTimerReplacingCurrent(timerData);
+        const result = await runTimerTransitionWhenReady(async (storageOptions) => {
+            queuedDuringPreparation = storageOptions.allowDuringPreparation;
+            const currentTimer = getRunningActivity();
+            const currentTimerIdentity = currentTimer
+                ? `${currentTimer.id || ''}|${currentTimer.startDateTime || ''}`
+                : null;
+            const previouslyRunningTimerWasStopped =
+                requestedTimerIdentity !== null && currentTimerIdentity === null;
+            if (
+                currentTimerIdentity !== requestedTimerIdentity &&
+                !previouslyRunningTimerWasStopped
+            ) {
+                return { success: false, timerChanged: true };
+            }
+            return storageOptions.allowDuringPreparation
+                ? startTimerReplacingCurrentAt(
+                      timerData,
+                      requestedTransitionDateTime,
+                      storageOptions
+                  )
+                : startTimerReplacingCurrent(timerData);
+        });
+        if (result?.timerChanged) {
+            const reason = 'The running timer changed while syncing.';
+            showAlert(`${reason} Review the current timer before starting the next one.`, 'sky');
+            return { success: false, reason };
+        }
         if (result?.stoppedActivity) {
+            if (queuedDuringPreparation) {
+                await waitForStoragePreparation();
+            }
             await consumeSourceTaskIfPresent(result.stoppedActivity);
             onActivityCreated({ activity: result.stoppedActivity });
         }
@@ -145,12 +187,37 @@ export async function handleStartTimer(timerData) {
 }
 
 export async function handleStopTimer() {
+    const requestedEndDateTime = new Date().toISOString();
+    const requestedTimer = getRunningActivity();
+    const requestedTimerIdentity = requestedTimer
+        ? `${requestedTimer.id || ''}|${requestedTimer.startDateTime || ''}`
+        : null;
     let result;
     try {
-        result = await stopTimer();
+        result = await runTimerStopWhenReady(async (storageOptions) => {
+            const currentTimer = getRunningActivity();
+            if (!currentTimer && requestedTimerIdentity) {
+                return { success: true, activity: null, alreadyStopped: true };
+            }
+            const currentTimerIdentity = currentTimer
+                ? `${currentTimer.id || ''}|${currentTimer.startDateTime || ''}`
+                : null;
+            if (currentTimerIdentity !== requestedTimerIdentity) {
+                return { success: false, timerChanged: true };
+            }
+            return storageOptions.allowDuringPreparation
+                ? stopTimerAt(requestedEndDateTime, storageOptions)
+                : stopTimerAt(requestedEndDateTime);
+        });
     } catch {
         showAlert('Could not stop timer.', 'sky');
         return { success: false, reason: 'Could not stop timer.' };
+    }
+
+    if (result?.timerChanged) {
+        const reason = 'The running timer changed while syncing.';
+        showAlert(`${reason} Review the current timer before stopping it.`, 'sky');
+        return { success: false, reason };
     }
 
     if (!result?.success) {
@@ -162,6 +229,7 @@ export async function handleStopTimer() {
     }
 
     if (result.activity) {
+        await waitForStoragePreparation();
         await consumeSourceTaskIfPresent(result.activity);
         onActivityCreated({ activity: result.activity });
     }

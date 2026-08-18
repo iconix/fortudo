@@ -16,12 +16,18 @@ window.PouchDB = PouchDB;
 jest.mock('../public/js/sync-manager.js', () => ({
     initSync: jest.fn(),
     debouncedSync: jest.fn(),
+    triggerSync: jest.fn(() => Promise.resolve()),
+    waitForSyncPreflight: jest.fn(() => Promise.resolve()),
+    isPersistenceAllowed: jest.fn(() => true),
+    reportStoragePreparationError: jest.fn(),
+    resumeStoragePreparation: jest.fn(),
     waitForIdleSync: jest.fn(() => Promise.resolve()),
     teardownSync: jest.fn()
 }));
 
 import {
     initStorage,
+    prepareStorage,
     putTask,
     putTasks,
     TaskBatchWriteError,
@@ -35,10 +41,18 @@ import {
     loadConfigWithConflicts,
     resolveConfigConflicts,
     getDb,
+    waitForStoragePreparation,
+    runTimerTransitionWhenReady,
+    runTimerStopWhenReady,
+    waitForQueuedTimerStops,
     destroyStorage
 } from '../public/js/storage.js';
 import {
     debouncedSync as mockDebouncedSync,
+    triggerSync as mockTriggerSync,
+    waitForSyncPreflight as mockWaitForSyncPreflight,
+    reportStoragePreparationError as mockReportStoragePreparationError,
+    resumeStoragePreparation as mockResumeStoragePreparation,
     waitForIdleSync as mockWaitForIdleSync
 } from '../public/js/sync-manager.js';
 
@@ -50,6 +64,11 @@ function uniqueRoomCode() {
 
 beforeEach(() => {
     mockDebouncedSync.mockClear();
+    mockTriggerSync.mockClear();
+    mockWaitForSyncPreflight.mockReset();
+    mockWaitForSyncPreflight.mockResolvedValue(undefined);
+    mockReportStoragePreparationError.mockClear();
+    mockResumeStoragePreparation.mockClear();
 });
 
 afterEach(async () => {
@@ -92,6 +111,202 @@ describe('Storage - PouchDB', () => {
             await reinitPromise;
 
             expect(closeSpy).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('prepareStorage', () => {
+        test('can expose local storage before remote preparation completes', async () => {
+            let releasePreflight;
+            mockWaitForSyncPreflight.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    releasePreflight = resolve;
+                })
+            );
+
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true }
+            );
+
+            expect(preparation).toEqual({
+                complete: expect.any(Function),
+                markStopReady: expect.any(Function),
+                markFailed: expect.any(Function),
+                markHydrated: expect.any(Function)
+            });
+            expect(mockTriggerSync).not.toHaveBeenCalled();
+            await expect(loadTasks()).resolves.toEqual([]);
+            await expect(
+                putTask({ id: 'blocked-before-hydration', type: 'unscheduled' })
+            ).rejects.toThrow('Storage preparation pending');
+            await getDb().put({
+                _id: 'legacy-unscheduled-before-hydration',
+                type: 'unscheduled',
+                description: 'Legacy task'
+            });
+
+            const completion = preparation.complete();
+            expect(preparation.complete()).toBe(completion);
+            await Promise.resolve();
+            expect(mockTriggerSync).not.toHaveBeenCalled();
+
+            releasePreflight();
+            await completion;
+            await preparation.complete();
+
+            expect(mockTriggerSync).toHaveBeenCalledTimes(1);
+            expect(mockDebouncedSync).not.toHaveBeenCalled();
+            const stopWrite = runTimerStopWhenReady(({ allowDuringPreparation }) =>
+                putActivity(
+                    {
+                        id: 'queued-stop',
+                        description: 'Queued stop',
+                        startDateTime: '2026-08-17T12:00:00.000Z',
+                        endDateTime: '2026-08-17T13:00:00.000Z',
+                        duration: 60
+                    },
+                    { allowDuringPreparation }
+                )
+            );
+            preparation.markStopReady();
+            await waitForQueuedTimerStops();
+            await stopWrite;
+            await expect(loadActivities()).resolves.toEqual([
+                expect.objectContaining({ id: 'queued-stop' })
+            ]);
+            expect(mockDebouncedSync).not.toHaveBeenCalled();
+            await expect(
+                putTask({ id: 'still-blocked-before-normalization', type: 'unscheduled' })
+            ).rejects.toThrow('Storage preparation pending');
+
+            let readinessSettled = false;
+            const readiness = waitForStoragePreparation().then(() => {
+                readinessSettled = true;
+            });
+            await Promise.resolve();
+            expect(readinessSettled).toBe(false);
+
+            preparation.markHydrated();
+            await readiness;
+            expect(mockDebouncedSync).toHaveBeenCalledTimes(1);
+            await expect(
+                putTask({ id: 'allowed-after-hydration', type: 'unscheduled' })
+            ).resolves.toBeUndefined();
+        });
+
+        test('keeps a room open until its deferred preparation settles', async () => {
+            let releasePreflight;
+            mockWaitForSyncPreflight.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    releasePreflight = resolve;
+                })
+            );
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true }
+            );
+            const firstDb = getDb();
+            const closeSpy = jest.spyOn(firstDb, 'close');
+            preparation.complete();
+
+            const switchPromise = initStorage(uniqueRoomCode(), { adapter: 'memory' });
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(closeSpy).not.toHaveBeenCalled();
+
+            releasePreflight();
+            await switchPromise;
+
+            expect(closeSpy).toHaveBeenCalledTimes(1);
+            expect(mockTriggerSync).toHaveBeenCalledTimes(1);
+        });
+
+        test('reports preparation failures and retries without syncing past the failure', async () => {
+            const failure = new Error('migration preparation failed');
+            mockWaitForSyncPreflight.mockRejectedValueOnce(failure);
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true }
+            );
+
+            await expect(preparation.complete()).rejects.toBe(failure);
+            expect(mockReportStoragePreparationError).toHaveBeenCalledTimes(1);
+            expect(mockTriggerSync).not.toHaveBeenCalled();
+            await expect(waitForStoragePreparation()).rejects.toBe(failure);
+
+            mockWaitForSyncPreflight.mockResolvedValue(undefined);
+            await preparation.complete();
+
+            expect(mockResumeStoragePreparation).toHaveBeenCalledTimes(1);
+            expect(mockTriggerSync).toHaveBeenCalledTimes(1);
+        });
+
+        test('reopens preparation after a post-hydration normalization failure', async () => {
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true }
+            );
+            await preparation.complete();
+            preparation.markStopReady();
+            preparation.markFailed();
+
+            expect(mockReportStoragePreparationError).toHaveBeenCalledTimes(1);
+            await expect(
+                putTask({ id: 'blocked-after-normalization-failure', type: 'unscheduled' })
+            ).rejects.toThrow();
+
+            await preparation.complete();
+
+            expect(mockResumeStoragePreparation).toHaveBeenCalledTimes(1);
+            expect(mockTriggerSync).toHaveBeenCalledTimes(2);
+        });
+
+        test('runs queued timer intents serially in click order', async () => {
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true }
+            );
+            await preparation.complete();
+            const events = [];
+            let releaseStop;
+            let announceStopStarted;
+            const stopStarted = new Promise((resolve) => {
+                announceStopStarted = resolve;
+            });
+            const stopIntent = runTimerStopWhenReady(
+                () =>
+                    new Promise((resolve) => {
+                        events.push('stop-start');
+                        announceStopStarted();
+                        releaseStop = () => {
+                            events.push('stop-end');
+                            resolve();
+                        };
+                    })
+            );
+            const transitionIntent = runTimerTransitionWhenReady(async () => {
+                events.push('transition');
+            });
+
+            preparation.markStopReady();
+            await stopStarted;
+            expect(events).toEqual(['stop-start']);
+
+            releaseStop();
+            await Promise.all([stopIntent, transitionIntent]);
+
+            expect(events).toEqual(['stop-start', 'stop-end', 'transition']);
         });
     });
 

@@ -58,7 +58,12 @@ import {
 import { maybeShowOnboarding } from './activities/onboarding.js';
 import { renderInsightsView } from './activities/insights-renderer.js';
 import { createRoomSessionLifecycle } from './app-lifecycle.js';
-import { prepareStorage, loadTasks } from './storage.js';
+import {
+    prepareStorage,
+    loadTasks,
+    isStoragePreparationPending,
+    waitForQueuedTimerStops
+} from './storage.js';
 import { createContractSafetyActions } from './contract-safety-ui.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
 import { isActivitiesEnabled, loadSettings } from './settings-manager.js';
@@ -87,17 +92,20 @@ import {
     onSyncDataChange,
     triggerSync,
     waitForIdleSync,
-    getSyncStatus
+    getSyncStatus,
+    isPersistenceAllowed
 } from './sync-manager.js';
 import { COUCHDB_URL } from './config.js';
 import { WHATS_NEW_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 import { registerServiceWorker } from './sw-register.js';
+import { createRoomBootQueue } from './room-boot-queue.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
 
-/** @type {{ refreshFromStorage: () => Promise<void>, stopStaleRunningTimerIfNeeded: () => Promise<Object|null>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => void } | null} */
+/** @type {{ refreshFromStorage: () => Promise<void>, stopStaleRunningTimerIfNeeded: () => Promise<Object|null>, start: ({ signal }: { signal: AbortSignal }) => void, stop: () => Promise<void> } | null} */
 let roomSessionLifecycle = null;
+const roomBootQueue = createRoomBootQueue();
 
 /** @type {() => void} */
 let refreshTaskDisplays = () => {};
@@ -120,22 +128,29 @@ function getStorageRoomCode(roomCode) {
     return isPreviewHost ? `preview-${roomCode}` : roomCode;
 }
 
-async function loadTasksIntoState() {
+async function loadTasksIntoState({ readOnly = false, allowDuringPreparation = false } = {}) {
     await waitForUnscheduledMoveSettlement();
     const loadedTasks = await loadTasks();
     updateTaskStateFromStorage(loadedTasks);
-    await refreshUnscheduledSequenceState();
+    await refreshUnscheduledSequenceState({ readOnly, allowDuringPreparation });
 }
 
-async function loadAppState() {
-    await loadSettings();
+async function loadAppState({ readOnly = false, allowDuringPreparation = false } = {}) {
+    await loadSettings({ readOnly, allowDuringPreparation });
     syncActivitiesUI(isActivitiesEnabled());
-    await loadTaxonomy();
-    await loadTasksIntoState();
+    await loadTaxonomy({ readOnly, allowDuringPreparation });
+    await loadTasksIntoState({ readOnly, allowDuringPreparation });
     if (isActivitiesEnabled()) {
         await loadActivitiesState();
         await loadRunningActivity();
     }
+}
+
+function triggerPreparedSync(options) {
+    if (isStoragePreparationPending?.()) {
+        return Promise.resolve();
+    }
+    return options === undefined ? triggerSync() : triggerSync(options);
 }
 
 const { handleRecoveryRequired, handleContractUpdateRequired } = createContractSafetyActions();
@@ -144,14 +159,14 @@ const { handleRecoveryRequired, handleContractUpdateRequired } = createContractS
  * Initialize storage and boot the main app UI.
  * @param {string} roomCode
  */
-async function initAndBootApp(roomCode) {
+async function bootRoom(roomCode) {
     destroyUnscheduledList();
-    if (roomSessionLifecycle) {
-        roomSessionLifecycle.stop();
-        roomSessionLifecycle = null;
-    }
     if (appLifecycleAbortController) {
         appLifecycleAbortController.abort();
+    }
+    if (roomSessionLifecycle) {
+        await roomSessionLifecycle.stop();
+        roomSessionLifecycle = null;
     }
     await waitForUnscheduledMoveSettlement();
     hydrateUnscheduledSequenceState(null);
@@ -164,11 +179,18 @@ async function initAndBootApp(roomCode) {
     const couchDbUrl = COUCHDB_URL || null;
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
-    await prepareStorage(storageRoomCode, {}, remoteUrl);
+    const deferredStoragePreparation = remoteUrl
+        ? await prepareStorage(storageRoomCode, {}, remoteUrl, { deferCompletion: true })
+        : null;
+    if (!remoteUrl) {
+        await prepareStorage(storageRoomCode, {}, remoteUrl);
+    }
+    const initialStorageCompletion = deferredStoragePreparation?.complete() || null;
+    initialStorageCompletion?.catch(() => {});
 
     // Settings must reload with every state rebuild so a fresh client observes
     // remotely pulled feature flags before deciding which state domains to load.
-    await loadAppState();
+    await loadAppState({ readOnly: Boolean(deferredStoragePreparation) });
     void (async () => {
         const activitiesEnabled = isActivitiesEnabled();
         await maybeShowWhatsNew({ announcementEnabled: WHATS_NEW_ANNOUNCEMENT_ENABLED });
@@ -229,6 +251,8 @@ async function initAndBootApp(roomCode) {
         refreshCurrentGapHighlight,
         refreshStartTimeField,
         getRunningActivity,
+        isPersistenceAllowed,
+        isStoragePreparationPending,
         stopTimerAt,
         deleteCompletedUnscheduledTasks,
         rolloverPriorDayScheduledTasks,
@@ -239,7 +263,7 @@ async function initAndBootApp(roomCode) {
         onRecoveryRequired: handleRecoveryRequired,
         onUpdateRequired: handleContractUpdateRequired,
         updateSyncStatusUI,
-        triggerSync,
+        triggerSync: triggerPreparedSync,
         logger
     });
 
@@ -325,7 +349,9 @@ async function initAndBootApp(roomCode) {
     initializeModalEventListeners(unscheduledActions);
     initializeClearTasksHandlers();
     roomSessionLifecycle.start({ signal });
-    await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
+    if (!deferredStoragePreparation) {
+        await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
+    }
 
     // Initial render
     refreshTaskDisplays();
@@ -342,6 +368,55 @@ async function initAndBootApp(roomCode) {
         }
     }
 
+    const finishRemoteStoragePreparation = async (
+        completion = deferredStoragePreparation?.complete()
+    ) => {
+        if (!completion) return;
+        let preparationCompleted = false;
+        try {
+            await completion;
+            preparationCompleted = true;
+            if (signal.aborted) return;
+            await roomSessionLifecycle.refreshFromStorage({
+                restoreRunningTimer: true,
+                readOnly: true,
+                requireFreshRead: true
+            });
+            if (signal.aborted) return;
+            deferredStoragePreparation.markStopReady();
+            await waitForQueuedTimerStops();
+            await roomSessionLifecycle.refreshFromStorage({
+                allowDuringPreparation: true
+            });
+            if (signal.aborted) return;
+            deferredStoragePreparation.markHydrated();
+            const staleStopResult = await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
+            if (staleStopResult?.success) {
+                await roomSessionLifecycle.refreshFromStorage();
+            }
+        } catch (error) {
+            if (signal.aborted) return;
+            if (preparationCompleted) {
+                deferredStoragePreparation.markFailed();
+            }
+            logger.error('Failed to complete remote storage preparation:', error);
+            showToast('Startup sync could not finish.', {
+                theme: 'rose',
+                dedupeKey: 'storage-preparation-error',
+                action: {
+                    label: 'Retry',
+                    onClick: () => {
+                        if (signal.aborted) return;
+                        roomBootQueue.enqueue(async () => {
+                            if (signal.aborted) return;
+                            await finishRemoteStoragePreparation();
+                        });
+                    }
+                }
+            });
+        }
+    };
+
     const suggested = getSuggestedFormStartTime();
     logger.debug('initAndBootApp - getSuggestedFormStartTime() returned:', suggested);
     updateStartTimeField(suggested, true);
@@ -357,6 +432,12 @@ async function initAndBootApp(roomCode) {
                 }
             })
     });
+
+    await finishRemoteStoragePreparation(initialStorageCompletion);
+}
+
+function initAndBootApp(roomCode) {
+    return roomBootQueue.enqueue(() => bootRoom(roomCode));
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -389,7 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const syncStatusIndicator = document.getElementById('sync-status-indicator');
     if (syncStatusIndicator) {
         syncStatusIndicator.addEventListener('click', () => {
-            triggerSync().catch((err) => {
+            triggerPreparedSync().catch((err) => {
                 logger.error('Failed to sync tasks after manual sync request:', err);
             });
         });

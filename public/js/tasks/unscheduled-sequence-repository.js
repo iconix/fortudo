@@ -3,16 +3,24 @@ import { UNSCHEDULED_SEQUENCE_CONFIG_ID } from './unscheduled-sequence.js';
 
 /**
  * Load the room-level Unscheduled sequence, resolving replicated conflict leaves first.
+ * @param {{resolveConflicts?: boolean, allowDuringPreparation?: boolean}} [options]
  * @returns {Promise<Object|null>} Conflict-free sequence document, or null before migration
  */
-export async function loadUnscheduledSequenceDocument() {
+export async function loadUnscheduledSequenceDocument({
+    resolveConflicts = true,
+    allowDuringPreparation = false
+} = {}) {
     const { config, conflictRevisions } = await loadConfigWithConflicts(
         UNSCHEDULED_SEQUENCE_CONFIG_ID
     );
-    if (conflictRevisions.length === 0) {
+    if (conflictRevisions.length === 0 || !resolveConflicts) {
         return config;
     }
-    return resolveConfigConflicts(UNSCHEDULED_SEQUENCE_CONFIG_ID);
+    return allowDuringPreparation
+        ? resolveConfigConflicts(UNSCHEDULED_SEQUENCE_CONFIG_ID, 5, {
+              allowDuringPreparation: true
+          })
+        : resolveConfigConflicts(UNSCHEDULED_SEQUENCE_CONFIG_ID);
 }
 
 /**

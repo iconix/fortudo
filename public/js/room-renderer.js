@@ -121,6 +121,16 @@ export function updateSyncStatusUI(status) {
     if (!icon || !text || !indicator) return;
 
     const configs = {
+        checking: {
+            icon: 'fa-solid fa-rotate fa-spin',
+            color: 'text-sky-400',
+            label: 'Connecting'
+        },
+        'preparation-error': {
+            icon: 'fa-solid fa-triangle-exclamation',
+            color: 'text-rose-400',
+            label: 'Startup error'
+        },
         idle: {
             icon: 'fa-solid fa-cloud',
             color: 'text-slate-400 sm:text-slate-500',

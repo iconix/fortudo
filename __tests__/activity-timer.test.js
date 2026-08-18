@@ -21,6 +21,7 @@ import {
     getRunningActivity,
     startTimer,
     startTimerReplacingCurrent,
+    startTimerReplacingCurrentAt,
     stopTimer,
     stopTimerAt,
     updateRunningActivity,
@@ -398,6 +399,18 @@ describe('stopTimerAt', () => {
         );
     });
 
+    test('passes the narrow startup write permit through both timer-stop writes', async () => {
+        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
+        await startTimer({ description: 'Working' });
+        jest.clearAllMocks();
+        const storageOptions = { allowDuringPreparation: true };
+
+        await stopTimerAt('2026-04-09T10:30:00.000Z', storageOptions);
+
+        expect(putActivity).toHaveBeenCalledWith(expect.any(Object), storageOptions);
+        expect(deleteRunningActivityConfig).toHaveBeenCalledWith(storageOptions);
+    });
+
     test('does not duplicate the completed activity when stop requests overlap', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
         await startTimer({ description: 'Working' });
@@ -579,5 +592,31 @@ describe('startTimerReplacingCurrent', () => {
                 source: 'timer'
             })
         });
+    });
+
+    test('uses one captured transition time and startup write permit for both timers', async () => {
+        jest.setSystemTime(new Date('2026-04-09T09:30:00.000Z'));
+        await startTimer({ description: 'Current timer' });
+        jest.clearAllMocks();
+        jest.setSystemTime(new Date('2026-04-09T10:05:00.000Z'));
+        const storageOptions = { allowDuringPreparation: true };
+
+        const result = await startTimerReplacingCurrentAt(
+            { description: 'Next timer' },
+            '2026-04-09T10:00:00.000Z',
+            storageOptions
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.stoppedActivity.endDateTime).toBe('2026-04-09T10:00:00.000Z');
+        expect(result.runningActivity.startDateTime).toBe('2026-04-09T10:00:00.000Z');
+        expect(putActivity).toHaveBeenCalledWith(expect.any(Object), storageOptions);
+        expect(saveRunningActivityConfig).toHaveBeenCalledWith(
+            expect.objectContaining({
+                description: 'Next timer',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            }),
+            storageOptions
+        );
     });
 });

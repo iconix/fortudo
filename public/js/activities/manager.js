@@ -183,7 +183,7 @@ export async function loadActivitiesState(loadActivities = loadActivitiesFromSto
     return getActivityState();
 }
 
-export async function addActivity(activityData) {
+export async function addActivity(activityData, storageOptions = {}) {
     const normalizedActivityData = ensureMinimumCompletedActivityDuration(activityData);
     const description = normalizedActivityData?.description?.trim();
 
@@ -209,7 +209,11 @@ export async function addActivity(activityData) {
         ...getCategoryReferenceFields(normalizedActivityData)
     });
 
-    await putActivity(activity);
+    if (storageOptions.allowDuringPreparation) {
+        await putActivity(activity, storageOptions);
+    } else {
+        await putActivity(activity);
+    }
     activities.push(activity);
     sortByStartDateTime(activities);
 
@@ -403,8 +407,8 @@ export function getRunningActivity() {
     return runningActivity ? { ...runningActivity } : null;
 }
 
-export async function startTimer(timerInput = {}) {
-    const { description, source = 'timer', sourceTaskId = null } = timerInput;
+export async function startTimer(timerInput = {}, storageOptions = {}) {
+    const { description, source = 'timer', sourceTaskId = null, startDateTime = null } = timerInput;
     const trimmedDescription = description?.trim();
     if (!trimmedDescription) {
         return { success: false, reason: 'Description is required to start a timer.' };
@@ -418,29 +422,45 @@ export async function startTimer(timerInput = {}) {
         id: createActivityId(),
         description: trimmedDescription,
         ...getCategoryReferenceFields(timerInput),
-        startDateTime: new Date().toISOString(),
+        startDateTime: toSafeIsoDateTime(startDateTime),
         source,
         sourceTaskId
     };
 
-    await saveRunningActivityConfig(timerState);
+    if (storageOptions.allowDuringPreparation) {
+        await saveRunningActivityConfig(timerState, storageOptions);
+    } else {
+        await saveRunningActivityConfig(timerState);
+    }
 
     runningActivity = timerState;
     return { success: true, runningActivity: getRunningActivity() };
 }
 
 export async function startTimerReplacingCurrent(timerData) {
+    return startTimerReplacingCurrentAt(timerData, new Date().toISOString());
+}
+
+export async function startTimerReplacingCurrentAt(
+    timerData,
+    transitionDateTime,
+    storageOptions = {}
+) {
     let stoppedActivity = null;
+    const safeTransitionDateTime = toSafeIsoDateTime(transitionDateTime);
 
     if (runningActivity) {
-        const stopResult = await stopTimer();
+        const stopResult = await stopTimerAt(safeTransitionDateTime, storageOptions);
         if (!stopResult?.success) {
             return stopResult;
         }
         stoppedActivity = stopResult.activity || null;
     }
 
-    const startResult = await startTimer(timerData);
+    const startResult = await startTimer(
+        { ...timerData, startDateTime: safeTransitionDateTime },
+        storageOptions
+    );
     if (!startResult?.success) {
         return {
             ...startResult,
@@ -458,7 +478,7 @@ export async function stopTimer() {
     return stopTimerAt(new Date().toISOString());
 }
 
-export async function stopTimerAt(endDateTime) {
+export async function stopTimerAt(endDateTime, storageOptions = {}) {
     if (timerStopInFlight) {
         return { success: false, reason: 'Timer stop is already in progress.' };
     }
@@ -475,22 +495,29 @@ export async function stopTimerAt(endDateTime) {
     );
 
     try {
-        const activityResult = await addActivity({
-            id: timerToStop.id || createActivityId(),
-            description: timerToStop.description,
-            ...getCategoryReferenceFields(timerToStop),
-            startDateTime: timerToStop.startDateTime,
-            endDateTime: safeEndDateTime,
-            duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
-            source: timerToStop.source || 'timer',
-            sourceTaskId: timerToStop.sourceTaskId || null
-        });
+        const activityResult = await addActivity(
+            {
+                id: timerToStop.id || createActivityId(),
+                description: timerToStop.description,
+                ...getCategoryReferenceFields(timerToStop),
+                startDateTime: timerToStop.startDateTime,
+                endDateTime: safeEndDateTime,
+                duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
+                source: timerToStop.source || 'timer',
+                sourceTaskId: timerToStop.sourceTaskId || null
+            },
+            storageOptions
+        );
 
         if (!activityResult?.success) {
             return activityResult;
         }
 
-        await deleteRunningActivityConfig();
+        if (storageOptions.allowDuringPreparation) {
+            await deleteRunningActivityConfig(storageOptions);
+        } else {
+            await deleteRunningActivityConfig();
+        }
         runningActivity = null;
 
         return { success: true, activity: cloneActivity(activityResult.activity) };

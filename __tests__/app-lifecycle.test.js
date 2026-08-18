@@ -27,6 +27,8 @@ describe('app room/session lifecycle', () => {
             refreshCurrentGapHighlight: jest.fn(),
             refreshStartTimeField: jest.fn(),
             getRunningActivity: jest.fn(() => null),
+            isPersistenceAllowed: jest.fn(() => true),
+            isStoragePreparationPending: jest.fn(() => false),
             stopTimerAt: jest.fn(async () => ({ success: true })),
             deleteCompletedUnscheduledTasks: jest.fn(() => ({ success: true, tasksDeleted: 0 })),
             rolloverPriorDayScheduledTasks: jest.fn(() => ({
@@ -75,6 +77,84 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
         expect(deps.refreshActiveTaskColor).toHaveBeenCalledWith([]);
         expect(deps.refreshCurrentGapHighlight).toHaveBeenCalledTimes(1);
+    });
+
+    test('runs a queued preparation-write refresh after an in-flight read-only refresh', async () => {
+        let resolveReadOnlyLoad;
+        const pendingReadOnlyLoad = new Promise((resolve) => {
+            resolveReadOnlyLoad = resolve;
+        });
+        const { deps, lifecycle } = createLifecycle({
+            loadAppState: jest
+                .fn()
+                .mockReturnValueOnce(pendingReadOnlyLoad)
+                .mockResolvedValueOnce(undefined)
+        });
+
+        const readOnlyRefresh = lifecycle.refreshFromStorage({ readOnly: true });
+        const normalizationRefresh = lifecycle.refreshFromStorage({
+            allowDuringPreparation: true
+        });
+        resolveReadOnlyLoad();
+        await Promise.all([readOnlyRefresh, normalizationRefresh]);
+
+        expect(deps.loadAppState).toHaveBeenNthCalledWith(1, {
+            readOnly: true,
+            allowDuringPreparation: false
+        });
+        expect(deps.loadAppState).toHaveBeenNthCalledWith(2, {
+            readOnly: false,
+            allowDuringPreparation: true
+        });
+    });
+
+    test('queues a fresh read barrier behind an older in-flight read-only refresh', async () => {
+        let resolveOldRead;
+        const oldRead = new Promise((resolve) => {
+            resolveOldRead = resolve;
+        });
+        const { deps, lifecycle } = createLifecycle({
+            loadAppState: jest.fn().mockReturnValueOnce(oldRead).mockResolvedValueOnce(undefined)
+        });
+
+        const prePullRefresh = lifecycle.refreshFromStorage({ readOnly: true });
+        const postPullRefresh = lifecycle.refreshFromStorage({
+            readOnly: true,
+            requireFreshRead: true
+        });
+        resolveOldRead();
+        await Promise.all([prePullRefresh, postPullRefresh]);
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(deps.loadAppState).toHaveBeenNthCalledWith(2, {
+            readOnly: true,
+            allowDuringPreparation: false
+        });
+    });
+
+    test('drains an active refresh and its queued fresh pass before lifecycle stop settles', async () => {
+        let resolveOldRead;
+        const oldRead = new Promise((resolve) => {
+            resolveOldRead = resolve;
+        });
+        const { deps, lifecycle } = createLifecycle({
+            loadAppState: jest.fn().mockReturnValueOnce(oldRead).mockResolvedValueOnce(undefined)
+        });
+        lifecycle.refreshFromStorage({ readOnly: true });
+        lifecycle.refreshFromStorage({ readOnly: true, requireFreshRead: true });
+
+        let stopSettled = false;
+        const stopping = lifecycle.stop().then(() => {
+            stopSettled = true;
+        });
+        await Promise.resolve();
+        expect(stopSettled).toBe(false);
+
+        resolveOldRead();
+        await stopping;
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(stopSettled).toBe(true);
     });
 
     test('restores running timer form state on the first synced event only', async () => {
@@ -170,6 +250,47 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncRunningTimerDisplay).toHaveBeenCalledWith(true);
     });
 
+    test('preserves timer restoration when synced arrives during a data refresh', async () => {
+        let syncStatusCallback;
+        let syncDataCallback;
+        let releaseLoad;
+        const pendingLoad = new Promise((resolve) => {
+            releaseLoad = resolve;
+        });
+        const { deps, lifecycle } = createLifecycle({
+            loadAppState: jest.fn(() => pendingLoad),
+            onSyncStatusChange: jest.fn((callback) => {
+                syncStatusCallback = callback;
+                return jest.fn();
+            }),
+            onSyncDataChange: jest.fn((callback) => {
+                syncDataCallback = callback;
+                return jest.fn();
+            })
+        });
+        const abortController = new AbortController();
+        lifecycle.start({ signal: abortController.signal });
+
+        syncDataCallback();
+        syncStatusCallback('synced');
+        await Promise.resolve();
+        expect(deps.syncRestoredRunningTimer).not.toHaveBeenCalled();
+
+        releaseLoad();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(deps.loadAppState).toHaveBeenCalledTimes(2);
+        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledTimes(1);
+        expect(deps.syncRestoredRunningTimer).toHaveBeenCalledWith(true);
+        expect(deps.syncRestoredRunningTimer.mock.invocationCallOrder[0]).toBeGreaterThan(
+            deps.loadAppState.mock.invocationCallOrder[1]
+        );
+    });
+
     test('stops a stale restored timer at the midnight after it started', async () => {
         jest.setSystemTime(new Date('2026-04-23T09:00:00'));
         const startDateTime = '2026-04-21T23:30:00.000Z';
@@ -185,6 +306,36 @@ describe('app room/session lifecycle', () => {
         await lifecycle.stopStaleRunningTimerIfNeeded();
 
         expect(deps.stopTimerAt).toHaveBeenCalledWith(expectedBoundary.toISOString());
+    });
+
+    test('does not automatically stop a stale timer before persistence is allowed', async () => {
+        jest.setSystemTime(new Date('2026-04-23T09:00:00'));
+        const { deps, lifecycle } = createLifecycle({
+            isPersistenceAllowed: jest.fn(() => false),
+            getRunningActivity: jest.fn(() => ({
+                description: 'Stale restored timer',
+                startDateTime: '2026-04-21T23:30:00.000Z'
+            }))
+        });
+
+        await lifecycle.stopStaleRunningTimerIfNeeded();
+
+        expect(deps.stopTimerAt).not.toHaveBeenCalled();
+    });
+
+    test('does not automatically stop a stale timer before initial hydration', async () => {
+        jest.setSystemTime(new Date('2026-04-23T09:00:00'));
+        const { deps, lifecycle } = createLifecycle({
+            isStoragePreparationPending: jest.fn(() => true),
+            getRunningActivity: jest.fn(() => ({
+                description: 'Stale restored timer',
+                startDateTime: '2026-04-21T23:30:00.000Z'
+            }))
+        });
+
+        await lifecycle.stopStaleRunningTimerIfNeeded();
+
+        expect(deps.stopTimerAt).not.toHaveBeenCalled();
     });
 
     test('wires sync status updates and refreshes after sync completion', async () => {
@@ -301,6 +452,33 @@ describe('app room/session lifecycle', () => {
         expect(deps.syncTimerFormState).not.toHaveBeenCalled();
         expect(deps.refreshTaskDisplays).not.toHaveBeenCalled();
         expect(deps.refreshStartTimeField).toHaveBeenCalledTimes(1);
+    });
+
+    test('defers midnight mutations until initial hydration is complete', async () => {
+        jest.setSystemTime(new Date('2026-04-21T23:59:59'));
+        let preparationPending = true;
+        const { deps, lifecycle } = createLifecycle({
+            isStoragePreparationPending: jest.fn(() => preparationPending),
+            getRunningActivity: jest.fn(() => ({
+                description: 'Running timer',
+                startDateTime: '2026-04-21T23:30:00.000Z'
+            }))
+        });
+        const abortController = new AbortController();
+
+        lifecycle.start({ signal: abortController.signal });
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(deps.stopTimerAt).not.toHaveBeenCalled();
+        expect(deps.deleteCompletedUnscheduledTasks).not.toHaveBeenCalled();
+        expect(deps.rolloverPriorDayScheduledTasks).not.toHaveBeenCalled();
+
+        preparationPending = false;
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(deps.stopTimerAt).toHaveBeenCalledTimes(1);
+        expect(deps.deleteCompletedUnscheduledTasks).toHaveBeenCalledTimes(1);
+        expect(deps.rolloverPriorDayScheduledTasks).toHaveBeenCalledTimes(1);
     });
 
     test('clears completed unscheduled tasks when the local date changes', async () => {

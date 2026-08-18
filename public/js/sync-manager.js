@@ -33,6 +33,8 @@ const DEBOUNCE_MS = 2000;
 const RESUME_SYNC_COOLDOWN_MS = 15000;
 const REJECTED_LEAVES_LOCAL_ID = '_local/fortudo-document-contract-denials';
 const WRITE_BLOCKING_STATUSES = new Set([
+    'checking',
+    'preparation-error',
     'update-required',
     'update-required-available',
     'validator-mismatch',
@@ -275,6 +277,20 @@ export function isPersistenceAllowed() {
     return !WRITE_BLOCKING_STATUSES.has(syncStatus);
 }
 
+/** Mark required local preparation as failed so ordinary sync and writes remain blocked. */
+export function reportStoragePreparationError() {
+    setStatus('preparation-error');
+}
+
+/** Re-run remote compatibility checks before retrying failed local preparation. */
+export async function resumeStoragePreparation() {
+    if (syncStatus !== 'preparation-error') return;
+    setStatus(remoteUrl ? 'checking' : 'idle');
+    if (remoteDatabase) {
+        await performFullPreflight(syncSessionId);
+    }
+}
+
 export function registerExpectedLocalRevision(id, revision) {
     if (typeof id !== 'string' || typeof revision !== 'string') return;
     expectedLocalRevisions.add(`${id}@${revision}`);
@@ -294,7 +310,7 @@ export function initSync(db, remote, options = {}) {
     localDb = db;
     remoteUrl = remote;
     remoteDatabase = options.remoteDb || createRemoteDatabase(remote);
-    syncStatus = 'idle';
+    syncStatus = remote ? 'checking' : 'idle';
     syncInFlight = false;
     lastSyncStartedAt = 0;
     inFlightSyncPromise = null;
@@ -333,6 +349,7 @@ export async function triggerSync({
     retryAfterInFlightFailure = false
 } = {}) {
     if (!localDb || !remoteUrl) return;
+    if (syncStatus === 'preparation-error') return;
     if (syncInFlight) {
         if (retryAfterInFlightFailure && reconnectRetrySessionId !== syncSessionId) {
             retryAfterInFlightFailureRequested = true;

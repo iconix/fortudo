@@ -7,7 +7,15 @@ jest.mock('../public/js/activities/manager.js', () => ({
     editActivity: jest.fn(),
     removeActivity: jest.fn(),
     startTimerReplacingCurrent: jest.fn(),
-    stopTimer: jest.fn()
+    startTimerReplacingCurrentAt: jest.fn(),
+    stopTimerAt: jest.fn(),
+    getRunningActivity: jest.fn()
+}));
+
+jest.mock('../public/js/storage.js', () => ({
+    runTimerTransitionWhenReady: jest.fn((callback) => callback({ allowDuringPreparation: false })),
+    runTimerStopWhenReady: jest.fn((callback) => callback({ allowDuringPreparation: false })),
+    waitForStoragePreparation: jest.fn(() => Promise.resolve())
 }));
 
 jest.mock('../public/js/app-coordinator.js', () => ({
@@ -42,8 +50,15 @@ import {
     editActivity,
     removeActivity,
     startTimerReplacingCurrent,
-    stopTimer
+    startTimerReplacingCurrentAt,
+    stopTimerAt,
+    getRunningActivity
 } from '../public/js/activities/manager.js';
+import {
+    runTimerTransitionWhenReady,
+    runTimerStopWhenReady,
+    waitForStoragePreparation
+} from '../public/js/storage.js';
 import {
     onActivityCreated,
     onActivityEdited,
@@ -57,10 +72,22 @@ import { logger } from '../public/js/utils.js';
 describe('activity handlers', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        runTimerTransitionWhenReady.mockImplementation((callback) =>
+            callback({ allowDuringPreparation: false })
+        );
+        runTimerStopWhenReady.mockImplementation((callback) =>
+            callback({ allowDuringPreparation: false })
+        );
+        waitForStoragePreparation.mockResolvedValue(undefined);
+        getRunningActivity.mockReturnValue({
+            id: 'running-timer-1',
+            startDateTime: '2026-08-17T13:00:00.000Z'
+        });
         jest.spyOn(logger, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => {
+        jest.useRealTimers();
         jest.restoreAllMocks();
     });
 
@@ -370,8 +397,69 @@ describe('activity handlers', () => {
         expect(showAlert).toHaveBeenCalledWith('Could not start timer.', 'sky');
     });
 
+    test('queues a timer replacement with the click timestamp during preparation', async () => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2026-08-17T14:03:04.000Z'));
+        let releasePreparation;
+        runTimerTransitionWhenReady.mockImplementationOnce(
+            (callback) =>
+                new Promise((resolve) => {
+                    releasePreparation = () => resolve(callback({ allowDuringPreparation: true }));
+                })
+        );
+        startTimerReplacingCurrentAt.mockResolvedValueOnce({
+            success: true,
+            stoppedActivity: null,
+            runningActivity: { description: 'Next timer' }
+        });
+
+        const resultPromise = handleStartTimer({ description: 'Next timer' });
+        jest.setSystemTime(new Date('2026-08-17T14:05:00.000Z'));
+        await Promise.resolve();
+        expect(startTimerReplacingCurrentAt).not.toHaveBeenCalled();
+
+        releasePreparation();
+        await resultPromise;
+
+        expect(startTimerReplacingCurrentAt).toHaveBeenCalledWith(
+            { description: 'Next timer' },
+            '2026-08-17T14:03:04.000Z',
+            { allowDuringPreparation: true }
+        );
+        expect(startTimerReplacingCurrent).not.toHaveBeenCalled();
+    });
+
+    test('does not apply a queued replacement to a timer replaced during hydration', async () => {
+        let releasePreparation;
+        runTimerTransitionWhenReady.mockImplementationOnce(
+            (callback) =>
+                new Promise((resolve) => {
+                    releasePreparation = () => resolve(callback({ allowDuringPreparation: true }));
+                })
+        );
+
+        const resultPromise = handleStartTimer({ description: 'Next timer' });
+        getRunningActivity.mockReturnValue({
+            id: 'running-timer-2',
+            startDateTime: '2026-08-17T14:00:00.000Z'
+        });
+        releasePreparation();
+        const result = await resultPromise;
+
+        expect(startTimerReplacingCurrentAt).not.toHaveBeenCalled();
+        expect(startTimerReplacingCurrent).not.toHaveBeenCalled();
+        expect(result).toEqual({
+            success: false,
+            reason: 'The running timer changed while syncing.'
+        });
+        expect(showAlert).toHaveBeenCalledWith(
+            'The running timer changed while syncing. Review the current timer before starting the next one.',
+            'sky'
+        );
+    });
+
     test('handleStopTimer emits coordinator + toast on success', async () => {
-        stopTimer.mockResolvedValueOnce({
+        stopTimerAt.mockResolvedValueOnce({
             success: true,
             activity: {
                 id: 'activity-stop-1',
@@ -382,7 +470,7 @@ describe('activity handlers', () => {
 
         const result = await handleStopTimer();
 
-        expect(stopTimer).toHaveBeenCalled();
+        expect(stopTimerAt).toHaveBeenCalledWith(expect.any(String));
         expect(result.success).toBe(true);
         expect(onActivityCreated).toHaveBeenCalledWith({
             activity: {
@@ -396,7 +484,7 @@ describe('activity handlers', () => {
     });
 
     test('handleStopTimer shows alert on stop failure', async () => {
-        stopTimer.mockResolvedValueOnce({
+        stopTimerAt.mockResolvedValueOnce({
             success: false,
             reason: 'No timer is currently running.'
         });
@@ -408,5 +496,91 @@ describe('activity handlers', () => {
             reason: 'No timer is currently running.'
         });
         expect(showAlert).toHaveBeenCalledWith('No timer is currently running.', 'sky');
+    });
+
+    test('captures the stop time immediately while storage preparation is pending', async () => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2026-08-17T14:03:04.000Z'));
+        let releasePreparation;
+        runTimerStopWhenReady.mockImplementationOnce(
+            (callback) =>
+                new Promise((resolve) => {
+                    releasePreparation = () => resolve(callback({ allowDuringPreparation: true }));
+                })
+        );
+        stopTimerAt.mockResolvedValueOnce({ success: true, activity: null });
+
+        const resultPromise = handleStopTimer();
+        jest.setSystemTime(new Date('2026-08-17T14:05:00.000Z'));
+        await Promise.resolve();
+
+        expect(stopTimerAt).not.toHaveBeenCalled();
+
+        releasePreparation();
+        await resultPromise;
+
+        expect(stopTimerAt).toHaveBeenCalledWith('2026-08-17T14:03:04.000Z', {
+            allowDuringPreparation: true
+        });
+    });
+
+    test('does not apply a queued stop to a timer replaced during initial hydration', async () => {
+        let releasePreparation;
+        runTimerStopWhenReady.mockImplementationOnce(
+            (callback) =>
+                new Promise((resolve) => {
+                    releasePreparation = () => resolve(callback({ allowDuringPreparation: true }));
+                })
+        );
+
+        const resultPromise = handleStopTimer();
+        getRunningActivity.mockReturnValue({
+            id: 'running-timer-2',
+            startDateTime: '2026-08-17T14:00:00.000Z'
+        });
+        releasePreparation();
+        const result = await resultPromise;
+
+        expect(stopTimerAt).not.toHaveBeenCalled();
+        expect(result).toEqual({
+            success: false,
+            reason: 'The running timer changed while syncing.'
+        });
+        expect(showAlert).toHaveBeenCalledWith(
+            'The running timer changed while syncing. Review the current timer before stopping it.',
+            'sky'
+        );
+    });
+
+    test('starts the queued replacement when hydration shows the previous timer already stopped', async () => {
+        let releasePreparation;
+        runTimerTransitionWhenReady.mockImplementationOnce(
+            (callback) =>
+                new Promise((resolve) => {
+                    releasePreparation = () => resolve(callback({ allowDuringPreparation: true }));
+                })
+        );
+        startTimerReplacingCurrentAt.mockResolvedValueOnce({
+            success: true,
+            stoppedActivity: null,
+            runningActivity: { description: 'Next timer' }
+        });
+
+        const resultPromise = handleStartTimer({ description: 'Next timer' });
+        getRunningActivity.mockReturnValue(null);
+        releasePreparation();
+        const result = await resultPromise;
+
+        expect(startTimerReplacingCurrentAt).toHaveBeenCalledWith(
+            { description: 'Next timer' },
+            expect.any(String),
+            { allowDuringPreparation: true }
+        );
+        expect(result).toEqual({
+            success: true,
+            stoppedActivity: null,
+            runningActivity: { description: 'Next timer' }
+        });
+        expect(showAlert).not.toHaveBeenCalled();
     });
 });

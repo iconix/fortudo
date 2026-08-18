@@ -9,7 +9,9 @@ import {
     assertPersistenceAllowed,
     isPersistenceAllowed,
     registerExpectedLocalRevision,
-    getLastDivergenceAudit
+    getLastDivergenceAudit,
+    reportStoragePreparationError,
+    resumeStoragePreparation
 } from './sync-manager.js';
 import {
     applyWriterContract,
@@ -33,6 +35,17 @@ const LEGACY_TASK_ID_PREFIXES = ['sched-', 'unsched-'];
 
 /** @type {Object|null} PouchDB database instance */
 let db = null;
+let storageSessionId = 0;
+let storagePreparationPromise = null;
+let storageHydrationPromise = null;
+let resolveStorageHydration = null;
+let timerStopReadinessPromise = null;
+let resolveTimerStopReadiness = null;
+let acceptingEarlyTimerStops = false;
+const queuedTimerStops = new Set();
+let queuedTimerIntentTail = Promise.resolve();
+let storagePreparationPending = false;
+let preparationSyncDeferred = false;
 
 /** @type {Map<string, string>} In-memory map of task id -> PouchDB _rev */
 const taskRevMap = new Map();
@@ -51,6 +64,59 @@ function clearRevStores() {
     taskRevMap.clear();
     activityRevMap.clear();
     configRevMap.clear();
+}
+
+async function settleStoragePreparation() {
+    if (!storagePreparationPromise) return;
+    try {
+        await storagePreparationPromise;
+    } catch {
+        // The preparation failure has already been surfaced; room teardown may proceed.
+    }
+}
+
+function beginStorageHydrationGate() {
+    storagePreparationPending = true;
+    acceptingEarlyTimerStops = true;
+    if (!storageHydrationPromise) {
+        storageHydrationPromise = new Promise((resolve) => {
+            resolveStorageHydration = resolve;
+        });
+    }
+    if (!timerStopReadinessPromise) {
+        timerStopReadinessPromise = new Promise((resolve) => {
+            resolveTimerStopReadiness = resolve;
+        });
+    }
+}
+
+function markTimerStopReady() {
+    acceptingEarlyTimerStops = false;
+    resolveTimerStopReadiness?.();
+    resolveTimerStopReadiness = null;
+    timerStopReadinessPromise = null;
+}
+
+function clearStorageHydrationGate({ flushDeferredSync = true } = {}) {
+    storagePreparationPending = false;
+    markTimerStopReady();
+    resolveStorageHydration?.();
+    resolveStorageHydration = null;
+    storageHydrationPromise = null;
+    if (preparationSyncDeferred) {
+        preparationSyncDeferred = false;
+        if (flushDeferredSync) {
+            debouncedSync();
+        }
+    }
+}
+
+function requestSyncAfterWrite({ allowDuringPreparation = false } = {}) {
+    if (storagePreparationPending && allowDuringPreparation) {
+        preparationSyncDeferred = true;
+        return;
+    }
+    debouncedSync();
 }
 
 function getRevStore(docType) {
@@ -135,8 +201,11 @@ function createContractedDocument(document) {
     return contracted;
 }
 
-function assertCanPersist() {
+function assertCanPersist({ allowDuringPreparation = false } = {}) {
     assertPersistenceAllowed?.();
+    if (storagePreparationPending && !allowDuringPreparation) {
+        throw new Error('Storage preparation pending');
+    }
 }
 
 function recordExpectedRevision(id, revision) {
@@ -228,9 +297,9 @@ async function getTrackedRevision(id, docType) {
     }
 }
 
-async function putTypedDoc(record, docType) {
+async function putTypedDoc(record, docType, options = {}) {
     ensureStorageInitialized();
-    assertCanPersist();
+    assertCanPersist(options);
 
     const doc = toStoredDoc(record, docType);
     const existingRev = await getTrackedRevision(record.id, docType);
@@ -241,12 +310,12 @@ async function putTypedDoc(record, docType) {
     const result = await db.put(doc);
     getRevStore(docType).set(record.id, result.rev);
     recordExpectedRevision(record.id, result.rev);
-    debouncedSync();
+    requestSyncAfterWrite(options);
 }
 
-async function deleteTypedDoc(id, docType, logLabel) {
+async function deleteTypedDoc(id, docType, logLabel, options = {}) {
     ensureStorageInitialized();
-    assertCanPersist();
+    assertCanPersist(options);
 
     const revStore = getRevStore(docType);
     const rev = await getTrackedRevision(id, docType);
@@ -267,7 +336,7 @@ async function deleteTypedDoc(id, docType, logLabel) {
         }
         revStore.delete(id);
     }
-    debouncedSync();
+    requestSyncAfterWrite(options);
 }
 
 async function loadTypedDocById(id, predicate, docType) {
@@ -300,6 +369,13 @@ async function loadTypedDocById(id, predicate, docType) {
  */
 export async function initStorage(roomCode, options = {}, remoteUrl = null, lifecycle = {}) {
     if (db) {
+        await settleStoragePreparation();
+        storagePreparationPromise = null;
+        storageSessionId += 1;
+        clearStorageHydrationGate({ flushDeferredSync: false });
+        if (queuedTimerStops.size > 0) {
+            await waitForQueuedTimerStops();
+        }
         await waitForIdleSync();
         teardownSync();
         await db.close();
@@ -309,12 +385,15 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null, life
     const PDB = window.PouchDB;
     const dbName = `fortudo-${roomCode}`;
     db = new PDB(dbName, options);
+    storageSessionId += 1;
 
     const rows = await loadAllRows();
     seedRevisionStore(rows);
 
     initSync(db, remoteUrl);
-    await waitForSyncPreflight?.();
+    if (!lifecycle.deferPreflight) {
+        await waitForSyncPreflight?.();
+    }
     if (remoteUrl && !lifecycle.deferInitialSync) {
         await triggerSync?.();
     }
@@ -326,15 +405,171 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null, life
  * @param {string} roomCode
  * @param {Object} [options]
  * @param {string|null} [remoteUrl]
+ * @param {{deferCompletion?: boolean}} [lifecycle]
+ * @returns {Promise<void|{complete: () => Promise<void>}>}
  */
-export async function prepareStorage(roomCode, options = {}, remoteUrl = null) {
-    await initStorage(roomCode, options, remoteUrl, { deferInitialSync: true });
-    if (isPersistenceAllowed?.() !== false) {
-        await migrateDocTypes();
+export async function prepareStorage(roomCode, options = {}, remoteUrl = null, lifecycle = {}) {
+    await initStorage(roomCode, options, remoteUrl, {
+        deferInitialSync: true,
+        deferPreflight: lifecycle.deferCompletion === true
+    });
+
+    const preparedDb = db;
+    const preparedSessionId = storageSessionId;
+    let completionPromise = null;
+    let previousAttemptFailed = false;
+    beginStorageHydrationGate();
+
+    const assertCurrentPreparation = () => {
+        if (db !== preparedDb || storageSessionId !== preparedSessionId) {
+            throw new Error('Storage preparation no longer belongs to the active room.');
+        }
+    };
+
+    const complete = () => {
+        if (!completionPromise) {
+            completionPromise = (async () => {
+                let failed = false;
+                try {
+                    assertCurrentPreparation();
+                    if (previousAttemptFailed) {
+                        beginStorageHydrationGate();
+                        await resumeStoragePreparation?.();
+                    }
+                    await waitForSyncPreflight?.();
+                    assertCurrentPreparation();
+                    if (isPersistenceAllowed?.() !== false) {
+                        await migrateDocTypes();
+                    }
+                    assertCurrentPreparation();
+                    if (remoteUrl) {
+                        await triggerSync?.();
+                    }
+                    previousAttemptFailed = false;
+                    if (storagePreparationPromise === completionPromise) {
+                        storagePreparationPromise = null;
+                    }
+                } catch (error) {
+                    failed = true;
+                    previousAttemptFailed = true;
+                    if (db === preparedDb && storageSessionId === preparedSessionId) {
+                        reportStoragePreparationError?.();
+                    }
+                    throw error;
+                } finally {
+                    if (failed) {
+                        completionPromise = null;
+                    }
+                }
+            })();
+            storagePreparationPromise = completionPromise;
+        }
+        return completionPromise;
+    };
+
+    if (lifecycle.deferCompletion) {
+        return {
+            complete,
+            markStopReady: () => {
+                assertCurrentPreparation();
+                markTimerStopReady();
+            },
+            markFailed: () => {
+                assertCurrentPreparation();
+                previousAttemptFailed = true;
+                completionPromise = null;
+                beginStorageHydrationGate();
+                reportStoragePreparationError?.();
+            },
+            markHydrated: () => {
+                assertCurrentPreparation();
+                clearStorageHydrationGate();
+            }
+        };
     }
-    if (remoteUrl) {
-        await triggerSync?.();
+
+    await complete();
+    clearStorageHydrationGate();
+}
+
+/**
+ * Wait until the active room's audited preparation and initial sync have settled.
+ * Timer-stop UI uses this to retain a click-time intent without opening other writes early.
+ */
+export async function waitForStoragePreparation() {
+    const waitingSessionId = storageSessionId;
+    const preparation = storagePreparationPromise;
+    const hydration = storageHydrationPromise;
+    if (preparation) {
+        await preparation;
     }
+    if (hydration) {
+        await hydration;
+    }
+    if (waitingSessionId !== storageSessionId) {
+        throw new Error('The active room changed during storage preparation.');
+    }
+    assertCanPersist();
+}
+
+/**
+ * Run a user timer-stop intent once the remote timer identity has been hydrated.
+ * Intents captured before that point receive the only startup write exception.
+ * @param {(options: {allowDuringPreparation: boolean}) => Promise<unknown>} action
+ * @returns {Promise<unknown>}
+ */
+function runTimerIntentWhenReady(action) {
+    const waitingSessionId = storageSessionId;
+    const preparation = storagePreparationPromise;
+    const canWriteEarly = storagePreparationPending && acceptingEarlyTimerStops;
+    const readiness = canWriteEarly ? timerStopReadinessPromise : storageHydrationPromise;
+
+    const runIntent = async () => {
+        if (preparation) {
+            await preparation;
+        }
+        if (readiness) {
+            await readiness;
+        }
+        if (waitingSessionId !== storageSessionId) {
+            throw new Error('The active room changed before the timer could be stopped.');
+        }
+        assertPersistenceAllowed?.();
+        return action({ allowDuringPreparation: canWriteEarly });
+    };
+
+    const queuedStop = canWriteEarly
+        ? queuedTimerIntentTail.catch(() => {}).then(runIntent)
+        : runIntent();
+
+    if (canWriteEarly) {
+        queuedTimerIntentTail = queuedStop;
+        queuedTimerStops.add(queuedStop);
+        queuedStop.finally(() => queuedTimerStops.delete(queuedStop)).catch(() => {});
+    }
+    return queuedStop;
+}
+
+/** Queue a timer-stop intent captured during startup preparation. */
+export function runTimerStopWhenReady(action) {
+    return runTimerIntentWhenReady(action);
+}
+
+/** Queue a stop-current/start-next timer transition captured during startup preparation. */
+export function runTimerTransitionWhenReady(action) {
+    return runTimerIntentWhenReady(action);
+}
+
+/** Wait for timer-stop intents captured before startup hydration. */
+export async function waitForQueuedTimerStops() {
+    while (queuedTimerStops.size > 0) {
+        await Promise.allSettled([...queuedTimerStops]);
+    }
+}
+
+/** @returns {boolean} Whether ordinary writes and direct sync are still gated. */
+export function isStoragePreparationPending() {
+    return storagePreparationPending;
 }
 
 /**
@@ -412,8 +647,8 @@ export async function putTasks(tasksToPut) {
  * Handles insert/update via _rev tracking and enforces docType.
  * @param {Object} activity - Activity object (must have `id`)
  */
-export async function putActivity(activity) {
-    await putTypedDoc(activity, DOC_TYPES.ACTIVITY);
+export async function putActivity(activity, options = {}) {
+    await putTypedDoc(activity, DOC_TYPES.ACTIVITY, options);
 }
 
 /**
@@ -421,8 +656,8 @@ export async function putActivity(activity) {
  * Enforces docType isolation and tracks revisions.
  * @param {Object} config - Config object (must have `id`)
  */
-export async function putConfig(config) {
-    await putTypedDoc(config, DOC_TYPES.CONFIG);
+export async function putConfig(config, options = {}) {
+    await putTypedDoc(config, DOC_TYPES.CONFIG, options);
 }
 
 /**
@@ -497,8 +732,8 @@ export async function deleteActivity(id) {
  * Delete a single config document by id.
  * @param {string} id - Config document id
  */
-export async function deleteConfig(id) {
-    await deleteTypedDoc(id, DOC_TYPES.CONFIG, 'deleteConfig');
+export async function deleteConfig(id, options = {}) {
+    await deleteTypedDoc(id, DOC_TYPES.CONFIG, 'deleteConfig', options);
 }
 
 /**
@@ -576,9 +811,9 @@ function isConflictResult(result) {
  * @param {number} [maxAttempts=5] - Maximum cleanup attempts
  * @returns {Promise<Object|null>} Latest conflict-free config winner
  */
-export async function resolveConfigConflicts(configId, maxAttempts = 5) {
+export async function resolveConfigConflicts(configId, maxAttempts = 5, options = {}) {
     ensureStorageInitialized();
-    assertCanPersist();
+    assertCanPersist(options);
     let wroteDocuments = false;
 
     try {
@@ -645,7 +880,7 @@ export async function resolveConfigConflicts(configId, maxAttempts = 5) {
         throw new Error('Config conflict cleanup did not converge.');
     } finally {
         if (wroteDocuments) {
-            debouncedSync();
+            requestSyncAfterWrite(options);
         }
     }
 }
@@ -694,6 +929,12 @@ export async function resetLocalReplicaAfterRecovery(confirmation) {
 export async function destroyStorage() {
     if (db) {
         try {
+            await settleStoragePreparation();
+            storageSessionId += 1;
+            clearStorageHydrationGate({ flushDeferredSync: false });
+            if (queuedTimerStops.size > 0) {
+                await waitForQueuedTimerStops();
+            }
             await waitForIdleSync();
             teardownSync();
             await db.destroy();
@@ -701,6 +942,8 @@ export async function destroyStorage() {
             logger.warn('destroyStorage: Error destroying database:', err);
         }
         db = null;
+        storagePreparationPromise = null;
+        clearStorageHydrationGate();
         clearRevStores();
     }
 }
@@ -717,7 +960,7 @@ export async function migrateDocTypes() {
         return;
     }
 
-    assertCanPersist();
+    assertCanPersist({ allowDuringPreparation: true });
     const docsToUpdate = legacyDocs.map((doc) =>
         createContractedDocument({
             ...doc,
@@ -733,6 +976,6 @@ export async function migrateDocTypes() {
     }
 
     if (responses.some((response) => response.ok)) {
-        debouncedSync();
+        requestSyncAfterWrite({ allowDuringPreparation: true });
     }
 }

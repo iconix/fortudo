@@ -20,8 +20,9 @@ function getSettingsConfig() {
 /**
  * Load settings from PouchDB config doc, migrating from localStorage if needed.
  * Must be called after initStorage/prepareStorage and before any isActivitiesEnabled() check.
+ * @param {{readOnly?: boolean, allowDuringPreparation?: boolean}} [options]
  */
-export async function loadSettings() {
+export async function loadSettings({ readOnly = false, allowDuringPreparation = false } = {}) {
     const config = await loadConfig(SETTINGS_CONFIG_ID);
     if (config) {
         activitiesEnabled = !!config.activitiesEnabled;
@@ -39,12 +40,20 @@ export async function loadSettings() {
             activitiesEnabled = true;
             onboardingDismissed = false;
             onboardingSnoozedUntil = null;
-            await putConfig(getSettingsConfig());
-            localStorage.removeItem(LEGACY_STORAGE_KEY);
+            if (!readOnly) {
+                if (allowDuringPreparation) {
+                    await putConfig(getSettingsConfig(), { allowDuringPreparation: true });
+                } else {
+                    await putConfig(getSettingsConfig());
+                }
+                localStorage.removeItem(LEGACY_STORAGE_KEY);
+            }
             return;
         }
 
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
+        if (!readOnly) {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
     }
 
     activitiesEnabled = false;

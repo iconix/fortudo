@@ -11,6 +11,8 @@ export function createRoomSessionLifecycle({
     refreshCurrentGapHighlight,
     refreshStartTimeField,
     getRunningActivity,
+    isPersistenceAllowed,
+    isStoragePreparationPending,
     stopTimerAt,
     deleteCompletedUnscheduledTasks,
     rolloverPriorDayScheduledTasks,
@@ -25,12 +27,23 @@ export function createRoomSessionLifecycle({
     logger
 }) {
     let refreshFromStoragePromise = null;
+    let restoreRunningTimerRequested = false;
+    let storageRefreshRequested = false;
+    let writableRefreshRequested = false;
+    let preparationWriteRequested = false;
+    let activeWritableRefresh = false;
+    let activePreparationWrite = false;
     let unsubscribeSyncStatus = null;
     let unsubscribeSyncDataChange = null;
     let activeTaskColorInterval = null;
     let midnightTimerStopInFlight = false;
+    let pendingDayRolloverAt = null;
     let lastObservedDate = extractDateFromDateTime(new Date());
     let shouldRestoreRunningTimerAfterInitialSync = true;
+
+    function canPersistLifecycleMutations() {
+        return isPersistenceAllowed?.() !== false && isStoragePreparationPending?.() !== true;
+    }
 
     function getNextLocalMidnight(dateTime) {
         const boundary = new Date(dateTime);
@@ -59,7 +72,7 @@ export function createRoomSessionLifecycle({
     }
 
     async function stopStaleRunningTimerIfNeeded(now = new Date()) {
-        if (midnightTimerStopInFlight) {
+        if (midnightTimerStopInFlight || !canPersistLifecycleMutations()) {
             return null;
         }
 
@@ -84,33 +97,78 @@ export function createRoomSessionLifecycle({
         }
     }
 
-    async function refreshFromStorage({ restoreRunningTimer = false } = {}) {
+    async function refreshFromStorage({
+        restoreRunningTimer = false,
+        readOnly = false,
+        allowDuringPreparation = false,
+        requireFreshRead = false
+    } = {}) {
+        if (restoreRunningTimer) {
+            restoreRunningTimerRequested = true;
+        }
         if (refreshFromStoragePromise) {
+            const needsStrongerRefresh =
+                requireFreshRead ||
+                (!readOnly && !activeWritableRefresh && !writableRefreshRequested) ||
+                (allowDuringPreparation && !activePreparationWrite && !preparationWriteRequested);
+            if (needsStrongerRefresh) {
+                storageRefreshRequested = true;
+                writableRefreshRequested ||= !readOnly;
+                preparationWriteRequested ||= allowDuringPreparation;
+            }
             return refreshFromStoragePromise;
         }
 
+        storageRefreshRequested = true;
+        writableRefreshRequested ||= !readOnly;
+        preparationWriteRequested ||= allowDuringPreparation;
+
         refreshFromStoragePromise = (async () => {
-            await loadAppState();
-            await stopStaleRunningTimerIfNeeded();
-            refreshUI();
-            if (restoreRunningTimer) {
-                syncRestoredRunningTimer(getActivitiesEnabled());
-            } else if (typeof syncRunningTimerDisplay === 'function') {
-                syncRunningTimerDisplay(getActivitiesEnabled());
+            while (storageRefreshRequested) {
+                storageRefreshRequested = false;
+                const runWritableRefresh = writableRefreshRequested;
+                const runPreparationWrite = preparationWriteRequested;
+                writableRefreshRequested = false;
+                preparationWriteRequested = false;
+                activeWritableRefresh = runWritableRefresh;
+                activePreparationWrite = runPreparationWrite;
+
+                await loadAppState({
+                    readOnly: !runWritableRefresh,
+                    allowDuringPreparation: runPreparationWrite
+                });
+                await stopStaleRunningTimerIfNeeded();
+                refreshUI();
+                if (restoreRunningTimerRequested && !storageRefreshRequested) {
+                    restoreRunningTimerRequested = false;
+                    syncRestoredRunningTimer(getActivitiesEnabled());
+                } else if (
+                    !restoreRunningTimerRequested &&
+                    typeof syncRunningTimerDisplay === 'function'
+                ) {
+                    syncRunningTimerDisplay(getActivitiesEnabled());
+                }
+                refreshActiveTaskColor(getTaskState());
+                refreshCurrentGapHighlight();
             }
-            refreshActiveTaskColor(getTaskState());
-            refreshCurrentGapHighlight();
+            activeWritableRefresh = false;
+            activePreparationWrite = false;
         })();
 
         try {
             await refreshFromStoragePromise;
         } finally {
             refreshFromStoragePromise = null;
+            activeWritableRefresh = false;
+            activePreparationWrite = false;
         }
     }
 
     function refreshFromExternalChange() {
-        refreshFromStorage().catch((err) => {
+        refreshFromStorage({
+            readOnly: isStoragePreparationPending?.() === true,
+            requireFreshRead: true
+        }).catch((err) => {
             logger.error('Failed to refresh tasks after external change:', err);
         });
     }
@@ -128,6 +186,9 @@ export function createRoomSessionLifecycle({
     }
 
     async function runDayRollover(now) {
+        if (!canPersistLifecycleMutations()) {
+            return;
+        }
         const cleanupResult = await deleteCompletedUnscheduledTasks?.();
         if (cleanupResult?.persistenceFailed) {
             showToast?.(cleanupResult.reason, { theme: 'rose' });
@@ -163,7 +224,13 @@ export function createRoomSessionLifecycle({
 
             if (currentDate !== lastObservedDate) {
                 lastObservedDate = currentDate;
-                runDayRollover(now).catch((error) => {
+                pendingDayRolloverAt = now;
+            }
+
+            if (pendingDayRolloverAt && canPersistLifecycleMutations()) {
+                const rolloverAt = pendingDayRolloverAt;
+                pendingDayRolloverAt = null;
+                runDayRollover(rolloverAt).catch((error) => {
                     logger.error('Failed to persist midnight task rollover:', error);
                     refreshFromStorage().catch((refreshError) => {
                         logger.error(
@@ -175,7 +242,7 @@ export function createRoomSessionLifecycle({
 
                 if (getActivitiesEnabled() && getRunningActivity() && !midnightTimerStopInFlight) {
                     midnightTimerStopInFlight = true;
-                    const midnightBoundary = new Date(now);
+                    const midnightBoundary = new Date(rolloverAt);
                     midnightBoundary.setHours(0, 0, 0, 0);
 
                     stopTimerAt(midnightBoundary.toISOString())
@@ -214,10 +281,17 @@ export function createRoomSessionLifecycle({
                 onUpdateRequired?.();
             }
             if (status === 'synced' && shouldRestoreRunningTimerAfterInitialSync) {
-                shouldRestoreRunningTimerAfterInitialSync = false;
-                refreshFromStorage({ restoreRunningTimer: true }).catch((err) => {
-                    logger.error('Failed to refresh tasks after sync:', err);
-                });
+                refreshFromStorage({
+                    restoreRunningTimer: true,
+                    readOnly: isStoragePreparationPending?.() === true,
+                    requireFreshRead: true
+                })
+                    .then(() => {
+                        shouldRestoreRunningTimerAfterInitialSync = false;
+                    })
+                    .catch((err) => {
+                        logger.error('Failed to refresh tasks after sync:', err);
+                    });
             }
         };
         unsubscribeSyncStatus = onSyncStatusChange(handleSyncStatus);
@@ -250,7 +324,7 @@ export function createRoomSessionLifecycle({
         );
     }
 
-    function stop() {
+    async function stop() {
         if (unsubscribeSyncStatus) {
             unsubscribeSyncStatus();
             unsubscribeSyncStatus = null;
@@ -262,6 +336,13 @@ export function createRoomSessionLifecycle({
         if (activeTaskColorInterval) {
             clearInterval(activeTaskColorInterval);
             activeTaskColorInterval = null;
+        }
+        if (refreshFromStoragePromise) {
+            try {
+                await refreshFromStoragePromise;
+            } catch (error) {
+                logger.error('Failed to drain storage refresh during room shutdown:', error);
+            }
         }
     }
 
