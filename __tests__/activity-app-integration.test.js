@@ -28,6 +28,11 @@ jest.mock('../public/js/activities/renderer.js', () => ({
     renderActivitySummaryOnly: jest.fn()
 }));
 
+jest.mock('../public/js/activities/insights-issues.js', () => ({
+    detectActivityDataIssues: jest.fn(() => []),
+    groupIssuesByActivityId: jest.fn(() => ({}))
+}));
+
 jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
     resolveCategoryKey: jest.fn((key) =>
         key === 'work/deep' ? { kind: 'category', record: { key, color: '#0ea5e9' } } : null
@@ -56,6 +61,10 @@ import {
     getLiveTodayActivitySummary
 } from '../public/js/activities/manager.js';
 import { renderActivities } from '../public/js/activities/renderer.js';
+import {
+    detectActivityDataIssues,
+    groupIssuesByActivityId
+} from '../public/js/activities/insights-issues.js';
 
 describe('activity app integration', () => {
     beforeEach(() => {
@@ -152,6 +161,36 @@ describe('activity app integration', () => {
             activities,
             document.getElementById('activity-list'),
             expect.objectContaining({ summaryActivities: [...activities, runningSummary] })
+        );
+    });
+
+    test('annotates today activities with detected data issues, including the live timer', () => {
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        const runningSummary = { id: 'running-activity-summary', description: 'Running' };
+        const issues = [
+            {
+                type: 'overlap',
+                activityId: runningSummary.id,
+                overlappingActivityId: activities[0].id
+            }
+        ];
+        const issuesById = {
+            'activity-1': issues,
+            'running-activity-summary': issues
+        };
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+        detectActivityDataIssues.mockReturnValue(issues);
+        groupIssuesByActivityId.mockReturnValue(issuesById);
+
+        renderTodayActivities(true);
+
+        expect(detectActivityDataIssues).toHaveBeenCalledWith([...activities, runningSummary]);
+        expect(groupIssuesByActivityId).toHaveBeenCalledWith(issues);
+        expect(renderActivities).toHaveBeenCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ activityIssuesById: issuesById })
         );
     });
 

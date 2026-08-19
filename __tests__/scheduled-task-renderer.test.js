@@ -256,7 +256,7 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(taskCard.className).toContain('border-l-teal-400');
         });
 
-        test('renders actions menu with do-now only for incomplete non-active scheduled tasks', () => {
+        test('renders do-now for active and future incomplete scheduled tasks', () => {
             jest.useFakeTimers();
             jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
             const tasks = [
@@ -275,7 +275,7 @@ describe('Scheduled Task Renderer Tests', () => {
             const completedTask = document.querySelector('[data-task-id="completed"]');
 
             expect(activeTask.querySelector('.btn-task-actions-menu')).not.toBeNull();
-            expect(activeTask.querySelector('.btn-do-now')).toBeNull();
+            expect(activeTask.querySelector('.btn-do-now')).not.toBeNull();
             expect(futureTask.querySelector('.task-actions-menu')).not.toBeNull();
             expect(futureTask.querySelector('.task-actions-menu').hasAttribute('hidden')).toBe(
                 true
@@ -284,6 +284,19 @@ describe('Scheduled Task Renderer Tests', () => {
             expect(futureTask.querySelector('.btn-do-now').textContent).toContain('Do now');
             expect(futureTask.querySelector('.btn-do-now .fa-bolt')).not.toBeNull();
             expect(completedTask.querySelector('.btn-do-now')).toBeNull();
+            jest.useRealTimers();
+        });
+
+        test('renders do-now for a late incomplete scheduled task', () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2025-01-15T10:15:00.000'));
+            const lateTask = createTask('late', '09:00', 30, {
+                description: 'Late Task'
+            });
+
+            renderTasks([lateTask], mockCallbacks, mockInitListeners, null);
+
+            expect(document.querySelector('[data-task-id="late"] .btn-do-now')).not.toBeNull();
             jest.useRealTimers();
         });
 

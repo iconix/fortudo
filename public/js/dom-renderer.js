@@ -421,12 +421,12 @@ function handleScheduledTaskListClick(event) {
         return;
     }
 
-    if (target.closest('.btn-delete')) {
+    const deleteButton = target.closest('.btn-delete');
+    if (deleteButton instanceof HTMLElement) {
         event.preventDefault();
         event.stopPropagation();
-        closeScheduledTaskActionMenus();
         if (globalScheduledTaskCallbacks.onDeleteTask) {
-            globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex);
+            globalScheduledTaskCallbacks.onDeleteTask(taskId, taskIndex, deleteButton);
         }
         return;
     }

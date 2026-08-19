@@ -415,12 +415,7 @@ export function renderTasks(
         }
         html += task.editing
             ? renderEditTaskHTML(task, originalIndex)
-            : renderViewTaskHTML(
-                  task,
-                  originalIndex,
-                  isActiveTask,
-                  task.status !== 'completed' && !isActiveTask
-              );
+            : renderViewTaskHTML(task, originalIndex, isActiveTask, task.status !== 'completed');
 
         const gap = gapAfterTask.get(task.id);
         if (gap) {

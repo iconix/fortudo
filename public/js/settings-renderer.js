@@ -75,7 +75,9 @@ export function renderSettingsContent(options = {}) {
                     <h4 class="text-base font-medium text-slate-200">Organization</h4>
                     <p class="text-xs text-slate-400">Groups and categories shared by tasks and activities.</p>
                 </div>
-                ${renderTaxonomyManagementContent()}
+                <div id="taxonomy-management-content" class="space-y-5">
+                    ${renderTaxonomyManagementContent()}
+                </div>
             </section>
         </div>
     `;

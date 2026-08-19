@@ -17,7 +17,7 @@ import {
 import { refreshUI } from '../dom-renderer.js';
 import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
-import { getThemeForTaskId } from './confirmation-helpers.js';
+import { getThemeForTaskId, showInlineDeleteConfirmation } from './confirmation-helpers.js';
 import { handleStartTimer } from '../activities/handlers.js';
 import { syncTimerFormState } from '../activities/timer-ui.js';
 
@@ -88,18 +88,24 @@ export function handleEditUnscheduledTask(taskId) {
     }
 }
 
-export async function handleDeleteUnscheduledTask(taskId) {
+export async function handleDeleteUnscheduledTask(taskId, deleteButton) {
     logger.info(`Attempting to delete unscheduled task: ${taskId}`);
-    const result = await deleteUnscheduledTask(taskId);
+    const taskToDelete = getTaskById(taskId);
+    if (!taskToDelete || taskToDelete.type !== 'unscheduled') {
+        showAlert('Unscheduled task not found.', 'rose');
+        return;
+    }
+
+    const result = await deleteUnscheduledTask(taskId, taskToDelete.confirmingDelete);
     if (result.success) {
         showToast(result.message || 'Task deleted.', { theme: 'rose' });
         onTaskDeleted({
-            task: result.task || getTaskById(taskId) || { id: taskId, type: 'unscheduled' }
+            task: result.task || taskToDelete
         });
-    } else if (!result.requiresConfirmation && result.reason) {
+    } else if (result.requiresConfirmation) {
+        if (!showInlineDeleteConfirmation(deleteButton)) refreshUI();
+    } else if (result.reason) {
         showAlert(result.reason, 'rose');
-        refreshUI();
-    } else {
         refreshUI();
     }
 }

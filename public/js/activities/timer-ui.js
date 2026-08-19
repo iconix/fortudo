@@ -1,4 +1,5 @@
 import { showAlert } from '../modal-manager.js';
+import { syncCategoryColorDot, updateCategoryColorDot } from '../category-form-utils.js';
 import { logger } from '../utils.js';
 import { getRunningActivity, updateRunningActivity } from './manager.js';
 import { handleStartTimer, handleStopTimer } from './handlers.js';
@@ -288,6 +289,10 @@ function syncNextCategoryOptions() {
     }
 
     nextCategorySelect.value = timerUiState.nextActivityDraft.category || '';
+    updateCategoryColorDot(
+        nextCategorySelect,
+        document.getElementById('next-activity-category-color-indicator')
+    );
 }
 
 function syncNextActivityDraftFields() {
@@ -339,6 +344,10 @@ export function showTimerDisplay(runningActivity) {
             timerCategorySelect.innerHTML = mainCategorySelect.innerHTML;
         }
         timerCategorySelect.value = runningActivity.category || '';
+        updateCategoryColorDot(
+            timerCategorySelect,
+            document.getElementById('timer-category-color-indicator')
+        );
     }
 
     syncNextActivityDraftFields();
@@ -535,6 +544,11 @@ export function initializeTimerUI(deps) {
 
     const nextCategorySelect = document.getElementById('next-activity-category');
     if (nextCategorySelect instanceof HTMLSelectElement) {
+        syncCategoryColorDot(
+            nextCategorySelect,
+            document.getElementById('next-activity-category-color-indicator'),
+            { signal }
+        );
         nextCategorySelect.addEventListener(
             'change',
             () => {
@@ -584,6 +598,11 @@ export function initializeTimerUI(deps) {
 
     const timerCategorySelect = document.getElementById('timer-category');
     if (timerCategorySelect instanceof HTMLSelectElement) {
+        syncCategoryColorDot(
+            timerCategorySelect,
+            document.getElementById('timer-category-color-indicator'),
+            { signal }
+        );
         timerCategorySelect.addEventListener(
             'focusout',
             (event) => {
@@ -605,11 +624,19 @@ export function initializeTimerUI(deps) {
                         (result) => {
                             if (result?.success && result.runningActivity) {
                                 timerCategorySelect.value = result.runningActivity.category || '';
+                                updateCategoryColorDot(
+                                    timerCategorySelect,
+                                    document.getElementById('timer-category-color-indicator')
+                                );
                                 refreshTimerDerivedViews();
                                 return;
                             }
 
                             timerCategorySelect.value = previousValue;
+                            updateCategoryColorDot(
+                                timerCategorySelect,
+                                document.getElementById('timer-category-color-indicator')
+                            );
                             showAlert(result?.reason || 'Could not update timer.', 'sky');
                         }
                     )
