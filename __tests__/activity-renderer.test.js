@@ -305,7 +305,7 @@ describe('activity renderer', () => {
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
     });
 
-    test('renders inline activity data issue text and amber styling on affected rows', () => {
+    test('renders an inline amber issue badge while retaining slate activity cards', () => {
         const container = document.getElementById('activity-list');
 
         renderActivities(
@@ -361,9 +361,12 @@ describe('activity renderer', () => {
         const cleanRow = container.querySelector('[data-activity-id="activity-clean"]');
         const issueText = affectedRow.querySelector('[data-activity-data-issue]');
 
-        expect(affectedRow.className).toContain('border-amber');
-        expect(affectedRow.className).toContain('bg-amber');
+        expect(affectedRow.className).toContain('border-slate-700/50');
+        expect(affectedRow.className).toContain('bg-slate-800/60');
+        expect(affectedRow.className).not.toContain('border-amber');
+        expect(affectedRow.className).not.toContain('bg-amber');
         expect(issueText).not.toBeNull();
+        expect(issueText.className).toContain('text-amber-200');
         expect(issueText.textContent).toContain('Data issue');
         expect(issueText.textContent).toContain('Overlapping activity');
         expect(issueText.textContent).toContain('Activity ends before it starts');
@@ -373,6 +376,41 @@ describe('activity renderer', () => {
         expect(cleanRow.className).toContain('border-l-4');
         expect(cleanRow.className).toContain('border-l-sky-400');
         expect(cleanRow.querySelector('[data-activity-data-issue]')).toBeNull();
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-overlapped',
+                    description: 'Original focus',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            {
+                editingActivityId: 'activity-overlapped',
+                activityIssuesById: {
+                    'activity-overlapped': [
+                        {
+                            type: 'overlap',
+                            activityId: 'activity-overlapping',
+                            overlappingActivityId: 'activity-overlapped'
+                        }
+                    ]
+                }
+            }
+        );
+
+        const editRow = container.querySelector('[data-activity-id="activity-overlapped"]');
+        expect(editRow.className).toContain('bg-slate-800/70');
+        expect(editRow.className).toContain('border-sky-700/40');
+        expect(editRow.className).not.toContain('border-amber');
+        expect(editRow.className).not.toContain('bg-amber');
+        expect(editRow.querySelector('[data-activity-data-issue]')).not.toBeNull();
     });
 
     test('renders a confirming delete affordance for the selected activity row', () => {

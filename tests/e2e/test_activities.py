@@ -5,6 +5,7 @@ from __future__ import annotations
 from playwright.sync_api import sync_playwright
 
 from scripts.e2e_helpers import (
+    build_relative_day_activity_doc,
     clear_room_storage,
     dismiss_open_modals,
     enter_room,
@@ -262,6 +263,51 @@ def test_settings_activities_toggle_persists_across_reload(app_server):
             page.locator("#activity-toggle-option").wait_for(state="visible", timeout=10000)
             force_activity_mode(page)
             page.locator("#start-timer-btn").wait_for(state="visible", timeout=10000)
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_today_activities_surface_overlapping_data_issues(app_server):
+    room_code = "activities-today-data-warning"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(playwright)
+
+        try:
+            page.goto(BASE_URL, wait_until="load")
+            first_activity = build_relative_day_activity_doc(
+                page,
+                doc_id="today-overlap-first",
+                description="Today overlap first",
+                day_offset=0,
+                start_hour=9,
+                start_minute=0,
+                duration_minutes=60,
+            )
+            second_activity = build_relative_day_activity_doc(
+                page,
+                doc_id="today-overlap-second",
+                description="Today overlap second",
+                day_offset=0,
+                start_hour=9,
+                start_minute=30,
+                duration_minutes=60,
+            )
+
+            seed_and_enter_room(
+                page,
+                room_code,
+                [activities_config(), first_activity, second_activity],
+            )
+
+            issue_rows = page.locator(
+                "#activity-list .activity-item:has([data-activity-data-issue])"
+            )
+            issue_rows.first.wait_for(state="visible", timeout=10000)
+
+            assert issue_rows.count() == 2
+            assert "Data issue" in issue_rows.first.inner_text()
+            assert "Overlapping activity" in issue_rows.first.inner_text()
         finally:
             context.close()
             browser.close()
