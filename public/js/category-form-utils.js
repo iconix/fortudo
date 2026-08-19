@@ -84,18 +84,28 @@ export function validateCategoryKey(categoryKey, theme) {
     return { valid: true, category: categoryKey };
 }
 
-export function syncCategoryColorDot(selectElement, dotElement) {
+export function updateCategoryColorDot(selectElement, dotElement) {
     if (!(selectElement instanceof HTMLSelectElement) || !(dotElement instanceof HTMLElement)) {
         return;
     }
 
-    const updateIndicator = () => {
-        const resolved = resolveCategoryKey(selectElement.value);
-        dotElement.style.backgroundColor = resolved
-            ? resolved.record.color
-            : DEFAULT_CATEGORY_DOT_COLOR;
-    };
+    const resolved = resolveCategoryKey(selectElement.value);
+    dotElement.style.backgroundColor = resolved
+        ? resolved.record.color
+        : DEFAULT_CATEGORY_DOT_COLOR;
+}
 
-    selectElement.addEventListener('change', updateIndicator);
+export function syncCategoryColorDot(selectElement, dotElement, options = {}) {
+    if (!(selectElement instanceof HTMLSelectElement) || !(dotElement instanceof HTMLElement)) {
+        return;
+    }
+
+    const updateIndicator = () => updateCategoryColorDot(selectElement, dotElement);
+
+    selectElement.addEventListener(
+        'change',
+        updateIndicator,
+        options.signal ? { signal: options.signal } : undefined
+    );
     updateIndicator();
 }
