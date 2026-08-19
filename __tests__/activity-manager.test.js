@@ -34,6 +34,7 @@ import { extractTimeFromDateTime } from '../public/js/utils.js';
 describe('activity manager', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        putActivity.mockResolvedValue();
         resetActivityState();
     });
 
@@ -72,7 +73,7 @@ describe('activity manager', () => {
             expect(putActivity).not.toHaveBeenCalled();
         });
 
-        test('rounds manual zero-duration activity payloads up to one minute', async () => {
+        test('rejects zero-length completed activity payloads', async () => {
             const result = await addActivity({
                 description: 'Test',
                 startDateTime: '2026-04-07T09:00:00.000Z',
@@ -82,16 +83,16 @@ describe('activity manager', () => {
                 sourceTaskId: null
             });
 
-            expect(result.success).toBe(true);
-            expect(result.activity.duration).toBe(1);
-            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toMatch(/duration/i);
+            expect(putActivity).not.toHaveBeenCalled();
         });
 
-        test('rounds sub-minute completed activities up to one minute at the shared addActivity seam', async () => {
+        test('stores positive sub-minute activities as one minute without changing exact times', async () => {
             const result = await addActivity({
                 description: 'Instant stop',
                 startDateTime: '2026-04-07T09:00:00.000Z',
-                endDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T09:00:20.000Z',
                 duration: 0,
                 source: 'timer',
                 sourceTaskId: null
@@ -99,12 +100,12 @@ describe('activity manager', () => {
 
             expect(result.success).toBe(true);
             expect(result.activity.duration).toBe(1);
-            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
+            expect(result.activity.endDateTime).toBe('2026-04-07T09:00:20.000Z');
             expect(putActivity).toHaveBeenCalledWith(
                 expect.objectContaining({
                     source: 'timer',
                     duration: 1,
-                    endDateTime: '2026-04-07T09:01:00.000Z'
+                    endDateTime: '2026-04-07T09:00:20.000Z'
                 })
             );
         });
@@ -602,11 +603,186 @@ describe('activity manager', () => {
                 }
             ]);
 
-            expect(getActivityOverlapTruncationPreviewForDate('2026-04-07')).toEqual({
-                success: true,
-                truncatedCount: 1,
-                truncatedActivityIds: ['activity-1']
-            });
+            expect(getActivityOverlapTruncationPreviewForDate('2026-04-07')).toEqual(
+                expect.objectContaining({
+                    success: true,
+                    truncatedCount: 1,
+                    truncatedActivityIds: ['activity-1'],
+                    previewToken: expect.any(String),
+                    changes: [
+                        expect.objectContaining({
+                            activityId: 'activity-1',
+                            description: 'Writing',
+                            previousEndDateTime: '2026-04-07T10:00:00.000Z',
+                            nextEndDateTime: '2026-04-07T09:45:00.000Z',
+                            previousDuration: 60,
+                            nextDuration: 45,
+                            overlappingActivityId: 'activity-2',
+                            overlappingActivityDescription: 'Call'
+                        })
+                    ]
+                })
+            );
+        });
+
+        test('rejects execution when activity times changed after the preview', async () => {
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Writing',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Call',
+                    startDateTime: '2026-04-07T09:45:00.000Z',
+                    endDateTime: '2026-04-07T10:15:00.000Z',
+                    duration: 30
+                }
+            ]);
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+
+            updateActivityState([
+                getActivityById('activity-1'),
+                {
+                    ...getActivityById('activity-2'),
+                    startDateTime: '2026-04-07T09:50:00.000Z',
+                    duration: 25
+                }
+            ]);
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
+
+            expect(result).toEqual(
+                expect.objectContaining({
+                    success: false,
+                    code: 'preview-stale',
+                    reason: expect.stringContaining('changed')
+                })
+            );
+            expect(putActivity).not.toHaveBeenCalled();
+        });
+
+        test('reports same-start overlaps that cannot be shortened safely', () => {
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Writing',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Call',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:30:00.000Z',
+                    duration: 30
+                }
+            ]);
+
+            expect(getActivityOverlapTruncationPreviewForDate('2026-04-07')).toEqual(
+                expect.objectContaining({
+                    success: true,
+                    truncatedCount: 0,
+                    changes: [],
+                    unresolvedOverlapCount: 1,
+                    unresolvedOverlaps: [
+                        expect.objectContaining({
+                            activityId: 'activity-1',
+                            description: 'Writing',
+                            overlappingActivityId: 'activity-2',
+                            overlappingActivityDescription: 'Call',
+                            reason: 'same-start'
+                        })
+                    ]
+                })
+            );
+        });
+
+        test('requires an approved preview before changing activity data', async () => {
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Writing',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Call',
+                    startDateTime: '2026-04-07T09:45:00.000Z',
+                    endDateTime: '2026-04-07T10:15:00.000Z',
+                    duration: 30
+                }
+            ]);
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07');
+
+            expect(result).toEqual(
+                expect.objectContaining({
+                    success: false,
+                    code: 'preview-required',
+                    reason: expect.stringContaining('Review')
+                })
+            );
+            expect(putActivity).not.toHaveBeenCalled();
+        });
+
+        test('keeps successful rows in memory when a later truncation fails to persist', async () => {
+            updateActivityState([
+                {
+                    id: 'activity-1',
+                    description: 'Writing',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T11:00:00.000Z',
+                    duration: 120
+                },
+                {
+                    id: 'activity-2',
+                    description: 'Call',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T12:00:00.000Z',
+                    duration: 120
+                },
+                {
+                    id: 'activity-3',
+                    description: 'Break',
+                    startDateTime: '2026-04-07T11:00:00.000Z',
+                    endDateTime: '2026-04-07T13:00:00.000Z',
+                    duration: 120
+                }
+            ]);
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+            putActivity
+                .mockResolvedValueOnce(undefined)
+                .mockRejectedValueOnce(new Error('conflict'));
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
+
+            expect(result).toEqual(
+                expect.objectContaining({
+                    success: false,
+                    code: 'partial-failure',
+                    truncatedCount: 1,
+                    truncatedActivityIds: ['activity-1']
+                })
+            );
+            expect(getActivityById('activity-1')).toEqual(
+                expect.objectContaining({
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60
+                })
+            );
+            expect(getActivityById('activity-2')).toEqual(
+                expect.objectContaining({
+                    endDateTime: '2026-04-07T12:00:00.000Z',
+                    duration: 120
+                })
+            );
         });
 
         test('shortens selected-day activity ends to the next activity start and persists changes', async () => {
@@ -649,7 +825,8 @@ describe('activity manager', () => {
                 }
             ]);
 
-            const result = await truncateActivityOverlapsForDate('2026-04-07');
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
 
             expect(result).toEqual({
                 success: true,

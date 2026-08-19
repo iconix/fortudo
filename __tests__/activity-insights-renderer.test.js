@@ -534,6 +534,7 @@ describe('activity insights renderer', () => {
     test('hides the overlap repair action while the feature flag is disabled', () => {
         renderWith({
             selectedDate: '2026-05-07',
+            overlapRepairEnabled: false,
             activities: [
                 activity({
                     id: 'activity-overlapped',
@@ -580,7 +581,7 @@ describe('activity insights renderer', () => {
         const action = document.querySelector('[data-truncate-activity-overlaps]');
         expect(action).not.toBeNull();
         expect(action.dataset.truncateActivityOverlapsDate).toBe('2026-05-07');
-        expect(action.textContent).toContain('Fix overlaps');
+        expect(action.textContent).toContain('Review overlap fixes');
 
         renderWith({
             selectedDate: '2026-05-07',
@@ -809,8 +810,17 @@ describe('activity insights renderer', () => {
         expect(cleanDay.querySelector('[data-trend-day-issue]')).toBeNull();
         expect(indicator).not.toBeNull();
         expect(indicator.querySelector('.fa-triangle-exclamation')).not.toBeNull();
-        expect(indicator.getAttribute('aria-label')).toBe('1 data issue on this day');
-        expect(indicator.getAttribute('title')).toBe('1 data issue on this day');
+        expect(indicator.textContent.trim()).toBe('2');
+        expect(indicator.getAttribute('aria-label')).toBe(
+            '2 activities with data issues on this day'
+        );
+        expect(indicator.getAttribute('title')).toBe('2 activities with data issues on this day');
+        expect(issueDay.querySelector('[data-trend-day-activity-count]').textContent.trim()).toBe(
+            '2 activities'
+        );
+        expect(cleanDay.querySelector('[data-trend-day-activity-count]').textContent.trim()).toBe(
+            '1 activity'
+        );
     });
 
     test('renderInsightsView scrolls only the horizontal trend strip to the selected day', () => {

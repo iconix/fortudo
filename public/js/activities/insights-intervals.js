@@ -1,4 +1,5 @@
 import { extractDateFromDateTime } from '../utils.js';
+import { roundDurationMilliseconds } from './duration.js';
 
 /**
  * Parses a YYYY-MM-DD value as a local midnight date.
@@ -117,7 +118,16 @@ export function invalidActivityTouchesInterval(item, visibleInterval) {
  * @returns {number}
  */
 export function getIntervalDuration(interval) {
-    return Math.max(0, Math.round((interval.end.getTime() - interval.start.getTime()) / 60000));
+    return roundDurationMilliseconds(getIntervalDurationMilliseconds(interval));
+}
+
+/**
+ * Returns an interval's exact positive elapsed duration.
+ * @param {{start: Date, end: Date}} interval
+ * @returns {number}
+ */
+export function getIntervalDurationMilliseconds(interval) {
+    return Math.max(0, interval.end.getTime() - interval.start.getTime());
 }
 
 /**
@@ -130,6 +140,18 @@ export function getIntervalDuration(interval) {
 export function getOverlapDuration(item, visibleInterval, now = new Date()) {
     const clippedInterval = getClippedDurationInterval(item, visibleInterval, now);
     return clippedInterval ? getIntervalDuration(clippedInterval) : 0;
+}
+
+/**
+ * Returns exact elapsed time for the portion of an item inside a visible interval.
+ * @param {Object} item
+ * @param {{start: Date, end: Date}} visibleInterval
+ * @param {Date} [now=new Date()]
+ * @returns {number}
+ */
+export function getOverlapDurationMilliseconds(item, visibleInterval, now = new Date()) {
+    const clippedInterval = getClippedDurationInterval(item, visibleInterval, now);
+    return clippedInterval ? getIntervalDurationMilliseconds(clippedInterval) : 0;
 }
 
 /**

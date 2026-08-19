@@ -6,6 +6,7 @@ import {
     getCategoryById,
     getCategoryByKey
 } from '../taxonomy/taxonomy-selectors.js';
+import { getItemDurationMilliseconds, roundDurationMilliseconds } from './duration.js';
 
 function resolveActivityCategory(activity) {
     if (typeof resolveCategoryReference === 'function') {
@@ -78,26 +79,31 @@ export function summarizeActivitiesByParentGroup(activities) {
         const existing = summaryMap.get(summaryItem.key);
 
         if (existing) {
-            existing.duration += activity.duration;
+            existing.durationMilliseconds += getItemDurationMilliseconds(activity);
             existing.count += 1;
             continue;
         }
 
         summaryMap.set(summaryItem.key, {
             ...summaryItem,
-            duration: activity.duration,
+            durationMilliseconds: getItemDurationMilliseconds(activity),
             count: 1,
             isUncategorized: Boolean(summaryItem.isUncategorized)
         });
     }
 
-    return Array.from(summaryMap.values()).sort((left, right) => {
-        if (right.duration !== left.duration) {
-            return right.duration - left.duration;
-        }
+    return Array.from(summaryMap.values())
+        .map(({ durationMilliseconds, ...item }) => ({
+            ...item,
+            duration: roundDurationMilliseconds(durationMilliseconds)
+        }))
+        .sort((left, right) => {
+            if (right.duration !== left.duration) {
+                return right.duration - left.duration;
+            }
 
-        return left.label.localeCompare(right.label) || left.key.localeCompare(right.key);
-    });
+            return left.label.localeCompare(right.label) || left.key.localeCompare(right.key);
+        });
 }
 
 export function summarizeExpandedChildCategories(activities, expandedParentGroupId) {
@@ -131,7 +137,7 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
             const syntheticKey = `${parentIdentity}::__unspecified`;
             const existing = summaryMap.get(syntheticKey);
             if (existing) {
-                existing.duration += activity.duration;
+                existing.durationMilliseconds += getItemDurationMilliseconds(activity);
                 continue;
             }
 
@@ -139,7 +145,7 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
                 key: syntheticKey,
                 label: parentGroup.label,
                 color: parentGroup.color,
-                duration: activity.duration
+                durationMilliseconds: getItemDurationMilliseconds(activity)
             });
             continue;
         }
@@ -159,7 +165,7 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
         const childIdentity = childCategory.id || childCategory.key;
         const existing = summaryMap.get(childIdentity);
         if (existing) {
-            existing.duration += activity.duration;
+            existing.durationMilliseconds += getItemDurationMilliseconds(activity);
             continue;
         }
 
@@ -168,12 +174,19 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
             compatibilityKey: childCategory.key,
             label: childCategory.label,
             color: childCategory.color,
-            duration: activity.duration
+            durationMilliseconds: getItemDurationMilliseconds(activity)
         });
     }
 
+    const totalDuration = roundDurationMilliseconds(
+        Array.from(summaryMap.values()).reduce((sum, item) => sum + item.durationMilliseconds, 0)
+    );
     const items = Array.from(summaryMap.values())
-        .filter((item) => item.duration > 0)
+        .filter((item) => item.durationMilliseconds > 0)
+        .map(({ durationMilliseconds, ...item }) => ({
+            ...item,
+            duration: roundDurationMilliseconds(durationMilliseconds)
+        }))
         .sort((left, right) => {
             if (right.duration !== left.duration) {
                 return right.duration - left.duration;
@@ -191,7 +204,7 @@ export function summarizeExpandedChildCategories(activities, expandedParentGroup
         compatibilityKey: parentGroup.key,
         label: parentGroup.label,
         items,
-        totalDuration: items.reduce((sum, item) => sum + item.duration, 0)
+        totalDuration
     };
 }
 
@@ -199,7 +212,9 @@ export function buildActivitySummaryModel(activities, expandedParentGroupKey = n
     const summaryItems = summarizeActivitiesByParentGroup(activities);
     return {
         summaryItems,
-        totalDuration: summaryItems.reduce((sum, item) => sum + item.duration, 0),
+        totalDuration: roundDurationMilliseconds(
+            activities.reduce((sum, activity) => sum + getItemDurationMilliseconds(activity), 0)
+        ),
         totalCount: summaryItems.reduce((sum, item) => sum + item.count, 0),
         expandedGroup: summarizeExpandedChildCategories(activities, expandedParentGroupKey)
     };

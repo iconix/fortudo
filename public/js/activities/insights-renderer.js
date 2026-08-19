@@ -10,6 +10,7 @@ import { renderActivities } from './renderer.js';
 import { buildInsightsModel } from './insights-model.js';
 import { mergeActivityIssuesById } from './insights-issues.js';
 import { buildTrendModel, getDefaultTrendDateRange } from './insights-trends.js';
+import { formatActivityDuration } from './duration.js';
 
 const DEFAULT_ACTIVITY_LOG_LIMIT = 50;
 const FALLBACK_TIMELINE_COLOR = '#64748b';
@@ -143,7 +144,7 @@ function getViewportBlockStyle(block, viewport) {
 function renderTimelineBlock(block, type, viewport) {
     const label = getItemLabel(block);
     const timeRange = `${formatTime(block.startDateTime)} - ${formatTime(block.endDateTime)}`;
-    const duration = calculateHoursAndMinutes(block.duration);
+    const duration = formatActivityDuration(block);
     const title = `${label}, ${timeRange}, ${duration}`;
     const { style, widthPercent } = getViewportBlockStyle(block, viewport);
     const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
@@ -208,7 +209,7 @@ function renderSelectedTimelineBlockDetail(blocks) {
         <span class="text-slate-400">Selected block:</span>
         <span class="font-semibold text-white">${escapeHtml(label)}</span>
         <span>${escapeHtml(timeRange)}</span>
-        <span>${escapeHtml(calculateHoursAndMinutes(selectedBlock.duration))}</span>
+        <span>${escapeHtml(formatActivityDuration(selectedBlock))}</span>
     </div>`;
 }
 
@@ -287,7 +288,7 @@ function renderActivityLogActions(
     actions.className = 'mb-3 flex justify-end px-2';
     actions.innerHTML = `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(model.date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
         <i class="fa-solid fa-scissors" aria-hidden="true"></i>
-        <span>Fix overlaps</span>
+        <span>Review overlap fixes</span>
     </button>`;
 
     const listContainer = document.getElementById('insights-activity-list');
@@ -544,15 +545,20 @@ function renderSelectedDayContext(selectedDate) {
 
 function renderTrendDayCard(day, selectedDate) {
     const minutes = Number(day.minutes) || 0;
-    const issueCount = Number(day.issueCount) || 0;
-    const issueLabel = `${issueCount} data ${issueCount === 1 ? 'issue' : 'issues'} on this day`;
+    const activityCount = Number(day.activityCount) || 0;
+    const activityLabel = `${activityCount} ${activityCount === 1 ? 'activity' : 'activities'}`;
+    const categoryCount = (day.categorySegments || []).length;
+    const categoryLabel = `${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}`;
+    const affectedActivityCount = Number(day.affectedActivityCount) || 0;
+    const issueLabel = `${affectedActivityCount} ${affectedActivityCount === 1 ? 'activity' : 'activities'} with data issues on this day`;
     const issueIndicator =
-        issueCount > 0
+        affectedActivityCount > 0
             ? `<span data-trend-day-issue
-                class="inline-flex items-center justify-center text-[11px] leading-none text-amber-200"
+                class="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-1 text-[10px] leading-none text-amber-200"
                 aria-label="${escapeHtml(issueLabel)}"
                 title="${escapeHtml(issueLabel)}">
                 <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                <span aria-hidden="true">${escapeHtml(affectedActivityCount)}</span>
             </span>`
             : '';
     const segments = (day.categorySegments || [])
@@ -582,10 +588,7 @@ function renderTrendDayCard(day, selectedDate) {
         }">
         <div class="flex items-center justify-between text-[11px] font-semibold uppercase text-sky-300">
             <span>${escapeHtml(formatWeekday(day.date))}</span>
-            <span class="flex items-center gap-1.5">
-                ${issueIndicator}
-                <span>${escapeHtml(day.activityCount || 0)}</span>
-            </span>
+            ${issueIndicator}
         </div>
         <div class="mt-1 text-sm font-semibold text-slate-100">${escapeHtml(formatShortDate(day.date))}</div>
         <div class="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-800">
@@ -594,8 +597,10 @@ function renderTrendDayCard(day, selectedDate) {
         <div class="mt-2 text-sm font-semibold text-slate-100">
             ${escapeHtml(calculateHoursAndMinutes(minutes))}
         </div>
-        <div class="text-[11px] text-slate-400 sm:text-slate-500">
-            ${escapeHtml((day.categorySegments || []).length)} categories
+        <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-400 sm:text-slate-500">
+            <span data-trend-day-activity-count>${escapeHtml(activityLabel)}</span>
+            <span aria-hidden="true">·</span>
+            <span>${escapeHtml(categoryLabel)}</span>
         </div>
     </button>`;
 }

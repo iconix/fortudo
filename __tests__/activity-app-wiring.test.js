@@ -21,7 +21,32 @@ jest.mock('../public/js/activities/manager.js', () => ({
     getActivityOverlapTruncationPreviewForDate: jest.fn(() => ({
         success: true,
         truncatedCount: 2,
-        truncatedActivityIds: ['activity-1', 'activity-2']
+        truncatedActivityIds: ['activity-1', 'activity-2'],
+        previewToken: 'preview-token',
+        changes: [
+            {
+                activityId: 'activity-1',
+                description: 'Writing',
+                startDateTime: '2026-05-07T09:00:00.000Z',
+                previousEndDateTime: '2026-05-07T10:00:00.000Z',
+                nextEndDateTime: '2026-05-07T09:45:00.000Z',
+                previousDuration: 60,
+                nextDuration: 45,
+                overlappingActivityId: 'activity-2',
+                overlappingActivityDescription: 'Call'
+            },
+            {
+                activityId: 'activity-2',
+                description: 'Call',
+                startDateTime: '2026-05-07T09:45:00.000Z',
+                previousEndDateTime: '2026-05-07T11:00:00.000Z',
+                nextEndDateTime: '2026-05-07T10:30:00.000Z',
+                previousDuration: 75,
+                nextDuration: 45,
+                overlappingActivityId: 'activity-3',
+                overlappingActivityDescription: 'Break'
+            }
+        ]
     })),
     truncateActivityOverlapsForDate: jest.fn(() =>
         Promise.resolve({ success: true, truncatedCount: 2 })
@@ -29,7 +54,9 @@ jest.mock('../public/js/activities/manager.js', () => ({
 }));
 
 jest.mock('../public/js/modal-manager.js', () => ({
-    askConfirmation: jest.fn(() => Promise.resolve(true))
+    askConfirmation: jest.fn(() => Promise.resolve(true)),
+    showAlert: jest.fn(),
+    showCustomAlert: jest.fn()
 }));
 
 jest.mock('../public/js/toast-manager.js', () => ({
@@ -63,7 +90,7 @@ import {
     getRunningActivity,
     truncateActivityOverlapsForDate
 } from '../public/js/activities/manager.js';
-import { askConfirmation } from '../public/js/modal-manager.js';
+import { askConfirmation, showAlert, showCustomAlert } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
 import {
     expandInsightsActivityLogLimit,
@@ -347,17 +374,196 @@ describe('activity app wiring', () => {
         await Promise.resolve();
 
         expect(askConfirmation).toHaveBeenCalledWith(
-            expect.stringContaining('This will shorten 2 activities'),
-            { ok: 'Fix overlaps', cancel: 'Cancel' },
-            'amber'
+            expect.any(HTMLElement),
+            { ok: 'Repair selected', cancel: 'Cancel' },
+            'slate',
+            'wide',
+            'Review overlap fixes'
         );
+        const previewContent = askConfirmation.mock.calls[0][0];
+        expect(previewContent.textContent).toMatch(
+            /Writing[\s\S]*Call[\s\S]*Only selected end times and durations will change/
+        );
+        expect(previewContent.querySelectorAll('[data-overlap-repair-id]:checked')).toHaveLength(2);
         expect(getActivityOverlapTruncationPreviewForDate).toHaveBeenCalledWith('2026-05-07');
-        expect(truncateActivityOverlapsForDate).toHaveBeenCalledWith('2026-05-07');
+        expect(truncateActivityOverlapsForDate).toHaveBeenCalledWith(
+            '2026-05-07',
+            expect.objectContaining({
+                previewToken: 'preview-token',
+                selectedActivityIds: ['activity-1', 'activity-2']
+            })
+        );
         expect(refreshUI).toHaveBeenCalled();
         expect(renderInsights).not.toHaveBeenCalled();
-        expect(showToast).toHaveBeenCalledWith('Truncated 2 overlapping activities.', {
+        expect(showToast).toHaveBeenCalledWith('Repaired 2 overlaps.', {
             theme: 'amber'
         });
+    });
+
+    test('applies only rows that remain selected in the repair review', async () => {
+        let resolveConfirmation;
+        askConfirmation.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveConfirmation = resolve;
+                })
+        );
+        const signal = new AbortController().signal;
+        initializeActivityUi({
+            signal,
+            refreshUI: jest.fn(),
+            refreshTaskDisplays: jest.fn(),
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        document
+            .getElementById('insights-activity-log')
+            .insertAdjacentHTML(
+                'afterbegin',
+                '<button data-truncate-activity-overlaps data-truncate-activity-overlaps-date="2026-05-07">Review</button>'
+            );
+
+        document
+            .querySelector('[data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+
+        const previewContent = askConfirmation.mock.calls[0][0];
+        previewContent.querySelector('[data-overlap-repair-id="activity-2"]').checked = false;
+        resolveConfirmation(true);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(truncateActivityOverlapsForDate).toHaveBeenCalledWith(
+            '2026-05-07',
+            expect.objectContaining({ selectedActivityIds: ['activity-1'] })
+        );
+    });
+
+    test('does not apply a stale preview and asks the user to review again', async () => {
+        truncateActivityOverlapsForDate.mockResolvedValueOnce({
+            success: false,
+            code: 'preview-stale',
+            reason: 'Activity data changed after the preview.'
+        });
+        const refreshUI = jest.fn();
+        const signal = new AbortController().signal;
+        initializeActivityUi({
+            signal,
+            refreshUI,
+            refreshTaskDisplays: jest.fn(),
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        document
+            .getElementById('insights-activity-log')
+            .insertAdjacentHTML(
+                'afterbegin',
+                '<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="2026-05-07">Review</button>'
+            );
+
+        document
+            .querySelector('[data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(refreshUI).toHaveBeenCalled();
+        expect(showAlert).toHaveBeenCalledWith('Activity data changed after the preview.', 'amber');
+        expect(showToast).not.toHaveBeenCalled();
+    });
+
+    test('acknowledges partial progress and reopens a fresh preview for remaining repairs', async () => {
+        truncateActivityOverlapsForDate.mockResolvedValueOnce({
+            success: false,
+            code: 'partial-failure',
+            reason: 'Fixed 1 overlap change, but another activity could not be saved.',
+            truncatedCount: 1,
+            truncatedActivityIds: ['activity-1']
+        });
+        askConfirmation.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        showAlert.mockResolvedValueOnce();
+        const refreshUI = jest.fn();
+        initializeActivityUi({
+            signal: new AbortController().signal,
+            refreshUI,
+            refreshTaskDisplays: jest.fn(),
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        document
+            .getElementById('insights-activity-log')
+            .insertAdjacentHTML(
+                'afterbegin',
+                '<button data-truncate-activity-overlaps data-truncate-activity-overlaps-date="2026-05-07">Review</button>'
+            );
+
+        document
+            .querySelector('[data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(refreshUI).toHaveBeenCalled();
+        expect(showAlert).toHaveBeenCalledWith(
+            'Fixed 1 overlap change, but another activity could not be saved.',
+            'amber'
+        );
+        expect(getActivityOverlapTruncationPreviewForDate).toHaveBeenCalledTimes(2);
+        expect(askConfirmation).toHaveBeenCalledTimes(2);
+        expect(truncateActivityOverlapsForDate).toHaveBeenCalledTimes(1);
+    });
+
+    test('explains overlaps that cannot be auto-fixed without deleting an activity', async () => {
+        getActivityOverlapTruncationPreviewForDate.mockReturnValueOnce({
+            success: true,
+            truncatedCount: 0,
+            changes: [],
+            unresolvedOverlapCount: 1,
+            unresolvedOverlaps: [
+                {
+                    activityId: 'activity-1',
+                    description: 'Writing',
+                    overlappingActivityId: 'activity-2',
+                    overlappingActivityDescription: 'Call',
+                    reason: 'same-start'
+                }
+            ]
+        });
+        const signal = new AbortController().signal;
+        initializeActivityUi({
+            signal,
+            refreshUI: jest.fn(),
+            refreshTaskDisplays: jest.fn(),
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        document
+            .getElementById('insights-activity-log')
+            .insertAdjacentHTML(
+                'afterbegin',
+                '<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="2026-05-07">Review</button>'
+            );
+
+        document
+            .querySelector('[data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+
+        expect(showCustomAlert).toHaveBeenCalledWith(
+            'Review overlaps',
+            expect.any(HTMLElement),
+            'slate',
+            'Done',
+            'wide'
+        );
+        expect(showCustomAlert.mock.calls[0][1].textContent).toMatch(
+            /Needs manual review[\s\S]*Writing[\s\S]*Call/
+        );
+        expect(askConfirmation).not.toHaveBeenCalled();
+        expect(truncateActivityOverlapsForDate).not.toHaveBeenCalled();
     });
 
     test('restores activity mode before syncing timer ui when a running timer exists', () => {

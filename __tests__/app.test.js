@@ -503,7 +503,7 @@ describe('App.js Callback Functions', () => {
 
             expect(config.COUCHDB_URL).toBeNull();
             expect(featureFlags.WHATS_NEW_ANNOUNCEMENT_ENABLED).toBe(true);
-            expect(featureFlags.ACTIVITY_OVERLAP_REPAIR_ENABLED).toBe(false);
+            expect(featureFlags.ACTIVITY_OVERLAP_REPAIR_ENABLED).toBe(true);
         });
 
         test('boot initializes storage without a remote URL when sync config is null', async () => {

@@ -5,17 +5,18 @@ import {
     resolveCategoryReference
 } from '../taxonomy/taxonomy-selectors.js';
 import { extractDateFromDateTime } from '../utils.js';
-import { detectActivityDataIssues } from './insights-issues.js';
+import { detectActivityDataIssues, getActivityIdsForIssue } from './insights-issues.js';
 import {
     getDateRangeInterval,
     getDayInterval,
     getDurationCapableInterval,
     getLastLocalDaysDateRange,
     invalidActivityTouchesInterval,
-    getOverlapDuration,
+    getOverlapDurationMilliseconds,
     intervalsOverlap,
     parseLocalDate
 } from './insights-intervals.js';
+import { roundDurationMilliseconds } from './duration.js';
 
 const DEFAULT_TREND_DAYS = 7;
 
@@ -52,15 +53,19 @@ export function buildTrendModel({
 
         for (const dailyBucket of dailyBuckets.values()) {
             const bucketInterval = getDayInterval(dailyBucket.date);
-            const duration = getOverlapDuration(activityItem, bucketInterval, now);
+            const durationMilliseconds = getOverlapDurationMilliseconds(
+                activityItem,
+                bucketInterval,
+                now
+            );
 
-            if (duration <= 0) {
+            if (durationMilliseconds <= 0) {
                 continue;
             }
 
-            addCategoryMinutes(dailyBucket.categorySegments, categoryMeta, duration);
-            addCategoryMinutes(categoryTotals, categoryMeta, duration);
-            dailyBucket.minutes += duration;
+            addCategoryDuration(dailyBucket.categorySegments, categoryMeta, durationMilliseconds);
+            addCategoryDuration(categoryTotals, categoryMeta, durationMilliseconds);
+            dailyBucket.durationMilliseconds += durationMilliseconds;
             dailyBucket.activityCount += 1;
         }
     }
@@ -82,11 +87,18 @@ export function buildTrendModel({
     return {
         dateRange: selectedDateRange,
         dailyHours: [...dailyBuckets.values()].map(
-            ({ categorySegments, issueActivities, ...bucket }) => ({
-                ...bucket,
-                issueCount: detectActivityDataIssues(issueActivities).length,
-                categorySegments: sortCategoryEntries(categorySegments)
-            })
+            ({ categorySegments, issueActivities, durationMilliseconds, ...bucket }) => {
+                const issues = detectActivityDataIssues(issueActivities);
+                const affectedActivityIds = new Set(issues.flatMap(getActivityIdsForIssue));
+
+                return {
+                    ...bucket,
+                    minutes: roundDurationMilliseconds(durationMilliseconds),
+                    issueCount: issues.length,
+                    affectedActivityCount: affectedActivityIds.size,
+                    categorySegments: sortCategoryEntries(categorySegments)
+                };
+            }
         ),
         categoryTotals: sortCategoryEntries(categoryTotals)
     };
@@ -111,7 +123,7 @@ function buildDailyBuckets(dateRange) {
         const date = extractDateFromDateTime(cursor);
         buckets.set(date, {
             date,
-            minutes: 0,
+            durationMilliseconds: 0,
             activityCount: 0,
             categorySegments: new Map(),
             issueActivities: []
@@ -175,24 +187,29 @@ function getParentGroupMeta(activityItem) {
     };
 }
 
-function addCategoryMinutes(categoryMap, categoryMeta, minutes) {
+function addCategoryDuration(categoryMap, categoryMeta, durationMilliseconds) {
     const existing = categoryMap.get(categoryMeta.key);
 
     if (existing) {
-        existing.minutes += minutes;
+        existing.durationMilliseconds += durationMilliseconds;
         return;
     }
 
     categoryMap.set(categoryMeta.key, {
         ...categoryMeta,
-        minutes
+        durationMilliseconds
     });
 }
 
 function sortCategoryEntries(categoryMap) {
-    return [...categoryMap.values()].sort(
-        (left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label)
-    );
+    return [...categoryMap.values()]
+        .map(({ durationMilliseconds, ...entry }) => ({
+            ...entry,
+            minutes: roundDurationMilliseconds(durationMilliseconds)
+        }))
+        .sort(
+            (left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label)
+        );
 }
 
 function isCompletedActivity(activityItem) {
