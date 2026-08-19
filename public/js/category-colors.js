@@ -1,10 +1,19 @@
 const COLOR_FAMILIES_RAW = {
-    blue: ['#1d4ed8', '#7dd3fc', '#2563eb', '#38bdf8', '#1e40af', '#60a5fa'],
-    green: ['#166534', '#86efac', '#15803d', '#4ade80', '#047857', '#22c55e'],
-    amber: ['#b45309', '#fde047', '#92400e', '#fbbf24', '#c2410c', '#fb923c'],
-    rose: ['#9f1239', '#fda4af', '#be123c', '#fb7185', '#881337', '#f43f5e'],
-    violet: ['#5b21b6', '#c4b5fd', '#6d28d9', '#a78bfa', '#4c1d95', '#8b5cf6'],
-    gray: ['#1f2937', '#cbd5e1', '#374151', '#9ca3af', '#111827', '#94a3b8']
+    blue: ['#1d4ed8', '#7dd3fc', '#2563eb', '#38bdf8', '#1e40af', '#60a5fa', '#0369a1', '#93c5fd'],
+    green: ['#166534', '#86efac', '#15803d', '#4ade80', '#047857', '#22c55e', '#065f46', '#6ee7b7'],
+    amber: ['#b45309', '#fde047', '#92400e', '#fbbf24', '#c2410c', '#fb923c', '#a16207', '#fcd34d'],
+    rose: ['#9f1239', '#fda4af', '#be123c', '#fb7185', '#881337', '#f43f5e', '#b91c1c', '#fecdd3'],
+    violet: [
+        '#5b21b6',
+        '#c4b5fd',
+        '#6d28d9',
+        '#a78bfa',
+        '#4c1d95',
+        '#8b5cf6',
+        '#7e22ce',
+        '#ddd6fe'
+    ],
+    gray: ['#1f2937', '#cbd5e1', '#374151', '#9ca3af', '#111827', '#94a3b8', '#475569', '#e2e8f0']
 };
 
 const LEGACY_COLOR_FAMILIES = Object.freeze({
@@ -62,14 +71,28 @@ export function pickLinkedChildColor(familyName, index = 0) {
  * Pick the next linked color in a family, wrapping to the first tone.
  * @param {string} familyName
  * @param {string} currentColor
+ * @param {string[]} [unavailableColors=[]]
  * @returns {string}
  */
-export function getNextLinkedChildColor(familyName, currentColor) {
+export function getNextLinkedChildColor(familyName, currentColor, unavailableColors = []) {
     const family = COLOR_FAMILIES[normalizeFamilyName(familyName)];
     const normalizedColor = typeof currentColor === 'string' ? currentColor.toLowerCase() : '';
     const currentIndex = family.indexOf(normalizedColor);
+    const unavailable = new Set(
+        unavailableColors
+            .filter((color) => typeof color === 'string')
+            .map((color) => color.toLowerCase())
+    );
+    const startIndex = currentIndex === -1 ? family.length - 1 : currentIndex;
 
-    return currentIndex === -1 ? family[0] : family[(currentIndex + 1) % family.length];
+    for (let offset = 1; offset <= family.length; offset += 1) {
+        const candidate = family[(startIndex + offset) % family.length];
+        if (!unavailable.has(candidate)) {
+            return candidate;
+        }
+    }
+
+    return currentIndex === -1 ? family[0] : normalizedColor;
 }
 
 /**

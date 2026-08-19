@@ -67,10 +67,10 @@ describe('category-colors', () => {
         expect(isColorInFamily('blue', 123)).toBe(false);
     });
 
-    test('linked family colors provide six alternating tones with visible separation', () => {
+    test('linked family colors provide eight alternating tones with visible separation', () => {
         Object.values(COLOR_FAMILIES).forEach((colors) => {
-            expect(colors).toHaveLength(6);
-            expect(new Set(colors).size).toBe(6);
+            expect(colors).toHaveLength(8);
+            expect(new Set(colors).size).toBe(8);
 
             colors.forEach((color, index) => {
                 const nextColor = colors[(index + 1) % colors.length];
@@ -85,6 +85,13 @@ describe('category-colors', () => {
         expect(getNextLinkedChildColor('blue', first)).toBe(COLOR_FAMILIES.blue[1]);
         expect(getNextLinkedChildColor('blue', COLOR_FAMILIES.blue.at(-1))).toBe(first);
         expect(getNextLinkedChildColor('blue', '#ffffff')).toBe(first);
+    });
+
+    test('getNextLinkedChildColor skips unavailable tones and stays put when none remain', () => {
+        const colors = COLOR_FAMILIES.blue;
+
+        expect(getNextLinkedChildColor('blue', colors[0], [colors[1], colors[2]])).toBe(colors[3]);
+        expect(getNextLinkedChildColor('blue', colors[0], colors.slice(1))).toBe(colors[0]);
     });
 });
 

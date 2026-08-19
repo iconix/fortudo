@@ -38,7 +38,6 @@ export function resetTaxonomySettingsViewState() {
 
 export function renderTaxonomyManagementContent() {
     return `
-        ${renderArchivedVisibilityControl()}
         <section data-taxonomy-section="groups" class="space-y-3 text-left">
             <div class="flex items-start justify-between gap-3 text-left">
                 <div class="min-w-0 text-left">
@@ -70,6 +69,7 @@ export function renderTaxonomyManagementContent() {
             </div>
             ${renderAddCategoryForm()}
         </section>
+        ${renderArchivedVisibilityControl()}
     `;
 }
 
@@ -80,8 +80,8 @@ export function bindTaxonomySettingsEvents(options = {}) {
 }
 
 export function refreshTaxonomySettingsSection(options = {}) {
-    const taxonomySection = document.getElementById('taxonomy-management-section');
-    if (!taxonomySection) {
+    const taxonomyContent = document.getElementById('taxonomy-management-content');
+    if (!taxonomyContent) {
         return;
     }
 
@@ -89,7 +89,7 @@ export function refreshTaxonomySettingsSection(options = {}) {
     const scrollTop = settingsContent?.scrollTop ?? 0;
     const draftState = captureTaxonomyDraftState();
 
-    taxonomySection.innerHTML = renderTaxonomyManagementContent();
+    taxonomyContent.innerHTML = renderTaxonomyManagementContent();
     restoreTaxonomyDraftState(draftState);
     bindTaxonomySettingsEvents(options);
 
@@ -307,7 +307,7 @@ function renderCategoryRow(category, group) {
                         ? `${
                               category.isLinkedToGroupFamily
                                   ? `<button type="button" class="btn-regenerate-category-color text-slate-400 hover:text-violet-300 p-1 text-xs" data-key="${escapeHtml(category.key)}" aria-label="Try another ${escapeAttribute(colorFamilyLabel)} tone for ${escapeAttribute(category.label)} category" title="Try another ${escapeAttribute(colorFamilyLabel)} tone">
-                                    <i class="fa-solid fa-shuffle"></i>
+                                    <i class="fa-solid fa-circle-half-stroke"></i>
                                 </button>`
                                   : ''
                           }
@@ -931,9 +931,9 @@ function titleCase(value) {
 
 function readShowArchivedTaxonomyPreference() {
     try {
-        return globalThis.localStorage?.getItem(SHOW_ARCHIVED_TAXONOMY_KEY) !== 'false';
+        return globalThis.localStorage?.getItem(SHOW_ARCHIVED_TAXONOMY_KEY) === 'true';
     } catch {
-        return true;
+        return false;
     }
 }
 

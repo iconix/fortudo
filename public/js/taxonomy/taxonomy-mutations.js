@@ -306,7 +306,16 @@ export async function cycleLinkedCategoryColor(key) {
         throw new Error(`Group "${category.groupKey}" not found`);
     }
 
-    category.color = getNextLinkedChildColor(group.colorFamily, category.color);
+    const occupiedColors = state.categories
+        .filter(
+            (entry) =>
+                entry.id !== category.id &&
+                entry.groupId === category.groupId &&
+                entry.status === 'active'
+        )
+        .map((entry) => entry.color);
+    occupiedColors.push(group.color);
+    category.color = getNextLinkedChildColor(group.colorFamily, category.color, occupiedColors);
     category.isLinkedToGroupFamily = true;
     await persistTaxonomyState();
     return cloneRecord(category);
