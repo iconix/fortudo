@@ -5,7 +5,7 @@ import {
     resolveCategoryReference
 } from '../taxonomy/taxonomy-selectors.js';
 import { extractDateFromDateTime } from '../utils.js';
-import { detectActivityDataIssues } from './insights-issues.js';
+import { detectActivityDataIssues, getActivityIdsForIssue } from './insights-issues.js';
 import {
     getDateRangeInterval,
     getDayInterval,
@@ -87,12 +87,18 @@ export function buildTrendModel({
     return {
         dateRange: selectedDateRange,
         dailyHours: [...dailyBuckets.values()].map(
-            ({ categorySegments, issueActivities, durationMilliseconds, ...bucket }) => ({
-                ...bucket,
-                minutes: roundDurationMilliseconds(durationMilliseconds),
-                issueCount: detectActivityDataIssues(issueActivities).length,
-                categorySegments: sortCategoryEntries(categorySegments)
-            })
+            ({ categorySegments, issueActivities, durationMilliseconds, ...bucket }) => {
+                const issues = detectActivityDataIssues(issueActivities);
+                const affectedActivityIds = new Set(issues.flatMap(getActivityIdsForIssue));
+
+                return {
+                    ...bucket,
+                    minutes: roundDurationMilliseconds(durationMilliseconds),
+                    issueCount: issues.length,
+                    affectedActivityCount: affectedActivityIds.size,
+                    categorySegments: sortCategoryEntries(categorySegments)
+                };
+            }
         ),
         categoryTotals: sortCategoryEntries(categoryTotals)
     };

@@ -166,8 +166,8 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
             await showCustomAlert(
                 'Review overlaps',
                 buildActivityOverlapRepairPreview(preview),
-                'amber',
-                'Got it',
+                'slate',
+                'Done',
                 'wide'
             );
         }
@@ -178,8 +178,9 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
     const confirmed = await askConfirmation(
         previewContent,
         { ok: 'Repair selected', cancel: 'Cancel' },
-        'amber',
-        'wide'
+        'slate',
+        'wide',
+        'Review overlap fixes'
     );
 
     if (!confirmed) {

@@ -202,11 +202,13 @@ describe('activity insights trends', () => {
         expect(model.dailyHours).toEqual([
             expect.objectContaining({
                 date: '2026-05-06',
-                issueCount: 0
+                issueCount: 0,
+                affectedActivityCount: 0
             }),
             expect.objectContaining({
                 date: '2026-05-07',
-                issueCount: 1
+                issueCount: 1,
+                affectedActivityCount: 2
             })
         ]);
     });

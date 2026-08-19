@@ -100,6 +100,28 @@ describe('custom CSS polish hooks', () => {
         );
     });
 
+    test('themes long confirmation dialogs with the neutral app scrollbar', () => {
+        const css = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
+            'utf8'
+        );
+        const indexHtml = fs.readFileSync(
+            path.join(__dirname, '..', 'public', 'index.html'),
+            'utf8'
+        );
+
+        expect(indexHtml).toMatch(
+            /id="custom-confirm-message"[\s\S]*?class="[^"]*modal-scroll-area[^"]*"/
+        );
+        expect(css).toMatch(
+            /\.modal-scroll-area\s*\{[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*rgba\(100,\s*116,\s*139,\s*0\.7\)\s*rgba\(51,\s*65,\s*85,\s*0\.35\);/s
+        );
+        expect(css).toMatch(/\.modal-scroll-area::-webkit-scrollbar\s*\{[^}]*width:\s*6px;/s);
+        expect(css).toMatch(
+            /\.modal-scroll-area::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*rgba\(100,\s*116,\s*139,\s*0\.72\);[^}]*border-radius:\s*9999px;[^}]*border:\s*2px solid rgba\(30,\s*41,\s*59,\s*0\.9\);/s
+        );
+    });
+
     test("themes the What's New scrollbar with the Fortudo palette", () => {
         const css = fs.readFileSync(
             path.join(__dirname, '..', 'public', 'css', 'custom.css'),

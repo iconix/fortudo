@@ -566,8 +566,16 @@ export function showAlert(message, theme = 'violet') {
  * @param {string} message - The message to display
  * @param {{ok: string, cancel: string}=} buttonLabels - Optional custom labels for the buttons
  * @param {string=} theme - The semantic theme for the confirmation action
+ * @param {string=} layout - The modal width/layout treatment
+ * @param {string=} title - The contextual modal title
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
-export function askConfirmation(message, buttonLabels, theme = 'violet', layout = 'default') {
-    return showCustomConfirm('Confirmation', message, buttonLabels, theme, layout);
+export function askConfirmation(
+    message,
+    buttonLabels,
+    theme = 'violet',
+    layout = 'default',
+    title = 'Confirmation'
+) {
+    return showCustomConfirm(title, message, buttonLabels, theme, layout);
 }

@@ -25,7 +25,7 @@ function formatChangeDuration(change, key) {
 function appendRepairRow(list, change) {
     const row = createElement(
         'label',
-        'block cursor-pointer rounded-lg border border-slate-700 bg-slate-900/70 p-3 transition-colors hover:border-amber-400/60 hover:bg-slate-900'
+        'block cursor-pointer rounded-lg border border-slate-700 bg-slate-900/70 p-3 transition-colors hover:border-slate-500 hover:bg-slate-900'
     );
     const layout = createElement('div', 'flex items-start gap-3');
     const selection = document.createElement('input');
@@ -33,20 +33,20 @@ function appendRepairRow(list, change) {
     selection.checked = true;
     selection.dataset.confirmSelection = '';
     selection.dataset.overlapRepairId = change.activityId;
-    selection.className = 'mt-1 h-5 w-5 shrink-0 accent-amber-400';
+    selection.className = 'mt-1 h-5 w-5 shrink-0 accent-violet-400';
     selection.setAttribute('aria-label', `Repair ${change.description}`);
 
     const details = createElement('div', 'min-w-0 flex-1');
     const heading = createElement('div', 'flex flex-wrap items-center gap-2');
     heading.append(createElement('span', 'font-medium text-slate-100', change.description));
     if (change.isLargeAdjustment) {
-        heading.append(
-            createElement(
-                'span',
-                'rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200',
-                'Large adjustment'
-            )
+        const largeAdjustment = createElement(
+            'span',
+            'text-xs font-medium text-slate-400',
+            'Large adjustment'
         );
+        largeAdjustment.dataset.overlapLargeAdjustment = '';
+        heading.append(largeAdjustment);
     }
 
     const start = formatTime(change.startDateTime);
@@ -71,54 +71,92 @@ function appendRepairRow(list, change) {
     list.append(row);
 }
 
-function joinDescriptions(descriptions) {
-    if (descriptions.length <= 1) {
-        return descriptions[0] || 'These activities';
+function getUnresolvedActivityNames(overlap) {
+    if (overlap.reason === 'same-start') {
+        return (
+            overlap.descriptions ||
+            [overlap.description, overlap.overlappingActivityDescription].filter(Boolean)
+        );
     }
-    if (descriptions.length === 2) {
-        return `${descriptions[0]} and ${descriptions[1]}`;
-    }
-    return `${descriptions.slice(0, -1).join(', ')}, and ${descriptions.at(-1)}`;
+
+    return [overlap.description, overlap.overlappingActivityDescription].filter(Boolean);
 }
 
-function getUnresolvedDescription(overlap) {
+function getUnresolvedExplanation(overlap) {
     if (overlap.reason === 'same-start') {
-        const descriptions =
-            overlap.descriptions ||
-            [overlap.description, overlap.overlappingActivityDescription].filter(Boolean);
-        return `${joinDescriptions(descriptions)} start together. Edit or delete one manually.`;
+        return 'These activities start together. Edit or delete one manually.';
     }
 
     if (overlap.reason === 'containment') {
-        return `${overlap.description} contains ${overlap.overlappingActivityDescription}. Because one was manually or automatically logged, edit it manually.`;
+        return 'One activity contains the other. Because one was manually or automatically logged, edit it manually.';
     }
 
-    return `${overlap.description} overlaps ${overlap.overlappingActivityDescription}. Edit it manually.`;
+    return 'These activities overlap. Edit one manually.';
 }
 
-function appendUnresolvedSection(content, unresolvedOverlaps) {
+function appendUnresolvedActivityNames(container, overlap) {
+    const names = getUnresolvedActivityNames(overlap);
+    names.forEach((name, index) => {
+        if (index > 0) {
+            container.append(createElement('span', 'text-xs text-slate-500', '+'));
+        }
+        const nameElement = createElement(
+            'span',
+            'rounded-md bg-slate-700/70 px-2 py-1 text-sm font-medium text-slate-100',
+            name
+        );
+        nameElement.dataset.overlapUnresolvedActivityName = '';
+        container.append(nameElement);
+    });
+}
+
+function appendUnresolvedSection(content, unresolvedOverlaps, hasSelectableRepairs) {
     if (unresolvedOverlaps.length === 0) {
         return;
     }
 
     const section = createElement(
         'section',
-        'rounded-lg border border-amber-500/40 bg-amber-500/10 p-3'
+        hasSelectableRepairs
+            ? 'border-t border-slate-700 pt-4'
+            : 'rounded-lg border border-slate-600/70 bg-slate-800/40 p-3'
     );
     section.dataset.overlapUnresolvedList = '';
-    section.append(
-        createElement('h4', 'text-sm font-semibold text-amber-200', 'Needs manual review')
+    const heading = createElement(
+        'h4',
+        'text-sm font-medium text-slate-200',
+        hasSelectableRepairs ? 'Not included in this repair' : 'Needs manual review'
     );
+    heading.dataset.overlapUnresolvedHeading = '';
+    section.append(heading);
 
-    const list = createElement('div', 'mt-2 space-y-2');
-    unresolvedOverlaps.forEach((overlap) => {
-        list.append(
+    if (hasSelectableRepairs) {
+        section.append(
             createElement(
                 'p',
-                'text-sm leading-relaxed text-slate-300',
-                getUnresolvedDescription(overlap)
+                'mt-1 text-xs leading-relaxed text-slate-400',
+                'These activities will not change when you repair the selected items.'
             )
         );
+    }
+
+    const list = createElement('div', 'mt-3 space-y-2');
+    unresolvedOverlaps.forEach((overlap) => {
+        const item = createElement(
+            'div',
+            'rounded-lg border border-slate-700/80 bg-slate-900/40 p-3'
+        );
+        const names = createElement('div', 'flex flex-wrap items-center gap-2');
+        appendUnresolvedActivityNames(names, overlap);
+        item.append(
+            names,
+            createElement(
+                'p',
+                'mt-2 text-sm leading-relaxed text-slate-300',
+                getUnresolvedExplanation(overlap)
+            )
+        );
+        list.append(item);
     });
     section.append(list);
     content.append(section);
@@ -141,7 +179,7 @@ export function buildActivityOverlapRepairPreview(preview) {
             'text-sm leading-relaxed text-slate-300',
             changes.length > 0
                 ? 'Review the proposed repairs. Uncheck anything you want to leave unchanged.'
-                : 'These overlaps cannot be repaired safely without your judgment.'
+                : 'These overlaps need your input before they can be changed.'
         )
     );
 
@@ -152,7 +190,7 @@ export function buildActivityOverlapRepairPreview(preview) {
         content.append(list);
     }
 
-    appendUnresolvedSection(content, unresolvedOverlaps);
+    appendUnresolvedSection(content, unresolvedOverlaps, changes.length > 0);
 
     if (changes.length > 0) {
         content.append(

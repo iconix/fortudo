@@ -376,8 +376,9 @@ describe('activity app wiring', () => {
         expect(askConfirmation).toHaveBeenCalledWith(
             expect.any(HTMLElement),
             { ok: 'Repair selected', cancel: 'Cancel' },
-            'amber',
-            'wide'
+            'slate',
+            'wide',
+            'Review overlap fixes'
         );
         const previewContent = askConfirmation.mock.calls[0][0];
         expect(previewContent.textContent).toMatch(
@@ -554,8 +555,8 @@ describe('activity app wiring', () => {
         expect(showCustomAlert).toHaveBeenCalledWith(
             'Review overlaps',
             expect.any(HTMLElement),
-            'amber',
-            'Got it',
+            'slate',
+            'Done',
             'wide'
         );
         expect(showCustomAlert.mock.calls[0][1].textContent).toMatch(

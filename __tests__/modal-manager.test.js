@@ -357,6 +357,22 @@ describe('Modal Manager Tests', () => {
                 okBtn.click();
             });
 
+            test('askConfirmation supports a contextual title', async () => {
+                const resultPromise = askConfirmation(
+                    'Review these changes',
+                    { ok: 'Apply', cancel: 'Cancel' },
+                    'slate',
+                    'wide',
+                    'Review overlap fixes'
+                );
+
+                expect(document.getElementById('custom-confirm-title').textContent).toBe(
+                    'Review overlap fixes'
+                );
+                document.getElementById('cancel-custom-confirm-modal').click();
+                await expect(resultPromise).resolves.toBe(false);
+            });
+
             test('showCustomConfirm renders interactive element content in a wide layout', async () => {
                 const content = document.createElement('div');
                 content.innerHTML = `
