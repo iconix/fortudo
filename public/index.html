@@ -492,10 +492,17 @@
                                 </div>
                             </div>
                             <div class="grid gap-3 sm:grid-cols-2">
-                                <select
-                                    id="timer-category"
-                                    class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
-                                ></select>
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <span
+                                        id="timer-category-color-indicator"
+                                        class="h-3 w-3 shrink-0 rounded-full bg-slate-500"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <select
+                                        id="timer-category"
+                                        class="min-w-0 flex-1 bg-slate-700 p-2 rounded-lg border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
+                                    ></select>
+                                </div>
                                 <input
                                     id="timer-start-time"
                                     type="time"
@@ -526,10 +533,17 @@
                                         placeholder="What are you doing next?"
                                         class="bg-slate-700 p-2 sm:p-2.5 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm sm:text-base"
                                     />
-                                    <select
-                                        id="next-activity-category"
-                                        class="bg-slate-700 p-2 rounded-lg w-full border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
-                                    ></select>
+                                    <div class="flex min-w-0 items-center gap-2">
+                                        <span
+                                            id="next-activity-category-color-indicator"
+                                            class="h-3 w-3 shrink-0 rounded-full bg-slate-500"
+                                            aria-hidden="true"
+                                        ></span>
+                                        <select
+                                            id="next-activity-category"
+                                            class="min-w-0 flex-1 bg-slate-700 p-2 rounded-lg border border-slate-600 focus:border-sky-400 focus:outline-none transition-all text-sm"
+                                        ></select>
+                                    </div>
                                     <div
                                         id="next-activity-action-group"
                                         class="w-full sm:w-auto"
