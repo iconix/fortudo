@@ -268,6 +268,38 @@ describe('activity summary selectors', () => {
         ]);
     });
 
+    test('rounds an expanded group total after aggregating exact sub-minute durations', () => {
+        const model = buildActivitySummaryModel(
+            [
+                {
+                    id: 'activity-1',
+                    category: 'work/deep',
+                    startDateTime: '2026-08-19T09:00:00.000Z',
+                    endDateTime: '2026-08-19T09:00:20.000Z',
+                    duration: 1
+                },
+                {
+                    id: 'activity-2',
+                    category: 'work/admin',
+                    startDateTime: '2026-08-19T09:01:00.000Z',
+                    endDateTime: '2026-08-19T09:01:20.000Z',
+                    duration: 1
+                },
+                {
+                    id: 'activity-3',
+                    category: 'work/deep',
+                    startDateTime: '2026-08-19T09:02:00.000Z',
+                    endDateTime: '2026-08-19T09:02:20.000Z',
+                    duration: 1
+                }
+            ],
+            'work'
+        );
+
+        expect(model.expandedGroup.items.map((item) => item.duration)).toEqual([1, 1]);
+        expect(model.expandedGroup.totalDuration).toBe(1);
+    });
+
     test('does not create expanded detail for uncategorized or unknown groups', () => {
         expect(
             buildActivitySummaryModel([{ id: 'a', category: null, duration: 10 }], 'uncategorized')

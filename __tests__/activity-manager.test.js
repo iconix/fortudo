@@ -73,7 +73,7 @@ describe('activity manager', () => {
             expect(putActivity).not.toHaveBeenCalled();
         });
 
-        test('rounds manual zero-duration activity payloads up to one minute', async () => {
+        test('rejects zero-length completed activity payloads', async () => {
             const result = await addActivity({
                 description: 'Test',
                 startDateTime: '2026-04-07T09:00:00.000Z',
@@ -83,16 +83,16 @@ describe('activity manager', () => {
                 sourceTaskId: null
             });
 
-            expect(result.success).toBe(true);
-            expect(result.activity.duration).toBe(1);
-            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
+            expect(result.success).toBe(false);
+            expect(result.reason).toMatch(/duration/i);
+            expect(putActivity).not.toHaveBeenCalled();
         });
 
-        test('rounds sub-minute completed activities up to one minute at the shared addActivity seam', async () => {
+        test('stores positive sub-minute activities as one minute without changing exact times', async () => {
             const result = await addActivity({
                 description: 'Instant stop',
                 startDateTime: '2026-04-07T09:00:00.000Z',
-                endDateTime: '2026-04-07T09:00:00.000Z',
+                endDateTime: '2026-04-07T09:00:20.000Z',
                 duration: 0,
                 source: 'timer',
                 sourceTaskId: null
@@ -100,12 +100,12 @@ describe('activity manager', () => {
 
             expect(result.success).toBe(true);
             expect(result.activity.duration).toBe(1);
-            expect(result.activity.endDateTime).toBe('2026-04-07T09:01:00.000Z');
+            expect(result.activity.endDateTime).toBe('2026-04-07T09:00:20.000Z');
             expect(putActivity).toHaveBeenCalledWith(
                 expect.objectContaining({
                     source: 'timer',
                     duration: 1,
-                    endDateTime: '2026-04-07T09:01:00.000Z'
+                    endDateTime: '2026-04-07T09:00:20.000Z'
                 })
             );
         });

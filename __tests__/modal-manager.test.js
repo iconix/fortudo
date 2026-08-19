@@ -357,6 +357,45 @@ describe('Modal Manager Tests', () => {
                 okBtn.click();
             });
 
+            test('showCustomConfirm renders interactive element content in a wide layout', async () => {
+                const content = document.createElement('div');
+                content.innerHTML = `
+                    <label><input type="checkbox" data-confirm-selection checked> First</label>
+                    <label><input type="checkbox" data-confirm-selection checked> Second</label>
+                `;
+
+                const resultPromise = showCustomConfirm(
+                    'Review repairs',
+                    content,
+                    { ok: 'Repair selected', cancel: 'Cancel' },
+                    'amber',
+                    'wide'
+                );
+                const modal = document.getElementById('custom-confirm-modal');
+                const message = document.getElementById('custom-confirm-message');
+                const okBtn = document.getElementById('ok-custom-confirm-modal');
+
+                expect(modal.classList.contains('custom-confirm-modal--wide')).toBe(true);
+                expect(message.querySelectorAll('[data-confirm-selection]')).toHaveLength(2);
+                expect(okBtn.textContent).toBe('Repair selected (2)');
+
+                message.querySelectorAll('[data-confirm-selection]')[1].click();
+                expect(okBtn.textContent).toBe('Repair selected (1)');
+                expect(okBtn.disabled).toBe(false);
+
+                message.querySelectorAll('[data-confirm-selection]')[0].click();
+                expect(okBtn.textContent).toBe('Repair selected (0)');
+                expect(okBtn.disabled).toBe(true);
+
+                document.getElementById('cancel-custom-confirm-modal').click();
+                await expect(resultPromise).resolves.toBe(false);
+
+                const ordinaryConfirmation = showCustomConfirm('Confirm', 'Continue?');
+                expect(document.getElementById('ok-custom-confirm-modal').disabled).toBe(false);
+                document.getElementById('cancel-custom-confirm-modal').click();
+                await expect(ordinaryConfirmation).resolves.toBe(false);
+            });
+
             test.each([
                 [
                     'teal',

@@ -73,7 +73,7 @@ function setModalTheme(modal, title, button, theme = 'violet') {
     }
     // Update button tint
     if (button) {
-        button.className = `${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg font-normal transition-colors`;
+        button.className = `${buttonClasses[theme] || buttonClasses.violet} px-5 py-2 rounded-lg font-normal transition-colors disabled:cursor-not-allowed disabled:opacity-50`;
     }
 }
 
@@ -88,6 +88,19 @@ function renderCustomAlertMessage(message) {
     }
 
     customAlertMessage.textContent = message;
+}
+
+function renderCustomConfirmMessage(message) {
+    if (!customConfirmMessage) {
+        return;
+    }
+
+    if (typeof Node !== 'undefined' && message instanceof Node) {
+        customConfirmMessage.replaceChildren(message);
+        return;
+    }
+
+    customConfirmMessage.textContent = message;
 }
 
 // --- Custom Alert Modal ---
@@ -146,7 +159,8 @@ export function showCustomConfirm(
     title,
     message,
     buttonLabels = { ok: 'OK', cancel: 'Cancel' },
-    theme = 'violet'
+    theme = 'violet',
+    layout = 'default'
 ) {
     const okBtnElement = document.getElementById('ok-custom-confirm-modal');
     const cancelBtnElement = document.getElementById('cancel-custom-confirm-modal');
@@ -160,8 +174,9 @@ export function showCustomConfirm(
         cancelBtnElement instanceof HTMLElement &&
         closeBtnElement instanceof HTMLElement
     ) {
+        customConfirmModal.classList.toggle('custom-confirm-modal--wide', layout === 'wide');
         customConfirmTitle.textContent = title;
-        customConfirmMessage.textContent = message;
+        renderCustomConfirmMessage(message);
 
         return new Promise((resolve) => {
             const newOkBtn = okBtnElement.cloneNode(true);
@@ -177,6 +192,9 @@ export function showCustomConfirm(
 
             if (newOkBtn instanceof HTMLElement) {
                 newOkBtn.textContent = buttonLabels.ok;
+                if (newOkBtn instanceof HTMLButtonElement) {
+                    newOkBtn.disabled = false;
+                }
                 newOkBtn.onclick = () => {
                     hideCustomConfirm();
                     resolve(true);
@@ -200,12 +218,26 @@ export function showCustomConfirm(
             customConfirmModal.classList.remove('hidden');
 
             let settled = false;
+            const selectionInputs = [
+                ...customConfirmMessage.querySelectorAll('[data-confirm-selection]')
+            ];
+            const updateSelectionAction = () => {
+                if (!(newOkBtn instanceof HTMLButtonElement) || selectionInputs.length === 0) {
+                    return;
+                }
+                const selectedCount = selectionInputs.filter(
+                    (selection) => selection instanceof HTMLInputElement && selection.checked
+                ).length;
+                newOkBtn.textContent = `${buttonLabels.ok} (${selectedCount})`;
+                newOkBtn.disabled = selectedCount === 0;
+            };
             const settle = (value) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 document.removeEventListener('keydown', handleEscape);
+                customConfirmMessage.removeEventListener('change', updateSelectionAction);
                 hideCustomConfirm();
                 resolve(value);
             };
@@ -215,6 +247,8 @@ export function showCustomConfirm(
                 }
             };
             document.addEventListener('keydown', handleEscape);
+            customConfirmMessage.addEventListener('change', updateSelectionAction);
+            updateSelectionAction();
 
             if (newOkBtn instanceof HTMLElement) {
                 newOkBtn.onclick = () => settle(true);
@@ -228,7 +262,9 @@ export function showCustomConfirm(
         });
     } else {
         logger.error('Custom confirm modal elements not found or not HTMLElements.');
-        return Promise.resolve(window.confirm(`${title}: ${message}`));
+        const fallbackMessage =
+            typeof Node !== 'undefined' && message instanceof Node ? message.textContent : message;
+        return Promise.resolve(window.confirm(`${title}: ${fallbackMessage}`));
     }
 }
 
@@ -532,6 +568,6 @@ export function showAlert(message, theme = 'violet') {
  * @param {string=} theme - The semantic theme for the confirmation action
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
-export function askConfirmation(message, buttonLabels, theme = 'violet') {
-    return showCustomConfirm('Confirmation', message, buttonLabels, theme);
+export function askConfirmation(message, buttonLabels, theme = 'violet', layout = 'default') {
+    return showCustomConfirm('Confirmation', message, buttonLabels, theme, layout);
 }

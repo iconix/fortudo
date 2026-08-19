@@ -8,10 +8,12 @@ import {
     getDurationCapableInterval,
     getIntervalDuration,
     getOverlapDuration,
+    getOverlapDurationMilliseconds,
     intervalsOverlap,
     invalidActivityTouchesInterval,
     itemOverlapsInterval
 } from './insights-intervals.js';
+import { roundDurationMilliseconds } from './duration.js';
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -52,14 +54,19 @@ export function buildInsightsModel({
         date: detailDate,
         activityLogDateRange: selectedLogRange,
         summary: {
-            totalPlannedMinutes: detailTasks.reduce(
-                (total, task) => total + getOverlapDuration(task, detailInterval, now),
-                0
+            totalPlannedMinutes: roundDurationMilliseconds(
+                detailTasks.reduce(
+                    (total, task) =>
+                        total + getOverlapDurationMilliseconds(task, detailInterval, now),
+                    0
+                )
             ),
-            totalActualMinutes: detailActivities.reduce(
-                (total, activityItem) =>
-                    total + getOverlapDuration(activityItem, detailInterval, now),
-                0
+            totalActualMinutes: roundDurationMilliseconds(
+                detailActivities.reduce(
+                    (total, activityItem) =>
+                        total + getOverlapDurationMilliseconds(activityItem, detailInterval, now),
+                    0
+                )
             ),
             completedTaskCount: detailTasks.filter((task) => task.status === 'completed').length,
             currentlyLateTaskCount: detailTasks.filter((task) => isCurrentlyLate(task, now)).length

@@ -44,6 +44,10 @@ function isoOn(date, time) {
     return timeToDateTime(time, date);
 }
 
+function isoWithSeconds(date, time) {
+    return new Date(`${date}T${time}`).toISOString();
+}
+
 function addMinutes(startDateTime, duration) {
     return calculateEndDateTime(startDateTime, duration);
 }
@@ -302,6 +306,31 @@ describe('activity insights model', () => {
         expect(model.summary.totalActualMinutes).toBe(30);
         expect(model.plannedBlocks.map((block) => block.id)).toEqual(['crossing-task']);
         expect(model.actualBlocks.map((block) => block.id)).toEqual(['crossing-activity']);
+    });
+
+    test('aggregates exact elapsed time before rounding the selected-day actual total', () => {
+        const activities = [0, 20, 40].map((seconds, index) =>
+            activity({
+                id: `quick-${index}`,
+                startDateTime: isoWithSeconds(
+                    '2026-05-07',
+                    `09:00:${String(seconds).padStart(2, '0')}`
+                ),
+                endDateTime: new Date(
+                    new Date('2026-05-07T09:00:00').getTime() + (seconds + 20) * 1000
+                ).toISOString(),
+                duration: 1
+            })
+        );
+
+        const model = buildInsightsModel({
+            activities,
+            now: new Date(isoAt('12:00')),
+            activityLogDateRange: { startDate: '2026-05-07', endDate: '2026-05-07' }
+        });
+
+        expect(model.summary.totalActualMinutes).toBe(1);
+        expect(model.actualBlocks.map((block) => block.duration)).toEqual([1, 1, 1]);
     });
 
     test('buildInsightsModel clips previous-day timeline blocks to today bounds', () => {

@@ -119,6 +119,16 @@ button:focus-visible {
     max-width: 40rem;
 }
 
+#custom-confirm-modal.custom-confirm-modal--wide {
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+
+#custom-confirm-modal.custom-confirm-modal--wide > div {
+    width: min(40rem, calc(100% - 1.5rem));
+    max-width: 40rem;
+}
+
 .whats-new-scroll-area {
     max-height: min(58vh, 24rem);
     scrollbar-gutter: stable;

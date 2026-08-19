@@ -305,6 +305,53 @@ describe('activity renderer', () => {
         expect(container.querySelector('.btn-delete-activity')).not.toBeNull();
     });
 
+    test('renders an exact positive sub-minute activity as less than one minute', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'quick',
+                    description: 'Quick note',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T09:00:20.000Z',
+                    duration: 1,
+                    source: 'timer',
+                    sourceTaskId: null
+                }
+            ],
+            container
+        );
+
+        expect(container.querySelector('[data-activity-id="quick"]').textContent).toContain('<1m');
+    });
+
+    test('rounds the exact combined duration only after aggregating sub-minute activities', () => {
+        const container = document.getElementById('activity-list');
+        const baseTime = new Date('2026-04-07T09:00:00.000Z').getTime();
+        const quickActivities = [0, 20, 40].map((seconds, index) => {
+            const startTime = baseTime + seconds * 1000;
+            return {
+                id: `quick-${index}`,
+                description: `Quick ${index}`,
+                category: 'work/deep',
+                startDateTime: new Date(startTime).toISOString(),
+                endDateTime: new Date(startTime + 20000).toISOString(),
+                duration: 1,
+                source: 'timer',
+                sourceTaskId: null
+            };
+        });
+
+        renderActivities(quickActivities, container);
+
+        const summary = container.querySelector('[data-activity-summary]');
+        expect(summary.textContent).toContain('Work 1m');
+        expect(summary.textContent).toContain('Total 1m');
+        expect(summary.textContent).not.toContain('3m');
+    });
+
     test('renders an inline amber issue badge while retaining slate activity cards', () => {
         const container = document.getElementById('activity-list');
 

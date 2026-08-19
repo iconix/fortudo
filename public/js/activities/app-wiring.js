@@ -12,19 +12,18 @@ import {
     getRunningActivity,
     truncateActivityOverlapsForDate
 } from './manager.js';
-import { askConfirmation, showAlert } from '../modal-manager.js';
+import { askConfirmation, showAlert, showCustomAlert } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
-import {
-    calculateHoursAndMinutes,
-    convertTo12HourTime,
-    extractTimeFromDateTime
-} from '../utils.js';
 import {
     expandInsightsActivityLogLimit,
     setInsightsSelectedDate,
     setSelectedTimelineBlock,
     setInsightsTrendDateRange
 } from './insights-renderer.js';
+import {
+    buildActivityOverlapRepairPreview,
+    getSelectedOverlapRepairActivityIds
+} from './overlap-repair-preview.js';
 
 function runWithPreservedWindowScroll(callback) {
     const scrollX = window.scrollX;
@@ -149,52 +148,8 @@ function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderIns
     );
 }
 
-function getTruncatedActivitiesMessage(count) {
-    return count === 1
-        ? 'Truncated 1 overlapping activity.'
-        : `Truncated ${count} overlapping activities.`;
-}
-
-function formatOverlapPreviewTime(dateTime) {
-    return convertTo12HourTime(extractTimeFromDateTime(new Date(dateTime)));
-}
-
-function buildOverlapPreviewMessage(preview) {
-    const changes = preview.changes || [];
-    const changeLines = changes.map(
-        (change) =>
-            `• ${change.description}: ends ${formatOverlapPreviewTime(change.previousEndDateTime)} → ${formatOverlapPreviewTime(change.nextEndDateTime)} (${calculateHoursAndMinutes(change.previousDuration)} → ${calculateHoursAndMinutes(change.nextDuration)}) before ${change.overlappingActivityDescription}.`
-    );
-
-    const unresolvedNote = preview.unresolvedOverlapCount
-        ? [
-              '',
-              `${preview.unresolvedOverlapCount} additional ${preview.unresolvedOverlapCount === 1 ? 'overlap starts' : 'overlaps start'} at the same time and will be left unchanged for manual review.`
-          ]
-        : [];
-
-    return [
-        'Review each proposed change:',
-        '',
-        ...changeLines,
-        ...unresolvedNote,
-        '',
-        'Only these end times and durations will change. No activities will be deleted or moved.'
-    ].join('\n');
-}
-
-function buildUnresolvedOverlapMessage(preview) {
-    const overlapLines = (preview.unresolvedOverlaps || []).map(
-        (overlap) => `• ${overlap.description} and ${overlap.overlappingActivityDescription}`
-    );
-
-    return [
-        'These activities start at the same time, so they cannot be shortened safely:',
-        '',
-        ...overlapLines,
-        '',
-        'Edit or delete one of each pair manually.'
-    ].join('\n');
+function getRepairedActivitiesMessage(count) {
+    return count === 1 ? 'Repaired 1 overlap.' : `Repaired ${count} overlaps.`;
 }
 
 async function handleTruncateActivityOverlaps(date, { refreshUI }) {
@@ -208,22 +163,38 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
 
     if (!preview.truncatedCount) {
         if (preview.unresolvedOverlapCount) {
-            await showAlert(buildUnresolvedOverlapMessage(preview), 'amber');
+            await showCustomAlert(
+                'Review overlaps',
+                buildActivityOverlapRepairPreview(preview),
+                'amber',
+                'Got it',
+                'wide'
+            );
         }
         return;
     }
 
+    const previewContent = buildActivityOverlapRepairPreview(preview);
     const confirmed = await askConfirmation(
-        buildOverlapPreviewMessage(preview),
-        { ok: 'Fix overlaps', cancel: 'Cancel' },
-        'amber'
+        previewContent,
+        { ok: 'Repair selected', cancel: 'Cancel' },
+        'amber',
+        'wide'
     );
 
     if (!confirmed) {
         return;
     }
 
-    const result = await truncateActivityOverlapsForDate(date, preview);
+    const selectedActivityIds = getSelectedOverlapRepairActivityIds(previewContent);
+    if (selectedActivityIds.length === 0) {
+        return;
+    }
+
+    const result = await truncateActivityOverlapsForDate(date, {
+        ...preview,
+        selectedActivityIds
+    });
     if (!result?.success) {
         refreshUI();
         await showAlert(
@@ -231,11 +202,14 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
                 'The overlap changes could not be saved. Review the warnings and try again.',
             'amber'
         );
+        if (result?.code === 'partial-failure') {
+            return handleTruncateActivityOverlaps(date, { refreshUI });
+        }
         return;
     }
 
     refreshUI();
-    showToast(getTruncatedActivitiesMessage(result.truncatedCount || 0), { theme: 'amber' });
+    showToast(getRepairedActivitiesMessage(result.truncatedCount || 0), { theme: 'amber' });
 }
 
 function initializeInsightsActivityLogEventHandlers(

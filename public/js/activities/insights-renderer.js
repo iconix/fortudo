@@ -10,6 +10,7 @@ import { renderActivities } from './renderer.js';
 import { buildInsightsModel } from './insights-model.js';
 import { mergeActivityIssuesById } from './insights-issues.js';
 import { buildTrendModel, getDefaultTrendDateRange } from './insights-trends.js';
+import { formatActivityDuration } from './duration.js';
 
 const DEFAULT_ACTIVITY_LOG_LIMIT = 50;
 const FALLBACK_TIMELINE_COLOR = '#64748b';
@@ -143,7 +144,7 @@ function getViewportBlockStyle(block, viewport) {
 function renderTimelineBlock(block, type, viewport) {
     const label = getItemLabel(block);
     const timeRange = `${formatTime(block.startDateTime)} - ${formatTime(block.endDateTime)}`;
-    const duration = calculateHoursAndMinutes(block.duration);
+    const duration = formatActivityDuration(block);
     const title = `${label}, ${timeRange}, ${duration}`;
     const { style, widthPercent } = getViewportBlockStyle(block, viewport);
     const compact = widthPercent < COMPACT_TIMELINE_BLOCK_PERCENT;
@@ -208,7 +209,7 @@ function renderSelectedTimelineBlockDetail(blocks) {
         <span class="text-slate-400">Selected block:</span>
         <span class="font-semibold text-white">${escapeHtml(label)}</span>
         <span>${escapeHtml(timeRange)}</span>
-        <span>${escapeHtml(calculateHoursAndMinutes(selectedBlock.duration))}</span>
+        <span>${escapeHtml(formatActivityDuration(selectedBlock))}</span>
     </div>`;
 }
 

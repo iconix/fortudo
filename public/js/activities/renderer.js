@@ -12,6 +12,7 @@ import {
 import { renderCategorySelectRow } from '../category-form-utils.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { buildActivitySummaryModel } from './summary.js';
+import { formatActivityDuration } from './duration.js';
 
 function escapeHtml(value) {
     return String(value)
@@ -306,7 +307,7 @@ function renderInlineEditActivityItem(activity, options = {}) {
 
 function renderActivityItem(activity, options = {}) {
     const timeRange = formatTimeRange(activity.startDateTime, activity.endDateTime);
-    const durationText = calculateHoursAndMinutes(activity.duration);
+    const durationText = formatActivityDuration(activity);
     const badge = renderCategoryBadge(activity);
     const isConfirmingDelete = options.confirmingDeleteActivityId === activity.id;
     const isAuto = activity.source === 'auto';

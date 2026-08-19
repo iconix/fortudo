@@ -37,6 +37,10 @@ function isoOn(date, time) {
     return timeToDateTime(time, date);
 }
 
+function isoWithSeconds(date, time) {
+    return new Date(`${date}T${time}`).toISOString();
+}
+
 function activity(overrides = {}) {
     const startDateTime = overrides.startDateTime || isoOn('2026-05-07', '09:00');
     const duration = overrides.duration || 30;
@@ -137,6 +141,35 @@ describe('activity insights trends', () => {
         ]);
         expect(model.categoryTotals).toEqual([
             expect.objectContaining({ key: 'work', minutes: 60 })
+        ]);
+    });
+
+    test('aggregates exact elapsed time before rounding daily and category totals', () => {
+        const activities = [0, 20, 40].map((seconds, index) =>
+            activity({
+                id: `quick-${index}`,
+                startDateTime: isoWithSeconds(
+                    '2026-05-07',
+                    `09:00:${String(seconds).padStart(2, '0')}`
+                ),
+                endDateTime: new Date(
+                    new Date('2026-05-07T09:00:00').getTime() + (seconds + 20) * 1000
+                ).toISOString(),
+                duration: 1
+            })
+        );
+
+        const model = buildTrendModel({
+            activities,
+            dateRange: { startDate: '2026-05-07', endDate: '2026-05-07' },
+            now: new Date(isoOn('2026-05-07', '12:00'))
+        });
+
+        expect(model.dailyHours[0]).toEqual(
+            expect.objectContaining({ minutes: 1, activityCount: 3 })
+        );
+        expect(model.categoryTotals).toEqual([
+            expect.objectContaining({ key: 'work', minutes: 1 })
         ]);
     });
 

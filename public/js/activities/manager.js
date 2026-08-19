@@ -12,6 +12,12 @@ import {
 import { getDayInterval, itemOverlapsInterval } from './insights-intervals.js';
 import { createActivityId } from '../entity-id.js';
 import { getCategoryReferenceFields } from '../taxonomy/taxonomy-selectors.js';
+import {
+    MILLISECONDS_PER_MINUTE,
+    calculateStoredDurationMinutes,
+    getExactDurationMilliseconds,
+    roundDurationMilliseconds
+} from './duration.js';
 
 /** @type {Array<Object>} */
 let activities = [];
@@ -53,14 +59,7 @@ function clampTimerEndDateTime(startDateTime, requestedEndDateTime) {
 }
 
 function calculateDurationMinutes(startDateTime, endDateTime) {
-    const startMs = new Date(startDateTime).getTime();
-    const endMs = new Date(endDateTime).getTime();
-
-    if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
-        return 0;
-    }
-
-    return Math.max(0, Math.round((endMs - startMs) / 60000));
+    return calculateStoredDurationMinutes(startDateTime, endDateTime);
 }
 
 function ensureMinimumCompletedActivityDuration(activityData) {
@@ -73,15 +72,17 @@ function ensureMinimumCompletedActivityDuration(activityData) {
         return activityData;
     }
 
-    const startMs = new Date(activityData.startDateTime).getTime();
-    if (Number.isNaN(startMs)) {
+    const exactDuration = getExactDurationMilliseconds(
+        activityData.startDateTime,
+        activityData.endDateTime
+    );
+    if (exactDuration <= 0 || exactDuration >= MILLISECONDS_PER_MINUTE) {
         return activityData;
     }
 
     return {
         ...activityData,
-        duration: 1,
-        endDateTime: new Date(startMs + 60000).toISOString()
+        duration: 1
     };
 }
 
@@ -227,15 +228,17 @@ export async function editActivity(activityId, updates = {}) {
         return { success: false, reason: 'Activity not found.' };
     }
 
-    const nextActivity = normalizeActivity({
-        ...existing,
-        ...updates,
-        id: activityId,
-        description: updates.description ? updates.description.trim() : existing.description,
-        ...getCategoryReferenceFields(
-            Object.prototype.hasOwnProperty.call(updates, 'category') ? updates : existing
-        )
-    });
+    const nextActivity = ensureMinimumCompletedActivityDuration(
+        normalizeActivity({
+            ...existing,
+            ...updates,
+            id: activityId,
+            description: updates.description ? updates.description.trim() : existing.description,
+            ...getCategoryReferenceFields(
+                Object.prototype.hasOwnProperty.call(updates, 'category') ? updates : existing
+            )
+        })
+    );
 
     if (!nextActivity.description) {
         return { success: false, reason: 'Activity description is required.' };
@@ -273,6 +276,35 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
     const truncatedActivities = [];
     const changes = [];
     const unresolvedOverlaps = [];
+    const sameStartClusters = new Map();
+
+    for (const activity of selectedActivities) {
+        const startMs = new Date(activity.startDateTime).getTime();
+        if (!isFinite(startMs)) {
+            continue;
+        }
+        const cluster = sameStartClusters.get(startMs) || [];
+        cluster.push(activity);
+        sameStartClusters.set(startMs, cluster);
+    }
+
+    const clusteredActivityIds = new Set();
+    for (const cluster of sameStartClusters.values()) {
+        if (cluster.length < 2) {
+            continue;
+        }
+
+        cluster.forEach((activity) => clusteredActivityIds.add(activity.id));
+        unresolvedOverlaps.push({
+            activityId: cluster[0].id,
+            description: cluster[0].description || 'Untitled activity',
+            overlappingActivityId: cluster[1].id,
+            overlappingActivityDescription: cluster[1].description || 'Untitled activity',
+            activityIds: cluster.map((activity) => activity.id),
+            descriptions: cluster.map((activity) => activity.description || 'Untitled activity'),
+            reason: 'same-start'
+        });
+    }
 
     for (let index = 0; index < selectedActivities.length - 1; index += 1) {
         const activity = selectedActivities[index];
@@ -281,41 +313,69 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
         const endDate = new Date(activity.endDateTime);
         const nextStartDate = new Date(nextActivity.startDateTime);
 
+        const nextEndDate = new Date(nextActivity.endDateTime);
         if (
             !isFinite(startDate.getTime()) ||
             !isFinite(endDate.getTime()) ||
             !isFinite(nextStartDate.getTime()) ||
-            endDate <= nextStartDate
+            endDate <= nextStartDate ||
+            extractDateFromDateTime(nextStartDate) !== selectedDate
         ) {
             continue;
         }
 
-        if (nextStartDate <= startDate) {
+        if (clusteredActivityIds.has(activity.id)) {
+            continue;
+        }
+
+        const displayedEnd = new Date(endDate.getTime());
+        displayedEnd.setSeconds(0, 0);
+        const displayedNextStart = new Date(nextStartDate.getTime());
+        displayedNextStart.setSeconds(0, 0);
+        if (displayedEnd <= displayedNextStart) {
+            continue;
+        }
+
+        const isContainment = isFinite(nextEndDate.getTime()) && endDate >= nextEndDate;
+        const isTimerOnlyContainment =
+            activity.source === 'timer' && nextActivity.source === 'timer';
+        if (isContainment && !isTimerOnlyContainment) {
             unresolvedOverlaps.push({
                 activityId: activity.id,
                 description: activity.description || 'Untitled activity',
                 overlappingActivityId: nextActivity.id,
                 overlappingActivityDescription: nextActivity.description || 'Untitled activity',
-                reason: 'same-start'
+                reason: 'containment'
             });
             continue;
         }
 
+        const exactNextDuration = getExactDurationMilliseconds(
+            activity.startDateTime,
+            nextStartDate
+        );
         const truncatedActivity = normalizeActivity({
             ...activity,
             endDateTime: nextStartDate.toISOString(),
-            duration: calculateDurationMinutes(activity.startDateTime, nextStartDate)
+            duration: roundDurationMilliseconds(exactNextDuration)
         });
+        const removedDurationMilliseconds = endDate.getTime() - nextStartDate.getTime();
         truncatedActivities.push(truncatedActivity);
         changes.push({
             activityId: activity.id,
             description: activity.description || 'Untitled activity',
+            startDateTime: activity.startDateTime,
             previousEndDateTime: activity.endDateTime,
             nextEndDateTime: truncatedActivity.endDateTime,
             previousDuration: activity.duration,
             nextDuration: truncatedActivity.duration,
             overlappingActivityId: nextActivity.id,
-            overlappingActivityDescription: nextActivity.description || 'Untitled activity'
+            overlappingActivityDescription: nextActivity.description || 'Untitled activity',
+            removedDurationMinutes: Math.round(
+                removedDurationMilliseconds / MILLISECONDS_PER_MINUTE
+            ),
+            isLargeAdjustment: removedDurationMilliseconds >= 30 * MILLISECONDS_PER_MINUTE,
+            isSubMinute: exactNextDuration > 0 && exactNextDuration < MILLISECONDS_PER_MINUTE
         });
     }
 
@@ -399,7 +459,28 @@ export async function truncateActivityOverlapsForDate(selectedDate, expectedPrev
         };
     }
 
-    const { truncatedActivities } = result;
+    const availableActivityIds = new Set(result.truncatedActivities.map((activity) => activity.id));
+    const selectedActivityIds = Array.isArray(expectedPreview.selectedActivityIds)
+        ? [...new Set(expectedPreview.selectedActivityIds)]
+        : [...availableActivityIds];
+    if (selectedActivityIds.length === 0) {
+        return {
+            success: false,
+            code: 'selection-required',
+            reason: 'Select at least one overlap change to apply.'
+        };
+    }
+    if (selectedActivityIds.some((activityId) => !availableActivityIds.has(activityId))) {
+        return {
+            success: false,
+            code: 'selection-stale',
+            reason: 'The selected overlap changes are no longer available. Review the updated changes.'
+        };
+    }
+
+    const truncatedActivities = result.truncatedActivities.filter((activity) =>
+        selectedActivityIds.includes(activity.id)
+    );
     const truncatedActivityIds = [];
 
     for (const activity of truncatedActivities) {

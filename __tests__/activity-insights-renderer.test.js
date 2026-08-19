@@ -534,6 +534,7 @@ describe('activity insights renderer', () => {
     test('hides the overlap repair action while the feature flag is disabled', () => {
         renderWith({
             selectedDate: '2026-05-07',
+            overlapRepairEnabled: false,
             activities: [
                 activity({
                     id: 'activity-overlapped',

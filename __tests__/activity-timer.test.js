@@ -321,15 +321,16 @@ describe('stopTimer', () => {
         expect(result.reason).toMatch(/no timer/i);
     });
 
-    test('rounds sub-minute completed timers up to one minute', async () => {
+    test('stores a positive sub-minute timer as one minute while preserving its exact stop', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
         await startTimer({ description: 'Quick' });
 
+        jest.setSystemTime(new Date('2026-04-09T10:00:20.000Z'));
         const result = await stopTimer();
 
         expect(result.success).toBe(true);
         expect(result.activity.duration).toBe(1);
-        expect(result.activity.endDateTime).toBe('2026-04-09T10:01:00.000Z');
+        expect(result.activity.endDateTime).toBe('2026-04-09T10:00:20.000Z');
     });
 });
 
@@ -356,17 +357,16 @@ describe('stopTimerAt', () => {
         expect(result.activity.duration).toBe(45);
     });
 
-    test('clamps invalid timer end times to a one-minute completed activity', async () => {
+    test('rejects a timer end that does not produce a positive interval', async () => {
         jest.setSystemTime(new Date('2026-04-09T10:30:00.000Z'));
         await startTimer({ description: 'Late start' });
 
         jest.setSystemTime(new Date('2026-04-09T11:00:00.000Z'));
         const result = await stopTimerAt('2026-04-09T10:00:00.000Z');
 
-        expect(result.success).toBe(true);
-        expect(result.activity.duration).toBe(1);
-        expect(result.activity.startDateTime).toBe('2026-04-09T10:30:00.000Z');
-        expect(result.activity.endDateTime).toBe('2026-04-09T10:31:00.000Z');
+        expect(result.success).toBe(false);
+        expect(result.reason).toMatch(/duration/i);
+        expect(getRunningActivity()).not.toBeNull();
     });
 
     test('returns failure when no timer is running', async () => {
