@@ -434,9 +434,8 @@ function inferFamilyFromColor(color, fallback = 'blue') {
         return fallback;
     }
 
-    const normalizedColor = color.toLowerCase();
-    for (const [familyName, familyColors] of Object.entries(COLOR_FAMILIES)) {
-        if (familyColors.includes(normalizedColor)) {
+    for (const familyName of Object.keys(COLOR_FAMILIES)) {
+        if (isColorInFamily(familyName, color)) {
             return familyName;
         }
     }
