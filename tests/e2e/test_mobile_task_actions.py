@@ -43,8 +43,8 @@ def build_unscheduled_task() -> dict:
     }
 
 
-def test_mobile_task_delete_confirmation_is_tappable(app_server):
-    """Mobile task menus open a stable modal before deleting either task type."""
+def test_mobile_two_tap_task_delete_confirmation_is_tappable(app_server):
+    """Mobile task menus retain the same tappable button for inline confirmation."""
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(
             playwright,
@@ -63,14 +63,18 @@ def test_mobile_task_delete_confirmation_is_tappable(app_server):
             task.locator(".btn-task-actions-menu").tap()
             expect(task.locator(".task-actions-menu")).to_be_visible()
 
-            task.locator(".btn-delete").tap()
-            confirmation = page.locator("#custom-confirm-modal")
-            expect(confirmation).to_be_visible()
-            expect(page.locator("#custom-confirm-message")).to_contain_text(
-                'Delete "Delete me on mobile"?'
+            scheduled_delete = task.locator(".btn-delete")
+            scheduled_delete.evaluate(
+                "button => button.dataset.mobileDeleteIdentity = 'scheduled'"
             )
+            scheduled_delete.tap()
+            expect(scheduled_delete).to_contain_text("Confirm delete")
+            expect(task.locator(".task-actions-menu")).to_be_visible()
+            expect(
+                task.locator('[data-mobile-delete-identity="scheduled"]')
+            ).to_have_count(1)
 
-            page.locator("#ok-custom-confirm-modal").tap()
+            scheduled_delete.tap()
             expect(task).to_have_count(0)
 
             unscheduled_task = page.locator(
@@ -79,13 +83,20 @@ def test_mobile_task_delete_confirmation_is_tappable(app_server):
             unscheduled_task.locator(".btn-unscheduled-task-actions-menu").tap()
             expect(unscheduled_task.locator(".unscheduled-task-actions-menu")).to_be_visible()
 
-            unscheduled_task.locator(".btn-delete-unscheduled").tap()
-            expect(confirmation).to_be_visible()
-            expect(page.locator("#custom-confirm-message")).to_contain_text(
-                'Delete "Delete unscheduled on mobile"?'
+            unscheduled_delete = unscheduled_task.locator(".btn-delete-unscheduled")
+            unscheduled_delete.evaluate(
+                "button => button.dataset.mobileDeleteIdentity = 'unscheduled'"
             )
+            unscheduled_delete.tap()
+            expect(unscheduled_delete).to_contain_text("Confirm delete")
+            expect(
+                unscheduled_task.locator(".unscheduled-task-actions-menu")
+            ).to_be_visible()
+            expect(
+                unscheduled_task.locator('[data-mobile-delete-identity="unscheduled"]')
+            ).to_have_count(1)
 
-            page.locator("#ok-custom-confirm-modal").tap()
+            unscheduled_delete.tap()
             expect(unscheduled_task).to_have_count(0)
         finally:
             context.close()

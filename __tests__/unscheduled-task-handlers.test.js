@@ -263,30 +263,45 @@ describe('Unscheduled Task Handlers', () => {
     });
 
     describe('handleDeleteUnscheduledTask', () => {
-        test('keeps the task when modal confirmation is declined', async () => {
+        test('turns the same delete button into a second-tap confirmation target', async () => {
             const task = createUnscheduledTask();
             updateTaskState([task]);
-
-            await handleDeleteUnscheduledTask(task.id);
-
-            expect(askConfirmation).toHaveBeenCalledWith(
-                'Delete "Test Unscheduled"? This cannot be undone.',
-                { ok: 'Delete', cancel: 'Cancel' },
-                'rose'
+            document.body.insertAdjacentHTML(
+                'beforeend',
+                '<button class="btn-delete-unscheduled"><i class="fa-regular fa-trash-can"></i><span>Delete task</span></button>'
             );
+            const deleteButton = document.querySelector('.btn-delete-unscheduled');
+            deleteButton.dataset.identity = 'original-delete-button';
+
+            await handleDeleteUnscheduledTask(task.id, deleteButton);
+
+            expect(askConfirmation).not.toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(1);
+            expect(getTaskById(task.id).confirmingDelete).toBe(true);
+            expect(deleteButton.dataset.identity).toBe('original-delete-button');
+            expect(deleteButton.querySelector('span').textContent).toBe('Confirm delete');
+            expect(deleteButton.querySelector('i').classList.contains('fa-check-circle')).toBe(
+                true
+            );
+            expect(deleteButton.querySelector('i').classList.contains('fa-trash-can')).toBe(false);
             expect(refreshUI).not.toHaveBeenCalled();
             expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
-        test('shows default delete-success toast and calls coordinator after modal confirmation', async () => {
+        test('deletes on the second tap and calls the coordinator', async () => {
             const task = createUnscheduledTask({ id: 'unsched-confirmed-delete' });
             updateTaskState([task]);
-            askConfirmation.mockResolvedValueOnce(true);
+            document.body.insertAdjacentHTML(
+                'beforeend',
+                '<button class="btn-delete-unscheduled"><i class="fa-regular fa-trash-can"></i><span>Delete task</span></button>'
+            );
+            const deleteButton = document.querySelector('.btn-delete-unscheduled');
 
-            await handleDeleteUnscheduledTask(task.id);
+            await handleDeleteUnscheduledTask(task.id, deleteButton);
+            await handleDeleteUnscheduledTask(task.id, deleteButton);
 
             expect(showToast).toHaveBeenCalledWith('Task deleted.', { theme: 'rose' });
+            expect(askConfirmation).not.toHaveBeenCalled();
             expect(onTaskDeleted).toHaveBeenCalledWith({
                 task: expect.objectContaining({ id: task.id, type: 'unscheduled' })
             });
@@ -296,7 +311,6 @@ describe('Unscheduled Task Handlers', () => {
         test('shows delete-success toast when delete operation returns a success message', async () => {
             const task = createUnscheduledTask({ id: 'unsched-task-id' });
             updateTaskState([task]);
-            askConfirmation.mockResolvedValueOnce(true);
             jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
                 success: true,
                 message: 'Task deleted.'
@@ -314,7 +328,6 @@ describe('Unscheduled Task Handlers', () => {
         test('uses the error theme when deletion fails', async () => {
             const task = createUnscheduledTask({ id: 'unsched-task-id' });
             updateTaskState([task]);
-            askConfirmation.mockResolvedValueOnce(true);
             jest.spyOn(taskManager, 'deleteUnscheduledTask').mockReturnValueOnce({
                 success: false,
                 requiresConfirmation: false,

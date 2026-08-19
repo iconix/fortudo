@@ -216,7 +216,7 @@ def test_task_crud_flow(app_server):
         screenshot(page, "04_priority_sorted")
 
         # =========================================================================
-        # TEST 5: Delete a scheduled task (modal confirmation)
+        # TEST 5: Delete a scheduled task (two-tap confirmation)
         # =========================================================================
         print("\nTEST 5: Delete a scheduled task", flush=True)
         page.locator("#scheduled + span").click()
@@ -225,12 +225,13 @@ def test_task_crud_flow(app_server):
         delete_buttons = page.locator("#scheduled-task-list .btn-delete")
         del_count = delete_buttons.count()
         if del_count >= 2:
-            click_scheduled_action(page, 1, ".btn-delete")
-            confirm_modal = page.locator("#custom-confirm-modal")
-            if confirm_modal.is_visible():
-                screenshot(page, "05a_delete_confirm_state")
-                page.locator("#ok-custom-confirm-modal").click()
-                page.wait_for_timeout(500)
+            task_to_delete = open_scheduled_action_menu(page, 1)
+            scheduled_delete = task_to_delete.locator(".btn-delete")
+            scheduled_delete.evaluate("el => el.click()")
+            scheduled_delete.filter(has_text="Confirm delete").wait_for(timeout=5000)
+            screenshot(page, "05a_delete_confirm_state")
+            scheduled_delete.evaluate("el => el.click()")
+            page.wait_for_timeout(500)
 
             scheduled_tasks_after = page.locator("#scheduled-task-list > [data-task-id]")
             check("Task deleted after confirmation", scheduled_tasks_after.count() == 1,
@@ -247,17 +248,20 @@ def test_task_crud_flow(app_server):
         initial_unsched_count = page.locator("#unscheduled-task-list .task-card").count()
 
         if unsched_delete_buttons.count() >= 1:
-            open_unscheduled_action_menu_for_text(page, "Fix login bug").locator(
+            unscheduled_task_to_delete = open_unscheduled_action_menu_for_text(
+                page, "Fix login bug"
+            )
+            unscheduled_delete = unscheduled_task_to_delete.locator(
                 ".btn-delete-unscheduled"
-            ).evaluate("el => el.click()")
-            confirm_modal = page.locator("#custom-confirm-modal")
-            if confirm_modal.is_visible():
-                page.locator("#ok-custom-confirm-modal").click()
-                page.wait_for_function(
-                    f"document.querySelectorAll('#unscheduled-task-list .task-card').length < {initial_unsched_count}",
-                    timeout=5000,
-                )
-                dismiss_modals(page)
+            )
+            unscheduled_delete.evaluate("el => el.click()")
+            unscheduled_delete.filter(has_text="Confirm delete").wait_for(timeout=5000)
+            unscheduled_delete.evaluate("el => el.click()")
+            page.wait_for_function(
+                f"document.querySelectorAll('#unscheduled-task-list .task-card').length < {initial_unsched_count}",
+                timeout=5000,
+            )
+            dismiss_modals(page)
 
             final_unsched_count = page.locator("#unscheduled-task-list .task-card").count()
             check("Unscheduled task deleted", final_unsched_count < initial_unsched_count,

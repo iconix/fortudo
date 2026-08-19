@@ -30,7 +30,11 @@ import {
     logger,
     getThemeForTask
 } from '../utils.js';
-import { getThemeForTaskId, handleRescheduleConfirmation } from './confirmation-helpers.js';
+import {
+    getThemeForTaskId,
+    handleRescheduleConfirmation,
+    showInlineDeleteConfirmation
+} from './confirmation-helpers.js';
 import {
     onTaskCompleted,
     onTaskEdited,
@@ -125,28 +129,22 @@ export function handleEditTask(taskId, _taskIndex) {
     refreshUI();
 }
 
-export async function handleDeleteTask(taskId, _taskIndex) {
+export async function handleDeleteTask(taskId, _taskIndex, deleteButton) {
     const taskToDelete = getTaskById(taskId);
     if (!taskToDelete || taskToDelete.type !== 'scheduled') {
         logger.warn('handleDeleteTask for non-scheduled', taskId);
         return;
     }
 
-    const confirmed = await askConfirmation(
-        `Delete "${taskToDelete.description}"? This cannot be undone.`,
-        { ok: 'Delete', cancel: 'Cancel' },
-        'rose'
-    );
-    if (!confirmed) {
-        return;
-    }
-
     const originalIndex = getTaskIndex(taskId);
-    const result = await deleteTask(originalIndex, true);
+    const result = await deleteTask(originalIndex, taskToDelete.confirmingDelete);
     if (result.success) onTaskDeleted({ task: result.task || taskToDelete });
-    else if (!result.requiresConfirmation && result.reason)
+    else if (result.requiresConfirmation) {
+        if (!showInlineDeleteConfirmation(deleteButton)) refreshUI();
+    } else if (!result.requiresConfirmation && result.reason) {
         showAlert(result.reason, getThemeForTaskId(taskId));
-    if (!result.success) refreshUI();
+        refreshUI();
+    }
 }
 
 export async function handleUnscheduleTask(taskId, _taskIndex) {
