@@ -139,9 +139,9 @@ async function saveEditedCategoryColor(key, color) {
 
 beforeEach(() => {
     setupSettingsDOM();
-    resetTaxonomySettingsViewState();
     localStorage.clear();
     sessionStorage.clear();
+    resetTaxonomySettingsViewState();
     jest.clearAllMocks();
 });
 
@@ -568,10 +568,13 @@ describe('settings-renderer', () => {
             await waitForCondition(
                 () =>
                     getCategoryByKey('work/deep')?.status === 'archived' &&
-                    document
-                        .querySelector('[data-category-key="work/deep"]')
-                        ?.textContent.includes('Archived')
+                    document.querySelector('[data-category-key="work/deep"]') === null
             );
+
+            const toggle = document.getElementById('show-archived-taxonomy');
+            expect(toggle.checked).toBe(false);
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
 
             const archivedRow = document.querySelector('[data-category-key="work/deep"]');
             expect(archivedRow.textContent).toContain('Archived');
@@ -587,6 +590,71 @@ describe('settings-renderer', () => {
             expect(
                 document.querySelector('[data-category-key="work/deep"] .btn-edit-category')
             ).not.toBeNull();
+        });
+
+        test('show archived defaults off at the bottom and persists across reopen', async () => {
+            await renderEnabledSettings();
+            await clickAndWait(
+                document.querySelector('.btn-archive-category[data-key="work/deep"]')
+            );
+            await waitForCondition(() => getCategoryByKey('work/deep')?.status === 'archived');
+            await waitForCondition(() => document.getElementById('show-archived-taxonomy'));
+
+            const toggle = document.getElementById('show-archived-taxonomy');
+            expect(toggle).not.toBeNull();
+            expect(toggle.checked).toBe(false);
+            expect(document.querySelector('[data-category-key="work/deep"]')).toBeNull();
+            expect(toggle.closest('label')).toBe(
+                document.getElementById('taxonomy-management-content').lastElementChild
+            );
+
+            toggle.checked = true;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(document.querySelector('[data-category-key="work/deep"]')).not.toBeNull();
+            expect(localStorage.getItem('fortudo-show-archived-taxonomy')).toBe('true');
+
+            resetTaxonomySettingsViewState();
+            renderSettingsContent();
+            expect(document.getElementById('show-archived-taxonomy').checked).toBe(true);
+            expect(document.querySelector('[data-category-key="work/deep"]')).not.toBeNull();
+
+            const persistedToggle = document.getElementById('show-archived-taxonomy');
+            persistedToggle.checked = false;
+            persistedToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(document.querySelector('[data-category-key="work/deep"]')).toBeNull();
+        });
+
+        test('linked categories offer one-click tone regeneration and stay linked', async () => {
+            const onTaxonomyChanged = jest.fn();
+            await renderEnabledSettings({ onTaxonomyChanged });
+            await clickAndWait(
+                document.querySelector('.btn-archive-category[data-key="work/deep"]')
+            );
+            await waitForCondition(() => getCategoryByKey('work/deep')?.status === 'archived');
+            const previousColor = getCategoryByKey('work/meetings').color;
+
+            await clickAndWait(
+                document.querySelector('.btn-regenerate-category-color[data-key="work/meetings"]')
+            );
+            await waitForCondition(() => getCategoryByKey('work/meetings').color !== previousColor);
+            await waitForCondition(() => onTaxonomyChanged.mock.calls.length > 0);
+
+            const updated = getCategoryByKey('work/meetings');
+            expect(updated.isLinkedToGroupFamily).toBe(true);
+            expect(COLOR_FAMILIES.blue).toContain(updated.color);
+            expect(
+                document.querySelector('[data-category-key="work/meetings"] .category-dot').style
+                    .backgroundColor
+            ).not.toBe('');
+            const organizationSection = document.querySelector(
+                '[data-settings-domain="organization"]'
+            );
+            expect(organizationSection.textContent).toContain('Organization');
+            expect(organizationSection.textContent).toContain(
+                'Groups and categories shared by tasks and activities.'
+            );
+            expect(onTaxonomyChanged).toHaveBeenCalled();
         });
 
         test('keeps group cards compact while naming color dots accessibly', async () => {
@@ -662,6 +730,10 @@ describe('settings-renderer', () => {
                     .querySelector('.btn-delete-category[data-key="work/deep"]')
                     .getAttribute('aria-label')
             ).toBe('Delete Deep Work category');
+            expect(
+                document.querySelector('.btn-regenerate-category-color[data-key="work/deep"] i')
+                    .classList
+            ).toContain('fa-circle-half-stroke');
         });
 
         test('taxonomy group and category rows keep names left aligned', async () => {

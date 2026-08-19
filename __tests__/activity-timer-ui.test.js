@@ -20,6 +20,16 @@ jest.mock('../public/js/activities/view-toggle.js', () => ({
     renderActiveInsightsView: jest.fn()
 }));
 
+jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
+    resolveCategoryKey: jest.fn((key) => {
+        const colors = {
+            'work/deep': '#2563eb',
+            'break/admin': '#d97706'
+        };
+        return colors[key] ? { kind: 'category', record: { key, color: colors[key] } } : null;
+    })
+}));
+
 import {
     showTimerDisplay,
     hideTimerDisplay,
@@ -79,11 +89,13 @@ describe('activity timer ui', () => {
             </div>
             <div id="timer-display" class="hidden">
                 <input id="timer-description" />
+                <span id="timer-category-color-indicator"></span>
                 <select id="timer-category"></select>
                 <input id="timer-start-time" type="time" />
                 <div id="timer-elapsed"></div>
                 <div id="next-activity-strip">
                     <input id="next-activity-description" />
+                    <span id="next-activity-category-color-indicator"></span>
                     <select id="next-activity-category"></select>
                     <div id="next-activity-action-group"></div>
                 </div>
@@ -96,6 +108,7 @@ describe('activity timer ui', () => {
                 <select name="category">
                     <option value="">No category</option>
                     <option value="work/deep">Deep Work</option>
+                    <option value="break/admin">Admin</option>
                 </select>
                 <input type="radio" name="task-type" value="scheduled" checked />
                 <input type="radio" name="task-type" value="activity" />
@@ -145,6 +158,32 @@ describe('activity timer ui', () => {
                     .contains(document.getElementById('start-timer-btn'))
             ).toBe(true);
             expect(document.getElementById('start-timer-btn').textContent).toContain('Start Timer');
+        });
+
+        test('current and next activity category dots follow their selectors', () => {
+            initializeTimerUI({ refreshUI: jest.fn() });
+            showTimerDisplay({
+                description: 'Timer work',
+                category: 'work/deep',
+                startDateTime: '2026-04-09T10:00:00.000Z'
+            });
+
+            expect(
+                document.getElementById('timer-category-color-indicator').style.backgroundColor
+            ).toBe('rgb(37, 99, 235)');
+            expect(
+                document.getElementById('next-activity-category-color-indicator').style
+                    .backgroundColor
+            ).toBe('rgb(100, 116, 139)');
+
+            const nextCategory = document.getElementById('next-activity-category');
+            nextCategory.value = 'break/admin';
+            nextCategory.dispatchEvent(new Event('change', { bubbles: true }));
+
+            expect(
+                document.getElementById('next-activity-category-color-indicator').style
+                    .backgroundColor
+            ).toBe('rgb(217, 119, 6)');
         });
 
         test('elapsed counter updates while timer is visible', () => {
@@ -1067,6 +1106,9 @@ describe('activity timer ui', () => {
             await flushAsyncWork(6);
 
             expect(categoryInput.value).toBe('work/deep');
+            expect(
+                document.getElementById('timer-category-color-indicator').style.backgroundColor
+            ).toBe('rgb(37, 99, 235)');
             expect(showAlert).toHaveBeenCalledWith('Category update failed.', 'sky');
         });
 

@@ -1,6 +1,7 @@
 import {
     COLOR_FAMILIES,
     getFamilyBaseColor,
+    getNextLinkedChildColor,
     isColorInFamily,
     normalizeFamilyName,
     pickLinkedChildColor
@@ -109,14 +110,17 @@ export async function updateGroup(key, updates) {
 
     if (updates.colorFamily !== undefined) {
         const colorFamily = normalizeFamilyName(updates.colorFamily);
+        const familyChanged = group.colorFamily !== colorFamily;
         group.colorFamily = colorFamily;
         group.color = getFamilyBaseColor(colorFamily);
 
-        getChildCategories(group.id).forEach((category, index) => {
-            if (category.isLinkedToGroupFamily) {
-                category.color = pickLinkedChildColor(colorFamily, index);
-            }
-        });
+        if (familyChanged) {
+            getChildCategories(group.id).forEach((category, index) => {
+                if (category.isLinkedToGroupFamily) {
+                    category.color = pickLinkedChildColor(colorFamily, index);
+                }
+            });
+        }
     }
 
     await persistTaxonomyState();
@@ -287,6 +291,36 @@ export async function updateCategory(key, updates) {
     return cloneRecord(category);
 }
 
+export async function cycleLinkedCategoryColor(key) {
+    const state = getMutableTaxonomyState();
+    const category = state.categories.find((entry) => entry.key === key);
+    if (!category) {
+        throw new Error(`Category "${key}" not found`);
+    }
+    if (!category.isLinkedToGroupFamily) {
+        throw new Error('Only linked category colors can be regenerated');
+    }
+
+    const group = state.groups.find((entry) => entry.id === category.groupId);
+    if (!group) {
+        throw new Error(`Group "${category.groupKey}" not found`);
+    }
+
+    const occupiedColors = state.categories
+        .filter(
+            (entry) =>
+                entry.id !== category.id &&
+                entry.groupId === category.groupId &&
+                entry.status === 'active'
+        )
+        .map((entry) => entry.color);
+    occupiedColors.push(group.color);
+    category.color = getNextLinkedChildColor(group.colorFamily, category.color, occupiedColors);
+    category.isLinkedToGroupFamily = true;
+    await persistTaxonomyState();
+    return cloneRecord(category);
+}
+
 export async function archiveCategory(key, archivedAt = new Date().toISOString()) {
     const category = getMutableTaxonomyState().categories.find((entry) => entry.key === key);
     if (!category) {
@@ -363,9 +397,8 @@ function inferFamilyFromColor(color, fallback = 'blue') {
         return fallback;
     }
 
-    const normalizedColor = color.toLowerCase();
-    for (const [familyName, familyColors] of Object.entries(COLOR_FAMILIES)) {
-        if (familyColors.includes(normalizedColor)) {
+    for (const familyName of Object.keys(COLOR_FAMILIES)) {
+        if (isColorInFamily(familyName, color)) {
             return familyName;
         }
     }
