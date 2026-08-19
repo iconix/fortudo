@@ -255,34 +255,53 @@ describe('Scheduled Task Handlers', () => {
     });
 
     describe('handleDeleteTask', () => {
-        test('triggers confirmation on first click', async () => {
+        test('turns the same delete button into a second-tap confirmation target', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
                 duration: 60
             });
             updateTaskState([task]);
+            document.body.insertAdjacentHTML(
+                'beforeend',
+                '<button class="btn-delete"><i class="fa-regular fa-trash-can"></i><span>Delete task</span></button>'
+            );
+            const deleteButton = document.querySelector('.btn-delete');
+            deleteButton.dataset.identity = 'original-delete-button';
 
-            await handleDeleteTask(task.id, 0);
+            await handleDeleteTask(task.id, 0, deleteButton);
 
-            // First click triggers confirmation, task should still exist
+            expect(askConfirmation).not.toHaveBeenCalled();
             expect(getTaskState()).toHaveLength(1);
-            expect(refreshUI).toHaveBeenCalled();
+            expect(getTaskById(task.id).confirmingDelete).toBe(true);
+            expect(deleteButton.dataset.identity).toBe('original-delete-button');
+            expect(deleteButton.querySelector('span').textContent).toBe('Confirm delete');
+            expect(deleteButton.querySelector('i').classList.contains('fa-check-circle')).toBe(
+                true
+            );
+            expect(deleteButton.querySelector('i').classList.contains('fa-trash-can')).toBe(false);
+            expect(refreshUI).not.toHaveBeenCalled();
             expect(onTaskDeleted).not.toHaveBeenCalled();
         });
 
-        test('deletes task on confirmed click', async () => {
+        test('deletes the task on the second tap of the same button', async () => {
             const task = createTaskWithDateTime({
                 description: 'Delete Test',
                 startTime: '09:00',
-                duration: 60,
-                confirmingDelete: true
+                duration: 60
             });
             updateTaskState([task]);
+            document.body.insertAdjacentHTML(
+                'beforeend',
+                '<button class="btn-delete"><i class="fa-regular fa-trash-can"></i><span>Delete task</span></button>'
+            );
+            const deleteButton = document.querySelector('.btn-delete');
 
-            await handleDeleteTask(task.id, 0);
+            await handleDeleteTask(task.id, 0, deleteButton);
+            await handleDeleteTask(task.id, 0, deleteButton);
 
             expect(getTaskState()).toHaveLength(0);
+            expect(askConfirmation).not.toHaveBeenCalled();
             expect(onTaskDeleted).toHaveBeenCalledWith({
                 task: expect.objectContaining({ id: task.id, type: 'scheduled' })
             });

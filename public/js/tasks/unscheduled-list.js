@@ -240,8 +240,7 @@ function handleClick(event) {
         closeMenus();
         state.actions.edit(taskId);
     } else if (event.target.closest('.btn-delete-unscheduled')) {
-        closeMenus();
-        state.actions.delete(taskId);
+        state.actions.delete(taskId, event.target.closest('.btn-delete-unscheduled'));
     } else if (event.target.closest('.task-checkbox-unscheduled')) {
         state.actions.toggleComplete(taskId);
     } else if (event.target.closest('.btn-save-inline-edit')) {

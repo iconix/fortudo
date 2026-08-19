@@ -310,8 +310,9 @@ describe('Unscheduled list UI interface', () => {
         document.querySelector('.btn-edit-unscheduled').click();
         expect(menu.hidden).toBe(true);
         trigger.click();
-        document.querySelector('.btn-delete-unscheduled').click();
-        expect(menu.hidden).toBe(true);
+        const deleteButton = document.querySelector('.btn-delete-unscheduled');
+        deleteButton.click();
+        expect(menu.hidden).toBe(false);
         document.querySelector('.task-checkbox-unscheduled').click();
         document.querySelector('.btn-save-inline-edit').click();
         document.querySelector('.btn-cancel-inline-edit').click();
@@ -319,7 +320,7 @@ describe('Unscheduled list UI interface', () => {
         expect(actions.startTimer).toHaveBeenCalledWith('a');
         expect(actions.schedule).toHaveBeenCalledWith('a');
         expect(actions.edit).toHaveBeenCalledWith('a');
-        expect(actions.delete).toHaveBeenCalledWith('a');
+        expect(actions.delete).toHaveBeenCalledWith('a', deleteButton);
         expect(actions.toggleComplete).toHaveBeenCalledWith('a');
         expect(actions.saveEdit).toHaveBeenCalledWith('a');
         expect(actions.cancelEdit).toHaveBeenCalledWith('a');
@@ -370,7 +371,7 @@ describe('Unscheduled list UI interface', () => {
         trigger.click();
         deleteButton.click();
         expect(options.actions.edit).toHaveBeenCalledWith('done');
-        expect(options.actions.delete).toHaveBeenCalledWith('done');
+        expect(options.actions.delete).toHaveBeenCalledWith('done', deleteButton);
     });
 
     test('toggles menus with the expected classes and restores trigger focus on Escape', () => {

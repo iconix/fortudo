@@ -13,6 +13,29 @@ export function getThemeForTaskId(taskId) {
 }
 
 /**
+ * Turn an existing task-menu delete button into its second-tap confirmation state.
+ * Keeping the same DOM node avoids losing a mobile tap target during a full list rerender.
+ * @param {HTMLElement|null|undefined} deleteButton
+ * @returns {boolean} Whether the button was updated in place
+ */
+export function showInlineDeleteConfirmation(deleteButton) {
+    if (!(deleteButton instanceof HTMLElement)) {
+        return false;
+    }
+
+    const label = deleteButton.querySelector('span');
+    const icon = deleteButton.querySelector('i');
+    if (!label || !icon) {
+        return false;
+    }
+
+    label.textContent = 'Confirm delete';
+    icon.classList.remove('fa-trash-can');
+    icon.classList.add('fa-check-circle');
+    return true;
+}
+
+/**
  * Handle reschedule confirmations for task update operations
  * @param {Object} opResult - The operation result from updateTask
  * @param {Function} confirmCallback - Callback to invoke if user confirms

@@ -492,7 +492,11 @@ describe('DOM Handler Interaction Tests', () => {
                 throw new Error('Delete button not found');
             }
             deleteButton.dispatchEvent(new Event('click', { bubbles: true }));
-            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith('test-task-1', 0);
+            expect(mockTaskEventCallbacks.onDeleteTask).toHaveBeenCalledWith(
+                'test-task-1',
+                0,
+                deleteButton
+            );
         });
 
         test('attaches event listeners for edit mode tasks', () => {

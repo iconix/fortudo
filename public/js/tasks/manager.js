@@ -1413,14 +1413,15 @@ export async function deleteTask(index, confirmed = false) {
 /**
  * Delete an unscheduled task by ID
  * @param {string} taskId - ID of unscheduled task to delete
+ * @param {boolean} [confirmed=false] - Whether the caller already confirmed deletion
  * @returns {TaskOperationResult} Result of the delete operation
  */
-export async function deleteUnscheduledTask(taskId) {
+export async function deleteUnscheduledTask(taskId, confirmed = false) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {
         return { success: false, reason: 'Unscheduled task not found.' };
     }
-    return deleteTask(taskIndex, tasks[taskIndex].confirmingDelete);
+    return deleteTask(taskIndex, confirmed || tasks[taskIndex].confirmingDelete);
 }
 
 export async function consumeUnscheduledTask(taskId) {
