@@ -261,7 +261,8 @@ describe('activity insights model', () => {
                 docType: 'activity',
                 description: 'Running focus',
                 duration: 30,
-                endDateTime: now.toISOString()
+                endDateTime: now.toISOString(),
+                isRunningActivity: true
             })
         ]);
         expect(model.issues).not.toEqual(
@@ -272,6 +273,39 @@ describe('activity insights model', () => {
                 })
             ])
         );
+    });
+
+    test('buildInsightsModel marks an overlap with the running timer as live and non-actionable', () => {
+        const now = new Date(isoAt('10:30'));
+        const model = buildInsightsModel({
+            activities: [
+                activity({
+                    id: 'saved-timer',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    duration: 60,
+                    source: 'timer',
+                    sourceTaskId: null
+                })
+            ],
+            runningActivity: {
+                id: 'running-timer',
+                description: 'Running focus',
+                startDateTime: isoAt('09:30'),
+                source: 'timer',
+                sourceTaskId: null
+            },
+            now
+        });
+
+        expect(model.issues).toEqual([
+            expect.objectContaining({
+                type: 'live-overlap',
+                activityId: 'running-timer',
+                overlappingActivityId: 'saved-timer'
+            })
+        ]);
+        expect(model.activityLogIssues).toEqual([]);
     });
 
     test('buildInsightsModel counts only the portion of previous-day items overlapping today', () => {

@@ -126,7 +126,8 @@ function normalizeRunningActivity(runningActivity, today, now) {
         ...runningActivity,
         docType: 'activity',
         endDateTime: now.toISOString(),
-        duration
+        duration,
+        isRunningActivity: true
     };
 }
 

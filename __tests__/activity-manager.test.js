@@ -317,7 +317,8 @@ describe('activity manager', () => {
                     description: 'Running',
                     category: 'work/deep',
                     duration: 17,
-                    endDateTime: '2026-04-15T09:17:00.000Z'
+                    endDateTime: '2026-04-15T09:17:00.000Z',
+                    isRunningActivity: true
                 })
             );
         });

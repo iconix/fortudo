@@ -114,6 +114,15 @@ function initializeActivityListEventHandlers(activityListElement, { signal, refr
         { signal }
     );
     activityListElement.addEventListener('input', handleActivityListInput, { signal });
+    activityListElement.addEventListener(
+        'click',
+        (event) => {
+            if (handleOverlapRepairClick(event, { refreshUI })) {
+                event.stopPropagation();
+            }
+        },
+        { signal }
+    );
 }
 
 function initializeInsightsTrendEventHandlers(trendsElement, { signal, renderInsights }) {
@@ -213,6 +222,19 @@ async function handleTruncateActivityOverlaps(date, { refreshUI }) {
     showToast(getRepairedActivitiesMessage(result.truncatedCount || 0), { theme: 'amber' });
 }
 
+function handleOverlapRepairClick(event, { refreshUI }) {
+    const truncateButton = event.target.closest('[data-truncate-activity-overlaps]');
+    if (!truncateButton) {
+        return false;
+    }
+
+    const date = truncateButton.dataset.truncateActivityOverlapsDate;
+    if (date) {
+        void handleTruncateActivityOverlaps(date, { refreshUI });
+    }
+    return true;
+}
+
 function initializeInsightsActivityLogEventHandlers(
     logElement,
     { signal, refreshUI, renderInsights }
@@ -224,12 +246,7 @@ function initializeInsightsActivityLogEventHandlers(
     logElement.addEventListener(
         'click',
         (event) => {
-            const truncateButton = event.target.closest('[data-truncate-activity-overlaps]');
-            if (truncateButton) {
-                const date = truncateButton.dataset.truncateActivityOverlapsDate;
-                if (date) {
-                    void handleTruncateActivityOverlaps(date, { refreshUI });
-                }
+            if (handleOverlapRepairClick(event, { refreshUI })) {
                 return;
             }
 

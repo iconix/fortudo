@@ -37,7 +37,10 @@ export function detectActivityDataIssues(activities = []) {
                 hasDisplayedMinuteOverlap(startDate, new Date(previousValidActivity.endDateTime))
             ) {
                 issues.push({
-                    type: 'overlap',
+                    type:
+                        activityItem.isRunningActivity || previousValidActivity.isRunningActivity
+                            ? 'live-overlap'
+                            : 'overlap',
                     activityId: activityItem.id,
                     overlappingActivityId: previousValidActivity.id
                 });

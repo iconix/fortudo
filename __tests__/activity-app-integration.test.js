@@ -42,6 +42,7 @@ jest.mock('../public/js/taxonomy/taxonomy-selectors.js', () => ({
 import {
     syncActivitiesUI,
     renderTodayActivities,
+    refreshTodayActivitySummary,
     handleActivityAwareFormSubmit,
     handleActivityListClick,
     handleActivityListSubmit,
@@ -60,7 +61,7 @@ import {
     getRunningActivity,
     getLiveTodayActivitySummary
 } from '../public/js/activities/manager.js';
-import { renderActivities } from '../public/js/activities/renderer.js';
+import { renderActivities, renderActivitySummaryOnly } from '../public/js/activities/renderer.js';
 import {
     detectActivityDataIssues,
     groupIssuesByActivityId
@@ -169,7 +170,7 @@ describe('activity app integration', () => {
         const runningSummary = { id: 'running-activity-summary', description: 'Running' };
         const issues = [
             {
-                type: 'overlap',
+                type: 'live-overlap',
                 activityId: runningSummary.id,
                 overlappingActivityId: activities[0].id
             }
@@ -190,7 +191,98 @@ describe('activity app integration', () => {
         expect(renderActivities).toHaveBeenCalledWith(
             activities,
             document.getElementById('activity-list'),
-            expect.objectContaining({ activityIssuesById: issuesById })
+            expect.objectContaining({
+                activityIssuesById: issuesById,
+                overlapRepairDate: null
+            })
+        );
+    });
+
+    test('offers overlap repair in Today only for actionable saved-activity overlaps', () => {
+        const activities = [
+            { id: 'activity-1', description: 'Focus' },
+            { id: 'activity-2', description: 'Meeting' }
+        ];
+        const issues = [
+            {
+                type: 'overlap',
+                activityId: 'activity-2',
+                overlappingActivityId: 'activity-1'
+            }
+        ];
+        getTodaysActivities.mockReturnValue(activities);
+        detectActivityDataIssues.mockReturnValue(issues);
+        groupIssuesByActivityId.mockReturnValue({
+            'activity-1': issues,
+            'activity-2': issues
+        });
+
+        renderTodayActivities(true, new Date('2026-05-07T12:00:00.000Z'));
+
+        expect(renderActivities).toHaveBeenCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ overlapRepairDate: '2026-05-07' })
+        );
+    });
+
+    test('keeps the minute refresh summary-only while the detected issue set is unchanged', () => {
+        const now = new Date('2026-05-07T12:00:00.000Z');
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        const runningSummary = { id: 'running-activity-summary', description: 'Running' };
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+        detectActivityDataIssues.mockReturnValue([]);
+
+        renderTodayActivities(true, now);
+        jest.clearAllMocks();
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+        detectActivityDataIssues.mockReturnValue([]);
+
+        refreshTodayActivitySummary(true, now);
+
+        expect(detectActivityDataIssues).toHaveBeenCalledWith([...activities, runningSummary]);
+        expect(renderActivitySummaryOnly).toHaveBeenCalledTimes(1);
+        expect(renderActivities).not.toHaveBeenCalled();
+    });
+
+    test('rerenders Today when a minute refresh detects a changed issue set', () => {
+        const now = new Date('2026-05-07T12:00:00.000Z');
+        const activities = [{ id: 'activity-1', description: 'Focus' }];
+        const runningSummary = { id: 'running-activity-summary', description: 'Running' };
+        const liveOverlap = {
+            type: 'live-overlap',
+            activityId: runningSummary.id,
+            overlappingActivityId: activities[0].id
+        };
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+        detectActivityDataIssues.mockReturnValue([]);
+
+        renderTodayActivities(true, now);
+        jest.clearAllMocks();
+        getTodaysActivities.mockReturnValue(activities);
+        getLiveTodayActivitySummary.mockReturnValue(runningSummary);
+        detectActivityDataIssues.mockReturnValue([liveOverlap]);
+        groupIssuesByActivityId.mockReturnValue({
+            'activity-1': [liveOverlap],
+            'running-activity-summary': [liveOverlap]
+        });
+
+        refreshTodayActivitySummary(true, now);
+
+        expect(renderActivitySummaryOnly).not.toHaveBeenCalled();
+        expect(renderActivities).toHaveBeenCalledTimes(1);
+        expect(renderActivities).toHaveBeenCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({
+                activityIssuesById: {
+                    'activity-1': [liveOverlap],
+                    'running-activity-summary': [liveOverlap]
+                }
+            })
         );
     });
 
