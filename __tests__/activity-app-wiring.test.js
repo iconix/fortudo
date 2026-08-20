@@ -400,6 +400,38 @@ describe('activity app wiring', () => {
         });
     });
 
+    test('clicking overlap repair in Today uses the same reviewed repair flow', async () => {
+        const refreshUI = jest.fn();
+        initializeActivityUi({
+            signal: new AbortController().signal,
+            refreshUI,
+            refreshTaskDisplays: jest.fn(),
+            getActivitiesEnabled: () => true,
+            renderInsights: jest.fn()
+        });
+        document.getElementById('activity-list').innerHTML = `
+            <button type="button" data-truncate-activity-overlaps
+                data-truncate-activity-overlaps-date="2026-05-07">
+                Review overlap fixes
+            </button>
+        `;
+
+        document
+            .querySelector('#activity-list [data-truncate-activity-overlaps]')
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(getActivityOverlapTruncationPreviewForDate).toHaveBeenCalledWith('2026-05-07');
+        expect(askConfirmation).toHaveBeenCalled();
+        expect(truncateActivityOverlapsForDate).toHaveBeenCalledWith(
+            '2026-05-07',
+            expect.objectContaining({ selectedActivityIds: ['activity-1', 'activity-2'] })
+        );
+        expect(refreshUI).toHaveBeenCalled();
+        expect(showToast).toHaveBeenCalledWith('Repaired 2 overlaps.', { theme: 'amber' });
+    });
+
     test('applies only rows that remain selected in the repair review', async () => {
         let resolveConfirmation;
         askConfirmation.mockImplementationOnce(

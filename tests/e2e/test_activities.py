@@ -56,6 +56,45 @@ def assert_onboarding_step(page, expected_title: str, expected_target_id: str):
     }
 
 
+def build_live_overlap_docs(page):
+    return page.evaluate(
+        """
+        () => {
+            const now = new Date();
+            const savedStart = new Date(now.getTime() - 60 * 60000);
+            const savedEnd = new Date(now.getTime() - 10 * 60000);
+            const runningStart = new Date(now.getTime() - 30 * 60000);
+
+            return [
+                {
+                    _id: 'live-overlap-saved',
+                    id: 'live-overlap-saved',
+                    docType: 'activity',
+                    description: 'Saved overlapping timer',
+                    category: null,
+                    source: 'timer',
+                    sourceTaskId: null,
+                    startDateTime: savedStart.toISOString(),
+                    endDateTime: savedEnd.toISOString(),
+                    duration: 50,
+                },
+                {
+                    _id: 'config-running-activity',
+                    id: 'config-running-activity',
+                    docType: 'config',
+                    activityId: 'live-overlap-running',
+                    description: 'Current overlapping timer',
+                    category: null,
+                    source: 'timer',
+                    sourceTaskId: null,
+                    startDateTime: runningStart.toISOString(),
+                },
+            ];
+        }
+        """
+    )
+
+
 def test_activities_onboarding_prepares_ui_and_persists_dismissal(app_server):
     room_code = "activities-onboarding-sequence"
 
@@ -308,6 +347,98 @@ def test_today_activities_surface_overlapping_data_issues(app_server):
             assert issue_rows.count() == 2
             assert "Data issue" in issue_rows.first.inner_text()
             assert "Overlapping activity" in issue_rows.first.inner_text()
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_live_overlap_becomes_repairable_from_today_after_timer_stops(app_server):
+    room_code = "activities-today-live-overlap"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(playwright)
+
+        try:
+            page.goto(BASE_URL, wait_until="load")
+            docs = [activities_config(), *build_live_overlap_docs(page)]
+            seed_and_enter_room(page, room_code, docs)
+
+            saved_row = page.locator(
+                '#activity-list .activity-item[data-activity-id="live-overlap-saved"]'
+            )
+            live_issue = saved_row.locator("[data-activity-live-overlap]")
+            live_issue.wait_for(state="visible", timeout=10000)
+
+            assert "Live overlap" in live_issue.inner_text()
+            assert "Overlaps current timer" in live_issue.inner_text()
+            assert "Repair available after the timer stops" not in live_issue.inner_text()
+            assert saved_row.locator("[data-activity-data-issue]").count() == 0
+            assert page.locator(
+                "#activity-list [data-truncate-activity-overlaps]"
+            ).count() == 0
+
+            page.locator("#timer-stop-btn").click()
+
+            repair_action = page.locator(
+                "#activity-list [data-truncate-activity-overlaps]"
+            )
+            repair_action.wait_for(state="visible", timeout=10000)
+            assert saved_row.locator("[data-activity-data-issue]").is_visible()
+            assert "Overlapping activity" in saved_row.inner_text()
+
+            repair_action.click()
+            confirm_modal = page.locator("#custom-confirm-modal")
+            confirm_modal.wait_for(state="visible", timeout=10000)
+            assert "Review overlap fixes" in page.locator("#custom-confirm-title").inner_text()
+            assert "Saved overlapping timer" in page.locator(
+                "#custom-confirm-message"
+            ).inner_text()
+            page.locator("#ok-custom-confirm-modal").click()
+
+            confirm_modal.wait_for(state="hidden", timeout=10000)
+            page.locator(
+                '#activity-list .activity-item[data-activity-id="live-overlap-saved"] '
+                "[data-activity-data-issue]"
+            ).wait_for(state="detached", timeout=10000)
+            assert page.locator(
+                "#activity-list [data-truncate-activity-overlaps]"
+            ).count() == 0
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_editing_running_timer_start_refreshes_today_live_overlap_without_reload(app_server):
+    room_code = "activities-today-live-overlap-edit"
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(playwright)
+
+        try:
+            page.goto(BASE_URL, wait_until="load")
+            live_docs = build_live_overlap_docs(page)
+            live_docs[1]["startDateTime"] = page.evaluate(
+                "new Date(Date.now() - 5 * 60000).toISOString()"
+            )
+            seed_and_enter_room(page, room_code, [activities_config(), *live_docs])
+
+            saved_row = page.locator(
+                '#activity-list .activity-item[data-activity-id="live-overlap-saved"]'
+            )
+            live_issue = saved_row.locator("[data-activity-live-overlap]")
+            assert live_issue.count() == 0
+
+            overlapping_start_time = page.evaluate(
+                """
+                () => {
+                    const date = new Date(Date.now() - 30 * 60000);
+                    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                }
+                """
+            )
+            page.locator("#timer-start-time").fill(overlapping_start_time)
+            page.locator("#timer-start-time").press("Tab")
+
+            live_issue.wait_for(state="visible", timeout=10000)
+            assert "Overlaps current timer" in live_issue.inner_text()
         finally:
             context.close()
             browser.close()

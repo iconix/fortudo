@@ -168,7 +168,8 @@ export function getLiveTodayActivitySummary(now = new Date()) {
             ...runningActivity,
             id: runningActivity.id || 'running-activity-summary',
             endDateTime,
-            duration
+            duration,
+            isRunningActivity: true
         })
     );
 }

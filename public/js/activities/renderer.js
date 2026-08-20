@@ -30,6 +30,10 @@ function formatTimeRange(startDateTime, endDateTime) {
 }
 
 function getActivityDataIssueLabel(issue) {
+    if (issue?.type === 'live-overlap') {
+        return 'Overlaps current timer';
+    }
+
     if (issue?.type === 'overlap') {
         return 'Overlapping activity';
     }
@@ -62,12 +66,40 @@ function renderActivityDataIssueText(issues = []) {
         return '';
     }
 
-    const labels = [...new Set(issues.map(getActivityDataIssueLabel))];
+    const liveOverlapIssues = issues.filter((issue) => issue.type === 'live-overlap');
+    const actionableIssues = issues.filter((issue) => issue.type !== 'live-overlap');
+    const actionableLabels = [...new Set(actionableIssues.map(getActivityDataIssueLabel))];
+    const liveOverlapLabels = [...new Set(liveOverlapIssues.map(getActivityDataIssueLabel))];
+    const actionableHtml =
+        actionableLabels.length > 0
+            ? `<div data-activity-data-issue class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-amber-200">
+                <span class="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">Data issue</span>
+                <span>${escapeHtml(actionableLabels.join(', '))}</span>
+            </div>`
+            : '';
+    const liveOverlapHtml =
+        liveOverlapLabels.length > 0
+            ? `<div data-activity-live-overlap class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-300">
+                <span class="inline-flex items-center gap-1 rounded border border-slate-600/70 bg-slate-700/40 px-1.5 py-0.5 font-medium text-slate-300">
+                    <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                    Live overlap
+                </span>
+                <span>${escapeHtml(liveOverlapLabels.join(', '))}</span>
+            </div>`
+            : '';
 
-    return `<div data-activity-data-issue class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-amber-200">
-        <span class="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-200">Data issue</span>
-        <span>${escapeHtml(labels.join(', '))}</span>
-    </div>`;
+    return `${actionableHtml}${liveOverlapHtml}`;
+}
+
+export function renderActivityOverlapRepairButton(date) {
+    if (!date) {
+        return '';
+    }
+
+    return `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
+        <i class="fa-solid fa-scissors" aria-hidden="true"></i>
+        <span>Review overlap fixes</span>
+    </button>`;
 }
 
 function getSummarySwatchStyle(summaryItem) {
@@ -356,12 +388,18 @@ export function renderActivities(activities, container, options = {}) {
         ? options.summaryActivities
         : activities;
     const summaryHtml = renderActivitySummary(summaryActivities, options);
+    const repairActionHtml = options.overlapRepairDate
+        ? `<div data-activity-list-actions class="flex justify-end px-2 pb-1">
+            ${renderActivityOverlapRepairButton(options.overlapRepairDate)}
+        </div>`
+        : '';
 
     if (!activities || activities.length === 0) {
         const emptyStateMessage = summaryHtml
             ? 'No completed activities yet.'
             : 'No activity logged today.';
         targetContainer.innerHTML = `
+            ${repairActionHtml}
             ${summaryHtml}
             <div class="px-2 py-2 text-sm text-slate-400 sm:text-slate-500">${emptyStateMessage}</div>`;
         return;
@@ -375,5 +413,5 @@ export function renderActivities(activities, container, options = {}) {
                 : renderActivityItem(activity, options)
         )
         .join('');
-    targetContainer.innerHTML = `${summaryHtml}${activitiesHtml}`;
+    targetContainer.innerHTML = `${repairActionHtml}${summaryHtml}${activitiesHtml}`;
 }

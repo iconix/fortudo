@@ -104,6 +104,38 @@ describe('activity insights issues', () => {
         );
     });
 
+    test('detectActivityDataIssues classifies overlaps involving the running timer as live', () => {
+        const issues = detectActivityDataIssues([
+            activity({
+                id: 'saved-timer',
+                startDateTime: isoAt('09:00'),
+                endDateTime: isoAt('10:00'),
+                source: 'timer',
+                sourceTaskId: null
+            }),
+            activity({
+                id: 'running-timer',
+                startDateTime: isoAt('09:30'),
+                endDateTime: isoAt('10:30'),
+                source: 'timer',
+                sourceTaskId: null,
+                isRunningActivity: true
+            })
+        ]);
+
+        expect(issues).toEqual([
+            expect.objectContaining({
+                type: 'live-overlap',
+                activityId: 'running-timer',
+                overlappingActivityId: 'saved-timer'
+            })
+        ]);
+        expect(groupIssuesByActivityId(issues)).toEqual({
+            'running-timer': issues,
+            'saved-timer': issues
+        });
+    });
+
     test('getActivityIdsForIssue returns primary and related activity ids', () => {
         expect(
             getActivityIdsForIssue({

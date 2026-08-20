@@ -460,6 +460,76 @@ describe('activity renderer', () => {
         expect(editRow.querySelector('[data-activity-data-issue]')).not.toBeNull();
     });
 
+    test('renders a live timer overlap as muted information until it becomes actionable', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'saved-timer',
+                    description: 'Saved timer',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60,
+                    source: 'timer',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            {
+                activityIssuesById: {
+                    'saved-timer': [
+                        {
+                            type: 'live-overlap',
+                            activityId: 'running-timer',
+                            overlappingActivityId: 'saved-timer'
+                        }
+                    ]
+                }
+            }
+        );
+
+        const liveIssue = container.querySelector('[data-activity-live-overlap]');
+        expect(liveIssue).not.toBeNull();
+        expect(liveIssue.className).toContain('text-slate-300');
+        expect(liveIssue.className).not.toContain('text-amber');
+        expect(liveIssue.textContent).toContain('Live overlap');
+        expect(liveIssue.textContent).toContain('Overlaps current timer');
+        expect(liveIssue.textContent).not.toContain('Repair available after the timer stops');
+        expect(liveIssue.querySelector('.fa-clock')).not.toBeNull();
+        expect(container.querySelector('[data-activity-data-issue]')).toBeNull();
+    });
+
+    test('renders the shared overlap repair action when an actionable date is provided', () => {
+        const container = document.getElementById('activity-list');
+
+        renderActivities(
+            [
+                {
+                    id: 'activity-1',
+                    description: 'Focus',
+                    category: 'work/deep',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:00:00.000Z',
+                    duration: 60,
+                    source: 'manual',
+                    sourceTaskId: null
+                }
+            ],
+            container,
+            { overlapRepairDate: '2026-04-07' }
+        );
+
+        const action = container.querySelector('[data-truncate-activity-overlaps]');
+        expect(action).not.toBeNull();
+        expect(action.dataset.truncateActivityOverlapsDate).toBe('2026-04-07');
+        expect(action.textContent).toContain('Review overlap fixes');
+
+        renderActivities([], container, { overlapRepairDate: null });
+        expect(container.querySelector('[data-truncate-activity-overlaps]')).toBeNull();
+    });
+
     test('renders a confirming delete affordance for the selected activity row', () => {
         const container = document.getElementById('activity-list');
 

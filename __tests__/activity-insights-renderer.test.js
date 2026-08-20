@@ -8,7 +8,15 @@ jest.mock('../public/js/activities/manager.js', () => ({
 }));
 
 jest.mock('../public/js/activities/renderer.js', () => ({
-    renderActivities: jest.fn()
+    renderActivities: jest.fn(),
+    renderActivityOverlapRepairButton: jest.fn(
+        (date) => `
+            <button type="button" data-truncate-activity-overlaps
+                data-truncate-activity-overlaps-date="${date}">
+                Review overlap fixes
+            </button>
+        `
+    )
 }));
 
 import { setupDOM } from './test-utils.js';

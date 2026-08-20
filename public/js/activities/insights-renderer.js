@@ -6,7 +6,7 @@ import {
 } from '../utils.js';
 import { ACTIVITY_OVERLAP_REPAIR_ENABLED } from '../feature-flags.js';
 import { getActivityState, getRunningActivity } from './manager.js';
-import { renderActivities } from './renderer.js';
+import { renderActivities, renderActivityOverlapRepairButton } from './renderer.js';
 import { buildInsightsModel } from './insights-model.js';
 import { mergeActivityIssuesById } from './insights-issues.js';
 import { buildTrendModel, getDefaultTrendDateRange } from './insights-trends.js';
@@ -286,10 +286,7 @@ function renderActivityLogActions(
     const actions = document.createElement('div');
     actions.dataset.activityLogActions = 'true';
     actions.className = 'mb-3 flex justify-end px-2';
-    actions.innerHTML = `<button type="button" data-truncate-activity-overlaps data-truncate-activity-overlaps-date="${escapeHtml(model.date)}" class="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm">
-        <i class="fa-solid fa-scissors" aria-hidden="true"></i>
-        <span>Review overlap fixes</span>
-    </button>`;
+    actions.innerHTML = renderActivityOverlapRepairButton(model.date);
 
     const listContainer = document.getElementById('insights-activity-list');
     if (listContainer) {

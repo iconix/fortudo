@@ -7,18 +7,37 @@ import { syncActivitiesViewToggle } from './view-toggle.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 import { detectActivityDataIssues, groupIssuesByActivityId } from './insights-issues.js';
+import { extractDateFromDateTime } from '../utils.js';
+import { ACTIVITY_OVERLAP_REPAIR_ENABLED } from '../feature-flags.js';
 
 const activityUiState = {
     editingActivityId: null,
     expandedParentGroupKey: null,
     confirmingDeleteActivityId: null,
-    inFlightActivitySaveIds: new Set()
+    inFlightActivitySaveIds: new Set(),
+    dataIssueSignature: null
 };
 
-function getActivitiesForSummary(todaysActivities = getTodaysActivities()) {
-    const liveRunningSummary = getLiveTodayActivitySummary();
+function getActivitiesForSummary(todaysActivities = getTodaysActivities(), now = new Date()) {
+    const liveRunningSummary = getLiveTodayActivitySummary(now);
 
     return liveRunningSummary ? [...todaysActivities, liveRunningSummary] : todaysActivities;
+}
+
+function getActivityIssueSignature(issues = []) {
+    return JSON.stringify(
+        issues
+            .map((issue) =>
+                JSON.stringify(
+                    Object.fromEntries(
+                        Object.entries(issue || {}).sort(([left], [right]) =>
+                            left.localeCompare(right)
+                        )
+                    )
+                )
+            )
+            .sort()
+    );
 }
 
 export function resetActivityInlineEditState() {
@@ -26,6 +45,7 @@ export function resetActivityInlineEditState() {
     activityUiState.expandedParentGroupKey = null;
     activityUiState.confirmingDeleteActivityId = null;
     activityUiState.inFlightActivitySaveIds.clear();
+    activityUiState.dataIssueSignature = null;
 }
 
 function clearDeleteConfirmState(deps) {
@@ -78,31 +98,49 @@ export function getActivityRenderOptions(overrides = {}) {
     };
 }
 
-export function renderTodayActivities(enabled) {
+export function renderTodayActivities(enabled, now = new Date()) {
     if (!enabled) {
+        activityUiState.dataIssueSignature = null;
         return;
     }
 
-    const todaysActivities = getTodaysActivities();
-    const summaryActivities = getActivitiesForSummary(todaysActivities);
-    const activityIssuesById = groupIssuesByActivityId(detectActivityDataIssues(summaryActivities));
+    const todaysActivities = getTodaysActivities(now);
+    const summaryActivities = getActivitiesForSummary(todaysActivities, now);
+    const activityIssues = detectActivityDataIssues(summaryActivities);
+    activityUiState.dataIssueSignature = getActivityIssueSignature(activityIssues);
+    const activityIssuesById = groupIssuesByActivityId(activityIssues);
+    const overlapRepairDate =
+        ACTIVITY_OVERLAP_REPAIR_ENABLED && activityIssues.some((issue) => issue.type === 'overlap')
+            ? extractDateFromDateTime(now instanceof Date ? now : new Date(now))
+            : null;
     renderActivities(
         todaysActivities,
         /** @type {HTMLElement|null} */ (document.getElementById('activity-list')),
-        getActivityRenderOptions({ summaryActivities, activityIssuesById })
+        getActivityRenderOptions({ summaryActivities, activityIssuesById, overlapRepairDate })
     );
 }
 
-export function refreshTodayActivitySummary(enabled) {
+export function refreshTodayActivitySummary(enabled, now = new Date()) {
     if (!enabled) {
+        activityUiState.dataIssueSignature = null;
+        return;
+    }
+
+    const todaysActivities = getTodaysActivities(now);
+    const summaryActivities = getActivitiesForSummary(todaysActivities, now);
+    const activityIssues = detectActivityDataIssues(summaryActivities);
+    const nextDataIssueSignature = getActivityIssueSignature(activityIssues);
+
+    if (nextDataIssueSignature !== activityUiState.dataIssueSignature) {
+        renderTodayActivities(enabled, now);
         return;
     }
 
     const activityList = /** @type {HTMLElement|null} */ (document.getElementById('activity-list'));
     renderActivitySummaryOnly(
-        getTodaysActivities(),
+        todaysActivities,
         activityList,
-        getActivityRenderOptions({ summaryActivities: getActivitiesForSummary() })
+        getActivityRenderOptions({ summaryActivities })
     );
 }
 
