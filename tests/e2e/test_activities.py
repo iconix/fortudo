@@ -27,6 +27,8 @@ from tests.e2e.helpers import (
     seed_and_enter_room,
 )
 
+LIVE_OVERLAP_TEST_TIME = "2026-08-19T12:00:00Z"
+
 
 def get_onboarding_target(page):
     return page.evaluate(
@@ -358,6 +360,7 @@ def test_live_overlap_becomes_repairable_from_today_after_timer_stops(app_server
         browser, context, page = launch_e2e_page(playwright)
 
         try:
+            page.clock.set_fixed_time(LIVE_OVERLAP_TEST_TIME)
             page.goto(BASE_URL, wait_until="load")
             docs = [activities_config(), *build_live_overlap_docs(page)]
             seed_and_enter_room(page, room_code, docs)
@@ -413,6 +416,7 @@ def test_editing_running_timer_start_refreshes_today_live_overlap_without_reload
         browser, context, page = launch_e2e_page(playwright)
 
         try:
+            page.clock.set_fixed_time(LIVE_OVERLAP_TEST_TIME)
             page.goto(BASE_URL, wait_until="load")
             live_docs = build_live_overlap_docs(page)
             live_docs[1]["startDateTime"] = page.evaluate(
