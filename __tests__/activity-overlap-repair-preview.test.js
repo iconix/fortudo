@@ -76,6 +76,12 @@ describe('activity overlap repair preview', () => {
     });
 
     test('shows the current timer as a protected reference for live repairs', () => {
+        const currentTimerStart = '2026-05-07T09:45:00.000Z';
+        const expectedCurrentTimerStart = new Intl.DateTimeFormat('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }).format(new Date(currentTimerStart));
         const content = buildActivityOverlapRepairPreview(
             preview({
                 changes: [
@@ -88,7 +94,7 @@ describe('activity overlap repair preview', () => {
                 currentTimerReference: {
                     id: 'running-1',
                     description: 'Current planning',
-                    startDateTime: '2026-05-07T09:45:00.000Z'
+                    startDateTime: currentTimerStart
                 }
             })
         );
@@ -102,7 +108,7 @@ describe('activity overlap repair preview', () => {
         expect(timerReference.textContent).toContain('Current timer');
         expect(timerReference.textContent).toContain('Protected');
         expect(timerReference.textContent).toContain('Current planning');
-        expect(timerReference.textContent).toContain('started 5:45 AM');
+        expect(timerReference.textContent).toContain(`started ${expectedCurrentTimerStart}`);
         expect(repairRow.className).toContain('relative');
         expect(repairRow.className).toContain('before:w-0.5');
         expect(repairRow.className).toContain('before:bg-sky-400/50');
