@@ -278,7 +278,9 @@ function renderActivityLogActions(
         return;
     }
 
-    const hasOverlaps = model.activityLogIssues.some((issue) => issue.type === 'overlap');
+    const hasOverlaps =
+        model.activityLogIssues.some((issue) => issue.type === 'overlap') ||
+        (model.issues || []).some((issue) => issue.type === 'live-overlap');
     if (!hasOverlaps) {
         return;
     }

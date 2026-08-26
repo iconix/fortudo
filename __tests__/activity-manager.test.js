@@ -26,7 +26,10 @@ import {
     resetActivityState,
     updateActivityState,
     createActivityFromTask,
-    startTimer
+    startTimer,
+    getRunningActivity,
+    updateRunningActivity,
+    stopTimerAt
 } from '../public/js/activities/manager.js';
 import { putActivity, loadActivities, deleteActivity } from '../public/js/storage.js';
 import { extractTimeFromDateTime } from '../public/js/utils.js';
@@ -573,6 +576,275 @@ describe('activity manager', () => {
     });
 
     describe('truncateActivityOverlapsForDate', () => {
+        test('previews truncating a saved activity at the protected current timer start', async () => {
+            updateActivityState([
+                {
+                    id: 'saved-focus',
+                    description: 'Saved focus',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:01:00.000Z',
+                    duration: 61,
+                    source: 'manual'
+                }
+            ]);
+            await startTimer({
+                id: 'ignored-input-id',
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:44:00.000Z'
+            });
+
+            expect(getActivityOverlapTruncationPreviewForDate('2026-04-07')).toEqual(
+                expect.objectContaining({
+                    success: true,
+                    truncatedCount: 1,
+                    truncatedActivityIds: ['saved-focus'],
+                    currentTimerReference: expect.objectContaining({
+                        id: expect.stringMatching(/^activity_/),
+                        description: 'Current planning',
+                        startDateTime: '2026-04-07T09:44:00.000Z'
+                    }),
+                    changes: [
+                        expect.objectContaining({
+                            activityId: 'saved-focus',
+                            previousEndDateTime: '2026-04-07T10:01:00.000Z',
+                            nextEndDateTime: '2026-04-07T09:44:00.000Z',
+                            previousDuration: 61,
+                            nextDuration: 44,
+                            overlappingActivityDescription: 'Current planning',
+                            boundaryType: 'current-timer'
+                        })
+                    ]
+                })
+            );
+        });
+
+        test('repairs a live overlap without changing or stopping the current timer', async () => {
+            updateActivityState([
+                {
+                    id: 'saved-focus',
+                    description: 'Saved focus',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:01:00.000Z',
+                    duration: 61,
+                    source: 'manual'
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:44:00.000Z'
+            });
+            const runningBeforeRepair = getRunningActivity();
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+            jest.clearAllMocks();
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
+
+            expect(result).toEqual({
+                success: true,
+                truncatedCount: 1,
+                truncatedActivityIds: ['saved-focus']
+            });
+            expect(putActivity).toHaveBeenCalledTimes(1);
+            expect(putActivity).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: 'saved-focus',
+                    endDateTime: '2026-04-07T09:44:00.000Z',
+                    duration: 44
+                })
+            );
+            expect(getRunningActivity()).toEqual(runningBeforeRepair);
+        });
+
+        test('rejects a live repair preview after the current timer start changes', async () => {
+            updateActivityState([
+                {
+                    id: 'saved-focus',
+                    description: 'Saved focus',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:01:00.000Z',
+                    duration: 61
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:44:00.000Z'
+            });
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+            await updateRunningActivity({ startDateTime: '2026-04-07T09:50:00.000Z' });
+            jest.clearAllMocks();
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
+
+            expect(result).toEqual(
+                expect.objectContaining({ success: false, code: 'preview-stale' })
+            );
+            expect(putActivity).not.toHaveBeenCalled();
+        });
+
+        test('rejects a live repair preview after the current timer stops', async () => {
+            updateActivityState([
+                {
+                    id: 'saved-focus',
+                    description: 'Saved focus',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:01:00.000Z',
+                    duration: 61
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:44:00.000Z'
+            });
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+            await stopTimerAt('2026-04-07T10:05:00.000Z');
+            jest.clearAllMocks();
+
+            const result = await truncateActivityOverlapsForDate('2026-04-07', preview);
+
+            expect(result).toEqual(
+                expect.objectContaining({ success: false, code: 'preview-stale' })
+            );
+            expect(putActivity).not.toHaveBeenCalled();
+        });
+
+        test('leaves a saved activity with the same exact start as the timer for manual review', async () => {
+            jest.useFakeTimers().setSystemTime(new Date('2026-04-07T10:00:00.000Z'));
+            updateActivityState([
+                {
+                    id: 'same-start-saved',
+                    description: 'Same-start saved activity',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T10:15:00.000Z',
+                    duration: 75
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:00:00.000Z'
+            });
+
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+
+            expect(preview.unresolvedOverlaps).toEqual([
+                expect.objectContaining({ reason: 'current-timer-same-start' })
+            ]);
+            jest.useRealTimers();
+        });
+
+        test('leaves an overlap that starts after the current timer for manual review', async () => {
+            jest.useFakeTimers().setSystemTime(new Date('2026-04-07T10:00:00.000Z'));
+            updateActivityState([
+                {
+                    id: 'later-saved',
+                    description: 'Later saved activity',
+                    startDateTime: '2026-04-07T09:30:00.000Z',
+                    endDateTime: '2026-04-07T10:15:00.000Z',
+                    duration: 45
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T09:00:00.000Z'
+            });
+
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+
+            expect(preview).toEqual(
+                expect.objectContaining({
+                    truncatedCount: 0,
+                    unresolvedOverlapCount: 1,
+                    unresolvedOverlaps: [
+                        expect.objectContaining({
+                            description: 'Current planning',
+                            overlappingActivityDescription: 'Later saved activity',
+                            reason: 'current-timer-protected'
+                        })
+                    ]
+                })
+            );
+            jest.useRealTimers();
+        });
+
+        test('drops a containment warning when the live repair also resolves it', async () => {
+            jest.useFakeTimers().setSystemTime(new Date('2026-04-07T10:30:00.000Z'));
+            updateActivityState([
+                {
+                    id: 'containing-saved',
+                    description: 'Containing saved activity',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T12:00:00.000Z',
+                    duration: 180,
+                    source: 'manual'
+                },
+                {
+                    id: 'future-contained',
+                    description: 'Future contained activity',
+                    startDateTime: '2026-04-07T11:00:00.000Z',
+                    endDateTime: '2026-04-07T11:30:00.000Z',
+                    duration: 30,
+                    source: 'manual'
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T10:00:00.000Z'
+            });
+
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+
+            expect(preview.changes).toEqual([
+                expect.objectContaining({
+                    activityId: 'containing-saved',
+                    nextEndDateTime: '2026-04-07T10:00:00.000Z',
+                    boundaryType: 'current-timer'
+                })
+            ]);
+            expect(preview.unresolvedOverlaps).toEqual([]);
+            jest.useRealTimers();
+        });
+
+        test('previews a saved-activity chain ending at the protected timer boundary', async () => {
+            jest.useFakeTimers().setSystemTime(new Date('2026-04-07T11:00:00.000Z'));
+            updateActivityState([
+                {
+                    id: 'chain-first',
+                    description: 'Chain first',
+                    startDateTime: '2026-04-07T09:00:00.000Z',
+                    endDateTime: '2026-04-07T11:00:00.000Z',
+                    duration: 120,
+                    source: 'timer'
+                },
+                {
+                    id: 'chain-second',
+                    description: 'Chain second',
+                    startDateTime: '2026-04-07T10:00:00.000Z',
+                    endDateTime: '2026-04-07T12:00:00.000Z',
+                    duration: 120,
+                    source: 'timer'
+                }
+            ]);
+            await startTimer({
+                description: 'Current planning',
+                startDateTime: '2026-04-07T10:30:00.000Z'
+            });
+
+            const preview = getActivityOverlapTruncationPreviewForDate('2026-04-07');
+
+            expect(preview.changes).toEqual([
+                expect.objectContaining({
+                    activityId: 'chain-first',
+                    nextEndDateTime: '2026-04-07T10:00:00.000Z'
+                }),
+                expect.objectContaining({
+                    activityId: 'chain-second',
+                    nextEndDateTime: '2026-04-07T10:30:00.000Z',
+                    boundaryType: 'current-timer'
+                })
+            ]);
+            expect(preview.unresolvedOverlaps).toEqual([]);
+            jest.useRealTimers();
+        });
+
         test('previews the selected-day activities that would be truncated', () => {
             updateActivityState([
                 {

@@ -193,12 +193,12 @@ describe('activity app integration', () => {
             document.getElementById('activity-list'),
             expect.objectContaining({
                 activityIssuesById: issuesById,
-                overlapRepairDate: null
+                overlapRepairDate: expect.any(String)
             })
         );
     });
 
-    test('offers overlap repair in Today only for actionable saved-activity overlaps', () => {
+    test('offers overlap repair in Today for saved and live-timer overlaps', () => {
         const activities = [
             { id: 'activity-1', description: 'Focus' },
             { id: 'activity-2', description: 'Meeting' }
@@ -216,6 +216,24 @@ describe('activity app integration', () => {
             'activity-1': issues,
             'activity-2': issues
         });
+
+        renderTodayActivities(true, new Date('2026-05-07T12:00:00.000Z'));
+
+        expect(renderActivities).toHaveBeenCalledWith(
+            activities,
+            document.getElementById('activity-list'),
+            expect.objectContaining({ overlapRepairDate: '2026-05-07' })
+        );
+
+        jest.clearAllMocks();
+        detectActivityDataIssues.mockReturnValue([
+            {
+                type: 'live-overlap',
+                activityId: 'running-activity-summary',
+                overlappingActivityId: 'activity-1'
+            }
+        ]);
+        groupIssuesByActivityId.mockReturnValue({});
 
         renderTodayActivities(true, new Date('2026-05-07T12:00:00.000Z'));
 

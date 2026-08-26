@@ -95,10 +95,11 @@ function renderWith({
     now = new Date(isoAt('12:00')),
     dateRange = null,
     selectedDate = null,
+    runningActivity = null,
     overlapRepairEnabled
 } = {}) {
     getActivityState.mockReturnValue(activities);
-    getRunningActivity.mockReturnValue(null);
+    getRunningActivity.mockReturnValue(runningActivity);
 
     renderInsightsView({
         tasks,
@@ -613,6 +614,33 @@ describe('activity insights renderer', () => {
         });
 
         expect(document.querySelector('[data-truncate-activity-overlaps]')).toBeNull();
+    });
+
+    test('renders overlap repair for an actionable overlap with the current timer', () => {
+        renderWith({
+            selectedDate: '2026-05-07',
+            overlapRepairEnabled: true,
+            now: new Date(isoAt('10:00')),
+            activities: [
+                activity({
+                    id: 'saved-focus',
+                    startDateTime: isoAt('09:00'),
+                    endDateTime: isoAt('10:00'),
+                    source: 'manual',
+                    sourceTaskId: null
+                })
+            ],
+            runningActivity: {
+                id: 'running-focus',
+                description: 'Current planning',
+                startDateTime: isoAt('09:45'),
+                source: 'timer'
+            }
+        });
+
+        const action = document.querySelector('[data-truncate-activity-overlaps]');
+        expect(action).not.toBeNull();
+        expect(action.dataset.truncateActivityOverlapsDate).toBe('2026-05-07');
     });
 
     test('renderInsightsView preserves caller activity issue annotations with model issues', () => {
