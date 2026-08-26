@@ -252,7 +252,8 @@ jobs:
                     printf '%s' "$branch" |
                     tr '[:upper:]' '[:lower:]' |
                     sed -E 's/[^a-z0-9-]+/-/g; s/^-+|-+$//g' |
-                    cut -c1-20
+                    cut -c1-20 |
+                    sed -E 's/-+$//'
                   )"
                   channel="pr${{ github.event.pull_request.number }}-${slug}"
                   legacy_channel_prefix="${channel}-"
