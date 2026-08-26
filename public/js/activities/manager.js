@@ -42,6 +42,20 @@ function normalizeActivity(activity) {
     };
 }
 
+function getDisplayedMinuteTime(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (!isFinite(date.getTime())) {
+        return NaN;
+    }
+
+    date.setSeconds(0, 0);
+    return date.getTime();
+}
+
+function hasDisplayedMinuteOverlap(startValue, endValue) {
+    return getDisplayedMinuteTime(startValue) < getDisplayedMinuteTime(endValue);
+}
+
 function toSafeIsoDateTime(value, fallback = new Date().toISOString()) {
     if (!value) {
         return fallback;
@@ -276,7 +290,7 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
 
     const truncatedActivities = [];
     const changes = [];
-    const unresolvedOverlaps = [];
+    let unresolvedOverlaps = [];
     const sameStartClusters = new Map();
 
     for (const activity of selectedActivities) {
@@ -380,19 +394,157 @@ function buildActivityOverlapTruncationsForDate(selectedDate) {
         });
     }
 
+    const now = new Date();
+    const runningStartDate = new Date(runningActivity?.startDateTime);
+    const runningEndDate = new Date(Math.max(now.getTime(), runningStartDate.getTime()));
+    const currentTimerOverlapsSelectedDate =
+        runningActivity?.startDateTime &&
+        isFinite(runningStartDate.getTime()) &&
+        itemOverlapsInterval(
+            {
+                startDateTime: runningStartDate.toISOString(),
+                endDateTime: runningEndDate.toISOString()
+            },
+            dayInterval
+        );
+    const timerReferenceCandidate = currentTimerOverlapsSelectedDate
+        ? {
+              id: runningActivity.id || 'running-activity-summary',
+              description: runningActivity.description || 'Current timer',
+              startDateTime: runningStartDate.toISOString()
+          }
+        : null;
+
+    if (timerReferenceCandidate) {
+        for (const activity of selectedActivities) {
+            const startDate = new Date(activity.startDateTime);
+            const endDate = new Date(activity.endDateTime);
+            if (!isFinite(startDate.getTime()) || !isFinite(endDate.getTime())) {
+                continue;
+            }
+
+            if (startDate < runningStartDate) {
+                if (
+                    clusteredActivityIds.has(activity.id) ||
+                    !hasDisplayedMinuteOverlap(runningStartDate, endDate)
+                ) {
+                    continue;
+                }
+
+                const existingChangeIndex = changes.findIndex(
+                    (change) => change.activityId === activity.id
+                );
+                const existingChange = changes[existingChangeIndex];
+                if (
+                    existingChange &&
+                    new Date(existingChange.nextEndDateTime) <= runningStartDate
+                ) {
+                    continue;
+                }
+
+                const exactNextDuration = getExactDurationMilliseconds(
+                    activity.startDateTime,
+                    runningStartDate
+                );
+                const truncatedActivity = normalizeActivity({
+                    ...activity,
+                    endDateTime: runningStartDate.toISOString(),
+                    duration: roundDurationMilliseconds(exactNextDuration)
+                });
+                const removedDurationMilliseconds = endDate.getTime() - runningStartDate.getTime();
+                const nextChange = {
+                    activityId: activity.id,
+                    description: activity.description || 'Untitled activity',
+                    startDateTime: activity.startDateTime,
+                    previousEndDateTime: activity.endDateTime,
+                    nextEndDateTime: truncatedActivity.endDateTime,
+                    previousDuration: activity.duration,
+                    nextDuration: truncatedActivity.duration,
+                    overlappingActivityId: timerReferenceCandidate.id,
+                    overlappingActivityDescription: timerReferenceCandidate.description,
+                    removedDurationMinutes: Math.round(
+                        removedDurationMilliseconds / MILLISECONDS_PER_MINUTE
+                    ),
+                    isLargeAdjustment: removedDurationMilliseconds >= 30 * MILLISECONDS_PER_MINUTE,
+                    isSubMinute:
+                        exactNextDuration > 0 && exactNextDuration < MILLISECONDS_PER_MINUTE,
+                    boundaryType: 'current-timer'
+                };
+
+                if (existingChangeIndex >= 0) {
+                    changes[existingChangeIndex] = nextChange;
+                    const existingTruncationIndex = truncatedActivities.findIndex(
+                        (candidate) => candidate.id === activity.id
+                    );
+                    truncatedActivities[existingTruncationIndex] = truncatedActivity;
+                } else {
+                    changes.push(nextChange);
+                    truncatedActivities.push(truncatedActivity);
+                }
+                continue;
+            }
+
+            if (
+                hasDisplayedMinuteOverlap(startDate, runningEndDate) &&
+                hasDisplayedMinuteOverlap(runningStartDate, endDate)
+            ) {
+                const startsWithCurrentTimer = startDate.getTime() === runningStartDate.getTime();
+                unresolvedOverlaps.push({
+                    activityId: timerReferenceCandidate.id,
+                    description: timerReferenceCandidate.description,
+                    overlappingActivityId: activity.id,
+                    overlappingActivityDescription: activity.description || 'Untitled activity',
+                    reason: startsWithCurrentTimer
+                        ? 'current-timer-same-start'
+                        : 'current-timer-protected'
+                });
+            }
+        }
+    }
+
+    const proposedActivitiesById = new Map(
+        [...selectedActivities, ...truncatedActivities].map((activity) => [activity.id, activity])
+    );
+    unresolvedOverlaps = unresolvedOverlaps.filter((overlap) => {
+        if (overlap.reason !== 'containment') {
+            return true;
+        }
+
+        const activity = proposedActivitiesById.get(overlap.activityId);
+        const overlappingActivity = proposedActivitiesById.get(overlap.overlappingActivityId);
+        if (!activity || !overlappingActivity) {
+            return true;
+        }
+
+        const activityStart = new Date(activity.startDateTime);
+        const overlappingStart = new Date(overlappingActivity.startDateTime);
+        const earlierActivity = activityStart <= overlappingStart ? activity : overlappingActivity;
+        const laterActivity = earlierActivity === activity ? overlappingActivity : activity;
+        return hasDisplayedMinuteOverlap(laterActivity.startDateTime, earlierActivity.endDateTime);
+    });
+
+    const hasCurrentTimerOverlap =
+        changes.some((change) => change.boundaryType === 'current-timer') ||
+        unresolvedOverlaps.some((overlap) => overlap.reason.startsWith('current-timer-'));
+    const currentTimerReference = hasCurrentTimerOverlap ? timerReferenceCandidate : null;
+
     return {
         success: true,
         truncatedActivities,
         changes,
         unresolvedOverlaps,
-        previewToken: JSON.stringify(
-            selectedActivities.map((activity) => [
+        currentTimerReference,
+        previewToken: JSON.stringify({
+            activities: selectedActivities.map((activity) => [
                 activity.id,
                 activity.startDateTime,
                 activity.endDateTime,
                 activity.duration
-            ])
-        )
+            ]),
+            currentTimer: timerReferenceCandidate
+                ? [timerReferenceCandidate.id, timerReferenceCandidate.startDateTime]
+                : null
+        })
     };
 }
 
@@ -416,7 +568,7 @@ export function getActivityOverlapTruncationPreviewForDate(selectedDate) {
         return result;
     }
 
-    return {
+    const preview = {
         success: true,
         truncatedCount: result.truncatedActivities.length,
         truncatedActivityIds: result.truncatedActivities.map((activity) => activity.id),
@@ -425,6 +577,12 @@ export function getActivityOverlapTruncationPreviewForDate(selectedDate) {
         unresolvedOverlaps: result.unresolvedOverlaps,
         previewToken: result.previewToken
     };
+
+    if (result.currentTimerReference) {
+        preview.currentTimerReference = result.currentTimerReference;
+    }
+
+    return preview;
 }
 
 /**

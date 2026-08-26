@@ -354,7 +354,7 @@ def test_today_activities_surface_overlapping_data_issues(app_server):
             browser.close()
 
 
-def test_live_overlap_becomes_repairable_from_today_after_timer_stops(app_server):
+def test_live_overlap_repairs_saved_activity_while_current_timer_keeps_running(app_server):
     room_code = "activities-today-live-overlap"
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(playwright)
@@ -375,36 +375,43 @@ def test_live_overlap_becomes_repairable_from_today_after_timer_stops(app_server
             assert "Overlaps current timer" in live_issue.inner_text()
             assert "Repair available after the timer stops" not in live_issue.inner_text()
             assert saved_row.locator("[data-activity-data-issue]").count() == 0
-            assert page.locator(
-                "#activity-list [data-truncate-activity-overlaps]"
-            ).count() == 0
-
-            page.locator("#timer-stop-btn").click()
-
             repair_action = page.locator(
                 "#activity-list [data-truncate-activity-overlaps]"
             )
             repair_action.wait_for(state="visible", timeout=10000)
-            assert saved_row.locator("[data-activity-data-issue]").is_visible()
-            assert "Overlapping activity" in saved_row.inner_text()
 
             repair_action.click()
             confirm_modal = page.locator("#custom-confirm-modal")
             confirm_modal.wait_for(state="visible", timeout=10000)
             assert "Review overlap fixes" in page.locator("#custom-confirm-title").inner_text()
-            assert "Saved overlapping timer" in page.locator(
-                "#custom-confirm-message"
-            ).inner_text()
+            preview_text = page.locator("#custom-confirm-message").inner_text()
+            assert "Saved overlapping timer" in preview_text
+            assert "Current timer" in preview_text
+            assert "Protected" in preview_text
+            assert "Current overlapping timer" in preview_text
+            assert "ends at current timer start" in preview_text
+            assert "will keep running and will not change" in preview_text
             page.locator("#ok-custom-confirm-modal").click()
 
             confirm_modal.wait_for(state="hidden", timeout=10000)
             page.locator(
                 '#activity-list .activity-item[data-activity-id="live-overlap-saved"] '
-                "[data-activity-data-issue]"
+                "[data-activity-live-overlap]"
             ).wait_for(state="detached", timeout=10000)
             assert page.locator(
                 "#activity-list [data-truncate-activity-overlaps]"
             ).count() == 0
+            assert page.locator("#timer-stop-btn").is_visible()
+
+            persisted_docs = read_docs(page, room_code)
+            saved_doc = next(
+                doc for doc in persisted_docs if doc.get("_id") == "live-overlap-saved"
+            )
+            running_doc = next(
+                doc for doc in persisted_docs if doc.get("_id") == "config-running-activity"
+            )
+            assert saved_doc["endDateTime"] == running_doc["startDateTime"]
+            assert running_doc["activityId"] == "live-overlap-running"
         finally:
             context.close()
             browser.close()

@@ -75,6 +75,50 @@ describe('activity overlap repair preview', () => {
         expect(getSelectedOverlapRepairActivityIds(content)).toEqual(['activity-1']);
     });
 
+    test('shows the current timer as a protected reference for live repairs', () => {
+        const currentTimerStart = '2026-05-07T09:45:00.000Z';
+        const expectedCurrentTimerStart = new Intl.DateTimeFormat('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }).format(new Date(currentTimerStart));
+        const content = buildActivityOverlapRepairPreview(
+            preview({
+                changes: [
+                    {
+                        ...preview().changes[0],
+                        overlappingActivityDescription: 'Current planning',
+                        boundaryType: 'current-timer'
+                    }
+                ],
+                currentTimerReference: {
+                    id: 'running-1',
+                    description: 'Current planning',
+                    startDateTime: currentTimerStart
+                }
+            })
+        );
+
+        const timerReference = content.querySelector('[data-overlap-current-timer-reference]');
+        const repairRow = content
+            .querySelector('[data-overlap-repair-id="activity-1"]')
+            .closest('label');
+        const timerBoundaryCopy = content.querySelector('[data-overlap-current-timer-boundary]');
+        expect(timerReference).not.toBeNull();
+        expect(timerReference.textContent).toContain('Current timer');
+        expect(timerReference.textContent).toContain('Protected');
+        expect(timerReference.textContent).toContain('Current planning');
+        expect(timerReference.textContent).toContain(`started ${expectedCurrentTimerStart}`);
+        expect(repairRow.className).toContain('relative');
+        expect(repairRow.className).toContain('before:w-0.5');
+        expect(repairRow.className).toContain('before:bg-sky-400/50');
+        expect(timerBoundaryCopy.textContent).toContain('ends at current timer start');
+        expect(timerBoundaryCopy.className).toContain('text-sky-300/80');
+        expect(content.textContent).toContain(
+            'The current timer will keep running and will not change.'
+        );
+    });
+
     test('renders unresolved same-start and containment cases separately and non-selectably', () => {
         const content = buildActivityOverlapRepairPreview(
             preview({
@@ -89,6 +133,16 @@ describe('activity overlap repair preview', () => {
                         reason: 'containment',
                         description: 'Manual note',
                         overlappingActivityDescription: 'Timer'
+                    },
+                    {
+                        reason: 'current-timer-protected',
+                        description: 'Current timer',
+                        overlappingActivityDescription: 'Later saved activity'
+                    },
+                    {
+                        reason: 'current-timer-same-start',
+                        description: 'Current timer',
+                        overlappingActivityDescription: 'Same-start saved activity'
                     }
                 ]
             })
@@ -108,11 +162,27 @@ describe('activity overlap repair preview', () => {
         const unresolvedNames = [
             ...content.querySelectorAll('[data-overlap-unresolved-activity-name]')
         ].map((element) => element.textContent);
-        expect(unresolvedNames).toEqual(['Writing', 'Call', 'Break', 'Manual note', 'Timer']);
+        expect(unresolvedNames).toEqual([
+            'Writing',
+            'Call',
+            'Break',
+            'Manual note',
+            'Timer',
+            'Current timer',
+            'Later saved activity',
+            'Current timer',
+            'Same-start saved activity'
+        ]);
         expect(content.textContent).toContain(
             'These activities start together. Edit or delete one manually.'
         );
         expect(content.textContent).toContain('One activity contains the other.');
+        expect(content.textContent).toContain(
+            'The current timer started first, so this repair will not change either item.'
+        );
+        expect(content.textContent).toContain(
+            'The current timer and saved activity start together.'
+        );
         expect(content.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     });
 

@@ -47,6 +47,12 @@ def test_preview_deploy_reuses_one_channel_and_prunes_only_parser_selected_chann
     assert 'hosting:channel:delete "$channel"' in workflow
 
 
+def test_preview_channel_slug_removes_a_hyphen_exposed_by_truncation():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert re.search(r"cut -c1-20\s*\|\s*sed -E 's/-\+\$//'", workflow)
+
+
 def test_firebase_deploys_only_changed_public_output_with_seven_day_previews():
     workflow = WORKFLOW.read_text(encoding="utf-8")
 

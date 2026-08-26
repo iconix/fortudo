@@ -110,7 +110,8 @@ export function renderTodayActivities(enabled, now = new Date()) {
     activityUiState.dataIssueSignature = getActivityIssueSignature(activityIssues);
     const activityIssuesById = groupIssuesByActivityId(activityIssues);
     const overlapRepairDate =
-        ACTIVITY_OVERLAP_REPAIR_ENABLED && activityIssues.some((issue) => issue.type === 'overlap')
+        ACTIVITY_OVERLAP_REPAIR_ENABLED &&
+        activityIssues.some((issue) => issue.type === 'overlap' || issue.type === 'live-overlap')
             ? extractDateFromDateTime(now instanceof Date ? now : new Date(now))
             : null;
     renderActivities(
