@@ -48,6 +48,37 @@ describe('guided repair dialog', () => {
         expect(document.querySelector('[data-action="repair"]')).not.toBeNull();
     });
 
+    test.each(['preserve', 'rebuild'])(
+        'stops showing progress after %s fails and permits a successful retry',
+        async (stage) => {
+            session.service[stage].mockRejectedValueOnce(new Error('Could not finish this step.'));
+            await ui.open();
+            document.querySelector('[data-action="repair"]').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(document.querySelector('h2').textContent).toBe('Repair couldn’t finish');
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Your original local copy is unchanged.'
+            );
+            expect(document.querySelector('.recovery-progress')).toBeNull();
+            expect(document.querySelector('[role="status"]')).toBeNull();
+            expect(document.querySelector('[role="alert"]').textContent).toBe(
+                'Could not finish this step.'
+            );
+            expect(document.querySelector('dialog').hasAttribute('aria-busy')).toBe(false);
+            const retry = document.querySelector('[data-action="repair"]');
+            expect(retry.disabled).toBe(false);
+            expect(reload).not.toHaveBeenCalled();
+
+            retry.click();
+            expect(document.querySelector('h2').textContent).toBe('Repairing this room');
+            expect(document.querySelector('.recovery-progress')).not.toBeNull();
+            expect(document.querySelector('[role="alert"]')).toBeNull();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(reload).toHaveBeenCalledTimes(1);
+        }
+    );
+
     test('finishes with a durable restored count and a prominent Done action', async () => {
         session.archiveId = 'recovery-a';
         session.service.load.mockResolvedValue({

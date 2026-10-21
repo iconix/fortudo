@@ -437,7 +437,10 @@ export function initializeRecoveryUI({
                 reload();
             }
         } catch (error) {
-            if (!signal.aborted) button('Try repair again', 'repair', () => repair());
+            if (shell('Repair couldn’t finish')) {
+                element('p', 'Your original local copy is unchanged.');
+                button('Try repair again', 'repair', () => repair());
+            }
             throw error;
         }
     }
