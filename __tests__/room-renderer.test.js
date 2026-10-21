@@ -48,7 +48,9 @@ describe('Room Renderer', () => {
 
     describe('showRoomEntryScreen', () => {
         test('shows room entry screen and hides main app', () => {
+            document.body.insertAdjacentHTML('afterbegin', '<main id="startup-fallback"></main>');
             showRoomEntryScreen(jest.fn());
+            expect(document.getElementById('startup-fallback')).toBeNull();
             expect(document.getElementById('room-entry-screen').classList.contains('hidden')).toBe(
                 false
             );
@@ -117,7 +119,9 @@ describe('Room Renderer', () => {
 
     describe('showMainApp', () => {
         test('hides room entry screen and shows main app', () => {
+            document.body.insertAdjacentHTML('afterbegin', '<main id="startup-fallback"></main>');
             showMainApp('fox-123');
+            expect(document.getElementById('startup-fallback')).toBeNull();
             expect(document.getElementById('room-entry-screen').classList.contains('hidden')).toBe(
                 true
             );
@@ -156,6 +160,17 @@ describe('Room Renderer', () => {
             expect(icon.className).toContain('text-sky-400');
             expect(text.textContent).toBe('Syncing');
             expect(indicator.disabled).toBe(true);
+        });
+
+        test('keeps a manual retry busy through intermediate safety statuses', () => {
+            const indicator = document.getElementById('sync-status-indicator');
+            indicator.setAttribute('aria-busy', 'true');
+            updateSyncStatusUI('compatible');
+            expect(indicator.disabled).toBe(true);
+            expect(document.getElementById('sync-status-text').textContent).toBe('Syncing');
+            indicator.removeAttribute('aria-busy');
+            updateSyncStatusUI('compatible');
+            expect(indicator.disabled).toBe(false);
         });
 
         test('updates icon and text for synced status', () => {

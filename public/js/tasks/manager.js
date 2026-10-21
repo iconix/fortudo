@@ -413,7 +413,9 @@ async function recoverDurableTaskState(persistenceError) {
             success: false,
             persistenceFailed: true,
             stateReconciled: true,
-            reason: 'Fortudo could not save that change. Tasks were reloaded from local storage.'
+            reason:
+                persistenceError.userMessage ||
+                'That change could not be saved. Your saved tasks are shown; please try again.'
         };
     } catch (reloadError) {
         logger.error('Task persistence recovery failed.', reloadError);
@@ -423,7 +425,7 @@ async function recoverDurableTaskState(persistenceError) {
             persistenceFailed: true,
             stateReconciled: false,
             rolledBack: true,
-            reason: 'Fortudo could not save or verify that change. Reload before continuing.'
+            reason: 'We could not save that change or reload your tasks. Reload Fortudo before editing again.'
         };
     }
 }

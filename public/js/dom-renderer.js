@@ -578,6 +578,8 @@ export function updateStartTimeField(suggestedTime /*: string */, forceUpdate = 
         logger.warn('Task form not found in updateStartTimeField.');
         return;
     }
+    if (taskForm.dataset.hasTaskDraft === 'true' && taskForm.dataset.hasStartTimeDraft !== 'false')
+        return;
     const startTimeInput = taskForm.querySelector('input[name="start-time"]');
 
     if (startTimeInput instanceof HTMLInputElement) {

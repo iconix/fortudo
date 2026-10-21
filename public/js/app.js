@@ -62,7 +62,8 @@ import {
     prepareStorage,
     loadTasks,
     isStoragePreparationPending,
-    waitForQueuedTimerStops
+    waitForQueuedTimerStops,
+    createStorageRecoverySession
 } from './storage.js';
 import { createContractSafetyActions } from './contract-safety-ui.js';
 import { loadTaxonomy } from './taxonomy/taxonomy-store.js';
@@ -99,6 +100,11 @@ import { COUCHDB_URL } from './config.js';
 import { WHATS_NEW_ANNOUNCEMENT_ENABLED } from './feature-flags.js';
 import { registerServiceWorker } from './sw-register.js';
 import { createRoomBootQueue } from './room-boot-queue.js';
+import { getEditReadiness } from './edit-readiness.js';
+import { initializeTaskEditing } from './task-editing-ui.js';
+import { createStartupRetry } from './startup-retry-ui.js';
+import { initializeManualSync } from './manual-sync-ui.js';
+import { initializeRecoveryUI } from './recovery-ui.js';
 
 /** @type {AbortController|null} */
 let appLifecycleAbortController = null;
@@ -153,8 +159,6 @@ function triggerPreparedSync(options) {
     return options === undefined ? triggerSync() : triggerSync(options);
 }
 
-const { handleRecoveryRequired, handleContractUpdateRequired } = createContractSafetyActions();
-
 /**
  * Initialize storage and boot the main app UI.
  * @param {string} roomCode
@@ -174,13 +178,48 @@ async function bootRoom(roomCode) {
     const { signal } = appLifecycleAbortController;
 
     showMainApp(roomCode);
+    let localHydrated = false;
+    const taskEditing = initializeTaskEditing({
+        roomCode,
+        signal,
+        readState: () =>
+            getEditReadiness(
+                getSyncStatus?.(),
+                !localHydrated || isStoragePreparationPending?.() === true
+            ),
+        notify: showToast,
+        retrySync: triggerPreparedSync,
+        requestRetry: () => requestRetry()
+    });
+    const requestRetry = initializeManualSync({
+        signal,
+        notify: showToast,
+        triggerSync: triggerPreparedSync,
+        getSyncStatus,
+        renderStatus: updateSyncStatusUI,
+        retryStartup: () => startupRetry.retry(),
+        retryAudit: () => taskEditing.retry(),
+        isPreparing: () => !localHydrated || isStoragePreparationPending?.() === true
+    });
+    const recoveryUI = initializeRecoveryUI({
+        signal,
+        openSession: () => createStorageRecoverySession({ signal }),
+        notify: showToast,
+        onChange: () => roomSessionLifecycle.refreshFromStorage({ requireFreshRead: true })
+    });
+    const { handleRecoveryRequired, handleContractUpdateRequired } = createContractSafetyActions({
+        openRecovery: recoveryUI.open
+    });
 
     // Initialize storage (with optional CouchDB sync)
     const couchDbUrl = COUCHDB_URL || null;
     const storageRoomCode = getStorageRoomCode(roomCode);
     const remoteUrl = couchDbUrl ? `${couchDbUrl}/fortudo-${storageRoomCode}` : null;
     const deferredStoragePreparation = remoteUrl
-        ? await prepareStorage(storageRoomCode, {}, remoteUrl, { deferCompletion: true })
+        ? await prepareStorage(storageRoomCode, {}, remoteUrl, {
+              deferCompletion: true,
+              deferInitialSync: true
+          })
         : null;
     if (!remoteUrl) {
         await prepareStorage(storageRoomCode, {}, remoteUrl);
@@ -191,6 +230,8 @@ async function bootRoom(roomCode) {
     // Settings must reload with every state rebuild so a fresh client observes
     // remotely pulled feature flags before deciding which state domains to load.
     await loadAppState({ readOnly: Boolean(deferredStoragePreparation) });
+    localHydrated = !deferredStoragePreparation;
+    taskEditing.refresh();
     void (async () => {
         const activitiesEnabled = isActivitiesEnabled();
         await maybeShowWhatsNew({ announcementEnabled: WHATS_NEW_ANNOUNCEMENT_ENABLED });
@@ -211,6 +252,7 @@ async function bootRoom(roomCode) {
     };
     const refreshAppUI = () => {
         refreshDomUI();
+        taskEditing.restoreDraft();
     };
     const renderInsights = () =>
         renderInsightsView({
@@ -262,7 +304,10 @@ async function bootRoom(roomCode) {
         getSyncStatus,
         onRecoveryRequired: handleRecoveryRequired,
         onUpdateRequired: handleContractUpdateRequired,
-        updateSyncStatusUI,
+        updateSyncStatusUI: (status) => {
+            updateSyncStatusUI(status);
+            taskEditing.refresh();
+        },
         triggerSync: triggerPreparedSync,
         logger
     });
@@ -368,6 +413,14 @@ async function bootRoom(roomCode) {
         }
     }
 
+    const startupRetry = createStartupRetry({
+        signal,
+        notify: showToast,
+        requestRetry,
+        enqueue: (run) => roomBootQueue.enqueue(run),
+        retry: () => finishRemoteStoragePreparation(),
+        readState: () => getEditReadiness(getSyncStatus?.(), isStoragePreparationPending?.())
+    });
     const finishRemoteStoragePreparation = async (
         completion = deferredStoragePreparation?.complete()
     ) => {
@@ -386,34 +439,29 @@ async function bootRoom(roomCode) {
             deferredStoragePreparation.markStopReady();
             await waitForQueuedTimerStops();
             await roomSessionLifecycle.refreshFromStorage({
-                allowDuringPreparation: true
+                allowDuringPreparation: true,
+                readOnly: isPersistenceAllowed?.() === false
             });
             if (signal.aborted) return;
             deferredStoragePreparation.markHydrated();
+            localHydrated = true;
+            taskEditing.refresh();
             const staleStopResult = await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
             if (staleStopResult?.success) {
                 await roomSessionLifecycle.refreshFromStorage();
             }
+            void triggerPreparedSync().catch((error) =>
+                logger.error('Background sync failed:', error)
+            );
+            return true;
         } catch (error) {
             if (signal.aborted) return;
             if (preparationCompleted) {
                 deferredStoragePreparation.markFailed();
             }
             logger.error('Failed to complete remote storage preparation:', error);
-            showToast('Startup sync could not finish.', {
-                theme: 'rose',
-                dedupeKey: 'storage-preparation-error',
-                action: {
-                    label: 'Retry',
-                    onClick: () => {
-                        if (signal.aborted) return;
-                        roomBootQueue.enqueue(async () => {
-                            if (signal.aborted) return;
-                            await finishRemoteStoragePreparation();
-                        });
-                    }
-                }
-            });
+            taskEditing.refresh();
+            return false;
         }
     };
 
@@ -433,7 +481,11 @@ async function bootRoom(roomCode) {
             })
     });
 
-    await finishRemoteStoragePreparation(initialStorageCompletion);
+    const preparationCompleted = await finishRemoteStoragePreparation(initialStorageCompletion);
+    if (preparationCompleted === false) startupRetry.showFailure();
+    taskEditing.restoreDraft();
+    if (!signal.aborted)
+        void recoveryUI.resume().catch(() => logger.warn('Recovery review could not resume.'));
 }
 
 function initAndBootApp(roomCode) {
@@ -464,15 +516,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (roomCodeBadge) {
         roomCodeBadge.addEventListener('click', () => {
             showRoomEntryScreen(initAndBootApp);
-        });
-    }
-
-    const syncStatusIndicator = document.getElementById('sync-status-indicator');
-    if (syncStatusIndicator) {
-        syncStatusIndicator.addEventListener('click', () => {
-            triggerPreparedSync().catch((err) => {
-                logger.error('Failed to sync tasks after manual sync request:', err);
-            });
         });
     }
 

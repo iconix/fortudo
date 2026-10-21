@@ -1,9 +1,5 @@
 import { enumerateCurrentLocalLeaves } from './sync-contract.js';
 
-export const RECOVERY_RESET_CONFIRMATION = 'RESET LOCAL DATA';
-
-const downloadedForDatabase = new WeakSet();
-
 function canonicalize(value) {
     if (Array.isArray(value)) return value.map(canonicalize);
     if (value && typeof value === 'object') {
@@ -111,7 +107,40 @@ export async function buildLocalRecoveryBundle(
     };
 }
 
-export function downloadLocalRecoveryBundle(database, bundle) {
+/** Verify a saved copy after reading it back from independent durable storage. */
+export async function verifyLocalRecoveryBundle(bundle, { digest = sha256 } = {}) {
+    const invalid = () =>
+        new Error('The recovery copy could not be verified. Keep the original local data.');
+    if (
+        bundle?.format !== 'fortudo-local-recovery-v1' ||
+        bundle.manifest?.format !== bundle.format ||
+        !Array.isArray(bundle.documents) ||
+        !Array.isArray(bundle.manifest.leaves) ||
+        bundle.manifest.leafCount !== bundle.documents.length ||
+        bundle.documents.length !== bundle.manifest.leaves.length ||
+        (await digest(canonicalJson(bundle.manifest))) !== bundle.manifestChecksum
+    )
+        throw invalid();
+    const identities = new Set();
+    for (let index = 0; index < bundle.documents.length; index += 1) {
+        const body = bundle.documents[index];
+        const leaf = bundle.manifest.leaves[index];
+        const identity = `${leaf.id}@${leaf.revision}`;
+        if (
+            !body ||
+            body._id !== leaf.id ||
+            body._rev !== leaf.revision ||
+            Boolean(body._deleted) !== leaf.deleted ||
+            identities.has(identity) ||
+            (await digest(canonicalJson(body))) !== leaf.bodyChecksum
+        )
+            throw invalid();
+        identities.add(identity);
+    }
+    return true;
+}
+
+export function downloadLocalRecoveryBundle(bundle) {
     const blob = new Blob([`${JSON.stringify(bundle, null, 2)}\n`], {
         type: 'application/json'
     });
@@ -122,18 +151,4 @@ export function downloadLocalRecoveryBundle(database, bundle) {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(objectUrl);
-    downloadedForDatabase.add(database);
-}
-
-export function hasDownloadedLocalRecoveryBundle(database) {
-    return downloadedForDatabase.has(database);
-}
-
-export function requireRecoveryResetConfirmation(database, confirmation) {
-    if (!hasDownloadedLocalRecoveryBundle(database)) {
-        throw new Error('Download the recovery bundle first.');
-    }
-    if (confirmation !== RECOVERY_RESET_CONFIRMATION) {
-        throw new Error('Recovery reset confirmation did not match.');
-    }
 }

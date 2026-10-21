@@ -41,6 +41,7 @@ import {
     loadConfigWithConflicts,
     resolveConfigConflicts,
     getDb,
+    createStorageRecoverySession,
     waitForStoragePreparation,
     runTimerTransitionWhenReady,
     runTimerStopWhenReady,
@@ -77,6 +78,33 @@ afterEach(async () => {
 
 describe('Storage - PouchDB', () => {
     describe('initStorage', () => {
+        test('opens a previously verified rebuilt replica and fences stale instances', async () => {
+            const room = uniqueRoomCode();
+            const logical = `fortudo-${room}`;
+            const key = `fortudo-recovery-route:${logical}`;
+            const route = {
+                databaseName: `${logical}-repaired-recovery-test`,
+                archiveId: 'recovery-test'
+            };
+            localStorage.setItem(key, JSON.stringify(route));
+            await initStorage(room, { adapter: 'memory' });
+            expect(getDb().name).toBe(route.databaseName);
+            const session = await createStorageRecoverySession();
+            expect(session.archiveId).toBe('recovery-test');
+            await session.close();
+            localStorage.setItem(
+                key,
+                JSON.stringify({
+                    ...route,
+                    databaseName: `${logical}-repaired-recovery-next`,
+                    archiveId: 'recovery-next'
+                })
+            );
+            await expect(putTask({ id: 'stale-write', type: 'unscheduled' })).rejects.toThrow(
+                /another tab/i
+            );
+            localStorage.removeItem(key);
+        });
         test('initializes without error', async () => {
             await initStorage(uniqueRoomCode(), { adapter: 'memory' });
         });
@@ -115,6 +143,25 @@ describe('Storage - PouchDB', () => {
     });
 
     describe('prepareStorage', () => {
+        test('can finish safe local preparation without waiting for initial cloud replication', async () => {
+            const preparation = await prepareStorage(
+                uniqueRoomCode(),
+                { adapter: 'memory' },
+                'https://redacted.invalid/db',
+                { deferCompletion: true, deferInitialSync: true }
+            );
+            await preparation.complete();
+            expect(mockWaitForSyncPreflight).toHaveBeenCalled();
+            expect(mockTriggerSync).not.toHaveBeenCalled();
+            await expect(
+                putTask({ id: 'before-hydration', type: 'unscheduled' })
+            ).rejects.toThrow();
+            preparation.markHydrated();
+            await expect(
+                putTask({ id: 'after-local-preparation', type: 'unscheduled' })
+            ).resolves.toBeUndefined();
+        });
+
         test('can expose local storage before remote preparation completes', async () => {
             let releasePreflight;
             mockWaitForSyncPreflight.mockReturnValueOnce(

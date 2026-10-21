@@ -11,18 +11,23 @@ import {
     registerExpectedLocalRevision,
     getLastDivergenceAudit,
     reportStoragePreparationError,
-    resumeStoragePreparation
+    resumeStoragePreparation,
+    getSyncStatus,
+    reportReplicaReplaced
 } from './sync-manager.js';
+import { getEditReadiness } from './edit-readiness.js';
 import {
     applyWriterContract,
     stripWriterContract,
     validateLocalDocumentContract
 } from './document-contract.js';
+import { buildLocalRecoveryBundle, downloadLocalRecoveryBundle } from './local-recovery.js';
 import {
-    buildLocalRecoveryBundle,
-    downloadLocalRecoveryBundle,
-    requireRecoveryResetConfirmation
-} from './local-recovery.js';
+    createGuidedRecovery,
+    getRecoveryRoute,
+    recoveryRouteKey,
+    RECOVERY_ARCHIVE_DATABASE
+} from './guided-recovery.js';
 
 const DOC_TYPES = Object.freeze({
     TASK: 'task',
@@ -35,6 +40,10 @@ const LEGACY_TASK_ID_PREFIXES = ['sched-', 'unsched-'];
 
 /** @type {Object|null} PouchDB database instance */
 let db = null;
+let logicalDatabaseName = null;
+let activeStorageOptions = {};
+let activeRemoteUrl = null;
+let removeRecoveryRouteListener = null;
 let storageSessionId = 0;
 let storagePreparationPromise = null;
 let storageHydrationPromise = null;
@@ -202,9 +211,28 @@ function createContractedDocument(document) {
 }
 
 function assertCanPersist({ allowDuringPreparation = false } = {}) {
-    assertPersistenceAllowed?.();
-    if (storagePreparationPending && !allowDuringPreparation) {
-        throw new Error('Storage preparation pending');
+    try {
+        if (
+            logicalDatabaseName &&
+            db &&
+            (getRecoveryRoute(logicalDatabaseName)?.databaseName || logicalDatabaseName) !== db.name
+        ) {
+            const error = new Error(
+                'This room was repaired in another tab. Reload before making changes.'
+            );
+            error.userMessage = error.message;
+            throw error;
+        }
+        assertPersistenceAllowed?.();
+        if (storagePreparationPending && !allowDuringPreparation) {
+            throw new Error('Storage preparation pending');
+        }
+    } catch (error) {
+        error.userMessage ||= getEditReadiness(
+            getSyncStatus?.(),
+            storagePreparationPending
+        ).message;
+        throw error;
     }
 }
 
@@ -368,6 +396,7 @@ async function loadTypedDocById(id, predicate, docType) {
  * @param {string|null} [remoteUrl] - Remote CouchDB URL for sync (null to disable)
  */
 export async function initStorage(roomCode, options = {}, remoteUrl = null, lifecycle = {}) {
+    removeRecoveryRouteListener?.();
     if (db) {
         await settleStoragePreparation();
         storagePreparationPromise = null;
@@ -383,7 +412,10 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null, life
 
     clearRevStores();
     const PDB = window.PouchDB;
-    const dbName = `fortudo-${roomCode}`;
+    logicalDatabaseName = `fortudo-${roomCode}`;
+    activeStorageOptions = options;
+    activeRemoteUrl = remoteUrl;
+    const dbName = getRecoveryRoute(logicalDatabaseName)?.databaseName || logicalDatabaseName;
     db = new PDB(dbName, options);
     storageSessionId += 1;
 
@@ -391,6 +423,14 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null, life
     seedRevisionStore(rows);
 
     initSync(db, remoteUrl);
+    const handleRouteChange = (event) => {
+        if (event.key !== recoveryRouteKey(logicalDatabaseName)) return;
+        // Old tabs retain their original database, but must stop writes and replication.
+        reportReplicaReplaced?.();
+        document.dispatchEvent(new Event('fortudo-replica-replaced'));
+    };
+    window.addEventListener('storage', handleRouteChange);
+    removeRecoveryRouteListener = () => window.removeEventListener('storage', handleRouteChange);
     if (!lifecycle.deferPreflight) {
         await waitForSyncPreflight?.();
     }
@@ -405,7 +445,7 @@ export async function initStorage(roomCode, options = {}, remoteUrl = null, life
  * @param {string} roomCode
  * @param {Object} [options]
  * @param {string|null} [remoteUrl]
- * @param {{deferCompletion?: boolean}} [lifecycle]
+ * @param {{deferCompletion?: boolean, deferInitialSync?: boolean}} [lifecycle]
  * @returns {Promise<void|{complete: () => Promise<void>}>}
  */
 export async function prepareStorage(roomCode, options = {}, remoteUrl = null, lifecycle = {}) {
@@ -442,7 +482,7 @@ export async function prepareStorage(roomCode, options = {}, remoteUrl = null, l
                         await migrateDocTypes();
                     }
                     assertCurrentPreparation();
-                    if (remoteUrl) {
+                    if (remoteUrl && !lifecycle.deferInitialSync) {
                         await triggerSync?.();
                     }
                     previousAttemptFailed = false;
@@ -893,13 +933,86 @@ export function getDb() {
     return db;
 }
 
+/** Open independent archive and cloud handles scoped to the current room session. */
+export async function createStorageRecoverySession({ signal } = {}) {
+    ensureStorageInitialized();
+    const source = db;
+    const logicalName = logicalDatabaseName;
+    const sessionId = storageSessionId;
+    const databaseOptions = activeStorageOptions;
+    const route = getRecoveryRoute(logicalName);
+    const archive = new window.PouchDB(RECOVERY_ARCHIVE_DATABASE, databaseOptions);
+    const remote = activeRemoteUrl
+        ? new window.PouchDB(activeRemoteUrl, { skip_setup: true })
+        : null;
+    const assertCurrent = () => {
+        if (
+            signal?.aborted ||
+            db !== source ||
+            storageSessionId !== sessionId ||
+            (getRecoveryRoute(logicalName)?.databaseName || logicalName) !== source.name
+        ) {
+            throw new Error('The active room changed. Reopen recovery in the current room.');
+        }
+    };
+    const service = createGuidedRecovery({
+        source,
+        remote,
+        archive,
+        logicalName,
+        makeDatabase: (name) => new window.PouchDB(name, databaseOptions),
+        assertCurrent,
+        assertWritable: () => assertCanPersist(),
+        onActivate: () => {
+            teardownSync();
+            reportStoragePreparationError?.();
+        },
+        afterWrite: (id, revision) => {
+            recordExpectedRevision(id, revision);
+            requestSyncAfterWrite();
+        }
+    });
+    return {
+        service,
+        database: source,
+        archiveId: route?.archiveId || null,
+        needsRepair: getSyncStatus?.() === 'recovery-required',
+        audit: getLastDivergenceAudit?.(),
+        list: async () =>
+            (await archive.allDocs({ include_docs: true })).rows
+                .map((row) => row.doc)
+                .filter((saved) => saved.logicalName === logicalName)
+                .sort((left, right) =>
+                    right.bundle.manifest.createdAt.localeCompare(left.bundle.manifest.createdAt)
+                )
+                .map((saved) => ({
+                    id: saved._id,
+                    createdAt: saved.bundle.manifest.createdAt,
+                    count: saved.bundle.manifest.leafCount
+                })),
+        download: async (id) => {
+            const saved = await service.load(id);
+            downloadLocalRecoveryBundle({
+                format: 'fortudo-guided-recovery-v1',
+                logicalName,
+                bundles: [saved.bundle, ...(saved.supplements || [])],
+                decisions: saved.decisions
+            });
+        },
+        close: async () => {
+            await archive.close();
+            await remote?.close();
+        }
+    };
+}
+
 /**
  * Download the sensitive current-leaf recovery bundle without logging its contents.
  */
 export async function exportLocalRecoveryBundle() {
     ensureStorageInitialized();
     const bundle = await buildLocalRecoveryBundle(db, getLastDivergenceAudit?.());
-    downloadLocalRecoveryBundle(db, bundle);
+    downloadLocalRecoveryBundle(bundle);
     return {
         leafCount: bundle.manifest.leafCount,
         manifestChecksum: bundle.manifestChecksum
@@ -907,26 +1020,11 @@ export async function exportLocalRecoveryBundle() {
 }
 
 /**
- * Destroy a stranded local replica only after its bundle was downloaded and the
- * caller supplied the exact destructive confirmation. Reloading then pulls the
- * authoritative remote state through the normal preflight.
- */
-export async function resetLocalReplicaAfterRecovery(confirmation) {
-    ensureStorageInitialized();
-    requireRecoveryResetConfirmation(db, confirmation);
-    await waitForIdleSync();
-    teardownSync();
-    const databaseToDestroy = db;
-    db = null;
-    clearRevStores();
-    await databaseToDestroy.destroy();
-    window.location.reload();
-}
-
-/**
  * Destroy the current database. Used for cleanup in tests.
  */
 export async function destroyStorage() {
+    removeRecoveryRouteListener?.();
+    removeRecoveryRouteListener = null;
     if (db) {
         try {
             await settleStoragePreparation();

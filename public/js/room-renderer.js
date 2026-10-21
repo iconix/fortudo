@@ -17,7 +17,10 @@ export function showRoomEntryScreen(onEnterRoom) {
 
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
-    if (roomEntryScreen) roomEntryScreen.classList.remove('hidden');
+    if (roomEntryScreen) {
+        roomEntryScreen.classList.remove('hidden');
+        document.getElementById('startup-fallback')?.remove();
+    }
     if (mainApp) mainApp.classList.add('hidden');
 
     // Populate saved rooms
@@ -104,7 +107,10 @@ export function showMainApp(roomCode) {
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
     if (roomEntryScreen) roomEntryScreen.classList.add('hidden');
-    if (mainApp) mainApp.classList.remove('hidden');
+    if (mainApp) {
+        mainApp.classList.remove('hidden');
+        document.getElementById('startup-fallback')?.remove();
+    }
 
     const roomCodeDisplay = document.getElementById('room-code-display');
     if (roomCodeDisplay) roomCodeDisplay.textContent = roomCode;
@@ -131,6 +137,11 @@ export function updateSyncStatusUI(status) {
             color: 'text-rose-400',
             label: 'Startup error'
         },
+        'replica-replaced': {
+            icon: 'fa-solid fa-rotate',
+            color: 'text-violet-400',
+            label: 'Reload room'
+        },
         idle: {
             icon: 'fa-solid fa-cloud',
             color: 'text-slate-400 sm:text-slate-500',
@@ -152,17 +163,17 @@ export function updateSyncStatusUI(status) {
         compatible: {
             icon: 'fa-solid fa-shield-halved',
             color: 'text-emerald-400',
-            label: 'Ready'
+            label: 'Sync ready'
         },
         'missing-validator': {
             icon: 'fa-solid fa-shield',
             color: 'text-amber-400',
-            label: 'Unfenced'
+            label: 'Sync protection missing'
         },
         'validator-mismatch': {
             icon: 'fa-solid fa-shield-halved',
             color: 'text-rose-400',
-            label: 'Fence error'
+            label: 'Sync setup error'
         },
         unprovisioned: {
             icon: 'fa-solid fa-cloud-slash',
@@ -187,14 +198,16 @@ export function updateSyncStatusUI(status) {
         'audit-error': {
             icon: 'fa-solid fa-shield-halved',
             color: 'text-rose-400',
-            label: 'Audit blocked'
+            label: 'Sync check failed'
         }
     };
 
-    const config = configs[status] || configs.idle;
+    // Preparation and audit retries emit intermediate statuses before the request finishes.
+    const displayedStatus = indicator.getAttribute('aria-busy') === 'true' ? 'syncing' : status;
+    const config = configs[displayedStatus] || configs.idle;
     icon.className = `${config.icon} ${config.color}`;
     text.className = config.color;
     text.textContent = config.label;
-    indicator.disabled = status === 'syncing';
-    indicator.title = status === 'syncing' ? 'Syncing...' : 'Sync now';
+    indicator.disabled = displayedStatus === 'syncing';
+    indicator.title = displayedStatus === 'syncing' ? 'Syncing...' : 'Sync now';
 }

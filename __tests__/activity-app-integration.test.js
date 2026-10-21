@@ -117,6 +117,17 @@ describe('activity app integration', () => {
         );
     });
 
+    test('preserves an unscheduled task draft when activity UI is disabled during loading', () => {
+        document.body.insertAdjacentHTML(
+            'beforeend',
+            '<input id="unscheduled" type="radio" name="task-type" />'
+        );
+        document.getElementById('unscheduled').checked = true;
+        syncActivitiesUI(false);
+        expect(document.getElementById('unscheduled').checked).toBe(true);
+        expect(document.getElementById('scheduled').checked).toBe(false);
+    });
+
     test('hides activity UI and restores scheduled mode when disabled', () => {
         document.getElementById('activity').checked = true;
         document.getElementById('scheduled').checked = false;
