@@ -152,7 +152,7 @@ describe('Add Task Handler', () => {
 
             expect(onTaskCreated).not.toHaveBeenCalled();
             expect(showAlert).toHaveBeenCalledWith(
-                'Fortudo could not save that change. Tasks were reloaded from local storage.',
+                'That change could not be saved. Your saved tasks are shown; please try again.',
                 'teal'
             );
             expect(getTaskState()).toEqual([]);

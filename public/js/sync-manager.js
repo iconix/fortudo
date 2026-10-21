@@ -35,6 +35,7 @@ const REJECTED_LEAVES_LOCAL_ID = '_local/fortudo-document-contract-denials';
 const WRITE_BLOCKING_STATUSES = new Set([
     'checking',
     'preparation-error',
+    'replica-replaced',
     'update-required',
     'update-required-available',
     'validator-mismatch',
@@ -282,6 +283,12 @@ export function reportStoragePreparationError() {
     setStatus('preparation-error');
 }
 
+/** Suspend an older tab after guided repair selects a different local replica. */
+export function reportReplicaReplaced() {
+    teardownSync({ preserveCallbacks: true });
+    setStatus('replica-replaced');
+}
+
 /** Re-run remote compatibility checks before retrying failed local preparation. */
 export async function resumeStoragePreparation() {
     if (syncStatus !== 'preparation-error') return;
@@ -515,7 +522,7 @@ export async function waitForIdleSync() {
     }
 }
 
-export function teardownSync() {
+export function teardownSync({ preserveCallbacks = false } = {}) {
     syncSessionId += 1;
     if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -540,6 +547,8 @@ export function teardownSync() {
     controlledPullSessionId = null;
     expectedLocalRevisions.clear();
     rejectedLocalRevisions.clear();
-    statusCallbacks.clear();
-    dataChangeCallbacks.clear();
+    if (!preserveCallbacks) {
+        statusCallbacks.clear();
+        dataChangeCallbacks.clear();
+    }
 }

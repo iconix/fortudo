@@ -114,6 +114,21 @@ describe('Task Management Functions (task-manager.js)', () => {
     });
 
     describe('authoritative task persistence', () => {
+        test('explains a safety block without calling it a save failure', async () => {
+            const error = Object.assign(new Error('Persistence blocked: checking'), {
+                userMessage: 'You can draft a task while tasks load. Please wait before saving.'
+            });
+            mockPutTasks.mockRejectedValueOnce(error);
+            const result = await addTask({
+                taskType: 'unscheduled',
+                description: 'Keep my draft',
+                priority: 'medium'
+            });
+            expect(result.success).toBe(false);
+            expect(result.reason).toBe(error.userMessage);
+            expect(getTaskState()).toEqual([]);
+        });
+
         test('storage refresh preserves transient edit state for tasks that still exist', () => {
             updateTaskState([
                 {

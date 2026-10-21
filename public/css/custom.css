@@ -1,3 +1,8 @@
+/* Wrap ordinary prose at words, and break long URLs/identifiers only when needed. */
+body {
+    overflow-wrap: anywhere;
+}
+
 #startup-fallback {
     min-height: 100vh;
     display: grid;
@@ -55,7 +60,6 @@
 }
 .task-description {
     min-width: 0;
-    overflow-wrap: anywhere;
 }
 
 button:focus {
@@ -625,4 +629,146 @@ button:focus-visible {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
     }
+}
+/* Guided recovery uses a native modal for keyboard focus and touch access. */
+.recovery-dialog::backdrop {
+    background: rgb(0 0 0 / 55%);
+    backdrop-filter: blur(3px);
+}
+.recovery-dialog header,
+.recovery-dialog .recovery-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.recovery-dialog header {
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+.recovery-dialog header h2 {
+    margin-bottom: 0;
+}
+.recovery-dialog > p,
+.recovery-dialog > button,
+.recovery-dialog section,
+.recovery-dialog section details,
+.recovery-dialog section label,
+.recovery-dialog .recovery-actions {
+    margin-top: 0.75rem;
+}
+.recovery-dialog label {
+    display: block;
+}
+.recovery-dialog section h3 {
+    font-size: 1.05rem;
+    color: #c4b5fd;
+}
+.recovery-dialog section p {
+    color: #cbd5e1;
+}
+.recovery-dialog pre {
+    max-height: 18rem;
+    overflow: auto;
+    font-size: 0.8rem;
+}
+.recovery-dialog select {
+    display: block;
+    max-width: 100%;
+}
+.recovery-dialog button {
+    min-height: 44px;
+}
+.recovery-dialog .recovery-primary {
+    background: #8b5cf6;
+    border-color: #a78bfa;
+    color: #fff;
+    font-weight: 500;
+}
+.recovery-dialog .recovery-primary:hover {
+    background: #7c3aed;
+}
+.recovery-dialog .recovery-secondary {
+    background: transparent;
+    border-color: transparent;
+    color: #cbd5e1;
+}
+.recovery-dialog button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+.recovery-dialog .recovery-comparison {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.recovery-dialog .recovery-comparison > div {
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background: rgb(15 23 42 / 45%);
+}
+.recovery-dialog h4,
+.recovery-dialog .recovery-meta {
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+.recovery-dialog .recovery-progress {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: rgb(56 189 248 / 8%);
+    color: #7dd3fc;
+}
+.recovery-dialog[data-recovery-stage='complete'] h2 {
+    color: #5eead4;
+}
+.recovery-dialog[data-recovery-stage='complete'] {
+    max-width: 32rem;
+}
+.recovery-dialog .recovery-link {
+    background: transparent;
+    border-color: transparent;
+    color: #94a3b8;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.recovery-dialog .recovery-link:hover {
+    background: transparent;
+    color: #e2e8f0;
+}
+.recovery-dialog .recovery-history {
+    border-top: 1px solid #475569;
+    margin-top: 1.5rem;
+    padding-top: 0.75rem;
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
+.recovery-dialog .recovery-history > summary {
+    min-height: 44px;
+    padding: 0.65rem 0;
+    cursor: pointer;
+}
+.recovery-dialog .recovery-history label {
+    margin-top: 0.5rem;
+}
+.recovery-dialog section > details {
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
+.recovery-dialog section > details > summary {
+    min-height: 44px;
+    padding: 0.65rem 0.25rem;
+    cursor: pointer;
+}
+.recovery-dialog textarea {
+    font-family: monospace;
+    margin-top: 0.5rem;
+}
+.recovery-dialog .recovery-taxonomy {
+    padding-left: 1.25rem;
+    list-style: disc;
+}
+.recovery-dialog .recovery-taxonomy li {
+    margin-top: 0.5rem;
+    color: #cbd5e1;
 }

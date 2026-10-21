@@ -162,6 +162,17 @@ describe('Room Renderer', () => {
             expect(indicator.disabled).toBe(true);
         });
 
+        test('keeps a manual retry busy through intermediate safety statuses', () => {
+            const indicator = document.getElementById('sync-status-indicator');
+            indicator.setAttribute('aria-busy', 'true');
+            updateSyncStatusUI('compatible');
+            expect(indicator.disabled).toBe(true);
+            expect(document.getElementById('sync-status-text').textContent).toBe('Syncing');
+            indicator.removeAttribute('aria-busy');
+            updateSyncStatusUI('compatible');
+            expect(indicator.disabled).toBe(false);
+        });
+
         test('updates icon and text for synced status', () => {
             updateSyncStatusUI('synced');
             const text = document.getElementById('sync-status-text');

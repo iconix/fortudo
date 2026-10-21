@@ -78,10 +78,12 @@ export function syncActivitiesUI(enabled) {
         hideTimerDisplay();
         const activityRadio = document.getElementById('activity');
         const scheduledRadio = document.getElementById('scheduled');
+        const wasActivitySelected =
+            activityRadio instanceof HTMLInputElement && activityRadio.checked;
         if (activityRadio instanceof HTMLInputElement) {
             activityRadio.checked = false;
         }
-        if (scheduledRadio instanceof HTMLInputElement) {
+        if (wasActivitySelected && scheduledRadio instanceof HTMLInputElement) {
             scheduledRadio.checked = true;
         }
     }

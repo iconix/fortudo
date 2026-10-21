@@ -11,9 +11,7 @@ PouchDB.plugin(require('pouchdb-adapter-memory'));
 import { applyWriterContract } from '../public/js/document-contract.js';
 import {
     buildLocalRecoveryBundle,
-    downloadLocalRecoveryBundle,
-    hasDownloadedLocalRecoveryBundle,
-    requireRecoveryResetConfirmation
+    downloadLocalRecoveryBundle
 } from '../public/js/local-recovery.js';
 
 let counter = 0;
@@ -102,7 +100,7 @@ describe('sensitive local recovery bundle', () => {
         expect(JSON.stringify(bundle)).not.toContain('credentials');
     });
 
-    test('download is local-only and reset requires both download and exact confirmation', async () => {
+    test('download is local-only', async () => {
         await db.put(applyWriterContract({ _id: 'task-1', docType: 'task' }));
         const bundle = await buildLocalRecoveryBundle(db, {}, { digest: fakeDigest });
         const click = jest.fn();
@@ -118,17 +116,9 @@ describe('sensitive local recovery bundle', () => {
             value: revokeObjectURL
         });
 
-        expect(hasDownloadedLocalRecoveryBundle(db)).toBe(false);
-        expect(() => requireRecoveryResetConfirmation(db, 'RESET LOCAL DATA')).toThrow(
-            'Download the recovery bundle first'
-        );
-        downloadLocalRecoveryBundle(db, bundle);
+        downloadLocalRecoveryBundle(bundle);
         expect(click).toHaveBeenCalledTimes(1);
-        expect(hasDownloadedLocalRecoveryBundle(db)).toBe(true);
-        expect(() => requireRecoveryResetConfirmation(db, 'wrong')).toThrow(
-            'confirmation did not match'
-        );
-        expect(() => requireRecoveryResetConfirmation(db, 'RESET LOCAL DATA')).not.toThrow();
+        expect(revokeObjectURL).toHaveBeenCalledWith('blob:local-only');
     });
 
     test('fails closed when local state never stabilizes during export', async () => {

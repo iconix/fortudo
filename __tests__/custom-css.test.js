@@ -71,9 +71,8 @@ describe('custom CSS polish hooks', () => {
             'utf8'
         );
 
-        expect(css).toMatch(
-            /\.task-description\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/s
-        );
+        expect(css).toMatch(/\.task-description\s*\{[^}]*min-width:\s*0;/s);
+        expect(css).toMatch(/body\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
     });
 
     test('removes inactive view panels from the scrollable layout', () => {

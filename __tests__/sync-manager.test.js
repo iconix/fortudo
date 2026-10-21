@@ -25,7 +25,8 @@ import {
     debouncedSync,
     waitForSyncPreflight,
     reportStoragePreparationError,
-    resumeStoragePreparation
+    resumeStoragePreparation,
+    reportReplicaReplaced
 } from '../public/js/sync-manager.js';
 
 async function waitForCallCount(mock, count) {
@@ -674,6 +675,15 @@ describe('Sync Manager', () => {
     });
 
     describe('teardownSync', () => {
+        test('a repaired replica suspends old sync and notifies UI that reload is required', async () => {
+            const callback = jest.fn();
+            onSyncStatusChange(callback);
+            reportReplicaReplaced();
+            expect(callback).toHaveBeenLastCalledWith('replica-replaced');
+            expect(() => assertPersistenceAllowed()).toThrow('replica-replaced');
+            await triggerSync();
+            expect(getSyncStatus()).toBe('replica-replaced');
+        });
         test('resets status to idle', () => {
             const mockDb = {
                 replicate: {

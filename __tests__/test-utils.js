@@ -245,6 +245,7 @@ function setupMockLocalStorage() {
 
 function clearLocalStorage() {
     localStorageMock.clear();
+    sessionStorage.clear();
 }
 
 // DOM Interaction Helpers (minimal viable set, can be expanded)
