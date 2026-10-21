@@ -294,6 +294,12 @@ Possible mitigations have different strengths:
 
 ## Gotchas
 
+### Sync and safety error states
+
+For badge meanings, editing restrictions, update/configuration/audit/recovery errors, and the
+current recovery download limitations, see [Sync and safety states](SYNC-STATES.md). A transport
+failure, an incompatible server fence, and an incomplete local audit require different responses.
+
 ### Distinguish rate limiting from CORS
 
 Cloudant returns HTTP `429 Too Many Requests` when an instance exceeds a request-class capacity
