@@ -1,3 +1,51 @@
+#startup-fallback {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    visibility: hidden;
+    animation: reveal-startup-fallback 0s 500ms forwards;
+}
+@keyframes reveal-startup-fallback {
+    to {
+        visibility: visible;
+    }
+}
+#startup-fallback[data-visible='true'] {
+    animation: none;
+    visibility: visible;
+}
+.startup-fallback-card {
+    width: 100%;
+    max-width: 28rem;
+    padding: 1.5rem;
+    border: 1px solid #475569;
+    border-radius: 0.75rem;
+    background: #1e293b;
+    color: #e2e8f0;
+}
+.startup-fallback-card h1 {
+    font-size: 1.25rem;
+    color: #c4b5fd;
+}
+.startup-fallback-card p {
+    margin-top: 0.75rem;
+}
+.startup-reload {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 1.25rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    background: #8b5cf6;
+    color: white;
+}
+.startup-reload:focus-visible {
+    outline: 2px solid #c4b5fd;
+    outline-offset: 3px;
+}
+
 .task-card {
     transition: all 0.2s ease;
 }

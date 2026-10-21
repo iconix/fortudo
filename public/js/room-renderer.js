@@ -17,7 +17,10 @@ export function showRoomEntryScreen(onEnterRoom) {
 
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
-    if (roomEntryScreen) roomEntryScreen.classList.remove('hidden');
+    if (roomEntryScreen) {
+        roomEntryScreen.classList.remove('hidden');
+        document.getElementById('startup-fallback')?.remove();
+    }
     if (mainApp) mainApp.classList.add('hidden');
 
     // Populate saved rooms
@@ -104,7 +107,10 @@ export function showMainApp(roomCode) {
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
     if (roomEntryScreen) roomEntryScreen.classList.add('hidden');
-    if (mainApp) mainApp.classList.remove('hidden');
+    if (mainApp) {
+        mainApp.classList.remove('hidden');
+        document.getElementById('startup-fallback')?.remove();
+    }
 
     const roomCodeDisplay = document.getElementById('room-code-display');
     if (roomCodeDisplay) roomCodeDisplay.textContent = roomCode;

@@ -48,7 +48,9 @@ describe('Room Renderer', () => {
 
     describe('showRoomEntryScreen', () => {
         test('shows room entry screen and hides main app', () => {
+            document.body.insertAdjacentHTML('afterbegin', '<main id="startup-fallback"></main>');
             showRoomEntryScreen(jest.fn());
+            expect(document.getElementById('startup-fallback')).toBeNull();
             expect(document.getElementById('room-entry-screen').classList.contains('hidden')).toBe(
                 false
             );
@@ -117,7 +119,9 @@ describe('Room Renderer', () => {
 
     describe('showMainApp', () => {
         test('hides room entry screen and shows main app', () => {
+            document.body.insertAdjacentHTML('afterbegin', '<main id="startup-fallback"></main>');
             showMainApp('fox-123');
+            expect(document.getElementById('startup-fallback')).toBeNull();
             expect(document.getElementById('room-entry-screen').classList.contains('hidden')).toBe(
                 true
             );
