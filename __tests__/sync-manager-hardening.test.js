@@ -78,12 +78,12 @@ describe('sync pre-push hardening', () => {
         initSync(db, 'https://redacted.invalid/db', { remoteDb: remote });
         await triggerSync();
         expect(db.replicate.to).toHaveBeenCalledWith(remote, {
-            batch_size: 20,
+            batch_size: 10,
             batches_limit: 1,
             retry: false
         });
         expect(db.replicate.from).toHaveBeenCalledWith(remote, {
-            batch_size: 20,
+            batch_size: 10,
             batches_limit: 1,
             retry: false
         });

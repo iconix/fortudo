@@ -1,6 +1,8 @@
 """Exercise real browser replication against a disposable, in-memory HTTP fixture."""
 
 import json
+import time
+from collections import deque
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
@@ -10,8 +12,18 @@ from scripts.document_contract_ops import load_design_document
 from tests.e2e.helpers import BASE_URL, launch_e2e_page
 
 
-@pytest.mark.parametrize("failures", [1, 4])
-def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(app_server, failures):
+@pytest.mark.parametrize(
+    ("failures", "capacity", "competing_reads"),
+    [
+        pytest.param(1, False, 0, id="transient"),
+        pytest.param(4, False, 0, id="exhausted"),
+        pytest.param(0, True, 0, id="sliding-capacity"),
+        pytest.param(0, True, 4, id="shared-sliding-capacity"),
+    ],
+)
+def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
+    app_server, failures, capacity, competing_reads
+):
     cloud_origin = "https://sync-fixture.cloudantnosqldb.appdomain.cloud"
     database = "fortudo-sync-throttling"
     design = {**load_design_document(), "_rev": "1-" + "a" * 32}
@@ -32,6 +44,10 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(app_server,
     checkpoints = {}
     bulk_sizes = []
     individual_task_reads = []
+    read_times = deque()
+    next_competing_read = time.monotonic()
+    capacity_denials = []
+    accepted_bulk_reads = []
 
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(
@@ -40,6 +56,7 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(app_server,
         )
 
         def cloud(route):
+            nonlocal next_competing_read
             request = route.request
             parsed = urlsplit(request.url)
             parts = unquote(parsed.path).strip("/").split("/", 1)
@@ -57,6 +74,31 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(app_server,
             def reply(value, status=200):
                 route.fulfill(status=status, headers=headers, content_type="application/json",
                               body=json.dumps(value))
+
+            # Model document reads, including the contract lookup, against a sliding
+            # second shared with an independent four-document/sec workload. This is
+            # a local capacity model, not a replay of the historical production 429.
+            if capacity and request.method != "OPTIONS":
+                now = time.monotonic()
+                if competing_reads:
+                    while next_competing_read <= now:
+                        while read_times and read_times[0] <= next_competing_read - 1:
+                            read_times.popleft()
+                        if len(read_times) < 20:
+                            read_times.append(next_competing_read)
+                        next_competing_read += 1 / competing_reads
+                while read_times and read_times[0] <= now - 1:
+                    read_times.popleft()
+                cost = len(body["docs"]) if operation == "_bulk_get" else int(
+                    request.method == "GET" and operation in documents
+                )
+                if cost and len(read_times) + cost > 20:
+                    capacity_denials.append({"requested": cost, "used": len(read_times)})
+                    reply({"error": "too_many_requests", "reason": "sliding read capacity"}, 429)
+                    return
+                read_times.extend([now] * cost)
+                if operation == "_bulk_get":
+                    accepted_bulk_reads.append((now, cost))
 
             if request.method == "OPTIONS":
                 reply({})
@@ -125,10 +167,18 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(app_server,
             expect(page.locator("#unscheduled-task-list")).to_contain_text("Cloud task 44", timeout=20000)
             expect(page.locator("#sync-status-text")).to_have_text("Synced", timeout=20000)
             expect(page.locator("#cloud-loading-notice")).to_have_count(0)
-            assert max(bulk_sizes) <= 20
-            assert len(bulk_sizes) >= failures + 3
+            assert max(bulk_sizes) <= 10
+            assert len(bulk_sizes) >= failures + 5
             assert individual_task_reads == []
+            if capacity:
+                assert capacity_denials == [], capacity_denials
+                assert sum(cost for _, cost in accepted_bulk_reads) >= 45
+                assert len(accepted_bulk_reads) >= 3
             assert not page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
         finally:
+            if capacity:
+                print(f"capacity fixture: competing={competing_reads}/sec, "
+                      f"denials={capacity_denials}, "
+                      f"accepted_bulk_batches={len(accepted_bulk_reads)}")
             context.close()
             browser.close()

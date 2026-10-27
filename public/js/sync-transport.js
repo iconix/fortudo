@@ -1,12 +1,14 @@
-// Keep the read burst small; batches_limit limits queued batches, not requests/second.
+// Leave headroom within the measured 20-read/sec instance allowance. The transport
+// also spaces bulk reads; batches_limit alone does not limit sustained throughput.
 export const SYNC_REPLICATION_OPTIONS = Object.freeze({
-    batch_size: 20,
+    batch_size: 10,
     batches_limit: 1,
     retry: false
 });
 
 const MAX_RETRIES = 3;
 const MAX_DELAY_MS = 30000;
+const BULK_READ_INTERVAL_MS = 1100;
 const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 
 function waitForRetry(delay, signal) {
@@ -28,8 +30,30 @@ function waitForRetry(delay, signal) {
 
 /** Retry only safe reads, with a finite budget and cancellation for the room session. */
 export function createSyncFetch(fetchImplementation, { signal } = {}) {
+    let bulkReadTail = Promise.resolve();
+    let nextBulkReadAt = 0;
+
+    function fetchBulkRead(url, options) {
+        const request = bulkReadTail.then(async () => {
+            options.signal?.throwIfAborted();
+            const delay = nextBulkReadAt - performance.now();
+            if (delay > 0) await waitForRetry(delay, options.signal);
+            options.signal?.throwIfAborted();
+            try {
+                return await fetchImplementation(url, options);
+            } finally {
+                // Wait from completion so a slow request cannot bunch up with the
+                // next one. Include failed attempts in the same pacing budget.
+                nextBulkReadAt = performance.now() + BULK_READ_INTERVAL_MS;
+            }
+        });
+        bulkReadTail = request.catch(() => {});
+        return request;
+    }
+
     return async (url, options = {}) => {
         const method = (options.method || 'GET').toUpperCase();
+        const isBulkRead = method === 'POST' && /\/_bulk_get(?:\?|$)/.test(url);
         const canRetry =
             method === 'GET' ||
             method === 'HEAD' ||
@@ -43,7 +67,9 @@ export function createSyncFetch(fetchImplementation, { signal } = {}) {
             requestSignal?.throwIfAborted();
             let response;
             try {
-                response = await fetchImplementation(url, requestOptions);
+                response = await (isBulkRead
+                    ? fetchBulkRead(url, requestOptions)
+                    : fetchImplementation(url, requestOptions));
                 if (!TRANSIENT_STATUSES.has(response.status)) return response;
             } catch (error) {
                 // Browsers hide a CORS-blocked 429 behind TypeError. Do not claim
