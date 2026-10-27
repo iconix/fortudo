@@ -1,7 +1,7 @@
 import {
     DOCUMENT_CONTRACT_CHECKSUM,
     DOCUMENT_CONTRACT_DESIGN_ID,
-    DOCUMENT_CONTRACT_VERSION,
+    REMOTE_DOCUMENT_CONTRACT_VERSION,
     getDocumentContractValidatorSource,
     validateLocalDocumentContract
 } from './document-contract.js';
@@ -58,7 +58,10 @@ export async function inspectRemoteDocumentContract(remoteDb) {
     }
 
     const metadata = design?.fortudoDocumentContract;
-    if (Number.isInteger(metadata?.version) && metadata.version > DOCUMENT_CONTRACT_VERSION) {
+    if (
+        Number.isInteger(metadata?.version) &&
+        metadata.version > REMOTE_DOCUMENT_CONTRACT_VERSION
+    ) {
         return {
             state: 'update-required',
             compatible: false,
@@ -66,7 +69,7 @@ export async function inspectRemoteDocumentContract(remoteDb) {
         };
     }
     if (
-        metadata?.version !== DOCUMENT_CONTRACT_VERSION ||
+        metadata?.version !== REMOTE_DOCUMENT_CONTRACT_VERSION ||
         metadata?.checksum !== DOCUMENT_CONTRACT_CHECKSUM ||
         design.validate_doc_update !== getDocumentContractValidatorSource()
     ) {

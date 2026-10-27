@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -202,3 +203,129 @@ def test_main_sanitizes_cloudant_failures(monkeypatch, capsys) -> None:
         "Contract operation blocked: Cloudant request failed with HTTP 429 during document read\n"
     )
     assert "Traceback" not in captured.err
+
+
+@pytest.mark.parametrize("contents", ["not json", "[]", "null", "{}", '{"validate_doc_update": 7}'])
+def test_artifact_loader_rejects_invalid_documents_without_echoing_contents(
+    tmp_path, monkeypatch, contents
+):
+    artifact = tmp_path / "contract.json"
+    artifact.write_text(contents, encoding="utf-8")
+    monkeypatch.setattr(ops, "CONTRACT_ARTIFACT", artifact)
+    with pytest.raises(ops.ContractOpsSafetyError):
+        ops.load_design_document()
+
+
+def test_artifact_loader_rejects_missing_artifact(tmp_path, monkeypatch):
+    monkeypatch.setattr(ops, "CONTRACT_ARTIFACT", tmp_path / "missing.json")
+    with pytest.raises(ops.ContractOpsSafetyError, match="unreadable"):
+        ops.load_design_document()
+
+
+@pytest.mark.parametrize("field", ["source", "checksum", "version", "id", "language"])
+def test_artifact_loader_rejects_drift(tmp_path, monkeypatch, field):
+    document = ops.load_design_document()
+    if field == "source":
+        document["validate_doc_update"] += "\n"
+    elif field == "checksum":
+        document["fortudoDocumentContract"]["checksum"] = "0" * 64
+    elif field == "version":
+        document["fortudoDocumentContract"]["version"] = 2
+    elif field == "id":
+        document["_id"] = "_design/different"
+    else:
+        document["language"] = "different"
+    artifact = tmp_path / "contract.json"
+    artifact.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(ops, "CONTRACT_ARTIFACT", artifact)
+    with pytest.raises(ops.ContractOpsSafetyError):
+        ops.load_design_document()
+
+
+def test_node_export_matches_python_artifact_from_another_working_directory(tmp_path):
+    exporter = Path(ops.__file__).resolve().parent / "export-document-contract.mjs"
+    result = subprocess.run(
+        ["node", str(exporter)], cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == ops.load_design_document()
+
+
+def test_generated_artifact_is_current():
+    exporter = Path(ops.__file__).resolve().parent / "export-document-contract.mjs"
+    result = subprocess.run(
+        ["node", str(exporter), "--check"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "fault", ["source", "metadata", "artifact", "missing-artifact", "arguments"]
+)
+def test_exporter_fails_closed_without_printing_artifact_on_error(tmp_path, fault):
+    import shutil
+
+    root = Path(ops.__file__).resolve().parents[1]
+    for relative in (
+        "scripts/export-document-contract.mjs",
+        "public/js/contracts/remote-contract-v1.js",
+        "public/js/contracts/package.json",
+        "contracts/document-contract-v1.json",
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / relative, target)
+    remote = tmp_path / "public/js/contracts/remote-contract-v1.js"
+    artifact = tmp_path / "contracts/document-contract-v1.json"
+    if fault == "source":
+        remote.write_text(
+            remote.read_text(encoding="utf-8").replace(
+                "function deny(code) {", "function deny(code) { /* changed */"
+            ),
+            encoding="utf-8",
+        )
+    elif fault == "metadata":
+        remote.write_text(
+            remote.read_text(encoding="utf-8").replace(
+                "REMOTE_DOCUMENT_CONTRACT_VERSION = 1", "REMOTE_DOCUMENT_CONTRACT_VERSION = 2"
+            ),
+            encoding="utf-8",
+        )
+    elif fault == "artifact":
+        artifact.write_text("private artifact contents", encoding="utf-8")
+    elif fault == "missing-artifact":
+        artifact.unlink()
+    args = ["--unknown"] if fault == "arguments" else ["--check"]
+    result = subprocess.run(
+        ["node", str(tmp_path / "scripts/export-document-contract.mjs"), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "Document-contract export failed" in result.stderr
+    assert "private artifact contents" not in result.stderr
+
+
+def test_exporter_can_regenerate_the_same_reviewed_artifact(tmp_path):
+    import shutil
+
+    root = Path(ops.__file__).resolve().parents[1]
+    for relative in (
+        "scripts/export-document-contract.mjs",
+        "public/js/contracts/remote-contract-v1.js",
+        "public/js/contracts/package.json",
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / relative, target)
+    (tmp_path / "contracts").mkdir()
+    exporter = tmp_path / "scripts/export-document-contract.mjs"
+    result = subprocess.run(
+        ["node", str(exporter), "--write"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    artifact = tmp_path / "contracts/document-contract-v1.json"
+    assert json.loads(artifact.read_text(encoding="utf-8")) == ops.load_design_document()
