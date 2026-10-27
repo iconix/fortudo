@@ -25,7 +25,7 @@ from scripts.migrations.taxonomy_identity_v1.planner import (
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_MODULE = REPOSITORY_ROOT / "public" / "js" / "document-contract.js"
+CONTRACT_ARTIFACT = REPOSITORY_ROOT / "contracts" / "document-contract-v1.json"
 CONTRACT_DESIGN_ID = "_design/fortudo-document-contract"
 CONTRACT_VERSION = 1
 CONTRACT_CHECKSUM = "c0bf4717ff74c9daa32b850b059df95a45f2156b3491c91f5c658990c0e26a75"
@@ -40,36 +40,32 @@ def _require_database_name(database: str) -> None:
         raise ContractOpsSafetyError("database name is outside the Fortudo namespace")
 
 
-def _extract_validator_source(module_source: str) -> str:
-    start = module_source.index("function cloudantValidateDocUpdate")
-    marker = "\n}\n\n/**\n * Add persistence metadata"
-    end = module_source.index(marker, start) + 2
-    return module_source[start:end].replace("function cloudantValidateDocUpdate", "function", 1)
-
-
 def load_design_document() -> dict[str, Any]:
-    try:
-        module_source = CONTRACT_MODULE.read_text(encoding="utf-8")
-        validator_source = _extract_validator_source(module_source)
-    except (OSError, ValueError) as error:
-        raise ContractOpsSafetyError("contract source is unreadable") from error
+    """Load the Node-exported artifact and independently enforce the reviewed v1 identity."""
 
-    checksum = hashlib.sha256(validator_source.encode("utf-8")).hexdigest()
-    declared_match = re.search(
-        r"DOCUMENT_CONTRACT_CHECKSUM\s*=\s*\n?\s*'([a-f0-9]{64})'", module_source
-    )
+    try:
+        document = json.loads(CONTRACT_ARTIFACT.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise ContractOpsSafetyError("contract artifact is unreadable") from error
+
+    if not isinstance(document, dict):
+        raise ContractOpsSafetyError("contract artifact is invalid")
+    metadata = document.get("fortudoDocumentContract")
+    validator = document.get("validate_doc_update")
     if (
-        not declared_match
-        or declared_match.group(1) != checksum
-        or checksum != CONTRACT_CHECKSUM
+        set(document)
+        != {"_id", "language", "fortudoDocumentContract", "validate_doc_update"}
+        or document.get("_id") != CONTRACT_DESIGN_ID
+        or document.get("language") != "javascript"
+        or not isinstance(metadata, dict)
+        or type(metadata.get("version")) is not int
+        or metadata != {"version": CONTRACT_VERSION, "checksum": CONTRACT_CHECKSUM}
+        or not isinstance(validator, str)
     ):
-        raise ContractOpsSafetyError("contract source checksum does not match its declaration")
-    return {
-        "_id": CONTRACT_DESIGN_ID,
-        "language": "javascript",
-        "fortudoDocumentContract": {"version": CONTRACT_VERSION, "checksum": checksum},
-        "validate_doc_update": validator_source,
-    }
+        raise ContractOpsSafetyError("contract artifact is invalid")
+    if hashlib.sha256(validator.encode("utf-8")).hexdigest() != CONTRACT_CHECKSUM:
+        raise ContractOpsSafetyError("contract artifact checksum does not match reviewed v1")
+    return document
 
 
 def verify_validator(client: Any, database: str) -> dict[str, Any]:

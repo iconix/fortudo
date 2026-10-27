@@ -6,6 +6,7 @@
   "scripts": {
     "postinstall": "node hooks/install.js",
     "vendor:pouchdb": "node scripts/vendor-pouchdb.mjs",
+    "check:document-contract": "node scripts/export-document-contract.mjs --check",
     "check:pouchdb": "node scripts/vendor-pouchdb.mjs --check",
     "vendor:fontawesome": "node scripts/vendor-fontawesome.mjs",
     "check:fontawesome": "node scripts/vendor-fontawesome.mjs --check",
@@ -26,7 +27,7 @@
     "format:check": "prettier --check \"public/js/**/*.js\" \"__tests__/**/*.js\" \"*.js\" \"*.json\" \"*.md\"",
     "lint:format": "npm run lint:fix && npm run format",
     "check": "npm run lint && npm run format:check",
-    "verify": "npm run check && npm run lint:python && npm run test:coverage && npm run test:python && npm run test:e2e"
+    "verify": "npm run check:document-contract && npm run check && npm run lint:python && npm run test:coverage && npm run test:python && npm run test:e2e"
   },
   "repository": {
     "type": "git",

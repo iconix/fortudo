@@ -5,7 +5,8 @@
  * never logged.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { buildVerifiedDocumentContract } from './export-document-contract.mjs';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
 import PouchDB from 'pouchdb';
@@ -90,24 +91,7 @@ function contracted(document) {
 }
 
 async function designDocument() {
-    const moduleUrl = new URL('../public/js/document-contract.js', import.meta.url);
-    const source = (await readFile(moduleUrl, 'utf8')).replace(/\r\n/g, '\n');
-    const start = source.indexOf('function cloudantValidateDocUpdate');
-    const marker = '\n}\n\n/**\n * Add persistence metadata';
-    const end = source.indexOf(marker, start) + 2;
-    assert(start >= 0 && end > start, 'contract source boundary is invalid');
-    const validator = source
-        .slice(start, end)
-        .replace(/^function cloudantValidateDocUpdate/, 'function');
-    const checksum = createHash('sha256').update(validator).digest('hex');
-    const declared = source.match(/DOCUMENT_CONTRACT_CHECKSUM\s*=\s*\n?\s*'([a-f0-9]{64})'/)?.[1];
-    assert(checksum === declared, 'contract checksum does not match source');
-    return {
-        _id: DESIGN_ID,
-        language: 'javascript',
-        fortudoDocumentContract: { version: 1, checksum },
-        validate_doc_update: validator
-    };
+    return buildVerifiedDocumentContract();
 }
 
 async function goldenCorpus() {
@@ -442,9 +426,7 @@ async function runCheckpointAndQuarantineGate(database, design, counts) {
             database.revsDiff({ [taxonomyBase._id]: [deniedTaxonomyResult.rev] })
         );
         assert(
-            deniedTaxonomyDifference[taxonomyBase._id]?.missing?.includes(
-                deniedTaxonomyResult.rev
-            ),
+            deniedTaxonomyDifference[taxonomyBase._id]?.missing?.includes(deniedTaxonomyResult.rev),
             'structurally valid server-denied taxonomy leaf was not missing'
         );
         assert(
@@ -460,9 +442,7 @@ async function runCheckpointAndQuarantineGate(database, design, counts) {
             database.revsDiff({ [taxonomyBase._id]: [deniedTaxonomyResult.rev] })
         );
         assert(
-            afterReloadDifference[taxonomyBase._id]?.missing?.includes(
-                deniedTaxonomyResult.rev
-            ),
+            afterReloadDifference[taxonomyBase._id]?.missing?.includes(deniedTaxonomyResult.rev),
             'checkpointed server denial was not reproducible after reload'
         );
         const reloadedDeniedBody = await local.get(taxonomyBase._id, {
