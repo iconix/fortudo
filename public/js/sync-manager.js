@@ -4,6 +4,7 @@ import {
     inspectRemoteDocumentContract
 } from './sync-contract.js';
 import { logger } from './utils.js';
+import { createSyncFetch, SYNC_REPLICATION_OPTIONS } from './sync-transport.js';
 
 let localDb = null;
 let remoteUrl = null;
@@ -23,6 +24,7 @@ let auditGeneration = 0;
 let auditedGeneration = null;
 let localChangesObserver = null;
 let controlledPullSessionId = null;
+let transportController = null;
 
 const statusCallbacks = new Set();
 const dataChangeCallbacks = new Set();
@@ -70,7 +72,12 @@ function createRemoteDatabase(remote) {
     }
     try {
         // skip_setup prevents a browser from provisioning a missing production database.
-        return new window.PouchDB(remote, { skip_setup: true });
+        return new window.PouchDB(remote, {
+            skip_setup: true,
+            fetch: createSyncFetch((...args) => window.PouchDB.fetch(...args), {
+                signal: transportController.signal
+            })
+        });
     } catch (error) {
         return null;
     }
@@ -313,6 +320,8 @@ export function invalidateSyncAudit() {
 }
 
 export function initSync(db, remote, options = {}) {
+    transportController?.abort();
+    transportController = new AbortController();
     syncSessionId += 1;
     localDb = db;
     remoteUrl = remote;
@@ -368,7 +377,6 @@ export async function triggerSync({
     if (respectCooldown && now - lastSyncStartedAt < RESUME_SYNC_COOLDOWN_MS) return;
 
     const currentDb = localDb;
-    const currentRemoteUrl = remoteUrl;
     const currentRemoteDatabase = remoteDatabase;
     const currentSessionId = syncSessionId;
     syncInFlight = true;
@@ -390,7 +398,9 @@ export async function triggerSync({
                 revision: leaf.revision
             }));
             const denied = new Set();
-            const pushOperation = currentDb.replicate.to(currentRemoteUrl);
+            const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
+                ...SYNC_REPLICATION_OPTIONS
+            });
             observeDenied(pushOperation, denied);
             let pushResult;
             try {
@@ -425,7 +435,9 @@ export async function triggerSync({
             if (currentSessionId === syncSessionId) controlledPullSessionId = currentSessionId;
             let pullResult;
             try {
-                pullResult = await currentDb.replicate.from(currentRemoteUrl);
+                pullResult = await currentDb.replicate.from(currentRemoteDatabase, {
+                    ...SYNC_REPLICATION_OPTIONS
+                });
             } finally {
                 if (controlledPullSessionId === currentSessionId) {
                     controlledPullSessionId = null;
@@ -523,6 +535,8 @@ export async function waitForIdleSync() {
 }
 
 export function teardownSync({ preserveCallbacks = false } = {}) {
+    transportController?.abort();
+    transportController = null;
     syncSessionId += 1;
     if (debounceTimer) {
         clearTimeout(debounceTimer);

@@ -313,6 +313,19 @@ reusable Cloudant client does so. Do not change PouchDB batch settings ad hoc wi
 sync and recovery tests. See IBM's
 [429 guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-usage-and-charges#provisioned-throughput-capacity-and-429-http-responses).
 
+Browser sync and guided recovery use 20-document replication batches with one queued batch.
+This reduces bursts; it is not a requests-per-second guarantee across tabs or devices. Safe read
+requests retry up to three times after a 429, 502, 503, 504, or browser network failure, with
+exponential backoff and jitter. Read-only POST endpoints are `_bulk_get`, `_revs_diff`, and
+`_all_docs`; writes are not blindly retried. `Retry-After` is honored up to a 30-second delay,
+and closing the room cancels pending sync retries. Exhaustion retains the existing error badge
+and manual sync action rather than starting unlimited replication retries.
+
+The vendored PouchDB 9 bundle has a narrowly scoped capability-detection fix: only HTTP 404, 405,
+or 501 selects the legacy `_bulk_get` fallback. A transient error must not permanently turn bulk
+reads into individual document requests. `scripts/vendor-pouchdb.mjs` applies and verifies this
+patch reproducibly against the locked upstream bundle; an unrecognized bundle requires review.
+
 ### Cloudant vs CouchDB differences
 
 Cloudant is CouchDB-compatible but has some limits:

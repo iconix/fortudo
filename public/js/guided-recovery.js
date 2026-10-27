@@ -1,3 +1,4 @@
+import { SYNC_REPLICATION_OPTIONS } from './sync-transport.js';
 import {
     buildLocalRecoveryBundle,
     verifyLocalRecoveryBundle,
@@ -275,7 +276,7 @@ export function createGuidedRecovery({
         const databaseName = `${logicalName}-repaired-${id}`;
         const staged = makeDatabase(databaseName);
         try {
-            const result = await staged.replicate.from(remote);
+            const result = await staged.replicate.from(remote, { ...SYNC_REPLICATION_OPTIONS });
             if (result?.ok !== true || result?.errors?.length || result?.status !== 'complete')
                 throw new Error('The cloud copy could not be downloaded completely.');
             const after = await inspectRemoteDocumentContract(remote);

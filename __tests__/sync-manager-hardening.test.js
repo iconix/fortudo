@@ -70,6 +70,47 @@ describe('sync pre-push hardening', () => {
         jest.restoreAllMocks();
     });
 
+    test('uses the inspected remote handle for replication and small finite batches', async () => {
+        const db = localDb();
+        const remote = {};
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit());
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: remote });
+        await triggerSync();
+        expect(db.replicate.to).toHaveBeenCalledWith(remote, {
+            batch_size: 20,
+            batches_limit: 1,
+            retry: false
+        });
+        expect(db.replicate.from).toHaveBeenCalledWith(remote, {
+            batch_size: 20,
+            batches_limit: 1,
+            retry: false
+        });
+        expect(getSyncStatus()).toBe('synced');
+    });
+
+    test('attaches cancellable read retries to the actual remote database', async () => {
+        jest.useFakeTimers();
+        const PouchDB = jest.fn(() => ({}));
+        PouchDB.fetch = jest.fn().mockResolvedValue({ status: 429, headers: { get: () => null } });
+        window.PouchDB = PouchDB;
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit());
+        initSync(localDb(), 'https://redacted.invalid/db');
+        const options = PouchDB.mock.calls[0][1];
+        expect(options.skip_setup).toBe(true);
+        const request = options.fetch('https://redacted.invalid/db/_bulk_get', { method: 'POST' });
+        const rejected = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+        await jest.advanceTimersByTimeAsync(0);
+        teardownSync();
+        await rejected;
+        await jest.runAllTimersAsync();
+        expect(PouchDB.fetch).toHaveBeenCalledTimes(1);
+        delete window.PouchDB;
+        jest.useRealTimers();
+    });
+
     test('does not enable replication when startup audit requires recovery', async () => {
         const db = localDb();
         inspectRemoteDocumentContract.mockResolvedValue(compatible());
