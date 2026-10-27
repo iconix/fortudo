@@ -13,6 +13,7 @@ import {
     findRemoteMissingLeaves,
     inspectRemoteDocumentContract
 } from '../public/js/sync-contract.js';
+import { SYNC_REPLICATION_OPTIONS } from '../public/js/sync-transport.js';
 
 import {
     initSync,
@@ -248,8 +249,9 @@ describe('Sync Manager', () => {
             initSync(mockDb, 'http://remote:5984/db');
             await triggerSync();
 
-            expect(mockDb.replicate.to).toHaveBeenCalledWith('http://remote:5984/db');
-            expect(mockDb.replicate.from).toHaveBeenCalledWith('http://remote:5984/db');
+            const remote = window.PouchDB.mock.results[0].value;
+            expect(mockDb.replicate.to).toHaveBeenCalledWith(remote, SYNC_REPLICATION_OPTIONS);
+            expect(mockDb.replicate.from).toHaveBeenCalledWith(remote, SYNC_REPLICATION_OPTIONS);
             expect(getSyncStatus()).toBe('synced');
         });
 
@@ -571,7 +573,10 @@ describe('Sync Manager', () => {
             resolveFirstPush({});
             await firstTrigger;
 
-            expect(firstDb.replicate.from).toHaveBeenCalledWith('http://remote:5984/alpha');
+            expect(firstDb.replicate.from).toHaveBeenCalledWith(
+                window.PouchDB.mock.results[0].value,
+                SYNC_REPLICATION_OPTIONS
+            );
             expect(secondDb.replicate.from).not.toHaveBeenCalled();
         });
 
@@ -645,7 +650,10 @@ describe('Sync Manager', () => {
             jest.advanceTimersByTime(2000);
             await waitForCallCount(mockDb.replicate.to, 1);
 
-            expect(mockDb.replicate.to).toHaveBeenCalledWith('http://remote:5984/db');
+            expect(mockDb.replicate.to).toHaveBeenCalledWith(
+                window.PouchDB.mock.results[0].value,
+                SYNC_REPLICATION_OPTIONS
+            );
         });
 
         test('resets debounce timer on rapid calls', async () => {

@@ -1,13 +1,12 @@
-import { copyFile, mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { patchBulkGetDetection } from './pouchdb-bulk-get-patch.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = fileURLToPath(
     new URL('../node_modules/pouchdb/dist/pouchdb.min.js', import.meta.url)
 );
-const destinationDirectory = fileURLToPath(
-    new URL('../public/vendor/pouchdb/', import.meta.url)
-);
+const destinationDirectory = fileURLToPath(new URL('../public/vendor/pouchdb/', import.meta.url));
 const destination = fileURLToPath(
     new URL('../public/vendor/pouchdb/pouchdb.min.js', import.meta.url)
 );
@@ -40,7 +39,7 @@ async function checkVendor() {
         readFile(source),
         readFile(destination)
     ]);
-    if (!sourceBytes.equals(destinationBytes)) {
+    if (patchBulkGetDetection(sourceBytes.toString('utf8')) !== destinationBytes.toString('utf8')) {
         console.error('Vendored PouchDB bytes are stale. Run npm run vendor:pouchdb.');
         process.exitCode = 1;
         return;
@@ -52,7 +51,7 @@ async function checkVendor() {
 async function vendor() {
     await rm(destinationDirectory, { recursive: true, force: true });
     await mkdir(destinationDirectory, { recursive: true });
-    await copyFile(source, destination);
+    await writeFile(destination, patchBulkGetDetection(await readFile(source, 'utf8')));
     console.log(`Vendored PouchDB: ${destination.slice(root.length)}`);
 }
 
