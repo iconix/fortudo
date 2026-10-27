@@ -5,7 +5,7 @@
  * never logged.
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { buildVerifiedDocumentContract } from './export-document-contract.mjs';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
