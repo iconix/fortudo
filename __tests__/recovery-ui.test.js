@@ -38,6 +38,21 @@ describe('guided repair dialog', () => {
         });
     });
     afterEach(() => signal.abort());
+    test('a blocked rebuild keeps a downloadable verified copy and an actionable error', async () => {
+        session.service.rebuild.mockRejectedValue(
+            new Error(
+                'The cloud task description cannot safely be read. Update Fortudo or correct that field with a supported client, then retry.'
+            )
+        );
+        await ui.open();
+        document.querySelector('[data-action="repair"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(document.querySelector('[role="alert"]').textContent).toMatch(/task description/);
+        document.querySelector('[data-action="download"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(session.download).toHaveBeenCalledWith('recovery-a');
+        expect(reload).not.toHaveBeenCalled();
+    });
     test('failed verification never rebuilds and leaves an actionable retry', async () => {
         session.service.preserve.mockRejectedValue(new Error('Verification failed.'));
         await ui.open();

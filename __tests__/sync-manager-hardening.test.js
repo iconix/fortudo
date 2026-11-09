@@ -70,6 +70,158 @@ describe('sync pre-push hardening', () => {
         jest.restoreAllMocks();
     });
 
+    test('retries checkpoint-skipped revisions without declaring them rejected', async () => {
+        const leaf = { id: 'task-pending', revision: '2-pending' };
+        const db = localDb();
+        const remote = {};
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit({ eligible: [leaf] }));
+        findRemoteMissingLeaves.mockResolvedValueOnce([leaf]).mockResolvedValue([]);
+        auditLocalDivergence.mockResolvedValueOnce(safeAudit({ eligible: [leaf] }));
+        auditLocalDivergence.mockResolvedValueOnce(safeAudit());
+
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: remote });
+        await triggerSync();
+
+        expect(db.replicate.to).toHaveBeenCalledTimes(2);
+        expect(db.replicate.to).toHaveBeenLastCalledWith(remote, {
+            batch_size: 10,
+            batches_limit: 1,
+            retry: false,
+            checkpoint: false,
+            doc_ids: [leaf.id]
+        });
+        expect(db.put).not.toHaveBeenCalled();
+        expect(getSyncStatus()).toBe('synced');
+    });
+
+    test('a still-missing valid revision leaves editing open and never persists a denial', async () => {
+        const leaf = { id: 'task-pending', revision: '2-pending' };
+        const db = localDb();
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit({ eligible: [leaf] }));
+        findRemoteMissingLeaves.mockResolvedValue([leaf]);
+
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+        await triggerSync();
+
+        expect(db.replicate.to).toHaveBeenCalledTimes(2);
+        expect(db.put).not.toHaveBeenCalled();
+        expect(getSyncStatus()).toBe('error');
+        expect(() => assertPersistenceAllowed()).not.toThrow();
+    });
+
+    test.each(['unauthorized', 'too_many_requests', 'internal_server_error'])(
+        'does not persist %s as a rejected document',
+        async (name) => {
+            const db = localDb({
+                doc_write_failures: 1,
+                errors: [{ id: 'task-pending', rev: '2-pending', name }]
+            });
+            inspectRemoteDocumentContract.mockResolvedValue(compatible());
+            auditLocalDivergence.mockResolvedValue(safeAudit());
+            initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+            await triggerSync();
+            expect(db.put).not.toHaveBeenCalled();
+            expect(getSyncStatus()).toBe('error');
+            expect(() => assertPersistenceAllowed()).not.toThrow();
+        }
+    );
+
+    test('rechecks old inferred denials instead of keeping the room locked', async () => {
+        const identity = 'task-pending@2-pending';
+        const db = localDb();
+        await db.put({
+            _id: '_local/fortudo-document-contract-denials',
+            formatVersion: 1,
+            identities: [identity]
+        });
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockImplementation(async (_db, _remote, options) =>
+            options.rejectedLeaves.has(identity)
+                ? safeAudit({ state: 'recovery-required' })
+                : safeAudit()
+        );
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+        await triggerSync();
+        expect(getSyncStatus()).toBe('synced');
+        expect(db.replicate.to).toHaveBeenCalledTimes(1);
+    });
+
+    test('a failed checkpoint retry remains a transport error without recording a denial', async () => {
+        const leaf = { id: 'task-pending', revision: '2-pending' };
+        const db = localDb();
+        db.replicate.to
+            .mockResolvedValueOnce({})
+            .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit({ eligible: [leaf] }));
+        findRemoteMissingLeaves.mockResolvedValue([leaf]);
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+        await triggerSync();
+        expect(db.put).not.toHaveBeenCalled();
+        expect(getSyncStatus()).toBe('error');
+        expect(() => assertPersistenceAllowed()).not.toThrow();
+    });
+
+    test.each([1, 2])(
+        'handles an ID-only forbidden response with %i missing leaves',
+        async (count) => {
+            const leaves = Array.from({ length: count }, (_, index) => ({
+                id: 'task-denied',
+                revision: `2-denied-${index}`
+            }));
+            const db = localDb({
+                doc_write_failures: 1,
+                errors: [{ id: 'task-denied', name: 'forbidden', status: 403 }]
+            });
+            inspectRemoteDocumentContract.mockResolvedValue(compatible());
+            auditLocalDivergence.mockImplementation(async (_db, _remote, options) =>
+                options.rejectedLeaves.size
+                    ? safeAudit({ state: 'recovery-required' })
+                    : safeAudit({ eligible: leaves })
+            );
+            findRemoteMissingLeaves.mockResolvedValue(leaves);
+            initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+            await triggerSync();
+            if (count === 1) {
+                expect(getSyncStatus()).toBe('recovery-required');
+                expect(db.put).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        formatVersion: 2,
+                        identities: ['task-denied@2-denied-0']
+                    })
+                );
+            } else {
+                expect(getSyncStatus()).toBe('error');
+                expect(db.put).not.toHaveBeenCalled();
+            }
+        }
+    );
+
+    test('does not carry inferred v1 markers into a newly confirmed denial record', async () => {
+        const db = localDb({
+            doc_write_failures: 1,
+            errors: [{ id: 'task-denied', rev: '2-denied', name: 'forbidden' }]
+        });
+        await db.put({
+            _id: '_local/fortudo-document-contract-denials',
+            formatVersion: 1,
+            identities: ['task-pending@2-pending']
+        });
+        db.put.mockClear();
+        inspectRemoteDocumentContract.mockResolvedValue(compatible());
+        auditLocalDivergence.mockResolvedValue(safeAudit());
+        initSync(db, 'https://redacted.invalid/db', { remoteDb: {} });
+        await triggerSync();
+        expect(db.put).toHaveBeenCalledWith(
+            expect.objectContaining({
+                formatVersion: 2,
+                identities: ['task-denied@2-denied']
+            })
+        );
+    });
+
     test('uses the inspected remote handle for replication and small finite batches', async () => {
         const db = localDb();
         const remote = {};

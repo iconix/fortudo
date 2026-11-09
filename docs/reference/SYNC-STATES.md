@@ -76,6 +76,18 @@ stable local snapshot to do that comparison.
 An audit error means **safety was not established**. Recovery required means **specific stranded
 local revisions were identified**. They are not interchangeable diagnoses.
 
+A valid revision still missing after a push is not evidence that the server rejected it. Sync
+retries those document IDs once without reusing a replication checkpoint. If they remain missing,
+the badge shows **Error** and local editing remains available after the safety audit passes.
+Only explicit `forbidden` document responses are saved as remote rejections; authentication,
+throttling, and transport failures are not. An ID-only rejection is attributed to a revision only
+when exactly one audited revision for that ID remains missing.
+
+Older version-1 rejection records included inferred rejections, so this release rechecks those
+revisions instead of retaining their recovery lock. Local contract validation still applies,
+and a fresh server rejection still requires recovery. Version-2 records contain confirmed
+document rejections and continue to block the rejected revision across reloads.
+
 Ordinary remote inspection and revision-comparison failures generally become `offline`; transport
 exceptions during replication become `offline` or `error`. Those paths should not automatically be
 diagnosed as local corruption, an obsolete client, or a configuration mismatch.
@@ -141,14 +153,25 @@ or restore automatically. Users can also reopen saved copies from **Settings →
    the next step. This verifies an independent browser copy; it does not claim that a downloaded
    file was saved to disk.
 2. **Refreshing this room…** checks the current remote contract and downloads into a separate local
-   database. Fortudo checks pull completion, checks the contract again, validates the downloaded
-   leaves, and audits them against the remote before selecting that replica. Local state must
+   database. Fortudo captures the source's advertised revision leaves, checks pull completion
+   and write failures, and verifies that the required leaves reached the staged database.
+   This includes conflicting and deleted revisions; a partial copy cannot pass solely because
+   its downloaded leaves exist remotely. Fortudo checks the contract again, validates read
+   compatibility, and audits the downloaded leaves against the remote before selecting that replica. Local state must
    still match the saved snapshot, including the source database identity as well as its update
    sequence. An older archive from another replica cannot rebuild the current room. Opening such
    a saved copy offers a new repair that first preserves the current replica; the older archive
    remains available. Failures leave the original database and recovery archive intact.
    Successful selection is recorded in a room-scoped localStorage pointer and the app reloads
    through normal preparation and sync gates. No original database is deleted.
+   Existing cloud bodies and revision IDs are retained unchanged: missing current writer metadata
+   does not make an otherwise supported historical record unreadable. Read checks cover task
+   types, descriptions, optional status/priority/duration fields, scheduled and activity intervals,
+   supported legacy and current taxonomy shapes, settings, running timers, and manual ordering.
+   The completed taxonomy migration marker is preserved without application interpretation.
+   Unsupported configurations and unreadable fields block activation, with a record-type and
+   field explanation and a **Download saved copy** action. Raw contents are not included in that
+   explanation. A repair failure leaves both the original and saved copies intact.
 3. **Review saved changes** shows the remaining count and compares archived local leaves with current records. Exact revisions
    already present remotely and records whose normalized content matches the current copy need no
    decision. Conflicting leaves remain separate review entries. Choose **Restore change**,
@@ -157,8 +180,12 @@ or restore automatically. Users can also reopen saved copies from **Settings →
    Raw bodies and record IDs remain collapsed under **Troubleshooting details**; ordinary task
    descriptions can be corrected under **Edit description**, with an advanced record editor
    under **Troubleshooting details** for other fields. Both disclosures have touch-sized targets.
-4. Restores write new revisions against the revision shown in the review. A changed current
-   revision requires fresh review; there is no blind overwrite or replay with `new_edits:false`.
+   Archived deletions for absent or already-deleted records remain preserved without another
+   deletion action. A deletion against a live record still requires explicit review.
+4. Restores write new revisions against the active-local revision shown in the review. A changed
+   local revision requires fresh review; this guard does not detect a cloud edit that has not yet
+   replicated locally and does not make an offline write atomic with cloud changes.
+   There is no blind overwrite or replay with `new_edits:false`.
    Each restore runs the current document contract, including previous-document taxonomy checks,
    and respects compatibility, preparation, audit and recovery write blocks. Legacy category keys
    map to current identities where possible; unavailable categories are explicitly shown as being

@@ -211,6 +211,7 @@ async function ensurePrePushGate(currentSessionId) {
 
 function observeDenied(operation, denied) {
     operation?.on?.('denied', (error) => {
+        if (error?.name?.toLowerCase() !== 'forbidden') return;
         const id = error?.id || error?.doc?._id;
         const revision = error?.rev || error?.doc?._rev;
         if (typeof id === 'string' && typeof revision === 'string') {
@@ -219,15 +220,24 @@ function observeDenied(operation, denied) {
     });
 }
 
-function collectFailedRevisions(result, denied) {
+function collectFailedRevisions(result, denied, missing = []) {
     for (const error of Array.isArray(result?.errors) ? result.errors : []) {
+        if (error?.name?.toLowerCase() !== 'forbidden') continue;
         const id = error?.id || error?.doc?._id;
-        const revision = error?.rev || error?.doc?._rev;
+        // CouchDB bulk-write errors usually omit the revision. Only correlate an
+        // ID-only rejection when exactly one audited revision is still missing.
+        const candidates = missing.filter((leaf) => leaf.id === id);
+        const revision =
+            error?.rev ||
+            error?.doc?._rev ||
+            (candidates.length === 1 ? candidates[0].revision : null);
         if (typeof id === 'string' && typeof revision === 'string') {
             denied.add(`${id}@${revision}`);
         }
     }
-    return denied.size > 0 || (result?.doc_write_failures || 0) > 0;
+    return (
+        denied.size > 0 || (result?.doc_write_failures || 0) > 0 || Boolean(result?.errors?.length)
+    );
 }
 
 async function loadRejectedLocalRevisions() {
@@ -235,6 +245,9 @@ async function loadRejectedLocalRevisions() {
     if (!localDb?.get) return;
     try {
         const record = await localDb.get(REJECTED_LEAVES_LOCAL_ID);
+        // v1 mixed actual rejections with inferred denials from checkpoint-skipped
+        // revisions. Re-audit and retry those instead of preserving a false lock.
+        if (record?.formatVersion !== 2) return;
         for (const identity of Array.isArray(record?.identities) ? record.identities : []) {
             if (typeof identity === 'string' && identity.includes('@')) {
                 rejectedLocalRevisions.add(identity);
@@ -254,12 +267,14 @@ async function persistRejectedLocalRevisions(database, identities) {
         } catch (error) {
             if (error?.status !== 404 && error?.name !== 'not_found') throw error;
         }
-        for (const identity of Array.isArray(existing?.identities) ? existing.identities : []) {
+        for (const identity of existing?.formatVersion === 2 && Array.isArray(existing.identities)
+            ? existing.identities
+            : []) {
             if (typeof identity === 'string' && identity.includes('@')) merged.add(identity);
         }
         const record = {
             _id: REJECTED_LEAVES_LOCAL_ID,
-            formatVersion: 1,
+            formatVersion: 2,
             identities: [...merged].sort()
         };
         if (existing?._rev) record._rev = existing._rev;
@@ -398,35 +413,46 @@ export async function triggerSync({
                 revision: leaf.revision
             }));
             const denied = new Set();
-            const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
-                ...SYNC_REPLICATION_OPTIONS
-            });
-            observeDenied(pushOperation, denied);
-            let pushResult;
-            try {
-                pushResult = await pushOperation;
-            } catch (error) {
+            let missingAfterPush = auditedEligible;
+            let pushHadFailures = false;
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
+                    ...SYNC_REPLICATION_OPTIONS,
+                    ...(attempt === 1
+                        ? {
+                              checkpoint: false,
+                              doc_ids: [...new Set(missingAfterPush.map((leaf) => leaf.id))]
+                          }
+                        : {})
+                });
+                observeDenied(pushOperation, denied);
+                let pushResult;
+                try {
+                    pushResult = await pushOperation;
+                } catch (error) {
+                    if (denied.size > 0) {
+                        await persistRejectedLocalRevisions(currentDb, denied);
+                    }
+                    throw error;
+                }
+                missingAfterPush = await findRemoteMissingLeaves(
+                    currentRemoteDatabase,
+                    auditedEligible
+                );
+                const resultHadFailures = collectFailedRevisions(
+                    pushResult,
+                    denied,
+                    missingAfterPush
+                );
                 if (denied.size > 0) {
                     await persistRejectedLocalRevisions(currentDb, denied);
                 }
-                throw error;
+                pushHadFailures = resultHadFailures || missingAfterPush.length > 0;
+                // A checkpoint can skip revisions without the server rejecting
+                // them. Try those documents once with a fresh checkpoint.
+                if (resultHadFailures || missingAfterPush.length === 0) break;
+                if (currentSessionId !== syncSessionId) return;
             }
-            const resultHadFailures = collectFailedRevisions(pushResult, denied);
-            if (denied.size > 0) {
-                await persistRejectedLocalRevisions(currentDb, denied);
-            }
-
-            const missingAfterPush = await findRemoteMissingLeaves(
-                currentRemoteDatabase,
-                auditedEligible
-            );
-            if (missingAfterPush.length > 0) {
-                await persistRejectedLocalRevisions(
-                    currentDb,
-                    missingAfterPush.map((leaf) => `${leaf.id}@${leaf.revision}`)
-                );
-            }
-            const pushHadFailures = resultHadFailures || missingAfterPush.length > 0;
             if (pushHadFailures && currentSessionId === syncSessionId) {
                 invalidateSyncAudit();
                 await performDivergenceAudit(currentSessionId);
@@ -453,13 +479,13 @@ export async function triggerSync({
                 invalidateSyncAudit();
                 const postPullCompatible = await performDivergenceAudit(currentSessionId);
                 if (!postPullCompatible) return;
+                if (pushHadFailures) {
+                    setStatus('error');
+                    return;
+                }
                 if ((lastAudit?.eligible || []).length > 0) {
                     setStatus('unsynced');
                     retryAfterInFlightFailureRequested = true;
-                    return;
-                }
-                if (pushHadFailures) {
-                    setStatus('audit-error');
                     return;
                 }
                 syncSucceeded = true;

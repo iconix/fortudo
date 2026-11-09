@@ -9,11 +9,8 @@ import {
     auditLocalDivergence,
     enumerateCurrentLocalLeaves
 } from './sync-contract.js';
-import {
-    applyWriterContract,
-    runCloudantContractValidator,
-    validateLocalDocumentContract
-} from './document-contract.js';
+import { applyWriterContract, runCloudantContractValidator } from './document-contract.js';
+import { validateRecoveryDocument } from './recovery-read-compatibility.js';
 import { generateSecureUuid } from './entity-id.js';
 import { createLegacyTaxonomyId } from './taxonomy/taxonomy-identity.js';
 
@@ -276,17 +273,55 @@ export function createGuidedRecovery({
         const databaseName = `${logicalName}-repaired-${id}`;
         const staged = makeDatabase(databaseName);
         try {
+            // Capture the leaves required for this transfer. Sequence values are
+            // continuation tokens, not content locks. A retry captures a new list.
+            const expected = await remote.changes({ since: 0, style: 'all_docs' });
+            if (
+                !Array.isArray(expected?.results) ||
+                !Object.prototype.hasOwnProperty.call(expected, 'last_seq')
+            )
+                throw new Error(
+                    'The cloud revision list could not be read. Retry repair; your saved copy is kept.'
+                );
             const result = await staged.replicate.from(remote, { ...SYNC_REPLICATION_OPTIONS });
-            if (result?.ok !== true || result?.errors?.length || result?.status !== 'complete')
+            if (
+                result?.ok !== true ||
+                result?.errors?.length ||
+                result?.doc_write_failures ||
+                result?.status !== 'complete'
+            )
                 throw new Error('The cloud copy could not be downloaded completely.');
+            for (let index = 0; index < expected.results.length; index += 100) {
+                const request = Object.create(null);
+                for (const change of expected.results.slice(index, index + 100)) {
+                    if (
+                        typeof change?.id !== 'string' ||
+                        !Array.isArray(change.changes) ||
+                        !change.changes.length ||
+                        change.changes.some((item) => typeof item?.rev !== 'string')
+                    )
+                        throw new Error(
+                            'The cloud revision list is invalid. Retry repair; your saved copy is kept.'
+                        );
+                    request[change.id] = change.changes.map((item) => item.rev);
+                }
+                const missing = await staged.revsDiff(request);
+                if (!missing || typeof missing !== 'object' || Object.keys(missing).length)
+                    throw new Error(
+                        'The cloud copy could not be downloaded completely. Retry repair; your saved copy is kept.'
+                    );
+            }
             const after = await inspectRemoteDocumentContract(remote);
             if (!after.compatible || after.contractRevision !== contract.contractRevision)
                 throw new Error('Cloud safety settings changed. Please try rebuilding again.');
             const leaves = await enumerateCurrentLocalLeaves(staged);
-            if (leaves.leaves.some((leaf) => !validateLocalDocumentContract(leaf.document).ok)) {
-                throw new Error(
-                    'The cloud copy contains records this app cannot safely use. Update Fortudo or fix the cloud setup.'
-                );
+            for (const leaf of leaves.leaves) {
+                const readable = validateRecoveryDocument(leaf.document);
+                if (!readable.ok) {
+                    throw new Error(
+                        `The cloud copy contains a ${readable.kind} whose ${readable.field} this app cannot safely use. Update Fortudo or correct that field with a supported client, then retry repair. Your original and saved copies are kept and can be exported.`
+                    );
+                }
             }
             const audit = await auditLocalDivergence(staged, remote);
             if (audit.state !== 'compatible' || audit.eligible.length)
@@ -369,7 +404,7 @@ export function createGuidedRecovery({
                     return canonicalJson(value);
                 };
                 if (
-                    (!current && local._deleted) ||
+                    (local._deleted && (!current || current._deleted)) ||
                     comparable(proposed.document) === comparable(current)
                 )
                     continue;
