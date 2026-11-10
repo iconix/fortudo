@@ -329,6 +329,29 @@ exponential backoff and jitter. Read-only POST endpoints are `_bulk_get`, `_revs
 and closing the room cancels pending sync reads and pacing/retry waits. Exhaustion retains the
 existing error badge and manual sync action rather than starting unlimited replication retries.
 
+PouchDB checkpoint PUTs have a separate per-handle queue, spaced at least 200 ms after completion
+(at most five per second, leaving headroom under the observed ten-write/sec allowance). On
+November 10, the desktop `dat-411` trace showed eleven successful checkpoint writes starting in
+880 ms and a failed checkpoint write at 951 ms, reported as a CORS-hidden 429. No `_bulk_docs` or
+`_bulk_get` requests occurred in that window: already-present revisions can still generate
+checkpoint writes, so read pacing cannot prevent this burst.
+
+Only recognizable PouchDB checkpoint writes receive bounded retries after an explicit 429,
+using the same backoff, cancellation, and Retry-After policy. Other write failures are not
+replayed. After an ambiguous browser network failure, a bounded GET can confirm that every
+requested checkpoint field except `_rev` is already stored; only that exact match is
+acknowledged as success. Missing, different, or unreadable checkpoints remain failures for
+manual retry. The transport never overwrites another session's history to reconcile a failure.
+Exhausted checkpoint throttling raises a replication error, avoiding PouchDB's behavior of
+treating every source-checkpoint 4xx as read-only access and silently disabling that checkpoint.
+Both source and target checkpoints remain enabled. No application revisions are rewritten.
+
+The checkpoint browser regression starts with 125 identical revisions on both sides and no
+application uploads. It checks a ten-write/sec sliding limit, explicit throttling, lost
+acknowledgements, unapplied writes, finite exhaustion in both replication directions, and
+safe resumption with unchanged bodies/revisions. Queues do not coordinate independent tabs,
+devices, or bulk application writes; heavier shared traffic can still exhaust finite retries.
+
 The vendored PouchDB 9 bundle has a narrowly scoped capability-detection fix: only HTTP 404, 405,
 or 501 selects the legacy `_bulk_get` fallback. A transient error must not permanently turn bulk
 reads into individual document requests. `scripts/vendor-pouchdb.mjs` applies and verifies this
