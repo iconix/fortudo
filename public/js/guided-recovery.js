@@ -223,6 +223,7 @@ export function createGuidedRecovery({
     makeDatabase,
     routeStorage = localStorage,
     digest,
+    onProgress = () => {},
     assertCurrent = () => {},
     onActivate = () => {},
     assertWritable = () => {},
@@ -241,15 +242,18 @@ export function createGuidedRecovery({
         return saved;
     }
     async function preserve(audit) {
+        onProgress({ phase: 'saving' });
         assertCurrent();
         const bundle = await buildLocalRecoveryBundle(source, audit, verificationOptions);
         const id = newId();
         await archive.put({ _id: id, logicalName, bundle, decisions: {}, phase: 'saved' });
+        onProgress({ phase: 'checking-saved' });
         const saved = await load(id);
         assertCurrent();
         return saved;
     }
     async function rebuild(id) {
+        onProgress({ phase: 'checking-saved' });
         const saved = await load(id);
         assertCurrent();
         if (saved.bundle.manifest.localDatabaseName !== source.name)
@@ -265,6 +269,7 @@ export function createGuidedRecovery({
                 'Local changes arrived after the recovery copy was saved. Save a new copy before rebuilding.'
             );
         }
+        onProgress({ phase: 'checking-cloud' });
         const contract = await inspectRemoteDocumentContract(remote);
         if (!contract.compatible)
             throw new Error(
@@ -275,6 +280,7 @@ export function createGuidedRecovery({
         try {
             // Capture the leaves required for this transfer. Sequence values are
             // continuation tokens, not content locks. A retry captures a new list.
+            onProgress({ phase: 'listing-cloud' });
             const expected = await remote.changes({ since: 0, style: 'all_docs' });
             if (
                 !Array.isArray(expected?.results) ||
@@ -283,7 +289,12 @@ export function createGuidedRecovery({
                 throw new Error(
                     'The cloud revision list could not be read. Retry repair; your saved copy is kept.'
                 );
-            const result = await staged.replicate.from(remote, { ...SYNC_REPLICATION_OPTIONS });
+            onProgress({ phase: 'downloading', completed: 0 });
+            const replication = staged.replicate.from(remote, { ...SYNC_REPLICATION_OPTIONS });
+            replication.on?.('change', (change) => {
+                onProgress({ phase: 'downloading', completed: change.docs_written });
+            });
+            const result = await replication;
             if (
                 result?.ok !== true ||
                 result?.errors?.length ||
@@ -291,6 +302,11 @@ export function createGuidedRecovery({
                 result?.status !== 'complete'
             )
                 throw new Error('The cloud copy could not be downloaded completely.');
+            onProgress({
+                phase: 'verifying-download',
+                completed: 0,
+                total: expected.results.length
+            });
             for (let index = 0; index < expected.results.length; index += 100) {
                 const request = Object.create(null);
                 for (const change of expected.results.slice(index, index + 100)) {
@@ -310,11 +326,18 @@ export function createGuidedRecovery({
                     throw new Error(
                         'The cloud copy could not be downloaded completely. Retry repair; your saved copy is kept.'
                     );
+                onProgress({
+                    phase: 'verifying-download',
+                    completed: Math.min(index + 100, expected.results.length),
+                    total: expected.results.length
+                });
             }
             const after = await inspectRemoteDocumentContract(remote);
             if (!after.compatible || after.contractRevision !== contract.contractRevision)
                 throw new Error('Cloud safety settings changed. Please try rebuilding again.');
+            onProgress({ phase: 'verifying-records' });
             const leaves = await enumerateCurrentLocalLeaves(staged);
+            let checked = 0;
             for (const leaf of leaves.leaves) {
                 const readable = validateRecoveryDocument(leaf.document);
                 if (!readable.ok) {
@@ -322,7 +345,14 @@ export function createGuidedRecovery({
                         `The cloud copy contains a ${readable.kind} whose ${readable.field} this app cannot safely use. Update Fortudo or correct that field with a supported client, then retry repair. Your original and saved copies are kept and can be exported.`
                     );
                 }
+                checked += 1;
             }
+            onProgress({
+                phase: 'verifying-records',
+                completed: checked,
+                total: leaves.leaves.length
+            });
+            onProgress({ phase: 'comparing-cloud' });
             const audit = await auditLocalDivergence(staged, remote);
             if (audit.state !== 'compatible' || audit.eligible.length)
                 throw new Error('The rebuilt copy could not be verified against the cloud.');
@@ -335,6 +365,7 @@ export function createGuidedRecovery({
                 );
             }
             assertCurrent();
+            onProgress({ phase: 'opening' });
             await archive.put({ ...(await load(id)), phase: 'review', databaseName });
             // No source database is deleted. A failed pointer write also leaves the staged copy intact.
             const route = JSON.stringify({ databaseName, archiveId: id });

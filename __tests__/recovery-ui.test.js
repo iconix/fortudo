@@ -31,13 +31,128 @@ describe('guided repair dialog', () => {
         };
         ui = initializeRecoveryUI({
             signal: signal.signal,
-            openSession: async () => session,
+            openSession: async ({ onProgress } = {}) => {
+                session.onProgress = onProgress;
+                return session;
+            },
             reload,
             onChange,
             notify: jest.fn()
         });
     });
     afterEach(() => signal.abort());
+    test('explains the actual local deletion blocker without offering to discard it', async () => {
+        session.audit = {
+            eligible: [],
+            recoveryRequired: [{ deleted: true, code: 'FDC_TOMBSTONE_CONTRACT' }]
+        };
+        await ui.open();
+        expect(document.querySelector('dialog').textContent).toContain(
+            '1 local deletion cannot be synced safely.'
+        );
+        expect(document.querySelector('dialog').textContent).toContain(
+            'Repair will preserve it for review.'
+        );
+    });
+
+    test('shows download counts, retry waits and inactivity without inventing a percentage', async () => {
+        jest.useFakeTimers();
+        let finish;
+        session.service.rebuild.mockImplementation(
+            () => new Promise((resolve) => (finish = resolve))
+        );
+        try {
+            await ui.open();
+            document.querySelector('[data-action="repair"]').click();
+            await jest.advanceTimersByTimeAsync(0);
+            expect(document.querySelector('dialog').getAttribute('aria-busy')).not.toBe('true');
+            session.onProgress({ phase: 'downloading', completed: 20 });
+            expect(document.querySelector('.recovery-progress').textContent).toContain(
+                '20 records received'
+            );
+            expect(document.querySelector('.recovery-progress').textContent).not.toContain('%');
+            await jest.advanceTimersByTimeAsync(30000);
+            expect(document.querySelector('.recovery-stall').textContent).toBe('');
+            await jest.advanceTimersByTimeAsync(89000);
+            expect(document.querySelector('.recovery-stall').textContent).toBe('');
+            await jest.advanceTimersByTimeAsync(1000);
+            expect(document.querySelector('.recovery-stall').textContent).toBe(
+                'Still waiting for a response. Your original copy is kept.'
+            );
+            session.onProgress({ phase: 'retrying', delay: 4000, status: 429 });
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Cloud is busy. Retrying in 4 seconds'
+            );
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Still waiting for a response. Your original copy is kept.'
+            );
+            await jest.advanceTimersByTimeAsync(4000);
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Retrying cloud request'
+            );
+            session.onProgress({ phase: 'retrying', delay: 2000, status: null });
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Cloud request failed. Retrying in 2 seconds'
+            );
+            session.onProgress({ phase: 'unknown' });
+            expect(document.querySelector('.recovery-progress').textContent).toContain(
+                '20 records received'
+            );
+            session.onProgress({ phase: 'verifying-records', completed: 25, total: 25 });
+            expect(document.querySelector('.recovery-progress').textContent).toContain('25 of 25');
+            expect(document.querySelector('.recovery-stall').textContent).toBe('');
+            expect(document.querySelector('.recovery-retry').textContent).toBe('');
+            await jest.advanceTimersByTimeAsync(119000);
+            expect(document.querySelector('.recovery-stall').textContent).toBe('');
+            session.onProgress({ phase: 'comparing-cloud' });
+            await jest.advanceTimersByTimeAsync(1000);
+            expect(document.querySelector('.recovery-stall').textContent).toBe('');
+            finish();
+            await jest.advanceTimersByTimeAsync(0);
+            expect(reload).toHaveBeenCalledTimes(1);
+            expect(jest.getTimerCount()).toBe(0);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    test('a failed repair names its phase and clears progress monitoring on abort', async () => {
+        jest.useFakeTimers();
+        let fail;
+        session.service.rebuild.mockImplementation(
+            () => new Promise((_, reject) => (fail = reject))
+        );
+        try {
+            await ui.open();
+            document.querySelector('[data-action="repair"]').click();
+            await jest.advanceTimersByTimeAsync(0);
+            session.onProgress({ phase: 'comparing-cloud' });
+            fail(new Error('Failed to fetch'));
+            await jest.advanceTimersByTimeAsync(0);
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Stopped while comparing the refreshed copy with the cloud.'
+            );
+            expect(document.querySelector('dialog').dataset.recoveryStage).toBe('error');
+            const alert = document.querySelector('.recovery-error[role="alert"]');
+            expect(alert.textContent).toContain(
+                'Stopped while comparing the refreshed copy with the cloud.'
+            );
+            expect(alert.textContent).toContain('Failed to fetch');
+            expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+            expect(jest.getTimerCount()).toBe(0);
+            document.querySelector('[data-action="repair"]').click();
+            await jest.advanceTimersByTimeAsync(0);
+            signal.abort();
+            expect(jest.getTimerCount()).toBe(0);
+            session.onProgress({ phase: 'downloading', completed: 99 });
+            expect(document.querySelector('dialog')).toBeNull();
+            fail(new Error('Aborted'));
+            await jest.advanceTimersByTimeAsync(0);
+            expect(reload).not.toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
     test('a blocked rebuild keeps a downloadable verified copy and an actionable error', async () => {
         session.service.rebuild.mockRejectedValue(
             new Error(
@@ -77,7 +192,7 @@ describe('guided repair dialog', () => {
             );
             expect(document.querySelector('.recovery-progress')).toBeNull();
             expect(document.querySelector('[role="status"]')).toBeNull();
-            expect(document.querySelector('[role="alert"]').textContent).toBe(
+            expect(document.querySelector('.recovery-error-detail').textContent).toBe(
                 'Could not finish this step.'
             );
             expect(document.querySelector('dialog').hasAttribute('aria-busy')).toBe(false);

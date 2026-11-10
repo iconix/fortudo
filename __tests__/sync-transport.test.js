@@ -6,6 +6,31 @@ describe('bounded sync reads', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
 
+    test.each([429, 'network'])(
+        'reports a bounded retry wait for %s without exposing request data',
+        async (failure) => {
+            const onRetry = jest.fn();
+            const fetch = jest
+                .fn()
+                .mockImplementationOnce(() => {
+                    if (failure === 'network') throw new TypeError('Failed to fetch');
+                    return Promise.resolve(Response.json({}, { status: failure }));
+                })
+                .mockResolvedValue(Response.json({ ok: true }));
+            const result = createSyncFetch(fetch, { onRetry })(
+                'https://example.invalid/db/_changes'
+            );
+            await jest.runAllTimersAsync();
+            expect((await result).ok).toBe(true);
+            expect(onRetry).toHaveBeenCalledTimes(1);
+            expect(onRetry).toHaveBeenCalledWith({
+                delay: expect.any(Number),
+                attempt: 1,
+                status: failure === 'network' ? null : 429
+            });
+        }
+    );
+
     test('splits conflict leaves by revision count and reassembles every branch by ID', async () => {
         const docs = Array.from({ length: 30 }, (_, index) => ({
             id: `task-${Math.floor(index / 3)}`,

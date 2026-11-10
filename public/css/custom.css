@@ -722,6 +722,26 @@ button:focus-visible {
 .recovery-dialog[data-recovery-stage='complete'] h2 {
     color: #5eead4;
 }
+.recovery-dialog[data-recovery-stage='error'] h2 {
+    color: #fda4af;
+}
+.recovery-dialog .recovery-error {
+    margin: 0.75rem 0;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid rgb(251 113 133 / 25%);
+    border-radius: 0.5rem;
+    background: rgb(244 63 94 / 4%);
+    color: #fecdd3;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+.recovery-dialog .recovery-error > p {
+    margin: 0;
+}
+.recovery-dialog .recovery-error > .recovery-error-detail {
+    margin-top: 0.25rem;
+    color: #fda4af;
+}
 .recovery-dialog[data-recovery-stage='complete'] {
     max-width: 32rem;
 }

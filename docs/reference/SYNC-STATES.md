@@ -222,6 +222,19 @@ retains its `fortudo-local-recovery-v1` checksums. Download initiation is not di
 There is no file-import UI in this release; keep browser data until repair and sync are complete.
 Do not log archive contents or attach them to public issue reports.
 
+During repair, the dialog names the current step: preservation, download, completeness and
+readability checks, comparison with the cloud, or opening the verified room. Download counts
+are records received during this attempt, not a percentage of the room. Verification counts
+refer to the captured revision list or the downloaded records. Transport retries show their
+bounded wait; a network failure is not labeled as rate limiting unless HTTP 429 was visible.
+
+After two minutes without a progress report, the dialog says “Still waiting for a response.
+Your original copy is kept.” Time since the last report stays visible throughout. This measures
+inactivity within a step, not total repair duration, and does not imply a failure. A failed repair
+groups its last step and error detail in a distinct error panel announced as one alert, retaining
+the existing retry/export actions. This feedback does not add cancellation or a request timeout;
+Close and Escape remain disabled during repair to protect activation safety.
+
 ## Local demo behavior
 
 The floating **Demo only · simulated cloud** controls belong to the temporary local demo, not the

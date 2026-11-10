@@ -6,6 +6,55 @@ from playwright.sync_api import expect, sync_playwright
 from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
 
 
+def test_repair_reports_inactivity_and_retry_waits_on_a_small_screen(app_server):
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(
+            playwright, viewport={"width": 390, "height": 844},
+            context_options={"service_workers": "block"},
+        )
+        try:
+            page.goto(BASE_URL)
+            page.clock.install()
+            page.evaluate("""async () => {
+                const {initializeRecoveryUI} = await import('/js/recovery-ui.js');
+                const controller = new AbortController();
+                window.recoveryReloads = 0;
+                const ui = initializeRecoveryUI({signal:controller.signal,
+                    notify:()=>{},onChange:()=>{},reload:()=>window.recoveryReloads++,
+                    openSession:async ({onProgress}) => {
+                        window.reportRepairProgress = onProgress;
+                        return {list:async()=>[], close:async()=>{},
+                            service:{preserve:async()=>({_id:'recovery-progress'}),
+                                rebuild:()=>new Promise(resolve=>window.finishRepair=resolve)}};
+                    }
+                });
+                await ui.open();
+            }""")
+            page.get_by_role("button", name="Repair this room", exact=True).click()
+            page.evaluate("reportRepairProgress({phase:'downloading',completed:10})")
+            dialog = page.get_by_role("dialog")
+            expect(dialog).to_contain_text("10 records received")
+            page.clock.fast_forward(31000)
+            expect(dialog.locator(".recovery-stall")).to_be_empty()
+            page.clock.fast_forward(88000)
+            expect(dialog.locator(".recovery-stall")).to_be_empty()
+            page.clock.fast_forward(1000)
+            expect(dialog).to_contain_text("Still waiting for a response. Your original copy is kept.")
+            page.evaluate("reportRepairProgress({phase:'retrying',delay:4000,status:429})")
+            expect(dialog).to_contain_text("Cloud is busy. Retrying in 4 seconds")
+            page.clock.fast_forward(4000)
+            expect(dialog).to_contain_text("Retrying cloud request")
+            page.evaluate("reportRepairProgress({phase:'comparing-cloud'})")
+            expect(dialog).to_contain_text("Comparing the refreshed copy with the cloud")
+            expect(dialog.locator(".recovery-stall")).to_be_empty()
+            assert dialog.evaluate("node => node.scrollWidth <= node.clientWidth")
+            page.evaluate("finishRepair()")
+            page.wait_for_function("window.recoveryReloads === 1")
+        finally:
+            context.close()
+            browser.close()
+
+
 def retain_local_cloud_handles(page):
     """Model HTTP close semantics for the IndexedDB stand-in used as a cloud.
 
@@ -72,11 +121,32 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
             page.reload()
             expect(page.locator("#sync-status-text")).to_have_text("Recovery required")
             page.get_by_role("button", name="Recover changes", exact=True).click()
+            expect(page.get_by_role("dialog")).to_contain_text(
+                "10 local deletions cannot be synced safely"
+            )
+            page.evaluate("""() => {
+                window.repairPhases = [];
+                new MutationObserver(() => {
+                    const status = document.querySelector('.recovery-progress');
+                    if (status) window.repairPhases.push(status.textContent);
+                }).observe(document.querySelector('dialog'), {subtree:true,childList:true});
+            }""")
             page.get_by_role("button", name="Repair this room", exact=True).click()
             if malformed:
                 dialog = page.get_by_role("dialog")
                 expect(dialog).to_contain_text("Repair couldn’t finish")
                 expect(dialog.get_by_role("alert")).to_contain_text("task whose description")
+                expect(dialog).to_contain_text(
+                    "Stopped while checking that cloud records can be read."
+                )
+                expect(dialog).to_have_attribute("data-recovery-stage", "error")
+                error = dialog.locator(".recovery-error[role=alert]")
+                expect(error).to_contain_text("Stopped while checking that cloud records can be read.")
+                assert error.evaluate("node => getComputedStyle(node).borderTopStyle") == "solid"
+                assert error.evaluate("node => getComputedStyle(node).backgroundColor") != "rgba(0, 0, 0, 0)"
+                phases = page.evaluate("window.repairPhases")
+                assert any("Downloading cloud records" in phase for phase in phases)
+                assert any("records received" in phase for phase in phases)
                 with page.expect_download() as download:
                     dialog.get_by_role("button", name="Download saved copy", exact=True).click()
                 assert download.value.suggested_filename.endswith(".json")

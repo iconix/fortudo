@@ -77,7 +77,7 @@ function checkpointDocument(url, options) {
 }
 
 /** Pace bulk reads/checkpoints; retry reads and explicitly rejected checkpoint writes only. */
-export function createSyncFetch(fetchImplementation, { signal } = {}) {
+export function createSyncFetch(fetchImplementation, { signal, onRetry = () => {} } = {}) {
     const fetchBulkRead = createPacedFetch(fetchImplementation, BULK_READ_INTERVAL_MS);
     // Five writes/sec leaves headroom under the observed ten-write/sec allowance.
     // Each remote handle has its own queue; this is not an account-wide limit.
@@ -224,6 +224,7 @@ export function createSyncFetch(fetchImplementation, { signal } = {}) {
                 )
             );
             await response?.body?.cancel().catch(() => {});
+            onRetry({ delay, attempt: attempt + 1, status: response?.status ?? null });
             await waitForRetry(delay, requestSignal);
         }
     };
