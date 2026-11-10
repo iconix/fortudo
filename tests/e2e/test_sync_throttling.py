@@ -13,22 +13,25 @@ from tests.e2e.helpers import BASE_URL, launch_e2e_page
 
 
 @pytest.mark.parametrize(
-    ("failures", "capacity", "competing_reads"),
+    ("failures", "capacity", "competing_reads", "conflict_leaves"),
     [
-        pytest.param(1, False, 0, id="transient"),
-        pytest.param(4, False, 0, id="exhausted"),
-        pytest.param(0, True, 0, id="sliding-capacity"),
-        pytest.param(0, True, 4, id="shared-sliding-capacity"),
+        pytest.param(1, False, 0, 1, id="transient"),
+        pytest.param(4, False, 0, 1, id="exhausted"),
+        pytest.param(0, True, 0, 1, id="sliding-capacity"),
+        pytest.param(0, True, 4, 1, id="shared-sliding-capacity"),
+        pytest.param(0, True, 4, 3, id="conflicted-shared-sliding-capacity"),
     ],
 )
 def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
-    app_server, failures, capacity, competing_reads
+    app_server, failures, capacity, competing_reads, conflict_leaves
 ):
     cloud_origin = "https://sync-fixture.cloudantnosqldb.appdomain.cloud"
     database = "fortudo-sync-throttling"
     design = {**load_design_document(), "_rev": "1-" + "a" * 32}
     documents = {design["_id"]: design}
-    for index in range(45):
+    revisions = {(design["_id"], design["_rev"]): design}
+    task_count = 10 if conflict_leaves > 1 else 45
+    for index in range(task_count):
         document = {
             "_id": f"cloud-task-{index}", "_rev": "1-" + "b" * 32,
             "docType": "task", "type": "unscheduled", "description": f"Cloud task {index}",
@@ -36,9 +39,14 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
             "category": None, "categoryId": None, "categoryIdentityVersion": None,
             "writerContract": {"version": 1, "categoryReference": None},
         }
-        documents[document["_id"]] = document
+        for branch in range(conflict_leaves):
+            leaf = {**document, "_rev": f"1-{branch:032x}" if conflict_leaves > 1 else document["_rev"]}
+            revisions[(leaf["_id"], leaf["_rev"])] = leaf
+            documents[leaf["_id"]] = leaf
     changes = [
-        {"seq": index, "id": document["_id"], "changes": [{"rev": document["_rev"]}]}
+        {"seq": index, "id": document["_id"], "changes": [
+            {"rev": revision} for doc_id, revision in revisions if doc_id == document["_id"]
+        ]}
         for index, document in enumerate(documents.values(), start=1)
     ]
     checkpoints = {}
@@ -122,13 +130,14 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
                 last = rows[-1]["seq"] if rows else len(changes)
                 reply({"results": rows, "last_seq": last, "pending": len(changes) - last})
             elif operation == "_revs_diff":
-                reply({key: {"missing": [rev for rev in revisions
-                       if documents.get(key, {}).get("_rev") != rev]}
-                       for key, revisions in body.items()
-                       if any(documents.get(key, {}).get("_rev") != rev for rev in revisions)})
+                reply({key: {"missing": [rev for rev in revisions_requested
+                       if (key, rev) not in revisions]}
+                       for key, revisions_requested in body.items()
+                       if any((key, rev) not in revisions for rev in revisions_requested)})
             elif operation == "_bulk_docs":
                 for document in body["docs"]:
                     documents[document["_id"]] = document
+                    revisions[(document["_id"], document["_rev"])] = document
                     changes.append({"seq": len(changes) + 1, "id": document["_id"],
                                     "changes": [{"rev": document["_rev"]}]})
                 reply([{"ok": True, "id": doc["_id"], "rev": doc["_rev"]}
@@ -140,7 +149,7 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
                 elif len(body["docs"]) > 20:
                     reply({"error": "too_many_requests", "reason": "fixture batch ceiling"}, 429)
                 else:
-                    reply({"results": [{"id": doc["id"], "docs": [{"ok": documents[doc["id"]]}]}
+                    reply({"results": [{"id": doc["id"], "docs": [{"ok": revisions[(doc["id"], doc.get("rev", documents[doc["id"]]["_rev"]))]}]}
                                        for doc in body["docs"]]})
             elif operation in documents:
                 if operation.startswith("cloud-task-"):
@@ -164,15 +173,20 @@ def test_throttled_download_keeps_bulk_reads_and_existing_sync_badge(
                 assert len(bulk_sizes) == 4
                 expect(page.locator("#cloud-loading-notice")).to_have_count(0)
                 page.locator("#sync-status-indicator").click()
-            expect(page.locator("#unscheduled-task-list")).to_contain_text("Cloud task 44", timeout=20000)
+            expect(page.locator("#unscheduled-task-list")).to_contain_text(f"Cloud task {task_count - 1}", timeout=20000)
             expect(page.locator("#sync-status-text")).to_have_text("Synced", timeout=20000)
             expect(page.locator("#cloud-loading-notice")).to_have_count(0)
             assert max(bulk_sizes) <= 10
-            assert len(bulk_sizes) >= failures + 5
+            assert len(bulk_sizes) >= failures + (task_count * conflict_leaves + 10) // 10
+            if conflict_leaves > 1:
+                assert page.evaluate("""async () => {
+                    const {getDb} = await import('/js/storage.js');
+                    return (await getDb().get('cloud-task-0',{open_revs:'all'})).length;
+                }""") == conflict_leaves
             assert individual_task_reads == []
             if capacity:
                 assert capacity_denials == [], capacity_denials
-                assert sum(cost for _, cost in accepted_bulk_reads) >= 45
+                assert sum(cost for _, cost in accepted_bulk_reads) >= task_count * conflict_leaves
                 assert len(accepted_bulk_reads) >= 3
             assert not page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
         finally:

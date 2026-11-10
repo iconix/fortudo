@@ -783,7 +783,12 @@ export async function deleteConfig(id, options = {}) {
  * @returns {Promise<Object[]>} Array of task objects
  */
 export async function loadTasks() {
-    return loadDocsByPredicate(isTaskDoc, DOC_TYPES.TASK);
+    const tasks = await loadDocsByPredicate(isTaskDoc, DOC_TYPES.TASK);
+    // Historical unscheduled tasks may omit priority. Project the display/edit
+    // default without rewriting the persisted body or its revision identity.
+    return tasks.map((task) =>
+        task.type === 'unscheduled' ? { ...task, priority: task.priority ?? 'medium' } : task
+    );
 }
 
 /**

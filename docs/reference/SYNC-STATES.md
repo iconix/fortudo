@@ -168,6 +168,8 @@ or restore automatically. Users can also reopen saved copies from **Settings →
    does not make an otherwise supported historical record unreadable. Read checks cover task
    types, descriptions, optional status/priority/duration fields, scheduled and activity intervals,
    supported legacy and current taxonomy shapes, settings, running timers, and manual ordering.
+   Task hydration projects omitted or null unscheduled priority as Medium for sorting, display,
+   and editing. This projection does not rewrite the stored body, writer metadata, or revision.
    The completed taxonomy migration marker is preserved without application interpretation.
    Unsupported configurations and unreadable fields block activation, with a record-type and
    field explanation and a **Download saved copy** action. Raw contents are not included in that

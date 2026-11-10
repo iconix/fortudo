@@ -372,6 +372,35 @@ This establishes compatibility of the actual inspected records with the new read
 not establish a completed repair of either affected device. The patch has not been deployed,
 and the user's local replica selection, original data, and cloud data were not changed.
 
+## Followup subagent findings and corrections
+
+An independent review of PR #128 at `fc5cda3` found two concrete gaps, reproduced without
+production access:
+
+1. The validator accepted missing/null unscheduled priority, but the renderer required a
+   string. A real rebuild could activate successfully and then fail during rendering.
+   `loadTasks()` now projects Medium priority for those historical values without changing
+   persisted bodies or revisions. Regression tests run real rebuild, storage hydration, and
+   rendering for omitted, null, and explicit priority, and verify stored revisions remain exact.
+2. PouchDB's ten-change replication batch could request thirty revision leaves when each
+   document had three conflicts. Pacing alone repeated an oversized request until retries
+   exhausted. The transport now splits by requested revision count, queues each chunk through
+   the existing pacing/retry/cancellation path, and merges all branch/error results. A failed
+   chunk never becomes a partially successful combined response. Unit and real-browser
+   regressions cover shared capacity, conflicts, cancellation, and failed later chunks.
+
+The browser repair fixture also models HTTP close semantics for its local IndexedDB cloud
+stand-in across tabs. Real source, archive, and staged handles retain their original lifecycle;
+this avoids fixture-only shared-connection closure races while keeping preservation assertions.
+The priority regression additionally verifies rendering after reload and that the cloud record
+is still stored without the projected priority field.
+
+The followup verification on November 10 passed: 1,973 JavaScript tests across 93 suites,
+216 Python repository tests, and 50 local browser cases. Coverage was 91.58% statements,
+81.04% branches, 92.99% functions, and 92.49% lines. The full `npm run verify` gate used
+one Jest worker with UTC scoped to Jest; browser tests retained the host timezone. Production
+data and affected user replicas were not changed during these corrections.
+
 Related context:
 
 - [Sync and safety states](../reference/SYNC-STATES.md)

@@ -6,6 +6,167 @@ describe('bounded sync reads', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
 
+    test('splits conflict leaves by revision count and reassembles every branch by ID', async () => {
+        const docs = Array.from({ length: 30 }, (_, index) => ({
+            id: `task-${Math.floor(index / 3)}`,
+            rev: `1-${index}`
+        }));
+        const options = {
+            method: 'POST',
+            headers: { Authorization: 'test' },
+            body: JSON.stringify({ docs, attachments: true })
+        };
+        const calls = [];
+        const fetch = jest.fn(async (url, request) => {
+            const body = JSON.parse(request.body);
+            calls.push(body.docs);
+            if (body.docs.length > 20)
+                return Response.json({ error: 'too_many_requests' }, { status: 429 });
+            expect(body.attachments).toBe(true);
+            expect(url).toBe('https://example.invalid/db/_bulk_get?revs=true');
+            expect(request.headers).toEqual(options.headers);
+            return Response.json(
+                {
+                    results: body.docs.map((doc) => ({
+                        id: doc.id,
+                        docs: [{ ok: { _id: doc.id, _rev: doc.rev } }]
+                    }))
+                },
+                {
+                    headers: {
+                        'X-Test': 'kept',
+                        'Content-Length': '123',
+                        'Content-Encoding': 'gzip'
+                    }
+                }
+            );
+        });
+        const promise = createSyncFetch(fetch)(
+            'https://example.invalid/db/_bulk_get?revs=true',
+            options
+        );
+        await jest.runAllTimersAsync();
+        const response = await promise;
+        expect(response.status).toBe(200);
+        expect(calls.map((batch) => batch.length)).toEqual([10, 10, 10]);
+        expect(calls.flat()).toEqual(docs);
+        expect(response.headers.get('X-Test')).toBe('kept');
+        expect(response.headers.get('Content-Length')).toBeNull();
+        expect(response.headers.get('Content-Encoding')).toBeNull();
+        const result = await response.json();
+        expect(result.results).toHaveLength(10);
+        expect(result.results.flatMap((row) => row.docs.map((doc) => doc.ok._rev))).toEqual(
+            docs.map((doc) => doc.rev)
+        );
+        expect(JSON.parse(options.body).docs).toEqual(docs);
+    });
+
+    test('retries only the failed chunk and retains per-revision errors', async () => {
+        const docs = Array.from({ length: 25 }, (_, index) => ({
+            id: `task-${index}`,
+            rev: '1-a'
+        }));
+        const sizes = [];
+        const fetch = jest.fn(async (url, options) => {
+            const batch = JSON.parse(options.body).docs;
+            sizes.push(batch.length);
+            if (sizes.length === 2) return Response.json({}, { status: 429 });
+            return Response.json({
+                results: batch.map((doc) => ({
+                    id: doc.id,
+                    docs: [{ error: { id: doc.id, rev: doc.rev, error: 'not_found' } }]
+                }))
+            });
+        });
+        const promise = createSyncFetch(fetch)('https://example.invalid/db/_bulk_get', {
+            method: 'POST',
+            body: JSON.stringify({ docs })
+        });
+        await jest.runAllTimersAsync();
+        const result = await (await promise).json();
+        expect(sizes).toEqual([10, 10, 10, 5]);
+        expect(result.results).toHaveLength(25);
+        expect(result.results.every((row) => row.docs[0].error.error === 'not_found')).toBe(true);
+    });
+
+    test('does not return partial success when a later chunk exhausts its retry budget', async () => {
+        const sizes = [];
+        const fetch = jest.fn(async (url, options) => {
+            const docs = JSON.parse(options.body).docs;
+            sizes.push(docs.length);
+            return sizes.length === 1
+                ? Response.json({
+                      results: docs.map((doc) => ({ id: doc.id, docs: [{ ok: { _id: doc.id } }] }))
+                  })
+                : Response.json({ error: 'throttled' }, { status: 429 });
+        });
+        const promise = createSyncFetch(fetch)('https://example.invalid/db/_bulk_get', {
+            method: 'POST',
+            body: JSON.stringify({
+                docs: Array.from({ length: 25 }, (_, id) => ({ id: String(id), rev: '1-a' }))
+            })
+        });
+        await jest.runAllTimersAsync();
+        expect((await promise).status).toBe(429);
+        expect(sizes).toEqual([10, 10, 10, 10, 10]);
+    });
+
+    test('cancels the remainder of a split read after the first response', async () => {
+        const controller = new AbortController();
+        const fetch = jest.fn(async (url, options) => {
+            const docs = JSON.parse(options.body).docs;
+            controller.abort();
+            return Response.json({
+                results: docs.map((doc) => ({ id: doc.id, docs: [{ ok: doc }] }))
+            });
+        });
+        const promise = createSyncFetch(fetch, { signal: controller.signal })(
+            'https://example.invalid/db/_bulk_get',
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    docs: Array.from({ length: 21 }, (_, id) => ({ id: String(id), rev: '1-a' }))
+                })
+            }
+        );
+        const rejected = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+        await jest.runAllTimersAsync();
+        await rejected;
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(fetch.mock.calls[0][1].body).docs).toHaveLength(10);
+    });
+
+    test.each([{ results: {} }, { results: [{ id: 'bad', docs: {} }] }, { results: [null] }])(
+        'rejects malformed successful chunk responses instead of synthesizing completeness: %j',
+        async (payload) => {
+            const fetch = jest.fn(async () => Response.json(payload));
+            const promise = createSyncFetch(fetch)('https://example.invalid/db/_bulk_get', {
+                method: 'POST',
+                body: JSON.stringify({
+                    docs: Array.from({ length: 11 }, (_, id) => ({ id: String(id), rev: '1-a' }))
+                })
+            });
+            const rejected = expect(promise).rejects.toThrow('Invalid bulk-read response.');
+            await jest.runAllTimersAsync();
+            await rejected;
+            expect(fetch).toHaveBeenCalledTimes(1);
+        }
+    );
+
+    test.each(['not-json', '{', '{"other":[]}'])(
+        'preserves endpoint handling for body %s',
+        async (body) => {
+            const fetch = jest.fn(async () => new Response('', { status: 400 }));
+            const options = { method: 'POST', body };
+            const response = await createSyncFetch(fetch)(
+                'https://example.invalid/db/_bulk_get',
+                options
+            );
+            expect(response.status).toBe(400);
+            expect(fetch).toHaveBeenCalledWith('https://example.invalid/db/_bulk_get', options);
+        }
+    );
+
     test('spaces consecutive bulk reads even when every response succeeds', async () => {
         const fetch = jest.fn().mockImplementation(async () => Response.json({ results: [] }));
         const syncFetch = createSyncFetch(fetch);

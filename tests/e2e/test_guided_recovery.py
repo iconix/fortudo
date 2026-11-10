@@ -6,6 +6,32 @@ from playwright.sync_api import expect, sync_playwright
 from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
 
 
+def retain_local_cloud_handles(page):
+    """Model HTTP close semantics for the IndexedDB stand-in used as a cloud.
+
+    Closing one IndexedDB adapter handle can close another handle's cached
+    connection in the same page. HTTP PouchDB handles do not share that lifecycle.
+    Real source/archive/staged handles retain their actual close behavior.
+    """
+    page.context.add_init_script("""(() => {
+        let constructor;
+        Object.defineProperty(window, 'PouchDB', {configurable:true,
+            get:()=>constructor,
+            set:Original => {
+                function FixturePouchDB(name, options) {
+                    const db = new Original(name, options);
+                    if (/^(incident|recovery|denial)-cloud\\//.test(name))
+                        db.close = async () => {};
+                    return db;
+                }
+                FixturePouchDB.prototype = Original.prototype;
+                Object.setPrototypeOf(FixturePouchDB, Original);
+                constructor = FixturePouchDB;
+            }
+        });
+    })();""")
+
+
 @pytest.mark.parametrize("malformed", [False, True], ids=["legacy-cloud", "unreadable-cloud"])
 def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server, malformed):
     with sync_playwright() as playwright:
@@ -13,6 +39,7 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
             playwright, viewport={"width": 390, "height": 844},
             context_options={"service_workers": "block"},
         )
+        retain_local_cloud_handles(page)
         try:
             context.route("**/js/config.js", lambda route: route.fulfill(
                 content_type="application/javascript",
@@ -31,7 +58,7 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                 const cloud = new PouchDB('incident-cloud/fortudo-incident-room');
                 await cloud.put(buildDocumentContractDesignDoc());
                 const task = {_id:'task-cloud',docType:'task',type:'unscheduled',
-                    description:'Cloud work',status:'incomplete',priority:'medium',estDuration:15};
+                    description:'Cloud work',status:'incomplete',estDuration:15};
                 await cloud.put(malformed ? applyWriterContract({...task,description:{bad:'field'}}) : task);
                 await cloud.bulkDocs([
                     {_id:'cloud-deleted',_rev:'2-old',_deleted:true},
@@ -57,6 +84,7 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
             else:
                 expect(page.locator("#unscheduled-task-list")).to_contain_text("Cloud work", timeout=20000)
                 expect(page.locator("#add-task-btn")).to_be_enabled(timeout=15000)
+                expect(page.locator('[data-task-id="task-cloud"] .priority-badge')).to_contain_text("Medium Priority")
                 # The app may close its own archive/source handles while resuming
                 # review. Inspect persisted data from an independent page so the
                 # fixture does not race the adapter's shared connection cache.
@@ -78,14 +106,16 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                     const a = await db.get('cloud-conflict',{rev:'1-a',attachments:true});
                     const b = await db.get('cloud-conflict',{rev:'1-b'});
                     const missing = await db.allDocs({keys:saved.bundle.documents.map(d=>d._id)});
+                    const priorityPersisted = Object.hasOwn(await db.get('task-cloud'),'priority');
                     await original.close(); await archive.close(); await db.close();
                     return {archived:saved.bundle.documents.length,
                         originalLeaves:changes.results.reduce((n,r)=>n+r.changes.length,0),
                         omitted:missing.rows.every(r=>r.error==='not_found'),
-                        attachment:a._attachments.note.data,otherBranch:b.description};
+                        attachment:a._attachments.note.data,otherBranch:b.description,
+                        priorityPersisted};
                 }""")
                 assert result == {"archived": 12, "originalLeaves": 12, "omitted": True,
-                                  "attachment": "aGVsbG8=", "otherBranch": "Branch B"}
+                                  "attachment": "aGVsbG8=", "otherBranch": "Branch B", "priorityPersisted": False}
         finally:
             context.close()
             browser.close()
@@ -96,6 +126,7 @@ def test_old_inferred_denial_rechecks_and_unblocks_room_without_repair(app_serve
         browser, context, page = launch_e2e_page(
             playwright, context_options={"service_workers": "block"},
         )
+        retain_local_cloud_handles(page)
         try:
             context.route("**/js/config.js", lambda route: route.fulfill(
                 content_type="application/javascript",
@@ -140,6 +171,7 @@ def test_guided_repair_survives_reload_and_recovers_only_reviewed_changes(app_se
             playwright, viewport={"width": width, "height": 900},
             context_options={"service_workers": "block"},
         )
+        retain_local_cloud_handles(page)
         messages = []
         page.on("console", lambda message: messages.append(message.text))
         page.on("pageerror", lambda error: messages.append(str(error)))

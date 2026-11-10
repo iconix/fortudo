@@ -9,6 +9,7 @@ export const SYNC_REPLICATION_OPTIONS = Object.freeze({
 const MAX_RETRIES = 3;
 const MAX_DELAY_MS = 30000;
 const BULK_READ_INTERVAL_MS = 1100;
+const MAX_BULK_READ_REVISIONS = 10;
 const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 
 function waitForRetry(delay, signal) {
@@ -51,7 +52,7 @@ export function createSyncFetch(fetchImplementation, { signal } = {}) {
         return request;
     }
 
-    return async (url, options = {}) => {
+    return async function syncFetch(url, options = {}) {
         const method = (options.method || 'GET').toUpperCase();
         const isBulkRead = method === 'POST' && /\/_bulk_get(?:\?|$)/.test(url);
         const canRetry =
@@ -63,6 +64,50 @@ export function createSyncFetch(fetchImplementation, { signal } = {}) {
                 ? AbortSignal.any([signal, options.signal])
                 : signal || options.signal;
         const requestOptions = requestSignal ? { ...options, signal: requestSignal } : options;
+        if (isBulkRead && typeof options.body === 'string') {
+            let body;
+            try {
+                body = JSON.parse(options.body);
+            } catch {
+                // Preserve the endpoint's handling of malformed/non-JSON bodies.
+            }
+            if (Array.isArray(body?.docs) && body.docs.length > MAX_BULK_READ_REVISIONS) {
+                // Replication batch_size counts change rows, not conflict leaves.
+                // Split by requested revisions and use the same pacing/retry queue
+                // for each chunk. Never expose a partially successful response.
+                const results = new Map();
+                let lastResponse;
+                for (let index = 0; index < body.docs.length; index += MAX_BULK_READ_REVISIONS) {
+                    const response = await syncFetch(url, {
+                        ...requestOptions,
+                        body: JSON.stringify({
+                            ...body,
+                            docs: body.docs.slice(index, index + MAX_BULK_READ_REVISIONS)
+                        })
+                    });
+                    if (!response.ok) return response;
+                    const payload = await response.json();
+                    if (!Array.isArray(payload?.results))
+                        throw new Error('Invalid bulk-read response.');
+                    for (const row of payload.results) {
+                        if (typeof row?.id !== 'string' || !Array.isArray(row.docs))
+                            throw new Error('Invalid bulk-read response.');
+                        const existing = results.get(row.id);
+                        if (existing) existing.docs.push(...row.docs);
+                        else results.set(row.id, { ...row, docs: [...row.docs] });
+                    }
+                    lastResponse = response;
+                }
+                const headers = new Headers(lastResponse.headers);
+                headers.delete('Content-Length');
+                headers.delete('Content-Encoding');
+                return new Response(JSON.stringify({ results: [...results.values()] }), {
+                    status: lastResponse.status,
+                    statusText: lastResponse.statusText,
+                    headers
+                });
+            }
+        }
         for (let attempt = 0; ; attempt += 1) {
             requestSignal?.throwIfAborted();
             let response;
