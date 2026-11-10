@@ -227,6 +227,8 @@ readability checks, comparison with the cloud, or opening the verified room. Dow
 are records received during this attempt, not a percentage of the room. Verification counts
 refer to the captured revision list or the downloaded records. Transport retries show their
 bounded wait; a network failure is not labeled as rate limiting unless HTTP 429 was visible.
+Retry feedback clears when its request settles, independently of phase/count progress and
+without clearing feedback for other pending requests.
 
 After two minutes without a progress report, the dialog says “Still waiting for a response.
 Your original copy is kept.” Time since the last report stays visible throughout. This measures
@@ -234,6 +236,7 @@ inactivity within a step, not total repair duration, and does not imply a failur
 groups its last step and error detail in a distinct error panel announced as one alert, retaining
 the existing retry/export actions. This feedback does not add cancellation or a request timeout;
 Close and Escape remain disabled during repair to protect activation safety.
+Exporting a saved copy retains the original repair diagnostic; export errors are shown separately.
 
 ## Local demo behavior
 

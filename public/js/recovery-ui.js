@@ -35,12 +35,15 @@ export function initializeRecoveryUI({
     function updateProgress(event) {
         if (!repairProgress || signal.aborted) return;
         if (event.phase === 'retrying') {
-            repairProgress.retryAt = Date.now() + event.delay;
-            repairProgress.retryStatus = event.status;
+            repairProgress.retries.set(event.retryId, {
+                retryAt: Date.now() + event.delay,
+                retryStatus: event.status
+            });
+        } else if (event.phase === 'retry-settled') {
+            repairProgress.retries.delete(event.retryId);
         } else if (REPAIR_PHASES[event.phase]) {
             repairProgress.phase = event.phase;
             repairProgress.lastProgress = Date.now();
-            repairProgress.retryAt = null;
             const count = Number.isFinite(event.completed)
                 ? event.phase === 'downloading'
                     ? ` · ${event.completed} records received`
@@ -59,10 +62,11 @@ export function initializeRecoveryUI({
             seconds >= 120 ? 'Still waiting for a response. Your original copy is kept.' : '';
         if (repairProgress.stall.textContent !== stalled)
             repairProgress.stall.textContent = stalled;
-        const retrySeconds = Math.ceil((repairProgress.retryAt - Date.now()) / 1000);
-        repairProgress.retry.textContent = repairProgress.retryAt
+        const pending = [...repairProgress.retries.values()].at(-1);
+        const retrySeconds = Math.ceil((pending?.retryAt - Date.now()) / 1000);
+        repairProgress.retry.textContent = pending
             ? retrySeconds > 0
-                ? `${repairProgress.retryStatus === 429 ? 'Cloud is busy.' : 'Cloud request failed.'} Retrying in ${retrySeconds} seconds…`
+                ? `${pending.retryStatus === 429 ? 'Cloud is busy.' : 'Cloud request failed.'} Retrying in ${retrySeconds} seconds…`
                 : 'Retrying cloud request…'
             : '';
     }
@@ -128,19 +132,23 @@ export function initializeRecoveryUI({
         activeDialog.querySelectorAll('button').forEach((node) => {
             node.disabled = true;
         });
-        activeDialog.querySelector('[role="alert"]')?.remove();
+        const previousFailure = activeDialog.querySelector('.recovery-error');
+        activeDialog.querySelector('.recovery-action-error')?.remove();
         try {
             await run();
         } catch (error) {
             if (!signal.aborted && dialog === activeDialog) {
                 const failure = activeDialog.querySelector('.recovery-error');
+                const repairFailure = failure && failure !== previousFailure;
                 const alert = element(
                     'p',
                     error.message || 'Recovery could not finish. Your saved copy is kept.',
-                    failure || dialog
+                    repairFailure ? failure : dialog
                 );
-                if (!failure) alert.setAttribute('role', 'alert');
-                alert.className = failure ? 'recovery-error-detail' : 'text-rose-400';
+                if (!repairFailure) alert.setAttribute('role', 'alert');
+                alert.className = repairFailure
+                    ? 'recovery-error-detail'
+                    : 'recovery-action-error text-rose-400';
             }
         } finally {
             busy = false;
@@ -493,7 +501,7 @@ export function initializeRecoveryUI({
         const stall = element('p');
         stall.className = 'recovery-stall';
         stall.setAttribute('role', 'status');
-        repairProgress = { status, elapsed, retry, stall, phase: 'saving' };
+        repairProgress = { status, elapsed, retry, stall, phase: 'saving', retries: new Map() };
         updateProgress({ phase: existing ? 'checking-saved' : 'saving' });
         progressTimer = setInterval(renderProgressWait, 1000);
         try {

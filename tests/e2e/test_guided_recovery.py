@@ -44,6 +44,8 @@ def test_repair_reports_inactivity_and_retry_waits_on_a_small_screen(app_server)
             expect(dialog).to_contain_text("Cloud is busy. Retrying in 4 seconds")
             page.clock.fast_forward(4000)
             expect(dialog).to_contain_text("Retrying cloud request")
+            page.evaluate("reportRepairProgress({phase:'retry-settled'})")
+            expect(dialog.locator(".recovery-retry")).to_be_empty()
             page.evaluate("reportRepairProgress({phase:'comparing-cloud'})")
             expect(dialog).to_contain_text("Comparing the refreshed copy with the cloud")
             expect(dialog.locator(".recovery-stall")).to_be_empty()
@@ -150,6 +152,8 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                 with page.expect_download() as download:
                     dialog.get_by_role("button", name="Download saved copy", exact=True).click()
                 assert download.value.suggested_filename.endswith(".json")
+                expect(error).to_contain_text("Stopped while checking that cloud records can be read.")
+                expect(error).to_contain_text("task whose description")
                 assert page.evaluate("localStorage.getItem('fortudo-recovery-route:fortudo-incident-room')") is None
             else:
                 expect(page.locator("#unscheduled-task-list")).to_contain_text("Cloud work", timeout=20000)

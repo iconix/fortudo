@@ -77,7 +77,11 @@ function checkpointDocument(url, options) {
 }
 
 /** Pace bulk reads/checkpoints; retry reads and explicitly rejected checkpoint writes only. */
-export function createSyncFetch(fetchImplementation, { signal, onRetry = () => {} } = {}) {
+export function createSyncFetch(
+    fetchImplementation,
+    { signal, onRetry = () => {}, onRetrySettled = () => {} } = {}
+) {
+    let nextRetryId = 0;
     const fetchBulkRead = createPacedFetch(fetchImplementation, BULK_READ_INTERVAL_MS);
     // Five writes/sec leaves headroom under the observed ten-write/sec allowance.
     // Each remote handle has its own queue; this is not an account-wide limit.
@@ -144,88 +148,96 @@ export function createSyncFetch(fetchImplementation, { signal, onRetry = () => {
                 });
             }
         }
-        for (let attempt = 0; ; attempt += 1) {
-            requestSignal?.throwIfAborted();
-            let response;
-            try {
-                response = await (isBulkRead
-                    ? fetchBulkRead(url, requestOptions)
-                    : checkpoint
-                      ? fetchCheckpointWrite(url, requestOptions)
-                      : fetchImplementation(url, requestOptions));
-                // Only a visible 429 establishes that the checkpoint write was
-                // rejected. Gateway failures can hide a successfully applied PUT.
-                if (checkpoint && response.status !== 429) return response;
-                if (!TRANSIENT_STATUSES.has(response.status)) return response;
-            } catch (error) {
-                if (checkpoint && error instanceof TypeError) {
-                    // A CORS-hidden failure has an ambiguous outcome. Confirm the
-                    // exact checkpoint, never replay a potentially applied write or
-                    // overwrite another session's checkpoint/history.
-                    try {
-                        const confirmed = await syncFetch(url, {
-                            ...requestOptions,
-                            method: 'GET',
-                            body: undefined
-                        });
-                        if (confirmed.ok) {
-                            const stored = await confirmed.json();
-                            if (
-                                typeof stored?._rev === 'string' &&
-                                Object.keys(stored).filter((field) => field !== '_rev').length ===
-                                    Object.keys(checkpoint).filter((field) => field !== '_rev')
-                                        .length &&
-                                Object.keys(checkpoint)
-                                    .filter((field) => field !== '_rev')
-                                    .every(
-                                        (field) =>
-                                            JSON.stringify(stored[field]) ===
-                                            JSON.stringify(checkpoint[field])
-                                    )
-                            ) {
-                                requestSignal?.throwIfAborted();
-                                return Response.json(
-                                    { ok: true, id: stored._id, rev: stored._rev },
-                                    { status: 201 }
-                                );
+        let retryId = null;
+        try {
+            for (let attempt = 0; ; attempt += 1) {
+                requestSignal?.throwIfAborted();
+                let response;
+                try {
+                    response = await (isBulkRead
+                        ? fetchBulkRead(url, requestOptions)
+                        : checkpoint
+                          ? fetchCheckpointWrite(url, requestOptions)
+                          : fetchImplementation(url, requestOptions));
+                    // Only a visible 429 establishes that the checkpoint write was
+                    // rejected. Gateway failures can hide a successfully applied PUT.
+                    if (checkpoint && response.status !== 429) return response;
+                    if (!TRANSIENT_STATUSES.has(response.status)) return response;
+                } catch (error) {
+                    if (checkpoint && error instanceof TypeError) {
+                        // A CORS-hidden failure has an ambiguous outcome. Confirm the
+                        // exact checkpoint, never replay a potentially applied write or
+                        // overwrite another session's checkpoint/history.
+                        try {
+                            const confirmed = await syncFetch(url, {
+                                ...requestOptions,
+                                method: 'GET',
+                                body: undefined
+                            });
+                            if (confirmed.ok) {
+                                const stored = await confirmed.json();
+                                if (
+                                    typeof stored?._rev === 'string' &&
+                                    Object.keys(stored).filter((field) => field !== '_rev')
+                                        .length ===
+                                        Object.keys(checkpoint).filter((field) => field !== '_rev')
+                                            .length &&
+                                    Object.keys(checkpoint)
+                                        .filter((field) => field !== '_rev')
+                                        .every(
+                                            (field) =>
+                                                JSON.stringify(stored[field]) ===
+                                                JSON.stringify(checkpoint[field])
+                                        )
+                                ) {
+                                    requestSignal?.throwIfAborted();
+                                    return Response.json(
+                                        { ok: true, id: stored._id, rev: stored._rev },
+                                        { status: 201 }
+                                    );
+                                }
                             }
+                        } catch {
+                            // Failed confirmation cannot establish write success.
                         }
-                    } catch {
-                        // Failed confirmation cannot establish write success.
+                        requestSignal?.throwIfAborted();
+                        throw error;
                     }
-                    requestSignal?.throwIfAborted();
-                    throw error;
+                    // Browsers hide a CORS-blocked 429 behind TypeError. Do not claim
+                    // every such error is throttling, but give reads the same finite budget.
+                    if (!(error instanceof TypeError) || !canRetry || attempt === MAX_RETRIES) {
+                        throw error;
+                    }
                 }
-                // Browsers hide a CORS-blocked 429 behind TypeError. Do not claim
-                // every such error is throttling, but give reads the same finite budget.
-                if (!(error instanceof TypeError) || !canRetry || attempt === MAX_RETRIES) {
-                    throw error;
+                if (checkpoint && attempt === MAX_RETRIES) {
+                    // PouchDB treats any source-checkpoint 4xx as read-only access and
+                    // silently disables that checkpoint. Exhausted throttling must
+                    // remain a replication failure, not permission to skip it.
+                    await response.body?.cancel().catch(() => {});
+                    throw new Error('Checkpoint write is still rate-limited. Retry sync.');
                 }
+                if (!canRetry || attempt === MAX_RETRIES) return response;
+                const retryAfter = response?.headers.get('Retry-After');
+                const serverDelay = retryAfter
+                    ? /^\d+(?:\.\d+)?$/.test(retryAfter)
+                        ? Number(retryAfter) * 1000
+                        : Date.parse(retryAfter) - Date.now()
+                    : NaN;
+                const delay = Math.min(
+                    MAX_DELAY_MS,
+                    Math.max(
+                        1000 * 2 ** attempt + Math.floor(Math.random() * 250),
+                        Number.isFinite(serverDelay) ? serverDelay : 0
+                    )
+                );
+                await response?.body?.cancel().catch(() => {});
+                retryId ??= ++nextRetryId;
+                onRetry({ retryId, delay, attempt: attempt + 1, status: response?.status ?? null });
+                await waitForRetry(delay, requestSignal);
             }
-            if (checkpoint && attempt === MAX_RETRIES) {
-                // PouchDB treats any source-checkpoint 4xx as read-only access and
-                // silently disables that checkpoint. Exhausted throttling must
-                // remain a replication failure, not permission to skip it.
-                await response.body?.cancel().catch(() => {});
-                throw new Error('Checkpoint write is still rate-limited. Retry sync.');
-            }
-            if (!canRetry || attempt === MAX_RETRIES) return response;
-            const retryAfter = response?.headers.get('Retry-After');
-            const serverDelay = retryAfter
-                ? /^\d+(?:\.\d+)?$/.test(retryAfter)
-                    ? Number(retryAfter) * 1000
-                    : Date.parse(retryAfter) - Date.now()
-                : NaN;
-            const delay = Math.min(
-                MAX_DELAY_MS,
-                Math.max(
-                    1000 * 2 ** attempt + Math.floor(Math.random() * 250),
-                    Number.isFinite(serverDelay) ? serverDelay : 0
-                )
-            );
-            await response?.body?.cancel().catch(() => {});
-            onRetry({ delay, attempt: attempt + 1, status: response?.status ?? null });
-            await waitForRetry(delay, requestSignal);
+        } finally {
+            // A request may settle without any later replication phase/count event.
+            if (retryId !== null) onRetrySettled({ retryId });
         }
     };
 }

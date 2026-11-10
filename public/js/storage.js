@@ -953,7 +953,8 @@ export async function createStorageRecoverySession({ signal, onProgress = () => 
               skip_setup: true,
               fetch: createSyncFetch((...args) => window.PouchDB.fetch(...args), {
                   signal,
-                  onRetry: (retry) => onProgress({ phase: 'retrying', ...retry })
+                  onRetry: (retry) => onProgress({ phase: 'retrying', ...retry }),
+                  onRetrySettled: (retry) => onProgress({ phase: 'retry-settled', ...retry })
               })
           })
         : null;

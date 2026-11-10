@@ -41,6 +41,72 @@ describe('guided repair dialog', () => {
         });
     });
     afterEach(() => signal.abort());
+    test('settled retries clear independently of phase progress and preserve other pending retries', async () => {
+        jest.useFakeTimers();
+        let finish;
+        session.service.rebuild.mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    finish = resolve;
+                })
+        );
+        try {
+            await ui.open();
+            document.querySelector('[data-action="repair"]').click();
+            await jest.advanceTimersByTimeAsync(0);
+            session.onProgress({ phase: 'comparing-cloud' });
+            session.onProgress({ phase: 'retrying', retryId: 1, delay: 4000, status: 429 });
+            session.onProgress({ phase: 'retrying', retryId: 2, delay: 2000, status: 503 });
+            session.onProgress({ phase: 'retry-settled', retryId: 2 });
+            expect(document.querySelector('.recovery-retry').textContent).toContain(
+                'Cloud is busy'
+            );
+            await jest.advanceTimersByTimeAsync(3000);
+            session.onProgress({ phase: 'retry-settled', retryId: 1 });
+            expect(document.querySelector('.recovery-retry').textContent).toBe('');
+            expect(document.querySelector('.recovery-progress').textContent).toContain('Comparing');
+            expect(document.querySelector('dialog').textContent).toContain(
+                'Last progress: 3 seconds ago.'
+            );
+            await jest.advanceTimersByTimeAsync(117000);
+            expect(document.querySelector('.recovery-stall').textContent).toContain(
+                'Still waiting'
+            );
+            finish();
+            await jest.advanceTimersByTimeAsync(0);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    test('export success and failure retain the original repair diagnostic until retry', async () => {
+        session.service.rebuild.mockRejectedValueOnce(new Error('Repair fetch failed'));
+        await ui.open();
+        document.querySelector('[data-action="repair"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const repairError = document.querySelector('.recovery-error');
+        const diagnostic = repairError.textContent;
+        document.querySelector('[data-action="download"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(repairError.isConnected).toBe(true);
+        expect(repairError.textContent).toBe(diagnostic);
+        session.download.mockRejectedValueOnce(new Error('Export failed'));
+        document.querySelector('[data-action="download"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(repairError.textContent).toBe(diagnostic);
+        expect(document.querySelector('.recovery-action-error[role="alert"]').textContent).toBe(
+            'Export failed'
+        );
+        expect(document.querySelectorAll('[role="alert"]')).toHaveLength(2);
+        document.querySelector('[data-action="download"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(document.querySelector('.recovery-action-error')).toBeNull();
+        expect(repairError.textContent).toBe(diagnostic);
+        document.querySelector('[data-action="repair"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(repairError.isConnected).toBe(false);
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
     test('explains the actual local deletion blocker without offering to discard it', async () => {
         session.audit = {
             eligible: [],
@@ -99,6 +165,7 @@ describe('guided repair dialog', () => {
                 '20 records received'
             );
             session.onProgress({ phase: 'verifying-records', completed: 25, total: 25 });
+            session.onProgress({ phase: 'retry-settled' });
             expect(document.querySelector('.recovery-progress').textContent).toContain('25 of 25');
             expect(document.querySelector('.recovery-stall').textContent).toBe('');
             expect(document.querySelector('.recovery-retry').textContent).toBe('');
