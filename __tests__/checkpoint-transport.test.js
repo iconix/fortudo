@@ -15,6 +15,8 @@ const options = { method: 'PUT', body: JSON.stringify(checkpoint) };
 // Actual dat-411 checkpoint PUT starts on November 10: eleven acknowledgements,
 // then a CORS-hidden HTTP 429 at 951 ms. No bulk uploads/downloads in this window.
 const capturedOffsets = [0, 90, 170, 295, 379, 467, 544, 613, 736, 820, 880, 951];
+const bootstrap = { _id: checkpoint._id, last_seq: 0 };
+const bootstrapOptions = { method: 'PUT', body: JSON.stringify(bootstrap) };
 
 describe('checkpoint write safety and pacing', () => {
     beforeEach(() => jest.useFakeTimers());
@@ -68,6 +70,91 @@ describe('checkpoint write safety and pacing', () => {
         await rejected;
         expect(fetch).toHaveBeenCalledTimes(4);
     });
+
+    test('bootstrap and full checkpoints share the same pacing queue', async () => {
+        const starts = [];
+        const fetch = jest.fn(async () => {
+            starts.push(performance.now());
+            return Response.json({ ok: true }, { status: 201 });
+        });
+        const syncFetch = createSyncFetch(fetch);
+        await syncFetch(url, bootstrapOptions);
+        const next = syncFetch(url, options);
+        await jest.advanceTimersByTimeAsync(199);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        await jest.runAllTimersAsync();
+        expect((await next).status).toBe(201);
+        expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(200);
+    });
+
+    test('retries a bootstrap 429 with an unchanged body', async () => {
+        const fetch = jest
+            .fn()
+            .mockResolvedValueOnce(new Response('', { status: 429 }))
+            .mockResolvedValue(Response.json({ ok: true }, { status: 201 }));
+        const request = createSyncFetch(fetch)(url, bootstrapOptions);
+        await jest.runAllTimersAsync();
+        expect((await request).status).toBe(201);
+        expect(fetch.mock.calls).toEqual([
+            [url, bootstrapOptions],
+            [url, bootstrapOptions]
+        ]);
+    });
+
+    test('exhausted bootstrap throttling cannot look like a source permission error', async () => {
+        const fetch = jest.fn(async () => new Response('', { status: 429 }));
+        const request = createSyncFetch(fetch)(url, bootstrapOptions);
+        const rejected = expect(request).rejects.toThrow('Checkpoint write is still rate-limited');
+        await jest.runAllTimersAsync();
+        await rejected;
+        expect(fetch).toHaveBeenCalledTimes(4);
+    });
+
+    test.each(['applied', 'missing', 'advanced', 'other-session', 'read-failure'])(
+        'reconciles a bootstrap lost acknowledgement only when exactly applied (%s)',
+        async (variant) => {
+            const error = new TypeError('Failed to fetch');
+            const stored = { ...bootstrap, _rev: '0-1' };
+            if (variant === 'advanced') stored.last_seq = 1;
+            if (variant === 'other-session') stored.session_id = 'other';
+            const fetch = jest
+                .fn()
+                .mockRejectedValueOnce(error)
+                .mockImplementation(async () => {
+                    if (variant === 'read-failure') throw new TypeError('Read failed');
+                    return variant === 'missing'
+                        ? new Response('', { status: 404 })
+                        : Response.json(stored);
+                });
+            const request = createSyncFetch(fetch)(url, bootstrapOptions);
+            const result =
+                variant === 'applied'
+                    ? expect(request).resolves.toHaveProperty('status', 201)
+                    : expect(request).rejects.toBe(error);
+            await jest.runAllTimersAsync();
+            await result;
+            expect(fetch.mock.calls.filter(([, request]) => request.method === 'PUT')).toHaveLength(
+                1
+            );
+            expect(fetch.mock.calls[1][1].method).toBe('GET');
+        }
+    );
+
+    test.each([
+        { ...bootstrap, last_seq: 1 },
+        { ...bootstrap, version: 1 }
+    ])(
+        'does not extend bootstrap handling to incomplete local documents (%j)',
+        async (document) => {
+            const fetch = jest.fn(async () => new Response('', { status: 429 }));
+            const response = await createSyncFetch(fetch)(url, {
+                method: 'PUT',
+                body: JSON.stringify(document)
+            });
+            expect(response.status).toBe(429);
+            expect(fetch).toHaveBeenCalledTimes(1);
+        }
+    );
 
     test('confirms an applied checkpoint after a lost acknowledgement without replaying PUT', async () => {
         const fetch = jest

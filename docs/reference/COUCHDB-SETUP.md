@@ -346,6 +346,13 @@ Exhausted checkpoint throttling raises a replication error, avoiding PouchDB's b
 treating every source-checkpoint 4xx as read-only access and silently disabling that checkpoint.
 Both source and target checkpoints remain enabled. No application revisions are rewritten.
 
+Checkpoint handling includes PouchDB's bootstrap `{_id, last_seq: 0}` probe when the local
+target retains a checkpoint but the remote source checkpoint is missing. Only that exact
+two-field bootstrap shape or a versioned PouchDB checkpoint is recognized. Lost-response
+confirmation also requires the same field set except `_rev`, so another session's versioned
+checkpoint cannot be mistaken for the minimal probe. Bootstrap exhaustion cannot select
+PouchDB's read-only-source fallback; its later versioned checkpoint writes remain checked.
+
 The checkpoint browser regression starts with 125 identical revisions on both sides and no
 application uploads. It checks a ten-write/sec sliding limit, explicit throttling, lost
 acknowledgements, unapplied writes, finite exhaustion in both replication directions, and

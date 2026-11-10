@@ -11,7 +11,10 @@ from playwright.sync_api import sync_playwright
 from tests.e2e.helpers import BASE_URL, launch_e2e_page
 
 
-@pytest.mark.parametrize("failure", ["none", "429", "lost-ack", "unapplied", "exhausted", "exhausted-source"])
+@pytest.mark.parametrize("failure", [
+    "none", "429", "lost-ack", "unapplied", "exhausted", "exhausted-source",
+    "bootstrap-none", "bootstrap-429", "bootstrap-lost-ack", "bootstrap-unapplied", "bootstrap-exhausted",
+])
 def test_already_present_revisions_checkpoint_safely(app_server, failure):
     origin = "https://checkpoint-fixture.cloudantnosqldb.appdomain.cloud"
     documents = [
@@ -25,6 +28,8 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
     unexpected_writes = []
     injected = 0
     revision = 0
+    bootstrap_phase = not failure.startswith("bootstrap-")
+    bootstrap_attempts = 0
 
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(
@@ -32,7 +37,7 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
         )
 
         def cloud(route):
-            nonlocal injected, revision
+            nonlocal injected, revision, bootstrap_attempts
             request = route.request
             path = unquote(urlsplit(request.url).path).strip("/")
             operation = path.split("/", 1)[1] if "/" in path else ""
@@ -74,6 +79,9 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                 else:
                     reply({"error": "not_found"}, 404)
             elif operation.startswith("_local/") and request.method == "PUT":
+                active_failure = failure.removeprefix("bootstrap-") if bootstrap_phase else "none"
+                if body == {"_id": operation, "last_seq": 0}:
+                    bootstrap_attempts += 1
                 now = time.monotonic()
                 put_times.append(now)
                 while accepted_times and accepted_times[0] <= now - 1:
@@ -82,11 +90,11 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                     capacity_denials.append(now)
                     reply({"error": "too_many_requests"}, 429)
                     return
-                if failure.startswith("exhausted") or (failure == "429" and injected == 0):
+                if active_failure.startswith("exhausted") or (active_failure == "429" and injected == 0):
                     injected += 1
                     reply({"error": "too_many_requests"}, 429)
                     return
-                if failure == "unapplied" and injected == 0:
+                if active_failure == "unapplied" and injected == 0:
                     injected += 1
                     route.abort("failed")
                     return
@@ -97,7 +105,7 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                 revision += 1
                 checkpoints[operation] = {**body, "_rev": f"0-{revision}"}
                 accepted_times.append(now)
-                if failure == "lost-ack" and injected == 0:
+                if active_failure == "lost-ack" and injected == 0:
                     injected += 1
                     route.abort("failed")
                     return
@@ -107,6 +115,18 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                 reply({"error": "unexpected_request"}, 500)
 
         context.route(f"{origin}/**", cloud)
+
+        def begin_bootstrap():
+            nonlocal bootstrap_phase, revision
+            # Keep the local target checkpoint. Remove only the disposable HTTP
+            # fixture's source checkpoint, reproducing PouchDB getCheckpoint().
+            checkpoints.clear()
+            put_times.clear()
+            accepted_times.clear()
+            revision = 0
+            bootstrap_phase = True
+
+        page.expose_function("beginBootstrapScenario", begin_bootstrap)
         try:
             page.goto(BASE_URL)
             result = page.evaluate("""async ({origin, documents, failure}) => {
@@ -118,15 +138,21 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                 });
                 try {
                     await local.bulkDocs(documents, {new_edits: false});
+                    const pull = failure === 'exhausted-source' || failure.startsWith('bootstrap-');
+                    const replicate = () => pull
+                        ? remote.replicate.to(local, {...SYNC_REPLICATION_OPTIONS})
+                        : local.replicate.to(remote, {...SYNC_REPLICATION_OPTIONS});
+                    if (failure.startsWith('bootstrap-')) {
+                        await replicate();
+                        await window.beginBootstrapScenario();
+                    }
                     let first;
-                    try { first = failure === 'exhausted-source'
-                        ? await remote.replicate.to(local, {...SYNC_REPLICATION_OPTIONS})
-                        : await local.replicate.to(remote, {...SYNC_REPLICATION_OPTIONS}); }
+                    try { first = await replicate(); }
                     catch (error) { first = {ok: false, status: error.status}; }
                     // Never turn an unapplied/unknown checkpoint outcome into success.
-                    if (failure.startsWith('exhausted')) return {first};
-                    const retried = await local.replicate.to(remote, {...SYNC_REPLICATION_OPTIONS});
-                    const resumed = await local.replicate.to(remote, {...SYNC_REPLICATION_OPTIONS});
+                    if (failure.includes('exhausted')) return {first};
+                    const retried = await replicate();
+                    const resumed = await replicate();
                     const rows = (await local.allDocs({include_docs: true})).rows;
                     const localChanges = await local.changes({since: 0});
                     return {first, retried, resumed, unchanged: rows.every(row => {
@@ -139,9 +165,10 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
             }""", {"origin": origin, "documents": documents, "failure": failure})
             assert capacity_denials == []
             assert unexpected_writes == []
-            if failure.startswith("exhausted"):
+            if "exhausted" in failure:
                 assert result["first"]["ok"] is False
-                assert injected == 4
+                # Bootstrap failure must not disable subsequent source checkpoints.
+                assert injected == (8 if failure.startswith("bootstrap-") else 4)
             else:
                 assert result["first"]["ok"] is (failure != "unapplied")
                 assert result["retried"]["ok"] is True
@@ -151,7 +178,10 @@ def test_already_present_revisions_checkpoint_safely(app_server, failure):
                 assert result["localChangeCount"] == len(documents)
                 assert len(checkpoints) == 1
                 assert next(iter(checkpoints.values()))["last_seq"] == 125
-                assert revision == 13  # lost acknowledgement must not duplicate a write
+                expected_writes = 14 if failure.startswith("bootstrap-") and failure != "bootstrap-unapplied" else 13
+                assert revision == expected_writes  # no duplicate applied writes
+            if failure.startswith("bootstrap-"):
+                assert bootstrap_attempts == (4 if failure == "bootstrap-exhausted" else 2 if failure == "bootstrap-429" else 1)
             # Completion-time spacing is intentionally conservative; allow timer resolution.
             assert all(later - earlier >= 0.18 for earlier, later in zip(put_times, put_times[1:]))
         finally:

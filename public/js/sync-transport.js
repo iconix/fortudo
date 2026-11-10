@@ -59,16 +59,18 @@ function checkpointDocument(url, options) {
         const path = new URL(url).pathname;
         const match = path.match(/\/_local\/([^/]+)$/);
         const document = JSON.parse(options.body);
-        return match &&
-            document?._id === `_local/${decodeURIComponent(match[1])}` &&
+        if (!match || document?._id !== `_local/${decodeURIComponent(match[1])}`) return null;
+        // getCheckpoint() probes a missing source checkpoint with exactly these
+        // two fields before it can write the usual versioned/session history.
+        const bootstrap = document.last_seq === 0 && Object.keys(document).length === 2;
+        const versioned =
             document.version === 1 &&
             document.replicator === 'pouchdb' &&
             typeof document.session_id === 'string' &&
             document.session_id.length > 0 &&
             Object.prototype.hasOwnProperty.call(document, 'last_seq') &&
-            Array.isArray(document.history)
-            ? document
-            : null;
+            Array.isArray(document.history);
+        return bootstrap || versioned ? document : null;
     } catch {
         return null;
     }
@@ -170,6 +172,9 @@ export function createSyncFetch(fetchImplementation, { signal } = {}) {
                             const stored = await confirmed.json();
                             if (
                                 typeof stored?._rev === 'string' &&
+                                Object.keys(stored).filter((field) => field !== '_rev').length ===
+                                    Object.keys(checkpoint).filter((field) => field !== '_rev')
+                                        .length &&
                                 Object.keys(checkpoint)
                                     .filter((field) => field !== '_rev')
                                     .every(
