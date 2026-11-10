@@ -313,6 +313,37 @@ reusable Cloudant client does so. Do not change PouchDB batch settings ad hoc wi
 sync and recovery tests. See IBM's
 [429 guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-usage-and-charges#provisioned-throughput-capacity-and-429-http-responses).
 
+Browser sync and guided recovery use batches of 10 document changes with one queued batch.
+Because each change can contain multiple conflict leaves, the transport additionally splits
+`_bulk_get` bodies into at most 10 requested revisions per HTTP request. It reassembles every
+branch and per-revision error by document ID. A failed chunk fails the whole read instead of
+returning a partial success; retries apply to that chunk and cancellation stops remaining chunks.
+Each remote handle serializes those `_bulk_get` attempts and waits at least 1.1 seconds after the previous
+attempt finishes before starting another, including retries. This leaves headroom within the
+deployment's measured 20-read/sec allowance for contract reads and other traffic. Metadata requests
+and writes do not wait behind the bulk-read queue. This is not an account-wide rate limit: tabs,
+devices, and recovery handles have separate queues. Safe read requests retry up to three times after a
+429, 502, 503, 504, or browser network failure, with
+exponential backoff and jitter. Read-only POST endpoints are `_bulk_get`, `_revs_diff`, and
+`_all_docs`; writes are not blindly retried. `Retry-After` is honored up to a 30-second delay,
+and closing the room cancels pending sync reads and pacing/retry waits. Exhaustion retains the
+existing error badge and manual sync action rather than starting unlimited replication retries.
+
+The vendored PouchDB 9 bundle has a narrowly scoped capability-detection fix: only HTTP 404, 405,
+or 501 selects the legacy `_bulk_get` fallback. A transient error must not permanently turn bulk
+reads into individual document requests. `scripts/vendor-pouchdb.mjs` applies and verifies this
+patch reproducibly against the locked upstream bundle; an unrecognized bundle requires review.
+
+The local browser capacity fixture charges document reads against a sliding one-second allowance
+of 20, including contract reads, with a second scenario simulating four independent reads/sec.
+Twenty-document batches exhaust their retry budget under that competing load. Ten-document batches
+without pacing finish with avoidable 429s; ten-document batches with pacing finish without capacity
+rejections in both modeled scenarios. This proves behavior under the fixture's stated assumptions,
+not the cause of the historical production 429 or immunity to heavier shared traffic.
+The conflicted-source regression uses ten documents with three leaves each and the same shared
+capacity model. All thirty branches must arrive through bounded bulk reads without individual
+document fallback.
+
 ### Cloudant vs CouchDB differences
 
 Cloudant is CouchDB-compatible but has some limits:

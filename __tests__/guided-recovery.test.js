@@ -77,6 +77,187 @@ describe('guided recovery with real local databases', () => {
         );
     });
 
+    test('rebuilds supported legacy cloud leaves unchanged including conflicts and attachments', async () => {
+        await remote.bulkDocs(
+            [
+                {
+                    _id: 'legacy',
+                    _rev: '1-a',
+                    type: 'unscheduled',
+                    description: 'Branch A',
+                    _attachments: { note: { content_type: 'text/plain', data: 'aGVsbG8=' } }
+                },
+                { _id: 'legacy', _rev: '1-b', type: 'unscheduled', description: 'Branch B' },
+                { _id: 'old-deleted', _rev: '2-old', _deleted: true }
+            ],
+            { new_edits: false }
+        );
+        const saved = await service.preserve();
+        await service.rebuild(saved._id);
+        const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        for (const rev of ['1-a', '1-b']) {
+            expect(await rebuilt.get('legacy', { rev, attachments: true })).toEqual(
+                await remote.get('legacy', { rev, attachments: true })
+            );
+        }
+        expect(await rebuilt.get('old-deleted', { rev: '2-old' })).toMatchObject({
+            _deleted: true
+        });
+    });
+
+    test('preserves all twelve incident tombstones across eleven absent IDs without replay', async () => {
+        const original = await source.get('task-local');
+        const deletion = await source.remove(original);
+        const documents = Array.from({ length: 12 }, (_, index) => ({
+            _id: index === 0 ? 'task-local' : `deleted-${Math.min(index, 10)}`,
+            _rev: index === 0 ? deletion.rev : `2-branch${index}`,
+            _deleted: true,
+            ...(index >= 10 ? { writerContract: { version: 1 } } : {})
+        }));
+        await source.bulkDocs(documents, { new_edits: false });
+        const saved = await service.preserve();
+        await service.rebuild(saved._id);
+        const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        expect(await service.review(saved._id, rebuilt)).toEqual([]);
+        const readback = await service.load(saved._id);
+        const originalReplica = makeDatabase(source.name);
+        expect(readback.bundle.documents).toHaveLength(12);
+        for (const document of documents) {
+            expect(readback.bundle.documents).toContainEqual(expect.objectContaining(document));
+            expect(await originalReplica.get(document._id, { rev: document._rev })).toMatchObject(
+                document
+            );
+        }
+        expect(
+            (await rebuilt.allDocs({ keys: documents.map((doc) => doc._id) })).rows.every(
+                (row) => row.error === 'not_found'
+            )
+        ).toBe(true);
+    });
+
+    test('does not offer another deletion when the cloud already has a legacy tombstone', async () => {
+        await source.remove(await source.get('task-local'));
+        await remote.put({ _id: 'task-local', type: 'unscheduled', description: 'Other history' });
+        await remote.remove(await remote.get('task-local'));
+        const saved = await service.preserve();
+        await service.rebuild(saved._id);
+        const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        expect(await service.review(saved._id, rebuilt)).toEqual([]);
+        expect((await service.load(saved._id)).bundle.documents[0]._deleted).toBe(true);
+    });
+
+    test('blocks malformed domain fields despite valid writer metadata and preserves both copies', async () => {
+        const cloud = await remote.get('task-cloud');
+        await remote.put({ ...cloud, description: { private: 'do not print' } });
+        const saved = await service.preserve();
+        await expect(service.rebuild(saved._id)).rejects.toThrow(/task.*description/i);
+        expect(activate).not.toHaveBeenCalled();
+        expect((await source.get('task-local')).description).toBe('Unsynced work');
+        expect((await remote.get('task-cloud')).description).toEqual({ private: 'do not print' });
+        expect((await service.load(saved._id)).bundle.documents).toHaveLength(1);
+    });
+
+    test('keeps live and deleted branches for the same ID as separate explicit choices', async () => {
+        await source.bulkDocs([{ _id: 'task-local', _rev: '2-deletedbranch', _deleted: true }], {
+            new_edits: false
+        });
+        await remote.put(
+            applyWriterContract({
+                _id: 'task-local',
+                docType: 'task',
+                type: 'unscheduled',
+                description: 'Cloud version'
+            })
+        );
+        const saved = await service.preserve();
+        await service.rebuild(saved._id);
+        const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        const entries = await service.review(saved._id, rebuilt);
+        expect(entries.filter((entry) => entry.id === 'task-local')).toHaveLength(2);
+        expect(entries.some((entry) => entry.local._deleted)).toBe(true);
+        expect(entries.some((entry) => !entry.local._deleted)).toBe(true);
+        const deletion = entries.find((entry) => entry.local._deleted);
+        await service.restore(saved._id, deletion, rebuilt, deletion.proposed);
+        const live = entries.find((entry) => !entry.local._deleted);
+        await expect(service.restore(saved._id, live, rebuilt, live.proposed)).rejects.toThrow(
+            /changed/
+        );
+        expect((await service.load(saved._id)).bundle.documents).toHaveLength(2);
+    });
+
+    test('the restore guard is local and does not pretend to detect an unreplicated cloud edit', async () => {
+        const saved = await service.preserve();
+        await service.rebuild(saved._id);
+        const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        const [entry] = await service.review(saved._id, rebuilt);
+        await remote.put(
+            applyWriterContract({
+                _id: entry.id,
+                docType: 'task',
+                type: 'unscheduled',
+                description: 'Unreplicated cloud work'
+            })
+        );
+        await service.restore(saved._id, entry, rebuilt, entry.proposed);
+        expect((await rebuilt.get(entry.id)).description).toBe('Unsynced work');
+        expect((await remote.get(entry.id)).description).toBe('Unreplicated cloud work');
+    });
+
+    test.each(['conflict', 'tombstone', 'attachment'])(
+        'rejects a falsely complete pull missing a %s and succeeds on retry',
+        async (kind) => {
+            const document = {
+                _id: 'missing',
+                _rev: '1-missing',
+                ...(kind === 'tombstone'
+                    ? { _deleted: true }
+                    : { docType: 'task', type: 'unscheduled', description: 'Required leaf' })
+            };
+            if (kind === 'attachment')
+                document._attachments = { file: { content_type: 'text/plain', data: 'aGVsbG8=' } };
+            await remote.bulkDocs([document], { new_edits: false });
+            if (kind === 'conflict')
+                await remote.bulkDocs([{ ...document, _rev: '1-other' }], { new_edits: false });
+            let incomplete = true;
+            const guarded = createGuidedRecovery({
+                source,
+                remote,
+                archive,
+                logicalName,
+                digest,
+                onActivate: activate,
+                makeDatabase: (name) => {
+                    const staged = makeDatabase(name);
+                    const pull = staged.replicate.from.bind(staged.replicate);
+                    staged.replicate.from = async (...args) => {
+                        if (!incomplete) return pull(...args);
+                        // Simulate a broken transfer reporting success after only a subset.
+                        await pull(remote, {
+                            doc_ids: ['task-cloud', '_design/fortudo-document-contract']
+                        });
+                        if (kind === 'conflict')
+                            await staged.bulkDocs([{ ...document, _rev: '1-other' }], {
+                                new_edits: false
+                            });
+                        return { ok: true, status: 'complete', errors: [] };
+                    };
+                    return staged;
+                }
+            });
+            const saved = await guarded.preserve();
+            await expect(guarded.rebuild(saved._id)).rejects.toThrow(/download.*complete/i);
+            expect(activate).not.toHaveBeenCalled();
+            expect(getRecoveryRoute(logicalName)).toBeNull();
+            expect((await guarded.load(saved._id)).bundle.documents).toHaveLength(1);
+            incomplete = false;
+            await guarded.rebuild(saved._id);
+            const rebuilt = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+            expect(await rebuilt.get('missing', { rev: document._rev, attachments: true })).toEqual(
+                await remote.get('missing', { rev: document._rev, attachments: true })
+            );
+        }
+    );
+
     test.each([
         { priority: 42 },
         { priority: 'urgent' },
@@ -463,42 +644,56 @@ describe('guided recovery with real local databases', () => {
         expect(await service.review(saved._id, remote)).toEqual([]);
     });
 
-    test.each(['source-write', 'contract-change', 'denied', 'audit-offline'])(
-        'retains the original when %s happens during the cloud rebuild',
-        async (fault) => {
-            const guarded = createGuidedRecovery({
-                source,
-                remote,
-                archive,
-                logicalName,
-                digest,
-                onActivate: activate,
-                makeDatabase: (name) => {
-                    const staged = makeDatabase(name);
-                    const pull = staged.replicate.from.bind(staged.replicate);
-                    staged.replicate.from = async (cloud) => {
-                        const result = await pull(cloud);
-                        if (fault === 'source-write') await source.put({ _id: 'late-during-pull' });
-                        if (fault === 'contract-change') {
-                            const design = await remote.get('_design/fortudo-document-contract');
-                            await remote.put({
-                                ...design,
-                                fortudoDocumentContract: { version: 999 }
-                            });
-                        }
-                        if (fault === 'denied') result.errors = [{ message: 'private detail' }];
-                        if (fault === 'audit-offline')
-                            jest.spyOn(remote, 'revsDiff').mockRejectedValue(new Error('offline'));
-                        return result;
-                    };
-                    return staged;
-                }
+    test.each([
+        'source-write',
+        'contract-change',
+        'denied',
+        'write-failures',
+        'cancelled',
+        'audit-offline',
+        'invalid-list',
+        'missing-list'
+    ])('retains the original when %s happens during the cloud rebuild', async (fault) => {
+        const guarded = createGuidedRecovery({
+            source,
+            remote,
+            archive,
+            logicalName,
+            digest,
+            onActivate: activate,
+            makeDatabase: (name) => {
+                const staged = makeDatabase(name);
+                const pull = staged.replicate.from.bind(staged.replicate);
+                staged.replicate.from = async (cloud) => {
+                    const result = await pull(cloud);
+                    if (fault === 'source-write') await source.put({ _id: 'late-during-pull' });
+                    if (fault === 'contract-change') {
+                        const design = await remote.get('_design/fortudo-document-contract');
+                        await remote.put({
+                            ...design,
+                            fortudoDocumentContract: { version: 999 }
+                        });
+                    }
+                    if (fault === 'denied') result.errors = [{ message: 'private detail' }];
+                    if (fault === 'write-failures') result.doc_write_failures = 1;
+                    if (fault === 'cancelled') result.status = 'cancelled';
+                    if (fault === 'audit-offline')
+                        jest.spyOn(remote, 'revsDiff').mockRejectedValue(new Error('offline'));
+                    return result;
+                };
+                return staged;
+            }
+        });
+        const saved = await guarded.preserve();
+        if (fault === 'invalid-list')
+            jest.spyOn(remote, 'changes').mockResolvedValue({
+                results: [{ id: 'bad', changes: [] }],
+                last_seq: 0
             });
-            const saved = await guarded.preserve();
-            await expect(guarded.rebuild(saved._id)).rejects.toThrow();
-            expect(activate).not.toHaveBeenCalled();
-            expect((await source.get('task-local')).description).toBe('Unsynced work');
-            expect((await guarded.load(saved._id)).bundle.documents).toHaveLength(1);
-        }
-    );
+        if (fault === 'missing-list') jest.spyOn(remote, 'changes').mockResolvedValue({});
+        await expect(guarded.rebuild(saved._id)).rejects.toThrow();
+        expect(activate).not.toHaveBeenCalled();
+        expect((await source.get('task-local')).description).toBe('Unsynced work');
+        expect((await guarded.load(saved._id)).bundle.documents).toHaveLength(1);
+    });
 });

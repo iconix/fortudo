@@ -16,6 +16,7 @@ import {
     reportReplicaReplaced
 } from './sync-manager.js';
 import { getEditReadiness } from './edit-readiness.js';
+import { createSyncFetch } from './sync-transport.js';
 import {
     applyWriterContract,
     stripWriterContract,
@@ -782,7 +783,12 @@ export async function deleteConfig(id, options = {}) {
  * @returns {Promise<Object[]>} Array of task objects
  */
 export async function loadTasks() {
-    return loadDocsByPredicate(isTaskDoc, DOC_TYPES.TASK);
+    const tasks = await loadDocsByPredicate(isTaskDoc, DOC_TYPES.TASK);
+    // Historical unscheduled tasks may omit priority. Project the display/edit
+    // default without rewriting the persisted body or its revision identity.
+    return tasks.map((task) =>
+        task.type === 'unscheduled' ? { ...task, priority: task.priority ?? 'medium' } : task
+    );
 }
 
 /**
@@ -943,7 +949,10 @@ export async function createStorageRecoverySession({ signal } = {}) {
     const route = getRecoveryRoute(logicalName);
     const archive = new window.PouchDB(RECOVERY_ARCHIVE_DATABASE, databaseOptions);
     const remote = activeRemoteUrl
-        ? new window.PouchDB(activeRemoteUrl, { skip_setup: true })
+        ? new window.PouchDB(activeRemoteUrl, {
+              skip_setup: true,
+              fetch: createSyncFetch((...args) => window.PouchDB.fetch(...args), { signal })
+          })
         : null;
     const assertCurrent = () => {
         if (
