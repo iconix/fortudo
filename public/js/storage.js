@@ -940,7 +940,7 @@ export function getDb() {
 }
 
 /** Open independent archive and cloud handles scoped to the current room session. */
-export async function createStorageRecoverySession({ signal } = {}) {
+export async function createStorageRecoverySession({ signal, onProgress = () => {} } = {}) {
     ensureStorageInitialized();
     const source = db;
     const logicalName = logicalDatabaseName;
@@ -951,7 +951,11 @@ export async function createStorageRecoverySession({ signal } = {}) {
     const remote = activeRemoteUrl
         ? new window.PouchDB(activeRemoteUrl, {
               skip_setup: true,
-              fetch: createSyncFetch((...args) => window.PouchDB.fetch(...args), { signal })
+              fetch: createSyncFetch((...args) => window.PouchDB.fetch(...args), {
+                  signal,
+                  onRetry: (retry) => onProgress({ phase: 'retrying', ...retry }),
+                  onRetrySettled: (retry) => onProgress({ phase: 'retry-settled', ...retry })
+              })
           })
         : null;
     const assertCurrent = () => {
@@ -969,6 +973,7 @@ export async function createStorageRecoverySession({ signal } = {}) {
         remote,
         archive,
         logicalName,
+        onProgress,
         makeDatabase: (name) => new window.PouchDB(name, databaseOptions),
         assertCurrent,
         assertWritable: () => assertCanPersist(),

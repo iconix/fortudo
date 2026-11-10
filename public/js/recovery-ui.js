@@ -1,3 +1,15 @@
+const REPAIR_PHASES = {
+    saving: 'Saving your local changes',
+    'checking-saved': 'Verifying your saved copy',
+    'checking-cloud': 'Checking cloud safety settings',
+    'listing-cloud': 'Reading the cloud revision list',
+    downloading: 'Downloading cloud records',
+    'verifying-download': 'Checking download completeness',
+    'verifying-records': 'Checking that cloud records can be read',
+    'comparing-cloud': 'Comparing the refreshed copy with the cloud',
+    opening: 'Opening the verified room'
+};
+
 /** Accessible, resumable recovery review. Record content is always rendered as text. */
 export function initializeRecoveryUI({
     signal,
@@ -17,9 +29,57 @@ export function initializeRecoveryUI({
     const reviewDrafts = new Map();
     const reviewFields = new Map();
     const settingsButton = document.getElementById('recovery-copies-btn');
+    let repairProgress = null;
+    let progressTimer = null;
+
+    function updateProgress(event) {
+        if (!repairProgress || signal.aborted) return;
+        if (event.phase === 'retrying') {
+            repairProgress.retries.set(event.retryId, {
+                retryAt: Date.now() + event.delay,
+                retryStatus: event.status
+            });
+        } else if (event.phase === 'retry-settled') {
+            repairProgress.retries.delete(event.retryId);
+        } else if (REPAIR_PHASES[event.phase]) {
+            repairProgress.phase = event.phase;
+            repairProgress.lastProgress = Date.now();
+            const count = Number.isFinite(event.completed)
+                ? event.phase === 'downloading'
+                    ? ` · ${event.completed} records received`
+                    : ` · ${event.completed} of ${event.total} checked`
+                : '';
+            repairProgress.status.textContent = `${REPAIR_PHASES[event.phase]}${count}…`;
+        }
+        renderProgressWait();
+    }
+
+    function renderProgressWait() {
+        if (!repairProgress) return;
+        const seconds = Math.floor((Date.now() - repairProgress.lastProgress) / 1000);
+        repairProgress.elapsed.textContent = `Last progress: ${seconds} seconds ago.`;
+        const stalled =
+            seconds >= 120 ? 'Still waiting for a response. Your original copy is kept.' : '';
+        if (repairProgress.stall.textContent !== stalled)
+            repairProgress.stall.textContent = stalled;
+        const pending = [...repairProgress.retries.values()].at(-1);
+        const retrySeconds = Math.ceil((pending?.retryAt - Date.now()) / 1000);
+        repairProgress.retry.textContent = pending
+            ? retrySeconds > 0
+                ? `${pending.retryStatus === 429 ? 'Cloud is busy.' : 'Cloud request failed.'} Retrying in ${retrySeconds} seconds…`
+                : 'Retrying cloud request…'
+            : '';
+    }
+
+    function stopProgress() {
+        clearInterval(progressTimer);
+        progressTimer = null;
+        repairProgress = null;
+    }
 
     function close() {
         if (busy && !signal.aborted) return;
+        stopProgress();
         dialog?.remove();
         dialog = null;
         void Promise.resolve(session?.close()).catch(() => {});
@@ -72,17 +132,23 @@ export function initializeRecoveryUI({
         activeDialog.querySelectorAll('button').forEach((node) => {
             node.disabled = true;
         });
-        activeDialog.querySelector('[role="alert"]')?.remove();
+        const previousFailure = activeDialog.querySelector('.recovery-error');
+        activeDialog.querySelector('.recovery-action-error')?.remove();
         try {
             await run();
         } catch (error) {
             if (!signal.aborted && dialog === activeDialog) {
+                const failure = activeDialog.querySelector('.recovery-error');
+                const repairFailure = failure && failure !== previousFailure;
                 const alert = element(
                     'p',
-                    error.message || 'Recovery could not finish. Your saved copy is kept.'
+                    error.message || 'Recovery could not finish. Your saved copy is kept.',
+                    repairFailure ? failure : dialog
                 );
-                alert.setAttribute('role', 'alert');
-                alert.className = 'text-rose-400';
+                if (!repairFailure) alert.setAttribute('role', 'alert');
+                alert.className = repairFailure
+                    ? 'recovery-error-detail'
+                    : 'recovery-action-error text-rose-400';
             }
         } finally {
             busy = false;
@@ -421,11 +487,23 @@ export function initializeRecoveryUI({
     }
     async function repair(existing = null) {
         if (!shell('Repairing this room')) return;
+        // Keep live progress announcements available while action buttons stay disabled.
+        dialog.removeAttribute('aria-busy');
         element('p', 'Your original copy stays safe while we refresh this room.');
         const status = element('p', existing ? 'Refreshing this room…' : 'Saving your changes…');
         status.className = 'recovery-progress';
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
+        const elapsed = element('p');
+        const retry = element('p');
+        retry.className = 'recovery-retry';
+        retry.setAttribute('role', 'status');
+        const stall = element('p');
+        stall.className = 'recovery-stall';
+        stall.setAttribute('role', 'status');
+        repairProgress = { status, elapsed, retry, stall, phase: 'saving', retries: new Map() };
+        updateProgress({ phase: existing ? 'checking-saved' : 'saving' });
+        progressTimer = setInterval(renderProgressWait, 1000);
         try {
             const saved = existing || (await session.service.preserve(session.audit));
             if (signal.aborted) return;
@@ -437,14 +515,22 @@ export function initializeRecoveryUI({
                 reload();
             }
         } catch (error) {
+            const phase = REPAIR_PHASES[repairProgress?.phase];
             if (shell('Repair couldn’t finish')) {
+                dialog.dataset.recoveryStage = 'error';
                 element('p', 'Your original local copy is unchanged.');
+                const failure = element('div');
+                failure.className = 'recovery-error';
+                failure.setAttribute('role', 'alert');
+                if (phase) element('p', `Stopped while ${phase.toLowerCase()}.`, failure);
                 button('Try repair again', 'repair', () => repair());
                 if (archiveId) {
                     button('Download saved copy', 'download', () => session.download(archiveId));
                 }
             }
             throw error;
+        } finally {
+            stopProgress();
         }
     }
     async function open({ fromSettings = false } = {}) {
@@ -457,7 +543,7 @@ export function initializeRecoveryUI({
         openedFromSettings = fromSettings;
         previousFocus = document.activeElement;
         try {
-            session = await openSession();
+            session = await openSession({ onProgress: updateProgress });
             if (signal.aborted) {
                 void session.close();
                 return;
@@ -485,6 +571,15 @@ export function initializeRecoveryUI({
                     'p',
                     'We’ll preserve your local changes, refresh from the cloud, then help you review anything missing. Your original copy is kept.'
                 );
+                const blocked = session.audit?.recoveryRequired || [];
+                const deletions = blocked.filter((leaf) => leaf.deleted).length;
+                if (blocked.length) {
+                    const kind = deletions === blocked.length ? 'deletion' : 'change';
+                    element(
+                        'p',
+                        `${blocked.length} local ${kind}${blocked.length === 1 ? '' : 's'} cannot be synced safely. Repair will preserve ${blocked.length === 1 ? 'it' : 'them'} for review.`
+                    );
+                }
                 button('Repair this room', 'repair', () => repair());
                 savedCopies();
             }

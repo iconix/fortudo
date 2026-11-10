@@ -6,6 +6,92 @@ describe('bounded sync reads', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
 
+    test.each([429, 'network'])(
+        'reports a bounded retry wait for %s without exposing request data',
+        async (failure) => {
+            const onRetry = jest.fn();
+            const fetch = jest
+                .fn()
+                .mockImplementationOnce(() => {
+                    if (failure === 'network') throw new TypeError('Failed to fetch');
+                    return Promise.resolve(Response.json({}, { status: failure }));
+                })
+                .mockResolvedValue(Response.json({ ok: true }));
+            const result = createSyncFetch(fetch, { onRetry })(
+                'https://example.invalid/db/_changes'
+            );
+            await jest.runAllTimersAsync();
+            expect((await result).ok).toBe(true);
+            expect(onRetry).toHaveBeenCalledTimes(1);
+            expect(onRetry).toHaveBeenCalledWith({
+                retryId: expect.any(Number),
+                delay: expect.any(Number),
+                attempt: 1,
+                status: failure === 'network' ? null : 429
+            });
+        }
+    );
+
+    test.each(['success', 'terminal', 'exhausted', 'abort'])(
+        'settles retry feedback once after %s',
+        async (outcome) => {
+            const controller = new AbortController();
+            const onRetry = jest.fn();
+            const onRetrySettled = jest.fn();
+            const fetch = jest.fn().mockResolvedValueOnce(Response.json({}, { status: 429 }));
+            if (outcome === 'exhausted') fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+            else
+                fetch.mockResolvedValue(
+                    Response.json({}, { status: outcome === 'terminal' ? 403 : 200 })
+                );
+            const request = createSyncFetch(fetch, {
+                signal: controller.signal,
+                onRetry,
+                onRetrySettled
+            })('https://example.invalid/db/_revs_diff', { method: 'POST', body: '{}' });
+            const settled = request.then(
+                (value) => ({ value }),
+                (error) => ({ error })
+            );
+            await jest.advanceTimersByTimeAsync(0);
+            expect(onRetry).toHaveBeenCalledTimes(1);
+            expect(onRetrySettled).not.toHaveBeenCalled();
+            if (outcome === 'abort') controller.abort();
+            await jest.runAllTimersAsync();
+            const result = await settled;
+            if (['exhausted', 'abort'].includes(outcome)) expect(result.error).toBeDefined();
+            else expect(result.value.status).toBe(outcome === 'terminal' ? 403 : 200);
+            expect(onRetrySettled).toHaveBeenCalledTimes(1);
+            expect(onRetrySettled).toHaveBeenCalledWith({
+                retryId: onRetry.mock.calls[0][0].retryId
+            });
+            expect(new Set(onRetry.mock.calls.map(([event]) => event.retryId)).size).toBe(1);
+        }
+    );
+
+    test('gives concurrent retried requests distinct lifecycle IDs', async () => {
+        const onRetry = jest.fn();
+        const onRetrySettled = jest.fn();
+        const calls = new Map();
+        const fetch = jest.fn(async (url) => {
+            const count = (calls.get(url) || 0) + 1;
+            calls.set(url, count);
+            return Response.json({}, { status: count === 1 ? 429 : 200 });
+        });
+        const syncFetch = createSyncFetch(fetch, { onRetry, onRetrySettled });
+        const requests = Promise.all([
+            syncFetch('https://example.invalid/db/a'),
+            syncFetch('https://example.invalid/db/b')
+        ]);
+        await jest.runAllTimersAsync();
+        await requests;
+        expect(onRetrySettled).toHaveBeenCalledTimes(2);
+        expect(new Set(onRetry.mock.calls.map(([event]) => event.retryId)).size).toBe(2);
+        expect(onRetrySettled.mock.calls.map(([event]) => event.retryId).sort()).toEqual(
+            onRetry.mock.calls.map(([event]) => event.retryId).sort()
+        );
+    });
+
     test('splits conflict leaves by revision count and reassembles every branch by ID', async () => {
         const docs = Array.from({ length: 30 }, (_, index) => ({
             id: `task-${Math.floor(index / 3)}`,

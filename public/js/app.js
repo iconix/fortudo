@@ -203,7 +203,7 @@ async function bootRoom(roomCode) {
     });
     const recoveryUI = initializeRecoveryUI({
         signal,
-        openSession: () => createStorageRecoverySession({ signal }),
+        openSession: (options) => createStorageRecoverySession({ ...options, signal }),
         notify: showToast,
         onChange: () => roomSessionLifecycle.refreshFromStorage({ requireFreshRead: true })
     });

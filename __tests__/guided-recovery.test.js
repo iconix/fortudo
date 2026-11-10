@@ -13,6 +13,7 @@ import {
     applyWriterContract
 } from '../public/js/document-contract.js';
 import { createGuidedRecovery, getRecoveryRoute } from '../public/js/guided-recovery.js';
+import { auditLocalDivergence } from '../public/js/sync-contract.js';
 
 const digest = async (value) => require('crypto').createHash('sha256').update(value).digest('hex');
 let serial = 0;
@@ -26,7 +27,8 @@ describe('guided recovery with real local databases', () => {
         activate,
         routeStorage,
         logicalName,
-        makeDatabase;
+        makeDatabase,
+        progress;
     beforeEach(async () => {
         databases = [];
         makeDatabase = (name) => {
@@ -42,6 +44,7 @@ describe('guided recovery with real local databases', () => {
         routeStorage = localStorage;
         routeStorage.clear();
         activate = jest.fn();
+        progress = jest.fn();
         service = createGuidedRecovery({
             source,
             remote,
@@ -50,6 +53,7 @@ describe('guided recovery with real local databases', () => {
             makeDatabase,
             routeStorage,
             digest,
+            onProgress: progress,
             assertCurrent: jest.fn(),
             onActivate: activate
         });
@@ -68,6 +72,68 @@ describe('guided recovery with real local databases', () => {
                 description: 'Cloud work'
             })
         );
+    });
+
+    test('reports preservation, download and verification progress before activation', async () => {
+        const saved = await service.preserve(null);
+        await service.rebuild(saved._id);
+        const events = progress.mock.calls.map(([event]) => event);
+        expect(events.map((event) => event.phase)).toEqual(
+            expect.arrayContaining([
+                'saving',
+                'checking-saved',
+                'checking-cloud',
+                'listing-cloud',
+                'downloading',
+                'verifying-download',
+                'verifying-records',
+                'comparing-cloud',
+                'opening'
+            ])
+        );
+        expect(events.some((event) => event.phase === 'downloading' && event.completed > 0)).toBe(
+            true
+        );
+        const checked = events.filter((event) => event.phase === 'verifying-records').at(-1);
+        expect(checked.completed).toBe(checked.total);
+        expect(events.at(-1).phase).toBe('opening');
+        expect(activate).toHaveBeenCalledTimes(1);
+        expect(events.every((event) => !('document' in event))).toBe(true);
+    });
+
+    test('a repaired replica with a new untagged deletion can be preserved and rebuilt again', async () => {
+        const first = await service.preserve(null);
+        await service.rebuild(first._id);
+        const repaired = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        const marker = { _id: 'obsolete-deletion', _rev: '13-untagged', _deleted: true };
+        await repaired.bulkDocs([marker], { new_edits: false });
+        const audit = await auditLocalDivergence(repaired, remote);
+        expect(audit.recoveryRequired).toEqual([
+            expect.objectContaining({ deleted: true, code: 'FDC_TOMBSTONE_CONTRACT' })
+        ]);
+        const again = createGuidedRecovery({
+            source: repaired,
+            remote,
+            archive,
+            logicalName,
+            makeDatabase,
+            routeStorage,
+            digest,
+            onProgress: progress,
+            onActivate: activate
+        });
+        progress.mockClear();
+        const saved = await again.preserve(audit);
+        expect(saved.bundle.documents).toContainEqual(expect.objectContaining(marker));
+        await again.rebuild(saved._id);
+        expect((await repaired.get(marker._id, { rev: marker._rev }))._deleted).toBe(true);
+        expect((await again.load(saved._id)).bundle.documents).toContainEqual(
+            expect.objectContaining(marker)
+        );
+        const active = makeDatabase(getRecoveryRoute(logicalName).databaseName);
+        expect((await active.allDocs({ keys: [marker._id] })).rows[0].error).toBe('not_found');
+        expect(await again.review(saved._id, active)).toEqual([]);
+        expect(progress).toHaveBeenCalledWith({ phase: 'comparing-cloud' });
     });
     afterEach(async () => {
         await Promise.all(
