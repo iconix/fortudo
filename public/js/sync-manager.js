@@ -240,6 +240,10 @@ function collectFailedRevisions(result, denied, missing = []) {
     );
 }
 
+function excludeObsoleteDeletions(document, request) {
+    return !request.query.excludedDeletionIds.includes(document._id);
+}
+
 async function loadRejectedLocalRevisions() {
     rejectedLocalRevisions.clear();
     if (!localDb?.get) return;
@@ -323,6 +327,12 @@ export async function resumeStoragePreparation() {
 export function registerExpectedLocalRevision(id, revision) {
     if (typeof id !== 'string' || typeof revision !== 'string') return;
     expectedLocalRevisions.add(`${id}@${revision}`);
+    // A known write can recreate an ID excluded by the previous audit. Refresh
+    // its classification before pushing instead of carrying that exclusion on.
+    if (lastAudit?.obsoleteDeletions?.some((leaf) => leaf.id === id)) {
+        invalidateSyncAudit();
+        return;
+    }
     if (auditedGeneration === auditGeneration) {
         auditGeneration += 1;
         auditedGeneration = auditGeneration;
@@ -413,11 +423,23 @@ export async function triggerSync({
                 revision: leaf.revision
             }));
             const denied = new Set();
+            const excludedDeletionIds = [
+                ...new Set((lastAudit?.obsoleteDeletions || []).map((leaf) => leaf.id))
+            ].sort();
+            // Include the exclusion in checkpoint identity. Never close over a
+            // changing set behind an unchanged replication filter/checkpoint.
+            const deletionFilter = excludedDeletionIds.length
+                ? {
+                      filter: excludeObsoleteDeletions,
+                      query_params: { excludedDeletionIds }
+                  }
+                : {};
             let missingAfterPush = auditedEligible;
             let pushHadFailures = false;
             for (let attempt = 0; attempt < 2; attempt += 1) {
                 const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
                     ...SYNC_REPLICATION_OPTIONS,
+                    ...deletionFilter,
                     ...(attempt === 1
                         ? {
                               checkpoint: false,

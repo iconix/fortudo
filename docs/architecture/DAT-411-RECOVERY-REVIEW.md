@@ -116,3 +116,13 @@ Synthetic fixtures alone would not establish compatibility of the actual inciden
 Related: [sync states](../reference/SYNC-STATES.md),
 [offline client safety](OFFLINE-CLIENT-MIGRATION-SAFETY.md),
 [archive implementation](../../public/js/local-recovery.js).
+
+## Follow-up: expired cloud deletion markers
+
+The subsequent [retention review](TOMBSTONE-RETENTION-REVIEW.md) reproduces a false
+blocker when the cloud removes an old deletion marker. Its small patch preserves
+local history and skips deletion uploads only when every branch in the inspected
+local replica is deleted and the cloud explicitly confirms the whole ID absent.
+This is not global deletion authority: stale devices can retain live records.
+Preventing their later resurrection would require a separate reconciliation
+policy or durable deletion records; blocking this room does not solve that issue.

@@ -101,15 +101,16 @@ describe('guided recovery with real local databases', () => {
         expect(events.every((event) => !('document' in event))).toBe(true);
     });
 
-    test('a repaired replica with a new untagged deletion can be preserved and rebuilt again', async () => {
+    test('an unnecessary untagged deletion remains exportable during an optional rebuild', async () => {
         const first = await service.preserve(null);
         await service.rebuild(first._id);
         const repaired = makeDatabase(getRecoveryRoute(logicalName).databaseName);
         const marker = { _id: 'obsolete-deletion', _rev: '13-untagged', _deleted: true };
         await repaired.bulkDocs([marker], { new_edits: false });
         const audit = await auditLocalDivergence(repaired, remote);
-        expect(audit.recoveryRequired).toEqual([
-            expect.objectContaining({ deleted: true, code: 'FDC_TOMBSTONE_CONTRACT' })
+        expect(audit.state).toBe('compatible');
+        expect(audit.obsoleteDeletions).toEqual([
+            expect.objectContaining({ id: marker._id, deleted: true })
         ]);
         const again = createGuidedRecovery({
             source: repaired,
