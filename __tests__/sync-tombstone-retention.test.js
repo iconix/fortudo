@@ -21,7 +21,8 @@ import {
     waitForSyncPreflight,
     getSyncStatus,
     isPersistenceAllowed,
-    registerExpectedLocalRevision
+    registerExpectedLocalRevision,
+    debouncedSync
 } from '../public/js/sync-manager.js';
 
 const engines = new Map();
@@ -218,6 +219,62 @@ async function productionPush(local, remote) {
 }
 
 describe('deletion-absence safeguards with real replication', () => {
+    test.each([false, true])(
+        'retries an in-flight recreation after its debounce coalesces (retry fails=%s)',
+        async (retryFails) => {
+            const { local, remote, deleted } = await regularlySyncedFixture();
+            initSync(local, 'memory-fixture', { remoteDb: remote });
+            await waitForSyncPreflight();
+            let started;
+            let release;
+            const hasStarted = new Promise((resolve) => {
+                started = resolve;
+            });
+            const to = local.replicate.to.bind(local.replicate);
+            const pushes = jest.spyOn(local.replicate, 'to').mockImplementationOnce((...args) => {
+                started();
+                return new Promise((resolve) => {
+                    release = () => resolve(to(...args));
+                });
+            });
+            if (retryFails) pushes.mockRejectedValueOnce(new Error('Follow-up interrupted'));
+            const syncing = triggerSync();
+            await hasStarted;
+            const recreated = await local.put(
+                applyWriterContract({
+                    _id: 'expired',
+                    _rev: deleted.rev,
+                    docType: 'task',
+                    type: 'unscheduled',
+                    description: 'Recreated during a slow push'
+                })
+            );
+            registerExpectedLocalRevision(recreated.id, recreated.rev);
+            debouncedSync();
+            // Let the real two-second debounce fire while the first push is held.
+            await new Promise((resolve) => setTimeout(resolve, 2200));
+            expect(pushes).toHaveBeenCalledTimes(1);
+            release();
+            await syncing;
+            expect(pushes).toHaveBeenCalledTimes(2);
+            expect(pushes.mock.calls[0][1].query_params).toEqual({
+                excludedDeletionIds: ['expired']
+            });
+            expect(pushes.mock.calls[1][1].query_params).toBeUndefined();
+            if (retryFails) {
+                expect(getSyncStatus()).toBe('error');
+                expect((await remote.allDocs({ keys: ['expired'] })).rows[0].error).toBe(
+                    'not_found'
+                );
+            } else {
+                expect(getSyncStatus()).toBe('synced');
+                expect((await remote.get('expired'))._rev).toBe(recreated.rev);
+            }
+            expect((await local.get('expired'))._rev).toBe(recreated.rev);
+            expect((await local.get('expired', { rev: deleted.rev }))._deleted).toBe(true);
+        }
+    );
+
     test('a known local recreation invalidates its cached deletion exclusion before pushing', async () => {
         const { local, remote, deleted } = await regularlySyncedFixture();
         initSync(local, 'memory-fixture', { remoteDb: remote });

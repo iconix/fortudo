@@ -111,9 +111,15 @@ records; explicit denials; network and ambiguous-response failures; bounded
 absence batches; snapshot drift; cloud recreation after preflight; and local
 recreation after an excluded push. Original leaves remain unchanged.
 
+The independent review also reproduced an in-flight recreation whose debounce
+coalesced with a slow push. The post-pull audit requested a retry, but an early
+return skipped it. That path now reaches the retry after releasing the in-flight
+slot. Regressions cover successful transfer and an interrupted follow-up, keeping
+both the recreated live revision and its historical deletion intact.
+
 The initial red run failed 13 of 21 cases against the unpatched production path.
-After implementation and the added integration cases, 118 focused tests across
-four suites passed. The full repository gate passed with 2,049 JavaScript tests,
+After implementation and the added integration cases, 120 focused tests across
+four suites passed. The full repository gate passed with 2,051 JavaScript tests,
 216 Python tests, and 63 browser tests; coverage remained above every threshold.
 
 The memory fixture models cloud API outcomes, not Cloudant's internal cleanup

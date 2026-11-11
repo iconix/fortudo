@@ -508,10 +508,12 @@ export async function triggerSync({
                 if ((lastAudit?.eligible || []).length > 0) {
                     setStatus('unsynced');
                     retryAfterInFlightFailureRequested = true;
-                    return;
+                    // Reach the retry block after finally releases the in-flight
+                    // slot. Returning here would strand a coalesced local write.
+                } else {
+                    syncSucceeded = true;
+                    setStatus('synced');
                 }
-                syncSucceeded = true;
-                setStatus('synced');
             }
         } catch (error) {
             if (currentSessionId === syncSessionId) {
