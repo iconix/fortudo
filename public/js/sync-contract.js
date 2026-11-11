@@ -175,12 +175,53 @@ export async function findRemoteMissingLeaves(remoteDb, leaves, { batchSize = 10
     return leaves.filter((leaf) => missing.has(`${leaf.id}@${leaf.revision}`));
 }
 
+async function findObsoleteDeletionIds(remoteDb, leaves, missing, rejectedLeaves, batchSize) {
+    const byId = new Map();
+    for (const leaf of leaves) {
+        if (!byId.has(leaf.id)) byId.set(leaf.id, []);
+        byId.get(leaf.id).push(leaf);
+    }
+    const candidates = [...byId].filter(
+        ([, branches]) =>
+            branches.every(
+                (leaf) =>
+                    leaf.document._deleted === true &&
+                    !rejectedLeaves.has(`${leaf.id}@${leaf.revision}`)
+            ) && branches.some((leaf) => missing.has(`${leaf.id}@${leaf.revision}`))
+    );
+    const absent = new Set();
+    for (let index = 0; index < candidates.length; index += batchSize) {
+        const ids = candidates.slice(index, index + batchSize).map(([id]) => id);
+        const response = await remoteDb.allDocs({ keys: ids });
+        if (!Array.isArray(response?.rows) || response.rows.length !== ids.length) {
+            throw new Error('cloud-absence-unverified');
+        }
+        for (let rowIndex = 0; rowIndex < ids.length; rowIndex += 1) {
+            const row = response.rows[rowIndex];
+            const id = ids[rowIndex];
+            if (
+                row?.key !== id ||
+                (row.error && row.error !== 'not_found') ||
+                (row.error === 'not_found' && row.value) ||
+                (!row.error && (row.id !== id || typeof row.value?.rev !== 'string'))
+            ) {
+                throw new Error('cloud-absence-unverified');
+            }
+            // A normal GET 404 can also mean a retained cloud tombstone. Only
+            // this explicit whole-ID absence makes a remote deletion unnecessary.
+            if (row.error === 'not_found') absent.add(id);
+        }
+    }
+    return absent;
+}
+
 function emptyAudit(state, designLeaves = []) {
     return {
         state,
         remotePresent: [],
         eligible: [],
         recoveryRequired: [],
+        obsoleteDeletions: [],
         designLeaves: designLeaves.map((leaf) => publicLeaf(leaf))
     };
 }
@@ -204,8 +245,16 @@ export async function auditLocalDivergence(
         }
 
         let missing;
+        let obsoleteIds;
         try {
             missing = await revsDiffInBatches(remoteDb, enumeration.leaves, batchSize);
+            obsoleteIds = await findObsoleteDeletionIds(
+                remoteDb,
+                enumeration.leaves,
+                missing,
+                rejectedLeaves,
+                batchSize
+            );
         } catch (error) {
             return emptyAudit('offline', enumeration.designLeaves);
         }
@@ -226,6 +275,10 @@ export async function auditLocalDivergence(
         const result = emptyAudit('compatible', enumeration.designLeaves);
         for (const leaf of enumeration.leaves) {
             const identity = `${leaf.id}@${leaf.revision}`;
+            if (obsoleteIds.has(leaf.id)) {
+                result.obsoleteDeletions.push(publicLeaf(leaf));
+                continue;
+            }
             if (!missing.has(identity)) {
                 result.remotePresent.push(publicLeaf(leaf));
                 continue;

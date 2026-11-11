@@ -83,8 +83,14 @@ def retain_local_cloud_handles(page):
     })();""")
 
 
-@pytest.mark.parametrize("malformed", [False, True], ids=["legacy-cloud", "unreadable-cloud"])
-def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server, malformed):
+@pytest.mark.parametrize(
+    ("malformed", "pending_live"),
+    [(False, False), (False, True), (True, True)],
+    ids=["obsolete-deletions-only", "legacy-cloud", "unreadable-cloud"],
+)
+def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(
+    app_server, malformed, pending_live
+):
     with sync_playwright() as playwright:
         browser, context, page = launch_e2e_page(
             playwright, viewport={"width": 390, "height": 844},
@@ -97,7 +103,7 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                 body="export const COUCHDB_URL = 'incident-cloud';",
             ))
             page.goto(BASE_URL)
-            page.evaluate("""async malformed => {
+            page.evaluate("""async ([malformed, pendingLive]) => {
                 const {buildDocumentContractDesignDoc, applyWriterContract} =
                     await import('/js/document-contract.js');
                 const source = new PouchDB('fortudo-incident-room');
@@ -106,6 +112,11 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                     ...(i>=10 ? {writerContract:{version:1}} : {})
                 }));
                 await source.bulkDocs(markers, {new_edits:false});
+                // Only genuine local live work needs repair now. Obsolete
+                // cloud-absent deletions must remain usable without a rebuild.
+                if (pendingLive) await source.put({_id:'task-local',docType:'task',
+                    type:'unscheduled',description:'Preserve my unsynced work',
+                    status:'incomplete',priority:'medium',estDuration:15});
                 const cloud = new PouchDB('incident-cloud/fortudo-incident-room');
                 await cloud.put(buildDocumentContractDesignDoc());
                 const task = {_id:'task-cloud',docType:'task',type:'unscheduled',
@@ -119,12 +130,31 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                 ], {new_edits:false});
                 await source.close(); await cloud.close();
                 localStorage.setItem('fortudo-active-room','incident-room');
-            }""", malformed)
+            }""", [malformed, pending_live])
             page.reload()
+            if not pending_live:
+                expect(page.locator("#sync-status-text")).to_have_text("Synced", timeout=20000)
+                expect(page.locator("#add-task-btn")).to_be_enabled()
+                result = page.evaluate("""async () => {
+                    const {getDb} = await import('/js/storage.js');
+                    const {getLastDivergenceAudit} = await import('/js/sync-manager.js');
+                    const cloud = new PouchDB('incident-cloud/fortudo-incident-room');
+                    const ids = Array.from({length:11},(_,i)=>`deleted-${i}`);
+                    const local = await getDb().changes({since:0,style:'all_docs',doc_ids:ids});
+                    const remote = await cloud.allDocs({keys:ids});
+                    return {retained:local.results.reduce((n,r)=>n+r.changes.length,0),
+                        omitted:remote.rows.every(row=>row.error==='not_found'),
+                        classified:getLastDivergenceAudit().obsoleteDeletions.length};
+                }""")
+                assert result == {"retained": 12, "omitted": True, "classified": 12}
+                assert page.evaluate(
+                    "localStorage.getItem('fortudo-recovery-route:fortudo-incident-room')"
+                ) is None
+                return
             expect(page.locator("#sync-status-text")).to_have_text("Recovery required")
             page.get_by_role("button", name="Recover changes", exact=True).click()
             expect(page.get_by_role("dialog")).to_contain_text(
-                "10 local deletions cannot be synced safely"
+                "1 local change cannot be synced safely"
             )
             page.evaluate("""() => {
                 window.repairPhases = [];
@@ -188,7 +218,7 @@ def test_incident_deletions_preserved_with_legacy_or_unreadable_cloud(app_server
                         attachment:a._attachments.note.data,otherBranch:b.description,
                         priorityPersisted};
                 }""")
-                assert result == {"archived": 12, "originalLeaves": 12, "omitted": True,
+                assert result == {"archived": 13, "originalLeaves": 13, "omitted": True,
                                   "attachment": "aGVsbG8=", "otherBranch": "Branch B", "priorityPersisted": False}
         finally:
             context.close()
