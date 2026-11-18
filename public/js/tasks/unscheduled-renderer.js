@@ -331,7 +331,7 @@ function createInlineEditFormHTML(task) {
             ${categoryRowHtml}
 
             <!-- Priority, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3">
                 <!-- Priority -->
                 <div class="flex items-center gap-2 sm:min-w-[200px]">
                     <label class="flex-1">
@@ -364,21 +364,21 @@ function createInlineEditFormHTML(task) {
                 </div>
 
                 <!-- Estimated Duration -->
-                <div class="flex items-center gap-2 sm:min-w-[140px]">
-                    <div class="relative flex-1">
+                <div class="flex items-center gap-2 sm:w-44">
+                    <div class="relative flex-1 min-w-0">
                         <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400/75"></i>
                         <input type="number" name="inline-edit-est-duration-hours" placeholder="HH" min="0"
                             class="task-edit-duration-hours bg-slate-700 pl-9 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
                     </div>
                     <span class="text-slate-400 text-lg">:</span>
-                    <div class="relative flex-1">
+                    <div class="relative flex-1 min-w-0">
                         <input type="number" name="inline-edit-est-duration-minutes" placeholder="MM" min="0" max="59"
                             class="task-edit-duration-minutes bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all text-sm sm:text-base">
                     </div>
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex items-center gap-2 sm:ml-auto">
+                <div class="flex items-center gap-2 sm:ml-auto shrink-0 whitespace-nowrap">
                     <button type="button" class="btn-cancel-inline-edit px-3 sm:px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-sm sm:text-base flex-1 sm:flex-none justify-center">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
