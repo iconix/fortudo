@@ -2,6 +2,16 @@
 
 const MILLISECONDS_PER_MINUTE = 60000;
 
+/** Encode literal text for an HTML text node or quoted attribute. */
+export function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
 // ============================================================================
 // DATETIME UTILITIES
 // ============================================================================

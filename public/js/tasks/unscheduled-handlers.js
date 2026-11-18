@@ -15,6 +15,8 @@ import {
     getUnscheduledTaskInlineFormData
 } from './form-utils.js';
 import { refreshUI } from '../dom-renderer.js';
+import { getUnscheduledTaskListElement } from './unscheduled-renderer.js';
+import { restoreEditTriggerFocus } from './form-interaction-state.js';
 import { onTaskEdited, onTaskDeleted, onTaskScheduled } from '../app-coordinator.js';
 import { calculateHoursAndMinutes, logger } from '../utils.js';
 import { getThemeForTaskId, showInlineDeleteConfirmation } from './confirmation-helpers.js';
@@ -155,10 +157,17 @@ export async function handleSaveUnscheduledTaskEdit(taskId) {
     if (result.success) {
         setTaskInlineEditing(taskId, false);
         onTaskEdited({ task: result.task });
+        focusEditedUnscheduledTask(taskId);
     } else {
         showAlert(result.reason || 'Could not save unscheduled task.', 'indigo');
         refreshUI();
     }
+}
+
+function focusEditedUnscheduledTask(taskId) {
+    const list = getUnscheduledTaskListElement();
+    const card = Array.from(list?.children ?? []).find((item) => item.dataset.taskId === taskId);
+    restoreEditTriggerFocus(card?.querySelector('.btn-unscheduled-task-actions-menu'));
 }
 
 export function handleCancelUnscheduledTaskEdit(taskId) {
@@ -166,6 +175,7 @@ export function handleCancelUnscheduledTaskEdit(taskId) {
     if (task && task.type === 'unscheduled' && task.isEditingInline) {
         setTaskInlineEditing(taskId, false);
         refreshUI();
+        focusEditedUnscheduledTask(taskId);
     } else {
         logger.warn('Task not found or not in inline edit mode for cancel:', taskId);
     }

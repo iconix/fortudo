@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 from scripts.e2e_helpers import (
     build_relative_day_activity_doc,
@@ -28,6 +28,93 @@ from tests.e2e.helpers import (
 )
 
 LIVE_OVERLAP_TEST_TIME = "2026-08-19T12:00:00Z"
+
+
+def test_mobile_activity_edit_actions_fill_row_below_end_time_preview(app_server):
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(
+            playwright, viewport={"width": 390, "height": 900},
+            context_options={"service_workers": "block"},
+        )
+        try:
+            page.goto(BASE_URL)
+            activity = build_relative_day_activity_doc(
+                page, doc_id="mobile-edit-activity", description="Log on", day_offset=0,
+                start_hour=9, start_minute=54, duration_minutes=5,
+            )
+            seed_and_enter_room(page, "mobile-activity-edit", [activities_config(), activity])
+            edit = page.locator(".btn-edit-activity")
+            edit.click()
+            form = page.locator("form.activity-inline-edit-form")
+            minutes = form.locator('input[name="duration-minutes"]')
+            hint = form.locator(".edit-end-time-hint")
+            cancel = form.locator(".btn-cancel-activity-edit")
+            save = form.locator(".btn-save-activity-edit")
+            description = form.locator('input[name="description"]')
+            expect(description).to_be_focused()
+            expect(form.get_by_role("combobox", name="Category")).to_be_visible()
+            for control in form.locator("input, select, button").all():
+                assert abs(control.bounding_box()["height"] - 44) <= 0.1
+            for field in form.locator("input, select").all():
+                assert field.evaluate("node => getComputedStyle(node).borderTop") == (
+                    "1px solid rgb(71, 85, 105)"
+                )
+            assert form.evaluate("node => getComputedStyle(node).padding") == "12px"
+
+            minutes.fill("10")
+            expect(hint).to_contain_text("10:04")
+            description.fill("Unsaved logon")
+            description.evaluate("field => field.setSelectionRange(0, 7)")
+            form.locator("select").select_option("work/admin")
+            description.focus()
+            page.evaluate("async () => (await import('/js/dom-renderer.js')).refreshUI()")
+            expect(description).to_have_value("Unsaved logon")
+            expect(description).to_be_focused()
+            assert description.evaluate("field => [field.selectionStart, field.selectionEnd]") == [0, 7]
+            expect(form.locator("select")).to_have_value("work/admin")
+            expect(minutes).to_have_value("10")
+            expect(hint).to_contain_text("10:04")
+            page.evaluate("document.fonts.ready")
+            assert form.locator('input[name="description"]').evaluate("""field => {
+                const card = field.closest('form');
+                const borderTop = parseFloat(getComputedStyle(card).borderTopWidth);
+                return field.getBoundingClientRect().top - card.getBoundingClientRect().top - borderTop;
+            }""") == 12
+            start_box = form.locator('input[name="start-time"]').bounding_box()
+            cancel_box = cancel.bounding_box()
+            save_box = save.bounding_box()
+            hint_box = hint.bounding_box()
+            assert abs(cancel_box["width"] - save_box["width"]) <= 1
+            assert cancel_box["y"] == save_box["y"]
+            assert abs(cancel_box["x"] - start_box["x"]) <= 1
+            assert abs(save_box["x"] + save_box["width"] - start_box["x"] - start_box["width"]) <= 1
+            assert minutes.bounding_box()["y"] < hint_box["y"]
+            assert hint_box["y"] + hint_box["height"] < save_box["y"]
+
+            minutes.evaluate("""field => field.addEventListener(
+                'invalid', () => { field.dataset.rejected = 'true'; }
+            )""")
+            minutes.fill("60")
+            for action in [save.click, lambda: minutes.press("Enter")]:
+                minutes.evaluate("field => delete field.dataset.rejected")
+                action()
+                expect(minutes).to_have_attribute("data-rejected", "true")
+                expect(page.locator("#custom-alert-modal")).to_be_hidden()
+
+            cancel.click()
+            expect(form).to_be_hidden()
+            expect(edit).to_be_focused()
+            edit.click()
+            expect(minutes).to_have_value("05")
+            expect(description).to_have_value("Log on")
+            description.fill("Morning logon")
+            save.click()
+            expect(form).to_be_hidden()
+            expect(edit).to_be_focused()
+            expect(page.locator("#activity-list")).to_contain_text("Morning logon")
+        finally:
+            context.close()
+            browser.close()
 
 
 def get_onboarding_target(page):

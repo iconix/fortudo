@@ -314,6 +314,7 @@ describe('Unscheduled list UI interface', () => {
         deleteButton.click();
         expect(menu.hidden).toBe(false);
         document.querySelector('.task-checkbox-unscheduled').click();
+        document.querySelector('input[name="inline-edit-description"]').value = 'Edited task';
         document.querySelector('.btn-save-inline-edit').click();
         document.querySelector('.btn-cancel-inline-edit').click();
 
@@ -497,28 +498,18 @@ describe('Unscheduled list UI interface', () => {
         expect(trigger.closest('.unscheduled-task-actions').classList).not.toContain('z-50');
     });
 
-    test('inline Enter and form submission route saves without browser submission', () => {
+    test('inline form submission respects native validation before routing the save', () => {
         const { actions } = renderWith();
         const form = document.querySelector('.inline-edit-unscheduled-form form');
         const input = form.querySelector('[name="inline-edit-description"]');
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+
+        form.requestSubmit();
         expect(actions.saveEdit).not.toHaveBeenCalled();
 
-        const enter = new KeyboardEvent('keydown', {
-            key: 'Enter',
-            bubbles: true,
-            cancelable: true
-        });
-
-        input.dispatchEvent(enter);
-        const submit = new Event('submit', { bubbles: true, cancelable: true });
-        form.dispatchEvent(submit);
-
-        expect(enter.defaultPrevented).toBe(true);
-        expect(submit.defaultPrevented).toBe(true);
-        expect(actions.saveEdit).toHaveBeenCalledTimes(2);
-        expect(actions.saveEdit).toHaveBeenNthCalledWith(1, 'a');
-        expect(actions.saveEdit).toHaveBeenNthCalledWith(2, 'a');
+        input.value = 'Edited task';
+        form.requestSubmit();
+        expect(actions.saveEdit).toHaveBeenCalledTimes(1);
+        expect(actions.saveEdit).toHaveBeenCalledWith('a');
     });
 
     test('renders the empty state through the list seam', () => {

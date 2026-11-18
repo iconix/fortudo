@@ -4,7 +4,8 @@ import {
     logger,
     isTaskRunningLate,
     isTaskCurrentlyActive,
-    extractTimeFromDateTime
+    extractTimeFromDateTime,
+    escapeHtml
 } from '../utils.js';
 import { findScheduleGaps } from '../reschedule-engine.js';
 import {
@@ -55,43 +56,43 @@ export function renderEditTaskHTML(task, index) {
         options: getSelectableCategoryOptions(task),
         dotClass: 'scheduled-edit-category-dot',
         selectClass:
-            'bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
+            'bg-slate-700 px-3 py-2 rounded-lg w-full min-w-0 focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all'
     });
 
     return `
-        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="p-4 rounded-lg border border-slate-700 bg-slate-800 bg-opacity-70 shadow-lg text-left space-y-4">
-            <input type="hidden" name="task-type" value="scheduled">
+        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="inline-editor-card inline-editor-form rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-70 shadow-lg text-left">
+            <input type="hidden" name="task-type" value="scheduled" hidden>
 
-            <!-- Description Row -->
-            <div class="relative">
-                <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
-                <input type="text" name="description" value="${task.description}" placeholder="What needs to be done?"
-                    class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+            <!-- Description and Category -->
+            <div class="inline-editor-details">
+                <div class="relative min-w-0">
+                    <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
+                    <input type="text" name="description" value="${escapeHtml(task.description)}" placeholder="What needs to be done?" aria-label="Description"
+                        class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
+                </div>
+                ${categoryRowHtml}
             </div>
 
-            <!-- Category Row -->
-            ${categoryRowHtml}
-
             <!-- Time, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row sm:flex-wrap items-start gap-4">
+            <div class="inline-editor-timing">
                 <!-- Start Time -->
-                <div class="relative w-full sm:w-40">
+                <div class="relative min-w-0">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
-                    <input type="time" name="start-time" value="${displayStartTime}"
+                    <input type="time" name="start-time" value="${displayStartTime}" aria-label="Start time"
                         class="bg-slate-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
                 </div>
 
                 <!-- Duration -->
-                <div class="w-full sm:w-44 pb-5">
+                <div class="inline-editor-duration-preview min-w-0">
                     <div class="relative flex items-center gap-2">
                         <div class="relative flex-1 min-w-0">
                             <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
-                            <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
+                            <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH" aria-label="Duration hours"
                                 class="bg-slate-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
                         <span class="text-slate-400 text-lg">:</span>
                         <div class="relative flex-1 min-w-0">
-                            <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
+                            <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM" aria-label="Duration minutes"
                                 class="bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
                         <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-teal-400/70 opacity-0 transition-opacity duration-300 whitespace-nowrap pointer-events-none"></span>
@@ -99,16 +100,16 @@ export function renderEditTaskHTML(task, index) {
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex items-center gap-2 w-full sm:w-auto sm:ml-auto shrink-0 whitespace-nowrap">
-                    <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${task.id}" data-task-index="${index}">
-                        <i class="fa-solid fa-xmark mr-2"></i>Cancel
+                <div class="inline-editor-actions">
+                    <button type="button" class="btn-edit-cancel rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${task.id}" data-task-index="${index}">
+                        <i class="fa-solid fa-xmark mr-2" aria-hidden="true"></i>Cancel
                     </button>
-                    <button type="submit" class="btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40">
-                        <i class="fa-solid fa-check mr-2"></i>Save
+                    <button type="submit" class="btn-save-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40">
+                        <i class="fa-solid fa-check mr-2" aria-hidden="true"></i>Save
                     </button>
                 </div>
             </div>
-            <span class="edit-overlap-warning block text-amber-400 text-xs mt-1"></span>
+            <span class="edit-overlap-warning text-amber-400 text-xs empty:sr-only" role="status" aria-atomic="true"></span>
         </form>
     `;
 }
@@ -171,12 +172,12 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             </label>
             <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
-                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${task.description}</span> ${renderCategoryBadge(task)} ${lockedBadge}</div>
+                <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${escapeHtml(task.description)}</span> ${renderCategoryBadge(task)} ${lockedBadge}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
             </div>
         </div>
         <div class="task-actions relative ml-auto -mt-1 -mr-1${openMenuActionsClass}">
-            <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${task.description}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}">
+            <button class="btn-task-actions-menu inline-grid place-items-center w-9 h-9 rounded-lg border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700 hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 transition-colors" type="button" aria-label="Actions for ${escapeHtml(task.description)}" aria-haspopup="menu" aria-expanded="${actionMenuExpanded}">
                 <i class="fa-solid fa-ellipsis text-sm" aria-hidden="true"></i>
             </button>
             <div class="task-actions-menu absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
@@ -472,7 +473,7 @@ export function renderTasks(
             if (overlapResult && overlapResult.overlaps.length > 0) {
                 warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
                 saveBtn.innerHTML =
-                    '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+                    '<i class="fa-solid fa-triangle-exclamation mr-2" aria-hidden="true"></i>Reschedule';
                 saveBtn.className = saveBtn.className
                     .replace(/bg-teal-500\/30/g, 'bg-amber-500/30')
                     .replace(/border-teal-400\/60/g, 'border-amber-400/60')

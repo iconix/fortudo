@@ -7,21 +7,17 @@ import {
     calculateHoursAndMinutes,
     extractTimeFromDateTime,
     convertTo12HourTime,
-    extractDateFromDateTime
+    extractDateFromDateTime,
+    escapeHtml
 } from '../utils.js';
 import { renderCategorySelectRow } from '../category-form-utils.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
+import {
+    captureFormInteractionState,
+    restoreFormInteractionState
+} from '../tasks/form-interaction-state.js';
 import { buildActivitySummaryModel } from './summary.js';
 import { formatActivityDuration } from './duration.js';
-
-function escapeHtml(value) {
-    return String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}
 
 function formatTimeRange(startDateTime, endDateTime) {
     const startTime = extractTimeFromDateTime(new Date(startDateTime));
@@ -258,27 +254,29 @@ export function renderActivitySummaryOnly(activities, container, options = {}) {
     targetContainer.insertAdjacentHTML('afterbegin', summaryHtml);
 }
 
-function renderInlineEditActivityItem(activity, options = {}) {
-    const durationHours = Math.floor(activity.duration / 60);
-    const durationMinutes = activity.duration % 60;
-    const displayStartTime = extractTimeFromDateTime(new Date(activity.startDateTime));
+function renderInlineEditActivityItem(activity, options, draft) {
+    const description = draft?.get('description') ?? activity.description;
+    const durationHours =
+        draft?.get('duration-hours') ?? String(Math.floor(activity.duration / 60));
+    const durationMinutes =
+        draft?.get('duration-minutes') ?? String(activity.duration % 60).padStart(2, '0');
+    const displayStartTime =
+        draft?.get('start-time') ?? extractTimeFromDateTime(new Date(activity.startDateTime));
     const activityDate = extractDateFromDateTime(new Date(activity.startDateTime));
-    const resolvedCategory = resolveCategoryReference(activity);
+    const category = draft?.get('category') ?? (activity.category || '');
+    const categoryReference = category === (activity.category || '') ? activity : { category };
+    const resolvedCategory = resolveCategoryReference(categoryReference);
     const categoryColor = resolvedCategory?.record?.color || '#64748b';
     const categoryRowHtml = renderCategorySelectRow({
         selectName: 'category',
-        selectedValue: activity.category || '',
-        options: getSelectableCategoryOptions(activity),
+        selectedValue: category,
+        options: getSelectableCategoryOptions(categoryReference),
         dotClass: 'activity-edit-category-dot',
         selectClass:
-            'bg-slate-700 px-3 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100',
+            'bg-slate-700 px-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-slate-100',
         dotStyle: `background-color: ${categoryColor};`
     });
-    const endTimeHint = computeEndTimePreview(
-        displayStartTime,
-        durationHours.toString(),
-        durationMinutes.toString()
-    );
+    const endTimeHint = computeEndTimePreview(displayStartTime, durationHours, durationMinutes);
     const isAuto = activity.source === 'auto';
     const provenanceHtml = isAuto
         ? `<div class="flex items-center gap-2 text-xs text-sky-400/70">
@@ -291,45 +289,43 @@ function renderInlineEditActivityItem(activity, options = {}) {
     const activityIssues = getActivityIssuesForId(options.activityIssuesById, activity.id);
     const issueHtml = renderActivityDataIssueText(activityIssues);
 
-    return `<form class="activity-inline-edit-form activity-item px-3 py-3 rounded-lg bg-slate-800/70 border border-sky-700/40 border-l-4 border-l-sky-400 shadow-md space-y-3" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
+    return `<form class="activity-inline-edit-form activity-item inline-editor-card inline-editor-form rounded-lg bg-slate-800/70 border border-sky-700/40 border-l-4 border-l-sky-400 shadow-md" data-activity-id="${escapeHtml(activity.id)}" data-activity-date="${escapeHtml(activityDate)}" data-activity-edit="true" autocomplete="off">
         ${provenanceHtml}
-        <div class="flex flex-col sm:flex-row gap-3">
-            <div class="relative sm:flex-[1.8]">
+        <div class="inline-editor-details">
+            <div class="relative min-w-0">
                 <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
-                <input type="text" name="description" value="${escapeHtml(activity.description)}" placeholder="What did you work on?"
-                    class="bg-slate-700 pl-10 pr-4 py-2.5 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100" required>
+                <input type="text" name="description" value="${escapeHtml(description)}" placeholder="What did you work on?" aria-label="Description"
+                    class="bg-slate-700 pl-10 pr-4 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-slate-100" required>
             </div>
-            <div class="sm:flex-1 sm:min-w-[13rem]">
-                ${categoryRowHtml}
-            </div>
+            ${categoryRowHtml}
         </div>
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:pb-5">
-            <div class="relative sm:w-40">
+        <div class="inline-editor-timing">
+            <div class="relative min-w-0">
                 <i class="fa-regular fa-clock absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
-                <input type="time" name="start-time" value="${escapeHtml(displayStartTime)}"
-                    class="bg-slate-700 pl-10 pr-3 py-2 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100" required>
+                <input type="time" name="start-time" value="${escapeHtml(displayStartTime)}" aria-label="Start time"
+                    class="bg-slate-700 pl-10 pr-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-slate-100" required>
             </div>
-            <div class="relative pb-5 sm:pb-0 sm:w-44">
-                <div class="flex items-center gap-2">
-                <div class="relative flex-1">
-                    <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
-                    <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
-                        class="bg-slate-700 pl-10 pr-2 py-2 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
-                </div>
-                <span class="text-slate-400 text-lg">:</span>
-                <div class="relative flex-1">
-                    <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
-                        class="bg-slate-700 px-3 py-2 rounded-lg w-full border border-slate-600 focus:outline-none focus:border-sky-400 transition-all text-slate-100">
-                </div>
-                <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-sky-400/70 transition-opacity duration-300 whitespace-nowrap pointer-events-none ${endTimeHint ? '' : 'opacity-0'}">${endTimeHint ? `&#9656; ${escapeHtml(endTimeHint)}` : ''}</span>
+            <div class="inline-editor-duration-preview min-w-0">
+                <div class="relative flex items-center gap-2">
+                    <div class="relative flex-1 min-w-0">
+                        <i class="fa-regular fa-hourglass absolute left-3 top-1/2 -translate-y-1/2 text-sky-400"></i>
+                        <input type="number" name="duration-hours" value="${escapeHtml(durationHours)}" min="0" placeholder="HH" aria-label="Duration hours"
+                            class="bg-slate-700 pl-10 pr-2 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-slate-100">
+                    </div>
+                    <span class="text-slate-400 text-lg">:</span>
+                    <div class="relative flex-1 min-w-0">
+                        <input type="number" name="duration-minutes" value="${escapeHtml(durationMinutes)}" min="0" max="59" placeholder="MM" aria-label="Duration minutes"
+                            class="bg-slate-700 px-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all text-slate-100">
+                    </div>
+                    <span class="edit-end-time-hint absolute top-full mt-1 right-0 text-xs text-sky-400/70 transition-opacity duration-300 whitespace-nowrap pointer-events-none ${endTimeHint ? '' : 'opacity-0'}">${endTimeHint ? `&#9656; ${escapeHtml(endTimeHint)}` : ''}</span>
                 </div>
             </div>
-            <div class="flex items-center gap-2 sm:ml-auto">
-                <button type="button" class="btn-cancel-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100">
-                    <i class="fa-solid fa-xmark mr-2"></i>Cancel
+            <div class="inline-editor-actions">
+                <button type="button" class="btn-cancel-activity-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100">
+                    <i class="fa-solid fa-xmark mr-2" aria-hidden="true"></i>Cancel
                 </button>
-                <button type="submit" class="btn-save-activity-edit px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40">
-                    <i class="fa-solid fa-check mr-2"></i>Save
+                <button type="submit" class="btn-save-activity-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-sky-500/30 border border-sky-400/60 text-sky-200 hover:bg-sky-500/40">
+                    <i class="fa-solid fa-check mr-2" aria-hidden="true"></i>Save
                 </button>
             </div>
         </div>
@@ -406,12 +402,20 @@ export function renderActivities(activities, container, options = {}) {
     }
 
     const editingActivityId = options.editingActivityId || null;
+    const previousForm = targetContainer.querySelector('form[data-activity-edit]');
+    const preserveDraft = previousForm?.dataset.activityId === editingActivityId;
+    const draft = preserveDraft ? new FormData(previousForm) : null;
+    const interaction = preserveDraft ? captureFormInteractionState(previousForm) : null;
     const activitiesHtml = activities
         .map((activity) =>
             activity.id === editingActivityId
-                ? renderInlineEditActivityItem(activity, options)
+                ? renderInlineEditActivityItem(activity, options, draft)
                 : renderActivityItem(activity, options)
         )
         .join('');
     targetContainer.innerHTML = `${repairActionHtml}${summaryHtml}${activitiesHtml}`;
+    const currentForm = targetContainer.querySelector('form[data-activity-edit]');
+    if (interaction && currentForm) {
+        restoreFormInteractionState(currentForm, interaction);
+    }
 }

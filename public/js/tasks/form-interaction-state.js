@@ -49,3 +49,10 @@ export function restoreFormInteractionState(form, state) {
     }
     return field;
 }
+
+/** Return focus to the item when closing its editor removed the focused control. */
+export function restoreEditTriggerFocus(trigger) {
+    if (document.activeElement === document.body) {
+        trigger?.focus();
+    }
+}
