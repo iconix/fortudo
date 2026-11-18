@@ -73,24 +73,24 @@ export function renderEditTaskHTML(task, index) {
             ${categoryRowHtml}
 
             <!-- Time, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:pb-5">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap items-start gap-4">
                 <!-- Start Time -->
-                <div class="relative">
+                <div class="relative w-full sm:w-40">
                     <i class="fa-regular fa-clock absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                     <input type="time" name="start-time" value="${displayStartTime}"
                         class="bg-slate-700 pl-10 pr-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all" required>
                 </div>
 
                 <!-- Duration -->
-                <div class="relative pb-5 sm:pb-0">
+                <div class="w-full sm:w-44 pb-5">
                     <div class="relative flex items-center gap-2">
-                        <div class="relative flex-1">
+                        <div class="relative flex-1 min-w-0">
                             <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-teal-400"></i>
                             <input type="number" name="duration-hours" value="${durationHours}" min="0" placeholder="HH"
                                 class="bg-slate-700 pl-10 pr-2 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
                         <span class="text-slate-400 text-lg">:</span>
-                        <div class="relative flex-1">
+                        <div class="relative flex-1 min-w-0">
                             <input type="number" name="duration-minutes" value="${durationMinutes.toString().padStart(2, '0')}" min="0" max="59" placeholder="MM"
                                 class="bg-slate-700 px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-teal-400 focus:outline-none transition-all">
                         </div>
@@ -99,7 +99,7 @@ export function renderEditTaskHTML(task, index) {
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex items-center gap-2 sm:ml-auto">
+                <div class="flex items-center gap-2 w-full sm:w-auto sm:ml-auto shrink-0 whitespace-nowrap">
                     <button type="button" class="btn-edit-cancel w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${task.id}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2"></i>Cancel
                     </button>
