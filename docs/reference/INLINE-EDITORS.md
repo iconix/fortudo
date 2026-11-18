@@ -15,8 +15,8 @@ same expectations from one list to another.
   12 CSS px and the control height is 44 CSS px. Use the type's teal, indigo, or sky accent for the
   left rail, focus rings, and primary action. [Fortudo brand reference](BRAND.md)
 - Use an equal-width Cancel and Save row on mobile. On wider screens, keep the actions at the
-  end of the controls row. Give the scheduled time fields room to flex so the longer Reschedule
-  label stays on that row when an overlap appears.
+  end of the controls row. Give duration fields room to flex so the row can accommodate wider
+  system fonts and the longer scheduled Reschedule label.
 - Keep priority and estimated duration specific to unscheduled tasks. Allow a zero estimate.
   Scheduled tasks and activities use a start time, a positive duration, and an end-time preview
   directly below the duration fields. Scheduled overlaps use an amber warning and Reschedule action.

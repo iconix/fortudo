@@ -68,7 +68,8 @@ body {
 
 .inline-editor-form,
 .inline-editor-details,
-.inline-editor-timing {
+.inline-editor-timing,
+.inline-editor-estimate {
     display: grid;
     gap: 0.75rem;
 }
@@ -115,8 +116,17 @@ body {
 
     .inline-editor-timing {
         grid-template-columns: minmax(9.5rem, 10rem) minmax(0, 11rem) minmax(max-content, 1fr);
-        column-gap: 0.5rem;
         align-items: start;
+    }
+
+    .inline-editor-estimate {
+        grid-template-columns: max-content minmax(0, 11rem) minmax(max-content, 1fr);
+        align-items: center;
+    }
+
+    .inline-editor-timing,
+    .inline-editor-estimate {
+        column-gap: 0.5rem;
     }
 
     .inline-editor-actions {

@@ -324,7 +324,7 @@ function createInlineEditFormHTML(task) {
             </div>
 
             <!-- Priority, Duration, and Buttons Row -->
-            <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-x-2">
+            <div class="inline-editor-estimate">
                 <!-- Priority -->
                 <div class="flex items-center gap-1" role="radiogroup" aria-label="Priority">
                     <label class="flex-1 sm:flex-none">
@@ -351,7 +351,7 @@ function createInlineEditFormHTML(task) {
                 </div>
 
                 <!-- Estimated Duration -->
-                <div class="flex items-center gap-2 sm:w-44">
+                <div class="flex items-center gap-2">
                     <div class="relative flex-1 min-w-0">
                         <i class="fa-regular fa-hourglass absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400/75"></i>
                         <input type="number" name="inline-edit-est-duration-hours" placeholder="HH" min="0" aria-label="Estimated duration hours"

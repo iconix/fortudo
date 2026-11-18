@@ -142,11 +142,22 @@ def test_inline_task_edit_controls_fit_and_save(app_server, width, task_type):
                     # The desktop card is 640 CSS px, matching the reported 800 px card at 125%.
                     assert card.bounding_box()["width"] == 640
                 if width >= 640:
-                    duration = form.locator(".task-edit-duration-hours").bounding_box()
-                    buttons = save.bounding_box()
-                    assert priority_boxes[-1]["x"] < duration["x"] < buttons["x"]
-                    assert abs(priority_boxes[0]["y"] - buttons["y"]) < 8
-                    assert abs(duration["y"] - buttons["y"]) < 8
+                    for wider_labels in ([False, True] if width == 640 else [False]):
+                        if wider_labels:
+                            # Exercise wider system-font metrics at the breakpoint.
+                            page.add_style_tag(content="""
+                                .task-card .inline-editor-actions button {
+                                    transition: none;
+                                    letter-spacing: 0.125em;
+                                }
+                            """)
+                        priority = priorities.last.bounding_box()
+                        duration = form.locator(".task-edit-duration-hours").bounding_box()
+                        buttons = save.bounding_box()
+                        assert priority["x"] < duration["x"] < buttons["x"]
+                        assert abs(priority["y"] - buttons["y"]) < 8
+                        assert abs(duration["y"] - buttons["y"]) < 8
+                        assert form.evaluate("node => node.scrollWidth <= node.clientWidth")
 
             description = f'{task_type} "quoted" edit & notes'
             description_field.fill(description)
