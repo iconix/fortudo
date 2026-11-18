@@ -22,6 +22,7 @@ The `docs/` root contains this index only.
 ### Reference
 
 - [Fortudo brand reference](reference/BRAND.md)
+- [Inline editor design guidance](reference/INLINE-EDITORS.md)
 - [CouchDB Sync Setup](reference/COUCHDB-SETUP.md)
 - [Sync and safety states](reference/SYNC-STATES.md)
 
