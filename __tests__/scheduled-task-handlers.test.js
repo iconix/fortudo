@@ -473,6 +473,29 @@ describe('Scheduled Task Handlers', () => {
             handleCancelEdit('nonexistent', 0);
             expect(refreshUI).not.toHaveBeenCalled();
         });
+
+        test.each([false, true])(
+            'restores item focus only if focus was lost (%s)',
+            (focusMoved) => {
+                const task = createTaskWithDateTime({
+                    startTime: '09:00',
+                    duration: 60,
+                    editing: true
+                });
+                updateTaskState([task]);
+                const otherInput = document.querySelector('#task-form input[name="description"]');
+                if (focusMoved) otherInput.focus();
+                refreshUI.mockImplementationOnce(() => {
+                    document.getElementById('scheduled-task-list').innerHTML =
+                        `<div id="view-task-${task.id}"><button class="btn-task-actions-menu">Actions</button></div>`;
+                });
+
+                handleCancelEdit(task.id, 0);
+
+                const trigger = document.querySelector('.btn-task-actions-menu');
+                expect(document.activeElement).toBe(focusMoved ? otherInput : trigger);
+            }
+        );
     });
 
     describe('handleGapClick', () => {

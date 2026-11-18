@@ -243,8 +243,6 @@ function handleClick(event) {
         state.actions.delete(taskId, event.target.closest('.btn-delete-unscheduled'));
     } else if (event.target.closest('.task-checkbox-unscheduled')) {
         state.actions.toggleComplete(taskId);
-    } else if (event.target.closest('.btn-save-inline-edit')) {
-        state.actions.saveEdit(taskId);
     } else if (event.target.closest('.btn-cancel-inline-edit')) {
         state.actions.cancelEdit(taskId);
     }
@@ -254,20 +252,7 @@ function handleKeydown(event) {
     if (!state) return;
     if (event.key === 'Escape') {
         closeMenus({ restoreFocus: true });
-        return;
     }
-    if (
-        event.key !== 'Enter' ||
-        !(event.target instanceof HTMLInputElement) ||
-        !event.target.closest('form')
-    ) {
-        return;
-    }
-
-    const taskId = taskIdFrom(event.target);
-    if (!taskId) return;
-    event.preventDefault();
-    state.actions.saveEdit(taskId);
 }
 
 function handleSubmit(event) {

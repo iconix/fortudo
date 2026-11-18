@@ -450,9 +450,9 @@ function handleScheduledTaskListSubmit(event) {
 }
 
 const SAVE_BUTTON_DEFAULT_CLASSES =
-    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40';
+    'btn-save-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40';
 const SAVE_BUTTON_OVERLAP_CLASSES =
-    'btn-save-edit w-full sm:w-auto justify-center px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40';
+    'btn-save-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-amber-500/30 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40';
 
 function handleScheduledTaskListInput(event) {
     const target = /** @type {HTMLElement} */ (event.target);
@@ -500,13 +500,19 @@ function handleScheduledTaskListInput(event) {
             excludeTaskId
         );
 
-        if (overlapResult && overlapResult.overlaps.length > 0) {
-            warningEl.textContent = formatOverlapWarning(overlapResult.overlaps);
-            saveBtn.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Reschedule';
+        const warning = overlapResult?.overlaps.length
+            ? formatOverlapWarning(overlapResult.overlaps)
+            : '';
+        if (warningEl.textContent !== warning) {
+            warningEl.textContent = warning;
+        }
+
+        if (warning) {
+            saveBtn.innerHTML =
+                '<i class="fa-solid fa-triangle-exclamation mr-2" aria-hidden="true"></i>Reschedule';
             saveBtn.className = SAVE_BUTTON_OVERLAP_CLASSES;
         } else {
-            warningEl.textContent = '';
-            saveBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i>Save';
+            saveBtn.innerHTML = '<i class="fa-solid fa-check mr-2" aria-hidden="true"></i>Save';
             saveBtn.className = SAVE_BUTTON_DEFAULT_CLASSES;
         }
     }

@@ -1084,7 +1084,7 @@ describe('activity renderer', () => {
         expect(hintEl.classList.contains('opacity-0')).toBe(false);
     });
 
-    test('reserves row space for the inline activity edit end-time hint on larger widths', () => {
+    test('places the inline activity end-time hint inside the shared preview container', () => {
         const container = document.getElementById('activity-list');
 
         renderActivities(
@@ -1104,10 +1104,11 @@ describe('activity renderer', () => {
             { editingActivityId: 'activity-layout' }
         );
 
-        const row = container.querySelector('form.activity-inline-edit-form > div:last-of-type');
-
-        expect(row).not.toBeNull();
-        expect(row.className).toContain('sm:pb-5');
+        expect(
+            container.querySelector(
+                '.activity-inline-edit-form .inline-editor-duration-preview .edit-end-time-hint'
+            )
+        ).not.toBeNull();
     });
 
     test('escapes activity descriptions', () => {

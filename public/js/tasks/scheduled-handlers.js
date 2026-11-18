@@ -22,6 +22,8 @@ import {
 import { showToast } from '../toast-manager.js';
 import { extractTaskFormData } from './form-utils.js';
 import { refreshUI, getCurrentTimeElement } from '../dom-renderer.js';
+import { getTaskEditFormElement, getTaskViewElement } from './scheduled-renderer.js';
+import { restoreEditTriggerFocus } from './form-interaction-state.js';
 import {
     convertTo24HourTime,
     convertTo12HourTime,
@@ -127,6 +129,7 @@ export function handleEditTask(taskId, _taskIndex) {
     const originalIndex = getTaskIndex(taskId);
     editTask(originalIndex);
     refreshUI();
+    getTaskEditFormElement(taskId)?.querySelector('input[name="description"]')?.focus();
 }
 
 export async function handleDeleteTask(taskId, _taskIndex, deleteButton) {
@@ -245,6 +248,9 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     );
     if (finalResult?.success) {
         onTaskEdited({ task: finalResult.task });
+        restoreEditTriggerFocus(
+            getTaskViewElement(taskId)?.querySelector('.btn-task-actions-menu')
+        );
     } else {
         refreshUI();
     }
@@ -259,6 +265,7 @@ export function handleCancelEdit(taskId, _taskIndex) {
     const originalIndex = getTaskIndex(taskId);
     cancelEdit(originalIndex);
     refreshUI();
+    restoreEditTriggerFocus(getTaskViewElement(taskId)?.querySelector('.btn-task-actions-menu'));
 }
 
 /**
