@@ -216,6 +216,31 @@ def test_artifact_loader_rejects_invalid_documents_without_echoing_contents(
         ops.load_design_document()
 
 
+def test_main_sanitizes_invalid_validator_unicode(tmp_path, monkeypatch, capsys):
+    document = ops.load_design_document()
+    document["validate_doc_update"] = "private validator text \ud800"
+    artifact = tmp_path / "contract.json"
+    artifact.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(ops, "CONTRACT_ARTIFACT", artifact)
+
+    client = ReadOnlyCloudant(document)
+    execute = ops.execute
+    monkeypatch.setattr(
+        ops,
+        "execute",
+        lambda: execute(
+            ["verify", "--database", "fortudo-regression"],
+            environ={ops.CREDENTIAL_ENV_VAR: "https://user:secret@example.invalid"},
+            client_factory=lambda _credential: client,
+        ),
+    )
+
+    assert ops.main() == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "Contract operation blocked: contract artifact is invalid\n"
+
+
 def test_artifact_loader_rejects_missing_artifact(tmp_path, monkeypatch):
     monkeypatch.setattr(ops, "CONTRACT_ARTIFACT", tmp_path / "missing.json")
     with pytest.raises(ops.ContractOpsSafetyError, match="unreadable"):

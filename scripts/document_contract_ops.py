@@ -63,7 +63,11 @@ def load_design_document() -> dict[str, Any]:
         or not isinstance(validator, str)
     ):
         raise ContractOpsSafetyError("contract artifact is invalid")
-    if hashlib.sha256(validator.encode("utf-8")).hexdigest() != CONTRACT_CHECKSUM:
+    try:
+        validator_bytes = validator.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ContractOpsSafetyError("contract artifact is invalid") from error
+    if hashlib.sha256(validator_bytes).hexdigest() != CONTRACT_CHECKSUM:
         raise ContractOpsSafetyError("contract artifact checksum does not match reviewed v1")
     return document
 
