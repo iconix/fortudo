@@ -1,16 +1,8 @@
 import { showAlert } from './modal-manager.js';
 import { resolveCategoryKey } from './taxonomy/taxonomy-selectors.js';
+import { escapeHtml } from './utils.js';
 
 const DEFAULT_CATEGORY_DOT_COLOR = '#64748b';
-
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
 
 export function renderCategoryOptionsHtml(options, selectedValue = '') {
     return options
@@ -39,7 +31,7 @@ export function renderCategorySelectRow({
 
     return `<div class="${escapeHtml(rowClass)}">
         <span class="${escapeHtml(dotClass)} w-3 h-3 rounded-full shrink-0" aria-hidden="true"${styleAttribute}></span>
-        <select name="${escapeHtml(selectName)}" class="${escapeHtml(selectClass)}">
+        <select name="${escapeHtml(selectName)}" class="${escapeHtml(selectClass)}" aria-label="Category">
             <option value="">No category</option>
             ${optionsHtml}
         </select>

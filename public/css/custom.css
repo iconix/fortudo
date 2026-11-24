@@ -62,6 +62,82 @@ body {
     min-width: 0;
 }
 
+.inline-editor-card {
+    padding: 0.75rem;
+}
+
+.inline-editor-form,
+.inline-editor-details,
+.inline-editor-timing,
+.inline-editor-estimate {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.inline-editor-details {
+    align-items: center;
+}
+
+.inline-editor-form :is(input[type='text'], input[type='time'], input[type='number'], select),
+.inline-editor-actions > button {
+    min-width: 0;
+    min-height: 2.75rem;
+    padding-block: 0.5rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
+}
+
+.inline-editor-form :where(input[type='text'], input[type='time'], input[type='number'], select) {
+    border: 1px solid #475569;
+}
+
+.inline-editor-duration-preview {
+    padding-bottom: 1.25rem;
+}
+
+.inline-editor-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.inline-editor-actions > button {
+    flex: 1 1 0;
+    justify-content: center;
+    padding-inline: 1rem;
+    white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+    .inline-editor-details {
+        grid-template-columns: minmax(0, 1.8fr) minmax(13rem, 1fr);
+    }
+
+    .inline-editor-timing {
+        grid-template-columns: minmax(9.5rem, 10rem) minmax(0, 11rem) minmax(max-content, 1fr);
+        align-items: start;
+    }
+
+    .inline-editor-estimate {
+        grid-template-columns: max-content minmax(0, 11rem) minmax(max-content, 1fr);
+        align-items: center;
+    }
+
+    .inline-editor-timing,
+    .inline-editor-estimate {
+        column-gap: 0.5rem;
+    }
+
+    .inline-editor-actions {
+        margin-inline-start: auto;
+    }
+
+    .inline-editor-actions > button {
+        flex: 0 0 auto;
+    }
+}
+
 button:focus {
     outline: none;
 }
@@ -721,6 +797,26 @@ button:focus-visible {
 }
 .recovery-dialog[data-recovery-stage='complete'] h2 {
     color: #5eead4;
+}
+.recovery-dialog[data-recovery-stage='error'] h2 {
+    color: #fda4af;
+}
+.recovery-dialog .recovery-error {
+    margin: 0.75rem 0;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid rgb(251 113 133 / 25%);
+    border-radius: 0.5rem;
+    background: rgb(244 63 94 / 4%);
+    color: #fecdd3;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+.recovery-dialog .recovery-error > p {
+    margin: 0;
+}
+.recovery-dialog .recovery-error > .recovery-error-detail {
+    margin-top: 0.25rem;
+    color: #fda4af;
 }
 .recovery-dialog[data-recovery-stage='complete'] {
     max-width: 32rem;

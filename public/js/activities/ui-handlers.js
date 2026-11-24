@@ -5,6 +5,7 @@ import { handleAddActivity, handleDeleteActivity, handleSaveActivityEdit } from 
 import { disposeTimerUI, hideTimerDisplay } from './timer-ui.js';
 import { syncActivitiesViewToggle } from './view-toggle.js';
 import { computeEndTimePreview } from '../tasks/form-utils.js';
+import { restoreEditTriggerFocus } from '../tasks/form-interaction-state.js';
 import { resolveCategoryKey } from '../taxonomy/taxonomy-selectors.js';
 import { detectActivityDataIssues, groupIssuesByActivityId } from './insights-issues.js';
 import { extractDateFromDateTime } from '../utils.js';
@@ -217,20 +218,28 @@ export function handleActivityListClick(target, deps) {
     const editActivityButton = target.closest('.btn-edit-activity');
     if (editActivityButton instanceof HTMLElement) {
         const activityItem = editActivityButton.closest('.activity-item[data-activity-id]');
+        const activityList = activityItem?.parentElement;
         const activityId =
             editActivityButton.dataset.activityId || activityItem?.getAttribute('data-activity-id');
         clearDeleteConfirmState(deps);
         if (activityId) {
             activityUiState.editingActivityId = activityId;
             deps.refreshUI();
+            activityList
+                ?.querySelector('form.activity-inline-edit-form input[name="description"]')
+                ?.focus();
         }
         return true;
     }
 
     const cancelActivityEditButton = target.closest('.btn-cancel-activity-edit');
     if (cancelActivityEditButton instanceof HTMLElement) {
+        const form = cancelActivityEditButton.closest('form[data-activity-id]');
+        const activityList = form?.parentElement;
+        const activityId = form?.dataset.activityId;
         activityUiState.editingActivityId = null;
         deps.refreshUI();
+        focusEditedActivity(activityList, activityId);
         return true;
     }
 
@@ -281,16 +290,23 @@ export function handleActivityListClick(target, deps) {
     return false;
 }
 
+function focusEditedActivity(list, activityId) {
+    const buttons = list?.querySelectorAll('.btn-edit-activity[data-activity-id]') ?? [];
+    const trigger = Array.from(buttons).find((button) => button.dataset.activityId === activityId);
+    restoreEditTriggerFocus(trigger);
+}
+
 async function saveInlineActivityEdit(editForm, deps) {
     const activityId = editForm.getAttribute('data-activity-id');
     if (!activityId) {
         return false;
     }
 
-    if (activityUiState.inFlightActivitySaveIds.has(activityId)) {
+    if (activityUiState.inFlightActivitySaveIds.has(activityId) || !editForm.reportValidity()) {
         return true;
     }
 
+    const activityList = editForm.parentElement;
     activityUiState.inFlightActivitySaveIds.add(activityId);
     try {
         const result = await handleSaveActivityEdit(activityId, editForm);
@@ -298,6 +314,9 @@ async function saveInlineActivityEdit(editForm, deps) {
             activityUiState.editingActivityId = null;
         }
         deps.refreshUI();
+        if (result?.success) {
+            focusEditedActivity(activityList, activityId);
+        }
         return true;
     } finally {
         activityUiState.inFlightActivitySaveIds.delete(activityId);

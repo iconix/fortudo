@@ -22,6 +22,7 @@ The `docs/` root contains this index only.
 ### Reference
 
 - [Fortudo brand reference](reference/BRAND.md)
+- [Inline editor design guidance](reference/INLINE-EDITORS.md)
 - [CouchDB Sync Setup](reference/COUCHDB-SETUP.md)
 - [Sync and safety states](reference/SYNC-STATES.md)
 
@@ -30,6 +31,8 @@ The `docs/` root contains this index only.
 - [Architecture Assessment](architecture/ARCHITECTURE-ASSESSMENT.md)
 - [Offline Client Migration Safety](architecture/OFFLINE-CLIENT-MIGRATION-SAFETY.md)
 - [Room Identity and Access Risk](architecture/ROOM-IDENTITY-AND-ACCESS-RISK.md)
+- [dat-411 recovery blockers and proposed fixes](architecture/DAT-411-RECOVERY-REVIEW.md)
+- [Cloud deletion-marker expiry reproduction and proposal](architecture/TOMBSTONE-RETENTION-REVIEW.md)
 
 ### Operations
 

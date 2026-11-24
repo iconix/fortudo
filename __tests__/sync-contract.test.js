@@ -156,8 +156,11 @@ describe('local divergence audit', () => {
         const result = await auditLocalDivergence(local, remote);
         expect(result.designLeaves).toHaveLength(1);
         expect(result.eligible.map((leaf) => leaf.id)).toEqual(
-            expect.arrayContaining(['task-live', 'task-deleted', 'task-conflict'])
+            expect.arrayContaining(['task-live', 'task-conflict'])
         );
+        expect(result.obsoleteDeletions).toEqual([
+            expect.objectContaining({ id: 'task-deleted', deleted: true })
+        ]);
         expect(result.recoveryRequired).toEqual([
             expect.objectContaining({ id: 'task-conflict', revision: '1-b' })
         ]);

@@ -313,6 +313,67 @@ reusable Cloudant client does so. Do not change PouchDB batch settings ad hoc wi
 sync and recovery tests. See IBM's
 [429 guidance](https://cloud.ibm.com/docs/Cloudant?topic=Cloudant-usage-and-charges#provisioned-throughput-capacity-and-429-http-responses).
 
+Browser sync and guided recovery use batches of 10 document changes with one queued batch.
+Because each change can contain multiple conflict leaves, the transport additionally splits
+`_bulk_get` bodies into at most 10 requested revisions per HTTP request. It reassembles every
+branch and per-revision error by document ID. A failed chunk fails the whole read instead of
+returning a partial success; retries apply to that chunk and cancellation stops remaining chunks.
+Each remote handle serializes those `_bulk_get` attempts and waits at least 1.1 seconds after the previous
+attempt finishes before starting another, including retries. This leaves headroom within the
+deployment's measured 20-read/sec allowance for contract reads and other traffic. Metadata requests
+and writes do not wait behind the bulk-read queue. This is not an account-wide rate limit: tabs,
+devices, and recovery handles have separate queues. Safe read requests retry up to three times after a
+429, 502, 503, 504, or browser network failure, with
+exponential backoff and jitter. Read-only POST endpoints are `_bulk_get`, `_revs_diff`, and
+`_all_docs`; writes are not blindly retried. `Retry-After` is honored up to a 30-second delay,
+and closing the room cancels pending sync reads and pacing/retry waits. Exhaustion retains the
+existing error badge and manual sync action rather than starting unlimited replication retries.
+
+PouchDB checkpoint PUTs have a separate per-handle queue, spaced at least 200 ms after completion
+(at most five per second, leaving headroom under the observed ten-write/sec allowance). On
+November 10, the desktop `dat-411` trace showed eleven successful checkpoint writes starting in
+880 ms and a failed checkpoint write at 951 ms, reported as a CORS-hidden 429. No `_bulk_docs` or
+`_bulk_get` requests occurred in that window: already-present revisions can still generate
+checkpoint writes, so read pacing cannot prevent this burst.
+
+Only recognizable PouchDB checkpoint writes receive bounded retries after an explicit 429,
+using the same backoff, cancellation, and Retry-After policy. Other write failures are not
+replayed. After an ambiguous browser network failure, a bounded GET can confirm that every
+requested checkpoint field except `_rev` is already stored; only that exact match is
+acknowledged as success. Missing, different, or unreadable checkpoints remain failures for
+manual retry. The transport never overwrites another session's history to reconcile a failure.
+Exhausted checkpoint throttling raises a replication error, avoiding PouchDB's behavior of
+treating every source-checkpoint 4xx as read-only access and silently disabling that checkpoint.
+Both source and target checkpoints remain enabled. No application revisions are rewritten.
+
+Checkpoint handling includes PouchDB's bootstrap `{_id, last_seq: 0}` probe when the local
+target retains a checkpoint but the remote source checkpoint is missing. Only that exact
+two-field bootstrap shape or a versioned PouchDB checkpoint is recognized. Lost-response
+confirmation also requires the same field set except `_rev`, so another session's versioned
+checkpoint cannot be mistaken for the minimal probe. Bootstrap exhaustion cannot select
+PouchDB's read-only-source fallback; its later versioned checkpoint writes remain checked.
+
+The checkpoint browser regression starts with 125 identical revisions on both sides and no
+application uploads. It checks a ten-write/sec sliding limit, explicit throttling, lost
+acknowledgements, unapplied writes, finite exhaustion in both replication directions, and
+safe resumption with unchanged bodies/revisions. Queues do not coordinate independent tabs,
+devices, or bulk application writes; heavier shared traffic can still exhaust finite retries.
+
+The vendored PouchDB 9 bundle has a narrowly scoped capability-detection fix: only HTTP 404, 405,
+or 501 selects the legacy `_bulk_get` fallback. A transient error must not permanently turn bulk
+reads into individual document requests. `scripts/vendor-pouchdb.mjs` applies and verifies this
+patch reproducibly against the locked upstream bundle; an unrecognized bundle requires review.
+
+The local browser capacity fixture charges document reads against a sliding one-second allowance
+of 20, including contract reads, with a second scenario simulating four independent reads/sec.
+Twenty-document batches exhaust their retry budget under that competing load. Ten-document batches
+without pacing finish with avoidable 429s; ten-document batches with pacing finish without capacity
+rejections in both modeled scenarios. This proves behavior under the fixture's stated assumptions,
+not the cause of the historical production 429 or immunity to heavier shared traffic.
+The conflicted-source regression uses ten documents with three leaves each and the same shared
+capacity model. All thirty branches must arrive through bounded bulk reads without individual
+document fallback.
+
 ### Cloudant vs CouchDB differences
 
 Cloudant is CouchDB-compatible but has some limits:
