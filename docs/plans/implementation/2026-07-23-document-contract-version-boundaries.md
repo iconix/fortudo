@@ -1,103 +1,48 @@
-# Phase 2: document-contract version boundaries
+# Document-contract v1 preparation
 
-**Status:** Follow-up implementation plan; not started.
+**Status:** Implemented in the v1 artifact refactor; release acceptance remains separate.
 
-## Objective
+## Scope
 
-Make the browser's existing v1 document contract an immutable, explicitly versioned artifact and
-separate the version numbers for remote policy, writer envelope, taxonomy identity, and data
-migration. Preserve current v1 behavior exactly.
+Freeze the reviewed v1 remote policy, export it reliably for operational tooling, and prove that
+current behavior is unchanged. No registry or multi-version negotiation is needed until a concrete
+v2 policy requires it.
 
-This phase prepares a clean extension point whether the next change is:
+## Implementation
 
-- another room receiving the current v1 fence;
-- a policy-only remote contract v2; or
-- a v2 that changes the persisted writer envelope.
+- `public/js/contracts/remote-contract-v1.js` owns the exact validator function, rejection codes,
+  source checksum, remote-policy version, and design-document builder. The validator source and
+  checksum remain byte-for-byte identical to the installed v1 artifact.
+- `public/js/document-contract.js` remains the existing import facade and writer-envelope encoder.
+  `WRITER_ENVELOPE_VERSION` and `REMOTE_DOCUMENT_CONTRACT_VERSION` are independent names. The old
+  `DOCUMENT_CONTRACT_VERSION` export remains a compatibility alias for the remote policy. Taxonomy
+  identity and the completed migration retain their existing version boundaries.
+- `scripts/export-document-contract.mjs` imports the native browser module and verifies the
+  reviewed source hash and metadata before emitting the canonical design document. `--write`
+  regenerates `contracts/document-contract-v1.json`; `--check` detects drift without writing.
+- Python inspection and the completed migration load the emitted JSON artifact and independently
+  verify its v1 identity and checksum. Python no longer parses JavaScript or depends on prose
+  markers. Loading an artifact does not require Node at operational runtime.
+- The disposable Cloudant gate uses the same verified exporter. The generated JSON is a checked-in
+  output, not a second handwritten validator.
 
-It does not implement any of those operations.
+## Unchanged behavior
 
-## Preconditions
+The current writer envelope, taxonomy identity, missing-validator tolerance, exact v1 compatibility
+checks, divergence classification, recovery behavior, sync ordering, and update UX remain unchanged.
+No production Cloudant documents, validators, credentials, or room provisioning change.
 
-- The completed `fortudo-dat-411` migration remains healthy.
-- The retained-quarantine and known-device exercise has a documented closure decision.
-- Phase 1's toolkit boundaries and versioned Python operation layout are merged.
-- Any public-file change is treated as a compatibility-release change with a Firebase preview,
-  regenerated service-worker artifact, full verification, and deployment approval.
+## Verification
 
-## Locked behavior
+Characterization tests pin the reviewed v1 checksum, canonical artifact, writer envelopes and
+tombstones. Existing golden-corpus and browser safety suites retain the behavior checks. Exporter
+and Python tests cover source/metadata drift, missing or invalid artifacts, alternate working
+directories, regeneration, and sanitized failures.
 
-- The installed v1 Cloudant validator source and SHA-256 checksum remain byte-for-byte identical.
-- Current documents continue using writer envelope version 1.
-- Taxonomy identity remains version 1.
-- Remote contract inspection continues to accept only the exact installed v1 artifact.
-- Missing-validator compatibility behavior does not change.
-- Divergence audit, recovery, sync ordering, and user-visible update behavior do not change.
-- No production Cloudant data or design document is written.
-
-## Proposed browser layout
-
-```text
-public/js/contracts/
-  writer-v1.js
-  remote-contract-v1.js
-  registry.js
-
-public/js/document-contract.js
-  compatibility facade for current imports
-
-public/js/sync-contract.js
-  current single-version orchestration
-```
-
-`writer-v1.js` owns persistence-envelope encoding and structural validation for writer version 1.
-`remote-contract-v1.js` owns the immutable Cloudant validator, remote policy metadata, checksum, and
-accepted writer versions. `registry.js` initially exposes only v1; it must not implement speculative
-multi-version negotiation.
-
-Use distinct constants:
+Run focused checks during implementation, then the release gates on the completed change:
 
 ```text
-REMOTE_DOCUMENT_CONTRACT_VERSION = 1
-WRITER_ENVELOPE_VERSION = 1
-TAXONOMY_IDENTITY_VERSION = 1
-TAXONOMY_MIGRATION_VERSION = 1
-```
-
-Equal numeric values do not make these interchangeable.
-
-## Machine-verifiable operational artifact
-
-Replace Python's prose-marker extraction from the mixed browser module with one authoritative,
-machine-verifiable path from `remote-contract-v1.js` to the exact Cloudant design document.
-
-Preferred shape:
-
-1. A small Node exporter imports the browser contract module.
-2. It emits the canonical design document without credentials or remote metadata.
-3. Python inspection and migration tooling consumes the emitted artifact.
-4. Tests compare the browser builder, emitted validator source, declared checksum, and Python view.
-
-Do not maintain a second handwritten validator or implement a JavaScript parser in Python.
-
-## Test-first implementation sequence
-
-1. Add characterization tests pinning the current v1 validator source, checksum, design metadata,
-   writer envelope, tombstones, and sanitized rejection codes.
-2. Add tests proving the four version concepts are distinct exports even though each equals `1`.
-3. Add versioned v1 modules and keep `document-contract.js` as a compatibility facade.
-4. Add the machine-verifiable design-document export and switch read-only Python inspection to it.
-5. Prove the golden conformance corpus still agrees between local and Cloudant validation.
-6. Prove startup inspection, divergence audit, recovery classification, and all persistence paths
-   have unchanged results.
-7. Regenerate the service-worker precache and run the complete repository suite.
-8. Deploy an isolated Firebase preview and run browser plus real-Cloudant v1 acceptance.
-9. Review live asset hashes before any production deployment.
-
-## Required verification
-
-Run:
-
-```text
+node scripts/export-document-contract.mjs --check
 npm run build:sw-precache
 npm run check:pouchdb
 npm run check:fontawesome
@@ -105,32 +50,15 @@ npm run check:css
 npm run verify
 ```
 
-Also require:
+An isolated Firebase preview, deployed browser acceptance, the disposable real-Cloudant contract
+gate, and green CI remain release acceptance requirements. Inspect live asset hashes before a
+separately approved production deployment. Local checks do not claim those release checks passed.
 
-- Exact v1 validator checksum equality before and after the refactor.
-- Exact design-document semantic equality.
-- Deployed-preview acceptance.
-- The current real-Cloudant contract gate.
-- Green GitHub CI.
-- No production Cloudant write.
+## Separate operational decisions
 
-## Explicit deferrals
+Retained-quarantine closure and the known-device exercise remain operational work. They do not block
+this behavior-preserving source refactor, which neither deletes the quarantine nor changes
+production data.
 
-Do not add during phase 2:
-
-- Remote contract v2.
-- Writer envelope v2.
-- Dual-version room negotiation.
-- Offline envelope selection.
-- A transition or bridge validator.
-- A generic migration adapter class.
-- Another-room fencing.
-- Automatic provisioning, backfill, conflict resolution, or recovery import.
-
-Those behaviors require a concrete migration proposal and their own review.
-
-## Completion criteria
-
-Phase 2 is complete when v1 is represented as an immutable versioned artifact, each version axis is
-named independently, operational tooling consumes the same reviewed artifact without brittle source
-markers, and every current browser/Cloudant behavior remains proven unchanged.
+Another-room fencing, v2 policy or envelope design, multi-version negotiation, backfills, and
+provisioning require their own concrete proposals and checks.

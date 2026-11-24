@@ -18,15 +18,15 @@ Architectural motivation and the offline-replica case study remain in
 
 ## Ownership map
 
-| Category                              | Location                                                          | Stability rule                                                                                                                                                          |
-| ------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reusable as-is                        | `scripts/cloudant_migration/state.py`                             | Product-neutral canonical leaf state, counts, and fingerprints. No room, taxonomy, or migration constants.                                                              |
-| Reusable as-is                        | `scripts/cloudant_migration/client.py`                            | Credential-redacting reads, revision-state inspection, and revision-aware document writes. It has no production CLI or database lifecycle methods.                      |
-| Read-only current-contract inspection | `scripts/document_contract_ops.py`                                | Verifies the exact reviewed v1 validator in any explicitly named `fortudo-*` database. It needs a versioned artifact catalog before supporting v2.                      |
-| Migration-family foundation           | `scripts/migrations/taxonomy_identity_v1/planner.py`              | Read-only v1 identity planning for an explicit `fortudo-*` database. Its transformation applies only to the taxonomy-identity-v1 schema transition.                     |
-| Intentionally one-off                 | `scripts/migrations/taxonomy_identity_v1/dat_411_operation.py`    | Exact source lock, locked meanings, quarantine lifecycle, v1 executor, completion marker, and production approval gates. Never parameterize this file for another room. |
-| Exact disposable proof                | `scripts/migrations/taxonomy_identity_v1/disposable_gate.py`      | Proves the completed operation through disposable Cloudant databases. A pass certifies that exact implementation and commit, not future migrations.                     |
-| Browser compatibility foundation      | `public/js/document-contract.js` and `public/js/sync-contract.js` | Central persistence envelope, validator, divergence audit, and recovery behavior. These currently support exactly remote contract v1 and writer envelope v1.            |
+| Category                              | Location                                                          | Stability rule                                                                                                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reusable as-is                        | `scripts/cloudant_migration/state.py`                             | Product-neutral canonical leaf state, counts, and fingerprints. No room, taxonomy, or migration constants.                                                                 |
+| Reusable as-is                        | `scripts/cloudant_migration/client.py`                            | Credential-redacting reads, revision-state inspection, and revision-aware document writes. It has no production CLI or database lifecycle methods.                         |
+| Read-only current-contract inspection | `scripts/document_contract_ops.py`                                | Verifies the exact reviewed v1 validator in any explicitly named `fortudo-*` database. Consumes the pinned, Node-exported v1 artifact; v2 needs its own reviewed artifact. |
+| Migration-family foundation           | `scripts/migrations/taxonomy_identity_v1/planner.py`              | Read-only v1 identity planning for an explicit `fortudo-*` database. Its transformation applies only to the taxonomy-identity-v1 schema transition.                        |
+| Intentionally one-off                 | `scripts/migrations/taxonomy_identity_v1/dat_411_operation.py`    | Exact source lock, locked meanings, quarantine lifecycle, v1 executor, completion marker, and production approval gates. Never parameterize this file for another room.    |
+| Exact disposable proof                | `scripts/migrations/taxonomy_identity_v1/disposable_gate.py`      | Proves the completed operation through disposable Cloudant databases. A pass certifies that exact implementation and commit, not future migrations.                        |
+| Browser compatibility foundation      | `public/js/document-contract.js` and `public/js/sync-contract.js` | Central persistence envelope, validator, divergence audit, and recovery behavior. These currently support exactly remote contract v1 and writer envelope v1.               |
 
 Import direction is one-way:
 
@@ -110,7 +110,7 @@ validation, divergence classification, offline behavior, and an explicit expand/
 cutover decision. Existing remote leaves may remain grandfathered unless the new guarantee requires
 a backfill. A backfill reuses revision and verification mechanics, not the v1 transformation.
 
-The follow-up browser organization is specified in
+The behavior-preserving v1 artifact preparation and separate release gates are recorded in
 [Phase 2: document-contract version boundaries](../plans/implementation/2026-07-23-document-contract-version-boundaries.md).
 
 ## Adapter checklist for a future operation

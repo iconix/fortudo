@@ -1,6 +1,8 @@
+import { REMOTE_DOCUMENT_CONTRACT_VERSION } from '../public/js/contracts/remote-contract-v1.js';
 import {
     CONTRACT_REJECTION_CODES,
     DOCUMENT_CONTRACT_VERSION,
+    WRITER_ENVELOPE_VERSION,
     applyWriterContract,
     buildDocumentContractDesignDoc,
     DOCUMENT_CONTRACT_CHECKSUM,
@@ -251,17 +253,24 @@ describe('Cloudant document contract validator', () => {
         expect(first.fortudoDocumentContract.checksum).toMatch(/^[a-f0-9]{64}$/);
         expect(second).toEqual(first);
         expect(first.validate_doc_update).toContain('FDC_CONTRACT_VERSION');
-        const moduleSource = readFileSync(
-            path.join(__dirname, '..', 'public', 'js', 'document-contract.js'),
-            'utf8'
+        const artifact = JSON.parse(
+            readFileSync(
+                path.join(__dirname, '..', 'contracts', 'document-contract-v1.json'),
+                'utf8'
+            )
         );
-        const start = moduleSource.indexOf('function cloudantValidateDocUpdate');
-        const marker = '\n}\n\n/**\n * Add persistence metadata';
-        const canonicalSource = moduleSource
-            .slice(start, moduleSource.indexOf(marker, start) + 2)
-            .replace(/^function cloudantValidateDocUpdate/, 'function');
-        expect(createHash('sha256').update(canonicalSource).digest('hex')).toBe(
-            DOCUMENT_CONTRACT_CHECKSUM
+        expect(createHash('sha256').update(artifact.validate_doc_update).digest('hex')).toBe(
+            'c0bf4717ff74c9daa32b850b059df95a45f2156b3491c91f5c658990c0e26a75'
         );
+        // Babel rewrites function formatting in Jest; native Node export tests pin the bytes.
+        expect(first).toMatchObject({
+            _id: artifact._id,
+            language: artifact.language,
+            fortudoDocumentContract: artifact.fortudoDocumentContract
+        });
+        expect(DOCUMENT_CONTRACT_CHECKSUM).toBe(artifact.fortudoDocumentContract.checksum);
+        expect(REMOTE_DOCUMENT_CONTRACT_VERSION).toBe(1);
+        expect(WRITER_ENVELOPE_VERSION).toBe(1);
+        expect(DOCUMENT_CONTRACT_VERSION).toBe(REMOTE_DOCUMENT_CONTRACT_VERSION);
     });
 });
