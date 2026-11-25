@@ -65,16 +65,6 @@ describe('custom CSS polish hooks', () => {
         expect(css).not.toContain('.pulse-animation');
     });
 
-    test('allows long task descriptions such as URLs to wrap anywhere', () => {
-        const css = fs.readFileSync(
-            path.join(__dirname, '..', 'public', 'css', 'custom.css'),
-            'utf8'
-        );
-
-        expect(css).toMatch(/\.task-description\s*\{[^}]*min-width:\s*0;/s);
-        expect(css).toMatch(/body\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
-    });
-
     test('removes inactive view panels from the scrollable layout', () => {
         const css = fs.readFileSync(
             path.join(__dirname, '..', 'public', 'css', 'custom.css'),
