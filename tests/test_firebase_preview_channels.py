@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -14,6 +17,35 @@ def channel(channel_id: str, *, expire_time: str | None = None) -> dict[str, str
     if expire_time is not None:
         result["expireTime"] = expire_time
     return result
+
+
+@pytest.mark.parametrize(("branch", "expected"), [
+    ("codex/current-timer-overlap-repair", "pr120-codex-current-timer"),
+    ("___", "pr120-preview"),
+    ("档案", "pr120-preview"),
+    ("Feat/Already--Stable", "pr120-feat-already--stable"),
+])
+def test_generated_channel_is_accepted_and_protected_by_cleanup(branch, expected):
+    cli = Path(__file__).resolve().parents[1] / "scripts/firebase_preview_channels.py"
+    channel_id = subprocess.check_output(
+        [sys.executable, str(cli), "--name", "120", branch], text=True
+    ).strip()
+    assert channel_id == expected
+    assert find_cleanup_channel_ids(
+        {"channels": [channel(channel_id, expire_time="2026-08-01T00:00:00Z")]},
+        legacy_prefix=f"{channel_id}-",
+        protected_channel_id=channel_id,
+        expired_at_or_before="2026-08-26T00:00:00Z",
+    ) == []
+
+
+def test_invalid_pull_request_number_cannot_name_another_preview():
+    cli = Path(__file__).resolve().parents[1] / "scripts/firebase_preview_channels.py"
+    result = subprocess.run(
+        [sys.executable, str(cli), "--name", "120-other", "task"], capture_output=True, text=True
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
 
 
 def test_finds_only_legacy_sha_channels_for_the_exact_stable_prefix():
