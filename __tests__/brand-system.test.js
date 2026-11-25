@@ -286,14 +286,10 @@ describe('Fortudo brand system', () => {
 
     test('uses emerald for positive readiness and documents the complete semantic palette', () => {
         const roomRenderer = read('public/js/room-renderer.js');
-        const modalManager = read('public/js/modal-manager.js');
         const brandGuide = read('docs/reference/BRAND.md');
 
         expect(roomRenderer).toMatch(
             /synced:\s*\{[^}]*color: 'text-emerald-400'[^}]*label: 'Synced'/s
-        );
-        expect(modalManager).toContain(
-            '\'<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>\''
         );
         expect(brandGuide).toMatch(/\| Emerald\s+\| Low priority; positive\/safe outcomes\s+\|/);
         expect(brandGuide).toMatch(/\| Indigo\s+\| Unscheduled work\s+\|/);

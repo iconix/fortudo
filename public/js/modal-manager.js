@@ -442,45 +442,48 @@ export function showGapTaskPicker(
         gapTaskPickerList.innerHTML =
             '<p class="text-slate-400 sm:text-slate-500 text-sm italic px-2">No unscheduled tasks available.</p>';
     } else {
-        gapTaskPickerList.innerHTML = unscheduledTasks
-            .map((task) => {
-                const estText = task.estDuration
-                    ? calculateHoursAndMinutes(task.estDuration)
-                    : 'No estimate';
-                const fits = task.estDuration && task.estDuration <= durationMinutes;
-                const fitIndicator = task.estDuration
-                    ? fits
-                        ? '<span class="text-emerald-400 text-xs whitespace-nowrap">Fits</span>'
-                        : '<span class="text-amber-300 text-xs whitespace-nowrap">Too long</span>'
-                    : '';
-                const priorityColors = {
-                    high: 'text-rose-400',
-                    medium: 'text-amber-400',
-                    low: 'text-emerald-400'
-                };
-                const priorityColor = priorityColors[task.priority] || 'text-slate-400';
-                return `<div class="gap-task-option flex items-center justify-between p-3 rounded-lg border border-slate-600 hover:border-teal-400 hover:bg-slate-700/50 cursor-pointer transition-all" data-task-id="${task.id}">
-                    <div class="min-w-0 flex-1 mr-2">
-                        <div class="text-slate-200 font-medium text-sm truncate">${task.description}</div>
-                        <div class="text-slate-400 text-xs">Est: ${estText} <span class="${priorityColor}">\u2022 ${(task.priority || 'medium').charAt(0).toUpperCase() + (task.priority || 'medium').slice(1)}</span></div>
-                    </div>
-                    <div class="shrink-0">${fitIndicator}</div>
-                </div>`;
-            })
-            .join('');
-    }
-
-    // Set up click handlers on task options
-    const taskOptions = gapTaskPickerList.querySelectorAll('.gap-task-option');
-    taskOptions.forEach((option) => {
-        option.addEventListener('click', () => {
-            const taskId = option.dataset.taskId;
-            if (taskId && onTaskSelected) {
-                hideGapTaskPicker();
-                onTaskSelected(taskId, startTime);
+        const options = unscheduledTasks.map((task) => {
+            const option = document.createElement('div');
+            option.className =
+                'gap-task-option flex items-center justify-between p-3 rounded-lg border border-slate-600 hover:border-teal-400 hover:bg-slate-700/50 cursor-pointer transition-all';
+            option.dataset.taskId = task.id;
+            option.innerHTML = `<div class="min-w-0 flex-1 mr-2">
+                <div class="text-slate-200 font-medium text-sm truncate"></div>
+                <div class="text-slate-400 text-xs"></div>
+            </div><div class="shrink-0"></div>`;
+            option.querySelector('.truncate').textContent = task.description;
+            const estimate = option.querySelector('.text-xs');
+            const duration = task.estDuration
+                ? calculateHoursAndMinutes(task.estDuration)
+                : 'No estimate';
+            estimate.append(`Est: ${duration} `);
+            const priority = task.priority || 'medium';
+            const label = document.createElement('span');
+            const colors = {
+                high: 'text-rose-400',
+                medium: 'text-amber-400',
+                low: 'text-emerald-400'
+            };
+            label.className = Object.hasOwn(colors, priority) ? colors[priority] : 'text-slate-400';
+            label.textContent = `\u2022 ${priority.charAt(0).toUpperCase()}${priority.slice(1)}`;
+            estimate.append(label);
+            if (task.estDuration) {
+                const fits = task.estDuration <= durationMinutes;
+                const badge = document.createElement('span');
+                badge.className = `${fits ? 'text-emerald-400' : 'text-amber-300'} text-xs whitespace-nowrap`;
+                badge.textContent = fits ? 'Fits' : 'Too long';
+                option.querySelector('.shrink-0').append(badge);
             }
+            option.onclick = () => {
+                if (option.dataset.taskId && onTaskSelected) {
+                    hideGapTaskPicker();
+                    onTaskSelected(option.dataset.taskId, startTime);
+                }
+            };
+            return option;
         });
-    });
+        gapTaskPickerList.replaceChildren(...options);
+    }
 
     gapTaskPickerModal.classList.remove('hidden');
 }

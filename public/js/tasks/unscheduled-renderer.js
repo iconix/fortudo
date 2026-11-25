@@ -204,24 +204,24 @@ function renderUnscheduledTaskActionsMenu(task, actionState, options) {
             </button>
             <div class="unscheduled-task-actions-menu action-menu-content ${actionMenuTransitionClass} absolute right-0 top-11 z-20 w-56 p-1.5 rounded-xl border border-slate-600 bg-slate-800 shadow-2xl sm:origin-top-right max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto" role="menu" aria-label="Task actions"${actionMenuHidden}>
                 <div class="unscheduled-task-actions-menu-group">
-                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-primary btn-start-unscheduled-timer grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md bg-indigo-400/10 hover:bg-indigo-400/20 text-indigo-200 font-semibold text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${escapeHtml(task.id)}" ${blockedActionDisabledAttr}>
                         <i class="fa-solid fa-stopwatch text-indigo-400 text-center" aria-hidden="true"></i>
                         <span>Start timer</span>
                     </button>
                 </div>
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
-                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${blockedActionDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-schedule-task grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${blockedActionDisabledClasses}" type="button" role="menuitem" data-task-id="${escapeHtml(task.id)}" ${blockedActionDisabledAttr}>
                         <i class="fa-regular fa-calendar-plus text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Schedule</span>
                     </button>
-                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item btn-edit-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-slate-300 hover:bg-slate-700 text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${escapeHtml(task.id)}" ${editDeleteDisabledAttr}>
                         <i class="fa-solid fa-pen text-slate-400 text-center" aria-hidden="true"></i>
                         <span>Edit task</span>
                     </button>
                 </div>
                 ${options.mode === 'manual' ? renderMoveMenu(options.movement, options.movementDisabled) : ''}
                 <div class="unscheduled-task-actions-menu-group mt-1.5 pt-1.5 border-t border-slate-700">
-                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${task.id}" ${editDeleteDisabledAttr}>
+                    <button class="unscheduled-task-actions-menu-item unscheduled-task-actions-menu-item-danger btn-delete-unscheduled grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-2 w-full min-h-10 px-2.5 rounded-md text-rose-300 hover:bg-rose-400/10 text-sm text-left focus:outline-none focus:ring-2 focus:ring-rose-400${editDeleteDisabledClasses}" type="button" role="menuitem" data-task-id="${escapeHtml(task.id)}" ${editDeleteDisabledAttr}>
                         <i class="fa-regular ${task.confirmingDelete ? 'fa-check-circle' : 'fa-trash-can'} text-rose-400 text-center" aria-hidden="true"></i>
                         <span>${task.confirmingDelete ? 'Confirm delete' : 'Delete task'}</span>
                     </button>
@@ -274,7 +274,7 @@ function createTaskDisplayHTML(task, priorityClasses, durationText, isCompleted,
                 <div class="font-medium text-white ${textStrike} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${escapeHtml(task.description)}</span> ${renderCategoryBadge(task)} ${inProgressBadge}</div>
                 <div class="text-xs text-slate-400 mt-1.5 flex items-center flex-wrap gap-1.5 ${isCompleted ? 'opacity-70' : ''}">
                     <span class="priority-badge inline-flex items-center ${priorityClasses.bg} ${priorityClasses.text} px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs">
-                        <i class="${priorityClasses.icon} mr-1 text-xs"></i>${priorityLabel} Priority
+                        <i class="${priorityClasses.icon} mr-1 text-xs"></i>${escapeHtml(priorityLabel)} Priority
                     </span>
                     <span class="inline-flex items-center text-slate-400 text-xs">
                         <i class="fa-regular fa-hourglass mr-1"></i>Est: ${durationText}
@@ -316,7 +316,7 @@ function createInlineEditFormHTML(task) {
             <div class="inline-editor-details">
                 <div class="relative min-w-0">
                     <i class="fa-regular fa-pen-to-square absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400/75"></i>
-                    <input type="text" id="inline-edit-description-${task.id}" name="inline-edit-description"
+                    <input type="text" id="inline-edit-description-${escapeHtml(task.id)}" name="inline-edit-description"
                         placeholder="What needs to be done?" aria-label="Description"
                         class="task-edit-description bg-slate-700 pl-10 pr-4 py-2 rounded-lg w-full focus:ring-2 focus:ring-indigo-400 focus:outline-none transition-all" required>
                 </div>
