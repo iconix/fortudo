@@ -72,6 +72,12 @@ def launch_e2e_page(
     return browser, context, page
 
 
+def launch_morning_schedule_page(playwright):
+    browser, context, page = launch_e2e_page(playwright, context_options={"timezone_id": "Pacific/Auckland"})
+    page.clock.set_fixed_time("2025-05-21T08:00:00+12:00")
+    return browser, context, page
+
+
 def seed_and_enter_room(page, room_code: str, docs: list[dict] | None = None) -> None:
     page.goto(BASE_URL, wait_until="load")
     page.evaluate("localStorage.clear()")
