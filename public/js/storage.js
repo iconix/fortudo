@@ -353,6 +353,10 @@ async function deleteTypedDoc(id, docType, logLabel, options = {}) {
         return;
     }
 
+    await deleteRevision(id, rev, revStore, options);
+}
+
+async function deleteRevision(id, rev, revStore, options) {
     try {
         const result = await db.put(
             createContractedDocument({ _id: id, _rev: rev, _deleted: true })
@@ -366,6 +370,21 @@ async function deleteTypedDoc(id, docType, logLabel, options = {}) {
         revStore.delete(id);
     }
     requestSyncAfterWrite(options);
+}
+
+export async function deleteTimerSourceTask(id, options) {
+    ensureStorageInitialized();
+    assertCanPersist(options);
+    let doc;
+    try {
+        doc = await db.get(id);
+    } catch (error) {
+        if (error.status === 404) return;
+        throw error;
+    }
+    if (getStoredDocType(doc) === DOC_TYPES.TASK && doc.type === 'unscheduled') {
+        await deleteRevision(id, doc._rev, getRevStore(DOC_TYPES.TASK), options);
+    }
 }
 
 async function loadTypedDocById(id, predicate, docType) {

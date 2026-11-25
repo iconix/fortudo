@@ -32,10 +32,6 @@ jest.mock('../public/js/toast-manager.js', () => ({
     showToast: jest.fn()
 }));
 
-jest.mock('../public/js/tasks/manager.js', () => ({
-    consumeUnscheduledTask: jest.fn(() => ({ success: true }))
-}));
-
 import {
     handleAddActivity,
     handleEditActivity,
@@ -66,7 +62,6 @@ import {
 } from '../public/js/app-coordinator.js';
 import { showAlert } from '../public/js/modal-manager.js';
 import { showToast } from '../public/js/toast-manager.js';
-import { consumeUnscheduledTask } from '../public/js/tasks/manager.js';
 import { logger } from '../public/js/utils.js';
 
 describe('activity handlers', () => {
@@ -334,7 +329,6 @@ describe('activity handlers', () => {
             description: 'Next timer',
             category: null
         });
-        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-7');
         expect(result.success).toBe(true);
     });
 
@@ -379,7 +373,6 @@ describe('activity handlers', () => {
                 sourceTaskId: 'unsched-9'
             }
         });
-        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-9');
         expect(showAlert).toHaveBeenCalledWith('Description is required to start a timer.', 'sky');
     });
 
@@ -479,7 +472,6 @@ describe('activity handlers', () => {
                 sourceTaskId: 'unsched-88'
             }
         });
-        expect(consumeUnscheduledTask).toHaveBeenCalledWith('unsched-88');
         expect(showToast).toHaveBeenCalledWith('Timer stopped.', { theme: 'sky' });
     });
 

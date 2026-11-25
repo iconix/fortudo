@@ -3,6 +3,7 @@
  */
 
 jest.mock('../public/js/storage.js', () => ({
+    deleteTimerSourceTask: jest.fn(() => Promise.resolve()),
     putActivity: jest.fn(() => Promise.resolve()),
     deleteActivity: jest.fn(() => Promise.resolve()),
     putConfig: jest.fn(() => Promise.resolve()),

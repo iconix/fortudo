@@ -1,5 +1,6 @@
 import {
     putActivity,
+    deleteTimerSourceTask,
     loadActivities as loadActivitiesFromStorage,
     deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
@@ -10,6 +11,7 @@ import {
     deleteRunningActivityConfig
 } from './running-activity-repository.js';
 import { getDayInterval, itemOverlapsInterval } from './insights-intervals.js';
+import { forgetConsumedBacklogTask } from '../tasks/manager.js';
 import { createActivityId } from '../entity-id.js';
 import { getCategoryReferenceFields } from '../taxonomy/taxonomy-selectors.js';
 import {
@@ -829,6 +831,17 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
             completed = result.activity;
         }
 
+        if (completed.sourceTaskId) {
+            try {
+                await deleteTimerSourceTask(completed.sourceTaskId, storageOptions);
+            } catch {
+                return {
+                    success: false,
+                    reason: 'Activity saved. Stop the timer again to finish removing its backlog task.'
+                };
+            }
+            forgetConsumedBacklogTask(completed.sourceTaskId);
+        }
         if (storageOptions.allowDuringPreparation) {
             await deleteRunningActivityConfig(storageOptions);
         } else {

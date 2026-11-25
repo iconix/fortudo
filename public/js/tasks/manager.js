@@ -1426,6 +1426,13 @@ export async function deleteUnscheduledTask(taskId, confirmed = false) {
     return deleteTask(taskIndex, confirmed || tasks[taskIndex].confirmingDelete);
 }
 
+export function forgetConsumedBacklogTask(taskId) {
+    const keep = (task) => task.id !== taskId || task.type !== 'unscheduled';
+    tasks = tasks.filter(keep);
+    durableTaskSnapshot = durableTaskSnapshot.filter(keep);
+    invalidateTaskCaches();
+}
+
 export async function consumeUnscheduledTask(taskId) {
     const taskIndex = tasks.findIndex((t) => t.id === taskId && t.type === 'unscheduled');
     if (taskIndex === -1) {
