@@ -112,12 +112,16 @@ def test_ci_separates_python_unit_browser_and_deployment_gates():
     python_tests = workflow_job("python-tests")
     e2e = workflow_job("e2e")
 
-    assert "actions/setup-node@v7" in python_tests
+    node_refs = re.findall(r"^ +uses: actions/setup-node@(\S+)$", workflow_job("test"), re.MULTILINE)
+    assert len(node_refs) == 1
+    for job in (python_tests, e2e):
+        assert re.findall(r"^ +uses: actions/setup-node@(\S+)$", job, re.MULTILINE) == node_refs
+        assert "node-version-file: '.nvmrc'" in job
+
     assert "npm run lint:python" in python_tests
     assert "npm run test:python" in python_tests
     assert "npm run test:e2e" not in python_tests
 
-    assert "actions/setup-node@v7" in e2e
     assert "npm run test:e2e" in e2e
     assert "npm run test:python" not in e2e
 
