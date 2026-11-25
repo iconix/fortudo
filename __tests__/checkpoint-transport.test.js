@@ -156,17 +156,59 @@ describe('checkpoint write safety and pacing', () => {
         }
     );
 
-    test('confirms an applied checkpoint after a lost acknowledgement without replaying PUT', async () => {
-        const fetch = jest
-            .fn()
-            .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-            .mockResolvedValue(Response.json({ ...checkpoint, _rev: '0-2' }));
-        const request = createSyncFetch(fetch)(url, options);
-        await jest.runAllTimersAsync();
-        const response = await request;
-        expect(response.status).toBe(201);
-        expect(await response.json()).toEqual({ ok: true, id: checkpoint._id, rev: '0-2' });
-        expect(fetch.mock.calls.map(([, request]) => request.method)).toEqual(['PUT', 'GET']);
+    describe.each([
+        ['versioned', checkpoint],
+        ['bootstrap', bootstrap]
+    ])('%s checkpoint lost acknowledgement model', (_kind, document) => {
+        const traces = [];
+        for (let writeThrottles = 0; writeThrottles <= 3; writeThrottles++) {
+            for (let readThrottles = 0; readThrottles <= 4; readThrottles++) {
+                for (const committed of [true, false]) {
+                    traces.push({ writeThrottles, readThrottles, committed });
+                }
+            }
+        }
+
+        test.each(traces)(
+            '$writeThrottles rejected writes, committed=$committed, $readThrottles rejected reads',
+            async ({ writeThrottles, readThrottles, committed }) => {
+                const lostAck = new TypeError('Lost checkpoint acknowledgement');
+                let stored;
+                let writes = 0;
+                let reads = 0;
+                const fetch = async (requestUrl, request) => {
+                    if (requestUrl !== url) throw new Error('Unexpected checkpoint URL');
+                    if (request.method === 'PUT') {
+                        if (++writes <= writeThrottles) return new Response(null, { status: 429 });
+                        if (committed) stored = { ...JSON.parse(request.body), _rev: '0-2' };
+                        throw lostAck;
+                    }
+                    if (request.method !== 'GET') throw new Error('Unexpected checkpoint method');
+                    if (++reads <= readThrottles) return new Response(null, { status: 429 });
+                    return stored ? Response.json(stored) : new Response(null, { status: 404 });
+                };
+
+                const pending = createSyncFetch(fetch)(url, {
+                    method: 'PUT',
+                    body: JSON.stringify(document)
+                });
+                const result =
+                    committed && readThrottles < 4
+                        ? pending.then(async (response) => {
+                              expect(response.status).toBe(201);
+                              expect(await response.json()).toEqual({
+                                  ok: true,
+                                  id: document._id,
+                                  rev: '0-2'
+                              });
+                          })
+                        : expect(pending).rejects.toBe(lostAck);
+                await Promise.all([result, jest.runAllTimersAsync()]);
+                expect(writes).toBe(writeThrottles + 1);
+                expect(reads).toBe(Math.min(readThrottles + 1, 4));
+                expect(stored).toEqual(committed ? { ...document, _rev: '0-2' } : undefined);
+            }
+        );
     });
 
     test('confirmation preserves credentials and removes the write body', async () => {
