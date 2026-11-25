@@ -381,13 +381,6 @@ describe('app-coordinator', () => {
         expect(updateStartTimeField).not.toHaveBeenCalled();
     });
 
-    test('onAllTasksCleared refreshes UI without directly updating start time', () => {
-        appCoordinator.onAllTasksCleared();
-
-        expect(refreshUI).toHaveBeenCalledTimes(1);
-        expect(updateStartTimeField).not.toHaveBeenCalled();
-    });
-
     test('does not expose the old generic coordinator surface', () => {
         expect(appCoordinator.onTaskAdded).toBeUndefined();
         expect(appCoordinator.onTaskUpdated).toBeUndefined();

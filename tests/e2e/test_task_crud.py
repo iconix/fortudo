@@ -1,8 +1,8 @@
 """Functional tests for Fortudo app - task CRUD operations."""
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 import os
 
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page, seed_and_enter_room
 
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -95,6 +95,35 @@ def open_unscheduled_action_menu_for_text(page, text):
     task.locator(".btn-unscheduled-task-actions-menu").click()
     menu.wait_for(state="visible", timeout=5000)
     return task
+
+
+def test_clear_all_resets_suggested_start_time(app_server):
+    with sync_playwright() as playwright:
+        browser, context, page = launch_e2e_page(playwright, context_options={"timezone_id": "UTC"})
+        try:
+            page.clock.set_fixed_time("2025-05-21T09:02:00Z")
+            seed_and_enter_room(page, "clear-all-start-time")
+            form = page.locator("#task-form")
+            start = form.locator('[name="start-time"]')
+            form.locator('[name="description"]').fill("Design review")
+            start.fill("11:00")
+            form.locator('[name="duration-minutes"]').fill("30")
+            form.locator('button[type="submit"]').click()
+            task = page.locator("#scheduled-task-list").get_by_text("Design review", exact=True)
+            expect(task).to_be_visible()
+            expect(start).to_have_value("11:30")
+
+            page.locator("#clear-options-dropdown-trigger-btn").click()
+            page.locator("#clear-all-tasks-option").click()
+            page.locator("#ok-custom-confirm-modal").click()
+            expect(task).to_have_count(0)
+            expect(start).to_have_value("09:05")
+            page.reload()
+            expect(page.locator("#add-task-btn")).to_have_attribute("aria-disabled", "false")
+            expect(task).to_have_count(0)
+        finally:
+            context.close()
+            browser.close()
 
 
 def test_task_crud_flow(app_server):
