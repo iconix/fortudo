@@ -19,13 +19,19 @@ import {
 
 // --- Inline Edit Functions for Unscheduled Tasks ---
 
+function findTaskCard(taskId) {
+    return Array.from(document.querySelectorAll('.task-card[data-task-id]')).find(
+        (card) => card.dataset.taskId === String(taskId)
+    );
+}
+
 /**
  * Populates the inline edit form for an unscheduled task with existing task data
  * @param {string} taskId - The task ID
  * @param {Object} taskData - The task data to populate
  */
 export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
-    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    const taskCardElement = findTaskCard(taskId);
     if (!taskCardElement) {
         logger.error(
             'populateUnscheduledTaskInlineEditForm: Task card element not found for ID',
@@ -80,7 +86,7 @@ export function populateUnscheduledTaskInlineEditForm(taskId, taskData) {
  * @returns {Object|null} The form data or null if validation fails
  */
 export function getUnscheduledTaskInlineFormData(taskId) {
-    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    const taskCardElement = findTaskCard(taskId);
     if (!taskCardElement) {
         logger.error(
             'getUnscheduledTaskInlineFormData: Task card element not found for ID',
@@ -148,7 +154,7 @@ export function getUnscheduledTaskInlineFormData(taskId) {
  * @param {Object} [taskData] - The task data to populate (only when initially showing)
  */
 export function toggleUnscheduledTaskInlineEdit(taskId, showEditForm, taskData) {
-    const taskCardElement = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+    const taskCardElement = findTaskCard(taskId);
     if (!taskCardElement) {
         logger.error('toggleUnscheduledTaskInlineEdit: Task card element not found for ID', taskId);
         return;

@@ -60,7 +60,7 @@ export function renderEditTaskHTML(task, index) {
     });
 
     return `
-        <form id="edit-task-${task.id}" data-task-id="${task.id}" data-task-index="${index}" autocomplete="off" class="inline-editor-card inline-editor-form rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-70 shadow-lg text-left">
+        <form id="edit-task-${escapeHtml(task.id)}" data-task-id="${escapeHtml(task.id)}" data-task-index="${index}" autocomplete="off" class="inline-editor-card inline-editor-form rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-70 shadow-lg text-left">
             <input type="hidden" name="task-type" value="scheduled" hidden>
 
             <!-- Description and Category -->
@@ -101,7 +101,7 @@ export function renderEditTaskHTML(task, index) {
 
                 <!-- Action Buttons -->
                 <div class="inline-editor-actions">
-                    <button type="button" class="btn-edit-cancel rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${task.id}" data-task-index="${index}">
+                    <button type="button" class="btn-edit-cancel rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-slate-700 hover:bg-slate-600 border border-slate-600" data-task-id="${escapeHtml(task.id)}" data-task-index="${index}">
                         <i class="fa-solid fa-xmark mr-2" aria-hidden="true"></i>Cancel
                     </button>
                     <button type="submit" class="btn-save-edit rounded-lg font-medium transition-all duration-300 shadow flex items-center bg-teal-500/30 border border-teal-400/60 text-teal-200 hover:bg-teal-500/40">
@@ -156,7 +156,7 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             </div>`
         : '';
 
-    return `<div id="view-task-${task.id}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${task.id}">
+    return `<div id="view-task-${escapeHtml(task.id)}" class="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-3 rounded-lg border border-slate-700 border-l-4 border-l-teal-400 bg-slate-800 bg-opacity-60 hover:bg-opacity-80 transition-all shadow-md relative gap-2 sm:gap-0${openMenuTaskClass}" data-task-index="${index}" data-task-id="${escapeHtml(task.id)}">
         <div class="celebration-container hidden">
             <span class="celebration-emoji">🎉</span>
             <span class="celebration-emoji">🌟</span>
@@ -167,10 +167,10 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             <span class="celebration-emoji">💪🏾</span>
         </div>
         <div class="flex items-start space-x-3">
-            <label for="task-checkbox-${task.id}" class="checkbox mt-0.5 ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
+            <label for="task-checkbox-${escapeHtml(task.id)}" class="checkbox mt-0.5 ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
                 <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-lg sm:text-xl"></i>
             </label>
-            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
+            <input type="checkbox" id="task-checkbox-${escapeHtml(task.id)}" class="hidden">
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
                 <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${escapeHtml(task.description)}</span> ${renderCategoryBadge(task)} ${lockedBadge}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>

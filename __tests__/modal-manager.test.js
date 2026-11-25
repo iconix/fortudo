@@ -759,6 +759,26 @@ describe('Modal Manager Tests', () => {
                 expect(durationEl.textContent).toBe('1h');
             });
 
+            test('gap picker preserves literal task text and the selected ID', () => {
+                const task = {
+                    ...testTasks[0],
+                    id: 'research "A&B"',
+                    description: 'Review &copy; notation'
+                };
+                const selected = jest.fn();
+                showGapTaskPicker(
+                    '2025-01-15T11:00:00Z',
+                    '2025-01-15T12:00:00Z',
+                    60,
+                    [task],
+                    selected
+                );
+                const option = document.querySelector('.gap-task-option');
+                expect(option.textContent).toContain(task.description);
+                option.click();
+                expect(selected).toHaveBeenCalledWith(task.id, expect.any(String));
+            });
+
             test('showGapTaskPicker renders task list', () => {
                 showGapTaskPicker(
                     '2025-01-15T11:00:00.000Z',
