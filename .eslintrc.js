@@ -6,26 +6,20 @@ module.exports = {
         node: true,
         jest: true
     },
-    extends: [
-        'eslint:recommended',
-        'prettier' // Disables ESLint rules that conflict with Prettier
-    ],
+    extends: ['eslint:recommended', 'prettier'],
     plugins: ['prettier'],
     parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module'
     },
     rules: {
-        // Prettier integration
         'prettier/prettier': 'error',
 
-        // Code quality
         'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
         'no-console': ['warn', { allow: ['error', 'warn', 'info', 'debug'] }],
         'prefer-const': 'error',
         'no-var': 'error',
 
-        // Best practices
         eqeqeq: ['error', 'always'],
         'no-eval': 'error',
         'no-implied-eval': 'error',
@@ -33,14 +27,27 @@ module.exports = {
         'no-duplicate-imports': 'error',
         'no-unreachable': 'error',
 
-        // Modern JavaScript
         'prefer-arrow-callback': 'warn',
         'prefer-template': 'warn',
         'object-shorthand': 'warn',
 
-        // JSDoc comments (since you're using them)
-        'valid-jsdoc': 'off', // Disabled as it's deprecated
+        'valid-jsdoc': 'off',
         'require-jsdoc': 'off'
     },
+    overrides: [
+        {
+            files: ['public/js/**/room-*.js'],
+            rules: {
+                'no-restricted-properties': [
+                    'error',
+                    ...['innerHTML', 'outerHTML', 'insertAdjacentHTML'].map((property) => ({
+                        property,
+                        message:
+                            'Build room controls with DOM nodes. Use textContent for labels and dataset.room for room codes.'
+                    }))
+                ]
+            }
+        }
+    ],
     ignorePatterns: ['node_modules/', 'coverage/', '*.min.js', 'dist/', 'build/']
 };
