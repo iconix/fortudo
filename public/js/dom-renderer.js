@@ -117,7 +117,7 @@ export function startRealTimeClock() {
     setInterval(renderDateTime, 1000);
 }
 
-export function initializeTaskTypeToggle() {
+function renderSelectedTaskMode() {
     const taskForm = document.getElementById('task-form');
     const scheduledRadio = document.getElementById('scheduled');
     const unscheduledRadio = document.getElementById('unscheduled');
@@ -176,6 +176,7 @@ export function initializeTaskTypeToggle() {
         descriptionInput.className = FORM_INPUT_BASE_CLASSES;
         descriptionInput.setAttribute('placeholder', config.descriptionPlaceholder);
         if (taskForm instanceof HTMLElement) {
+            taskForm.dataset.renderedTaskMode = mode;
             taskForm.classList.toggle('task-form--activity', mode === 'activity');
         }
         if (startTimerButton instanceof HTMLElement) {
@@ -194,43 +195,37 @@ export function initializeTaskTypeToggle() {
         addTaskButton instanceof HTMLElement &&
         descriptionInput instanceof HTMLElement
     ) {
-        const toggleVisibility = () => {
-            if (scheduledRadio.checked) {
-                applyTaskFormMode('scheduled');
-                return;
-            }
-
-            if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
-                applyTaskFormMode('activity');
-                return;
-            }
-
+        if (scheduledRadio.checked) {
+            applyTaskFormMode('scheduled');
+        } else if (activityRadio instanceof HTMLInputElement && activityRadio.checked) {
+            applyTaskFormMode('activity');
+        } else {
             applyTaskFormMode('unscheduled');
-        };
-
-        scheduledRadio.addEventListener('change', toggleVisibility);
-        unscheduledRadio.addEventListener('change', toggleVisibility);
-        if (activityRadio instanceof HTMLInputElement) {
-            activityRadio.addEventListener('change', toggleVisibility);
         }
-        toggleVisibility(); // Initial call
-
-        // Add page visibility change listener to re-sync form state when user returns to tab
-        // This fixes mobile bug where radio button state and form UI can get out of sync
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                // Page became visible again, re-sync the form state
-                toggleVisibility();
-            }
-        });
-
-        // Also listen for focus events as additional safeguard for mobile browsers
-        window.addEventListener('focus', () => {
-            toggleVisibility();
-        });
     } else {
         logger.error('DOM elements for task type toggle not found or not of expected types.');
     }
+}
+
+function reconcileTaskFormMode() {
+    const form = getTaskFormElement();
+    const selected = form?.querySelector('input[name="task-type"]:checked');
+    if (selected && selected.value !== form.dataset.renderedTaskMode) {
+        renderSelectedTaskMode();
+    }
+}
+
+function reconcileVisibleTaskFormMode() {
+    if (!document.hidden) reconcileTaskFormMode();
+}
+
+export function initializeTaskTypeToggle() {
+    getTaskFormElement()
+        ?.querySelectorAll('input[name="task-type"]')
+        .forEach((radio) => radio.addEventListener('change', reconcileTaskFormMode));
+    document.addEventListener('visibilitychange', reconcileVisibleTaskFormMode);
+    window.addEventListener('focus', reconcileTaskFormMode);
+    renderSelectedTaskMode();
 }
 
 // --- Event Handlers ---

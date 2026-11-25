@@ -1047,21 +1047,25 @@ describe('DOM Handler Interaction Tests', () => {
             initializeTaskTypeToggle();
         });
 
-        test('switching to unscheduled hides time inputs and shows priority', () => {
-            const unscheduledRadio = document.getElementById('unscheduled');
-            if (!(unscheduledRadio instanceof HTMLInputElement)) {
-                throw new Error('Unscheduled radio not found');
+        test.each(['change', 'focus', 'visibilitychange'])(
+            'reconciles task mode after %s',
+            (event) => {
+                const unscheduledRadio = document.getElementById('unscheduled');
+                unscheduledRadio.checked = true;
+                const targets = {
+                    change: unscheduledRadio,
+                    focus: window,
+                    visibilitychange: document
+                };
+                targets[event].dispatchEvent(new Event(event, { bubbles: true }));
+
+                const timeInputs = document.getElementById('time-inputs');
+                const priorityInput = document.getElementById('priority-input');
+
+                expect(timeInputs.classList.contains('hidden')).toBe(true);
+                expect(priorityInput.classList.contains('hidden')).toBe(false);
             }
-
-            unscheduledRadio.checked = true;
-            unscheduledRadio.dispatchEvent(new Event('change', { bubbles: true }));
-
-            const timeInputs = document.getElementById('time-inputs');
-            const priorityInput = document.getElementById('priority-input');
-
-            expect(timeInputs.classList.contains('hidden')).toBe(true);
-            expect(priorityInput.classList.contains('hidden')).toBe(false);
-        });
+        );
 
         test('switching to scheduled shows time inputs and hides priority', () => {
             require('../public/js/dom-renderer.js'); // ensure module is loaded
