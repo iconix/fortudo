@@ -798,29 +798,35 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
     }
 
     timerStopInFlight = true;
-    const timerToStop = runningActivity;
+    let timerToStop = runningActivity;
     const safeEndDateTime = clampTimerEndDateTime(
         timerToStop.startDateTime,
         toSafeIsoDateTime(endDateTime)
     );
 
     try {
-        const activityResult = await addActivity(
-            {
-                id: timerToStop.id || createActivityId(),
-                description: timerToStop.description,
-                ...getCategoryReferenceFields(timerToStop),
-                startDateTime: timerToStop.startDateTime,
-                endDateTime: safeEndDateTime,
-                duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
-                source: timerToStop.source || 'timer',
-                sourceTaskId: timerToStop.sourceTaskId || null
-            },
-            storageOptions
-        );
-
-        if (!activityResult?.success) {
-            return activityResult;
+        if (!timerToStop.id) {
+            timerToStop = { ...timerToStop, id: createActivityId() };
+            await saveRunningActivityConfig(timerToStop, storageOptions);
+            runningActivity = timerToStop;
+        }
+        let completed = getActivityById(timerToStop.id);
+        if (!completed) {
+            const result = await addActivity(
+                {
+                    id: timerToStop.id,
+                    description: timerToStop.description,
+                    ...getCategoryReferenceFields(timerToStop),
+                    startDateTime: timerToStop.startDateTime,
+                    endDateTime: safeEndDateTime,
+                    duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
+                    source: timerToStop.source || 'timer',
+                    sourceTaskId: timerToStop.sourceTaskId || null
+                },
+                storageOptions
+            );
+            if (!result.success) return result;
+            completed = result.activity;
         }
 
         if (storageOptions.allowDuringPreparation) {
@@ -830,7 +836,7 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
         }
         runningActivity = null;
 
-        return { success: true, activity: cloneActivity(activityResult.activity) };
+        return { success: true, activity: cloneActivity(completed) };
     } finally {
         timerStopInFlight = false;
     }
