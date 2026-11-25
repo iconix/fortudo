@@ -312,48 +312,6 @@ describe('activity insights renderer', () => {
         expect(narrow.querySelector('.sr-only').textContent).toContain('tiny review');
     });
 
-    test('timeline blocks meet minimum mobile touch target height', () => {
-        renderWith({ tasks: [scheduledTask()] });
-
-        const block = document.querySelector('[data-timeline-block-id="task-1"]');
-
-        expect(block).not.toBeNull();
-        expect(block.className).toContain('min-h-[44px]');
-        expect(block.className).toContain('leading-[44px]');
-    });
-
-    test('timeline visible labels stay single-line within fixed-height blocks', () => {
-        renderWith({
-            activities: [
-                activity({
-                    id: 'activity-1',
-                    description: 'Preview personal activity',
-                    startDateTime: isoAt('08:45'),
-                    endDateTime: isoAt('09:00'),
-                    duration: 15
-                })
-            ]
-        });
-
-        const block = document.querySelector('[data-timeline-block-id="activity-1"]');
-        const visibleLabel = block.querySelector('[data-timeline-visible-label]');
-
-        expect(block.className).toContain('h-[44px]');
-        expect(visibleLabel.className).toContain('truncate');
-        expect(visibleLabel.className).toContain('whitespace-nowrap');
-    });
-
-    test('timeline row containers allow taller mobile touch targets', () => {
-        renderWith({ tasks: [scheduledTask()] });
-
-        const rowContainer = document
-            .querySelector('[data-timeline-block="planned"]')
-            ?.closest('.relative');
-
-        expect(rowContainer).not.toBeNull();
-        expect(rowContainer.className).toContain('min-h-[3.5rem]');
-    });
-
     test('timeline midpoint tick is hidden on narrow screens', () => {
         renderWith({ tasks: [scheduledTask()] });
 

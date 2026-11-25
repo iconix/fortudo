@@ -57,11 +57,11 @@ def test_mobile_insights_has_no_horizontal_overflow(app_server, viewport_width: 
                     build_relative_day_activity_doc(
                         page,
                         doc_id="insights-mobile-activity",
-                        description="Mobile actual block",
+                        description="Preview personal activity with a long visible label",
                         day_offset=0,
                         start_hour=9,
                         start_minute=15,
-                        duration_minutes=35,
+                        duration_minutes=15,
                     ),
                 ],
             )
@@ -77,6 +77,21 @@ def test_mobile_insights_has_no_horizontal_overflow(app_server, viewport_width: 
             )
 
             assert has_horizontal_overflow is False
+            for block_id in ("insights-mobile-task", "insights-mobile-activity"):
+                block = page.locator(f'[data-timeline-block-id="{block_id}"]')
+                geometry = block.evaluate("""node => {
+                    const box = node.getBoundingClientRect();
+                    const row = node.offsetParent.getBoundingClientRect();
+                    const label = document.createRange();
+                    label.selectNodeContents(node.querySelector('[data-timeline-visible-label]'));
+                    const lines = new Set(Array.from(label.getClientRects(), rect => rect.top));
+                    return {height: box.height, top: box.top, bottom: box.bottom,
+                        rowTop: row.top, rowBottom: row.bottom, lines: lines.size};
+                }""")
+                assert geometry["height"] >= 44, geometry
+                assert geometry["top"] >= geometry["rowTop"], geometry
+                assert geometry["bottom"] <= geometry["rowBottom"], geometry
+                assert geometry["lines"] == 1, geometry
         finally:
             context.close()
             browser.close()
