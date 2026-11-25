@@ -667,7 +667,6 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
         );
         logger.debug('Submit event listener added to task form.');
 
-        // Allow ENTER key to submit from any input field (time/number inputs don't submit by default)
         taskFormElement.addEventListener(
             'keydown',
             (event) => {
@@ -677,7 +676,7 @@ export function initializePageEventListeners(appCallbacks, taskFormElement) {
                     event.target.type !== 'submit'
                 ) {
                     event.preventDefault();
-                    taskFormElement.dispatchEvent(new Event('submit'));
+                    taskFormElement.requestSubmit();
                 }
             },
             { signal }
