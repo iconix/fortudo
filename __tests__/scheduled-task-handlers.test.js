@@ -72,6 +72,7 @@ jest.mock('../public/js/app-coordinator.js', () => ({
 
 // Mock form-utils
 jest.mock('../public/js/tasks/form-utils.js', () => ({
+    getReviewedOverlap: jest.fn(),
     extractTaskFormData: jest.fn(),
     getTaskFormElement: jest.fn(),
     focusTaskDescriptionInput: jest.fn(),
@@ -436,6 +437,7 @@ describe('Scheduled Task Handlers', () => {
             const overlapWarning = document.createElement('div');
             overlapWarning.className = 'edit-overlap-warning';
             overlapWarning.textContent = 'Overlaps another task';
+            askConfirmation.mockResolvedValueOnce(true);
 
             const formElement = document.createElement('form');
             formElement.appendChild(overlapWarning);

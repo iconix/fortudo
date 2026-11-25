@@ -350,7 +350,9 @@ describe('Add Task Handler', () => {
                 'overlaps "call gift" (2:19 PM - 2:49 PM)';
             document.getElementById('add-task-btn').innerHTML = 'Reschedule';
 
-            await handleAddTaskProcess(mockFormElement, taskData, { reschedulePreApproved: true });
+            await handleAddTaskProcess(mockFormElement, taskData, {
+                matchesReviewedOverlap: () => true
+            });
 
             expect(resetTaskFormPreviewState).toHaveBeenCalledWith({
                 hintElement: document.getElementById('end-time-hint'),

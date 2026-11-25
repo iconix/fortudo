@@ -619,7 +619,7 @@ describe('Modal Manager Tests', () => {
                     'task-1',
                     '11:00',
                     90,
-                    false
+                    undefined
                 );
             });
 
@@ -649,7 +649,12 @@ describe('Modal Manager Tests', () => {
 
                 expect(actionsA.confirmSchedule).not.toHaveBeenCalled();
                 expect(actionsB.confirmSchedule).toHaveBeenCalledTimes(1);
-                expect(actionsB.confirmSchedule).toHaveBeenCalledWith('task-1', '11:00', 90, false);
+                expect(actionsB.confirmSchedule).toHaveBeenCalledWith(
+                    'task-1',
+                    '11:00',
+                    90,
+                    undefined
+                );
                 expect(
                     formListenerSpy.mock.calls.filter(([eventName]) => eventName === 'submit')
                 ).toHaveLength(1);

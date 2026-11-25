@@ -116,12 +116,13 @@ export async function handleConfirmScheduleTask(
     taskId,
     startTime,
     duration,
-    reschedulePreApproved = false
+    matchesReviewedOverlap
 ) {
     const result = await scheduleUnscheduledTask(taskId, startTime, duration);
     if (result.requiresConfirmation) {
         const userConfirmed =
-            reschedulePreApproved || (await askConfirmation(result.reason, undefined, 'indigo'));
+            matchesReviewedOverlap?.(result.proposedTask) ||
+            (await askConfirmation(result.reason, undefined, 'indigo'));
         if (userConfirmed && result.context) {
             const confirmResult = await confirmScheduleUnscheduledTask(
                 result.context.unscheduledTaskId,

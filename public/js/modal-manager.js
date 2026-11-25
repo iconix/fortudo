@@ -6,7 +6,7 @@ import {
     extractTimeFromDateTime
 } from './utils.js';
 import { getTaskState } from './tasks/manager.js';
-import { setupEndTimeHint, setupOverlapWarning } from './tasks/form-utils.js';
+import { getReviewedOverlap, setupEndTimeHint, setupOverlapWarning } from './tasks/form-utils.js';
 
 // --- Modal Elements ---
 const customAlertModal = document.getElementById('custom-alert-modal');
@@ -329,12 +329,12 @@ function handleScheduleModalSubmit(event) {
 
     if (taskId && startTime && duration !== null) {
         const modalWarningEl = document.getElementById('modal-overlap-warning');
-        const reschedulePreApproved = !!(modalWarningEl && modalWarningEl.textContent.trim());
+        const matchesReviewedOverlap = getReviewedOverlap(modalWarningEl);
         currentUnscheduledActions.confirmSchedule(
             taskId,
             startTime,
             duration,
-            reschedulePreApproved
+            matchesReviewedOverlap
         );
     }
     hideScheduleModal();

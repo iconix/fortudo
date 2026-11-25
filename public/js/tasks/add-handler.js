@@ -18,7 +18,7 @@ import { getThemeForTaskType, logger } from '../utils.js';
  * @param {Object} initialTaskData - Extracted form data
  */
 export async function handleAddTaskProcess(formElement, initialTaskData, options = {}) {
-    const { reschedulePreApproved = false } = options;
+    const { matchesReviewedOverlap } = options;
     const theme = getThemeForTaskType(initialTaskData.taskType);
 
     let operationResult = await addTask(initialTaskData);
@@ -132,7 +132,7 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         operationResult.confirmationType === 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS'
     ) {
         const userConfirmedReschedule =
-            reschedulePreApproved ||
+            matchesReviewedOverlap?.(operationResult.proposedTask) ||
             (await askConfirmation(operationResult.reason, undefined, theme));
         if (userConfirmedReschedule && operationResult.proposedTask) {
             operationResult = await confirmAddTaskAndReschedule({
