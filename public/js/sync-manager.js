@@ -385,6 +385,100 @@ export async function waitForSyncPreflight() {
     }
 }
 
+async function runSyncAttempt(currentDb, currentRemoteDatabase, currentSessionId) {
+    if (!currentRemoteDatabase) {
+        setStatus('audit-error');
+        return 'blocked';
+    }
+    if (!(await ensurePrePushGate(currentSessionId))) return 'blocked';
+    if (currentSessionId !== syncSessionId) return 'blocked';
+
+    setStatus('syncing');
+    const auditedEligible = (lastAudit?.eligible || []).map((leaf) => ({
+        id: leaf.id,
+        revision: leaf.revision
+    }));
+    const denied = new Set();
+    const excludedDeletionIds = [
+        ...new Set((lastAudit?.obsoleteDeletions || []).map((leaf) => leaf.id))
+    ].sort();
+    // Include the exclusion in checkpoint identity. Never close over a
+    // changing set behind an unchanged replication filter/checkpoint.
+    const deletionFilter = excludedDeletionIds.length
+        ? {
+              filter: excludeObsoleteDeletions,
+              query_params: { excludedDeletionIds }
+          }
+        : {};
+    let missingAfterPush = auditedEligible;
+    let pushHadFailures = false;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
+            ...SYNC_REPLICATION_OPTIONS,
+            ...deletionFilter,
+            ...(attempt === 1
+                ? {
+                      checkpoint: false,
+                      doc_ids: [...new Set(missingAfterPush.map((leaf) => leaf.id))]
+                  }
+                : {})
+        });
+        observeDenied(pushOperation, denied);
+        let pushResult;
+        try {
+            pushResult = await pushOperation;
+        } catch (error) {
+            if (denied.size > 0) {
+                await persistRejectedLocalRevisions(currentDb, denied);
+            }
+            throw error;
+        }
+        missingAfterPush = await findRemoteMissingLeaves(currentRemoteDatabase, auditedEligible);
+        const resultHadFailures = collectFailedRevisions(pushResult, denied, missingAfterPush);
+        if (denied.size > 0) {
+            await persistRejectedLocalRevisions(currentDb, denied);
+        }
+        pushHadFailures = resultHadFailures || missingAfterPush.length > 0;
+        // A checkpoint can skip revisions without the server rejecting
+        // them. Try those documents once with a fresh checkpoint.
+        if (resultHadFailures || missingAfterPush.length === 0) break;
+        if (currentSessionId !== syncSessionId) return 'blocked';
+    }
+    if (pushHadFailures && currentSessionId === syncSessionId) {
+        invalidateSyncAudit();
+        await performDivergenceAudit(currentSessionId);
+    }
+
+    if (currentSessionId === syncSessionId) controlledPullSessionId = currentSessionId;
+    let pullResult;
+    try {
+        pullResult = await currentDb.replicate.from(currentRemoteDatabase, {
+            ...SYNC_REPLICATION_OPTIONS
+        });
+    } finally {
+        if (controlledPullSessionId === currentSessionId) {
+            controlledPullSessionId = null;
+        }
+    }
+
+    if (currentSessionId === syncSessionId && (pullResult?.docs_written || 0) > 0) {
+        notifyDataChange();
+    }
+    if (currentSessionId !== syncSessionId) return 'blocked';
+    invalidateSyncAudit();
+    if (!(await performDivergenceAudit(currentSessionId))) return 'blocked';
+    if (pushHadFailures) {
+        setStatus('error');
+        return 'blocked';
+    }
+    if ((lastAudit?.eligible || []).length > 0) {
+        setStatus('unsynced');
+        return 'pending';
+    }
+    setStatus('synced');
+    return 'synced';
+}
+
 export async function triggerSync({
     respectCooldown = false,
     retryAfterInFlightFailure = false
@@ -407,115 +501,12 @@ export async function triggerSync({
     syncInFlight = true;
     lastSyncStartedAt = now;
     inFlightSyncPromise = (async () => {
-        let syncSucceeded = false;
-        let shouldRetry = false;
+        let outcome;
+        let shouldRetry;
         try {
-            if (!remoteDatabase) {
-                setStatus('audit-error');
-                return;
-            }
-            if (!(await ensurePrePushGate(currentSessionId))) return;
-            if (currentSessionId !== syncSessionId) return;
-
-            setStatus('syncing');
-            const auditedEligible = (lastAudit?.eligible || []).map((leaf) => ({
-                id: leaf.id,
-                revision: leaf.revision
-            }));
-            const denied = new Set();
-            const excludedDeletionIds = [
-                ...new Set((lastAudit?.obsoleteDeletions || []).map((leaf) => leaf.id))
-            ].sort();
-            // Include the exclusion in checkpoint identity. Never close over a
-            // changing set behind an unchanged replication filter/checkpoint.
-            const deletionFilter = excludedDeletionIds.length
-                ? {
-                      filter: excludeObsoleteDeletions,
-                      query_params: { excludedDeletionIds }
-                  }
-                : {};
-            let missingAfterPush = auditedEligible;
-            let pushHadFailures = false;
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-                const pushOperation = currentDb.replicate.to(currentRemoteDatabase, {
-                    ...SYNC_REPLICATION_OPTIONS,
-                    ...deletionFilter,
-                    ...(attempt === 1
-                        ? {
-                              checkpoint: false,
-                              doc_ids: [...new Set(missingAfterPush.map((leaf) => leaf.id))]
-                          }
-                        : {})
-                });
-                observeDenied(pushOperation, denied);
-                let pushResult;
-                try {
-                    pushResult = await pushOperation;
-                } catch (error) {
-                    if (denied.size > 0) {
-                        await persistRejectedLocalRevisions(currentDb, denied);
-                    }
-                    throw error;
-                }
-                missingAfterPush = await findRemoteMissingLeaves(
-                    currentRemoteDatabase,
-                    auditedEligible
-                );
-                const resultHadFailures = collectFailedRevisions(
-                    pushResult,
-                    denied,
-                    missingAfterPush
-                );
-                if (denied.size > 0) {
-                    await persistRejectedLocalRevisions(currentDb, denied);
-                }
-                pushHadFailures = resultHadFailures || missingAfterPush.length > 0;
-                // A checkpoint can skip revisions without the server rejecting
-                // them. Try those documents once with a fresh checkpoint.
-                if (resultHadFailures || missingAfterPush.length === 0) break;
-                if (currentSessionId !== syncSessionId) return;
-            }
-            if (pushHadFailures && currentSessionId === syncSessionId) {
-                invalidateSyncAudit();
-                await performDivergenceAudit(currentSessionId);
-            }
-
-            if (currentSessionId === syncSessionId) controlledPullSessionId = currentSessionId;
-            let pullResult;
-            try {
-                pullResult = await currentDb.replicate.from(currentRemoteDatabase, {
-                    ...SYNC_REPLICATION_OPTIONS
-                });
-            } finally {
-                if (controlledPullSessionId === currentSessionId) {
-                    controlledPullSessionId = null;
-                }
-            }
-
-            if (currentSessionId === syncSessionId && (pullResult?.docs_written || 0) > 0) {
-                notifyDataChange();
-            }
-            if (currentSessionId === syncSessionId) {
-                // A post-pull audit catches checkpointed denials and concurrent tab writes that
-                // arrived while controlled pull changes were being observed.
-                invalidateSyncAudit();
-                const postPullCompatible = await performDivergenceAudit(currentSessionId);
-                if (!postPullCompatible) return;
-                if (pushHadFailures) {
-                    setStatus('error');
-                    return;
-                }
-                if ((lastAudit?.eligible || []).length > 0) {
-                    setStatus('unsynced');
-                    retryAfterInFlightFailureRequested = true;
-                    // Reach the retry block after finally releases the in-flight
-                    // slot. Returning here would strand a coalesced local write.
-                } else {
-                    syncSucceeded = true;
-                    setStatus('synced');
-                }
-            }
+            outcome = await runSyncAttempt(currentDb, currentRemoteDatabase, currentSessionId);
         } catch (error) {
+            outcome = 'transport-error';
             if (currentSessionId === syncSessionId) {
                 invalidateSyncAudit();
                 logger.error('Sync transport failed.');
@@ -529,7 +520,9 @@ export async function triggerSync({
             if (currentSessionId === syncSessionId) {
                 syncInFlight = false;
                 inFlightSyncPromise = null;
-                shouldRetry = !syncSucceeded && retryAfterInFlightFailureRequested;
+                shouldRetry =
+                    outcome === 'pending' ||
+                    (outcome === 'transport-error' && retryAfterInFlightFailureRequested);
                 retryAfterInFlightFailureRequested = false;
             }
         }
