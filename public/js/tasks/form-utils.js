@@ -402,6 +402,25 @@ export function formatOverlapWarning(overlaps) {
     return `\u26A0 overlaps "${first.description}" and ${otherCount} other ${otherWord}`;
 }
 
+const reviewedWarnings = new WeakMap();
+
+export function getReviewedOverlap(warning) {
+    return warning?.textContent.trim() ? reviewedWarnings.get(warning) : undefined;
+}
+
+function scheduleSnapshot(tasks) {
+    return JSON.stringify(
+        tasks.map(({ id, description, startDateTime, endDateTime, locked, status }) => [
+            id,
+            description,
+            startDateTime,
+            endDateTime,
+            locked,
+            status
+        ])
+    );
+}
+
 /**
  * Sets up live overlap warning on form inputs.
  * @param {HTMLInputElement} startTimeInput
@@ -446,15 +465,27 @@ export function setupOverlapWarning(
             return;
         }
 
+        const scheduledTasks = getScheduledTasks();
         const result = computeOverlapPreview(
             startTimeInput.value,
             hoursInput.value,
             minutesInput.value,
-            getScheduledTasks(),
+            scheduledTasks,
             excludeTaskId
         );
 
         if (result && result.overlaps.length > 0) {
+            const snapshot = scheduleSnapshot(scheduledTasks);
+            const start = timeToDateTime(startTimeInput.value);
+            const duration =
+                (Number(hoursInput.value) || 0) * 60 + (Number(minutesInput.value) || 0);
+            reviewedWarnings.set(
+                warningElement,
+                (proposed) =>
+                    proposed?.startDateTime === start &&
+                    proposed.duration === duration &&
+                    scheduleSnapshot(getScheduledTasks()) === snapshot
+            );
             warningElement.textContent = formatOverlapWarning(result.overlaps);
             buttonElement.innerHTML = overlapButtonHTML;
             buttonElement.className = overlapButtonClasses;

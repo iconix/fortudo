@@ -20,7 +20,7 @@ import {
     showScheduleModal
 } from '../modal-manager.js';
 import { showToast } from '../toast-manager.js';
-import { extractTaskFormData } from './form-utils.js';
+import { extractTaskFormData, getReviewedOverlap } from './form-utils.js';
 import { refreshUI, getCurrentTimeElement } from '../dom-renderer.js';
 import { getTaskEditFormElement, getTaskViewElement } from './scheduled-renderer.js';
 import { restoreEditTriggerFocus } from './form-interaction-state.js';
@@ -237,14 +237,14 @@ export async function handleSaveTaskEdit(taskId, formElement, _taskIndex) {
     const originalIndex = getTaskIndex(taskId);
 
     const overlapEl = formElement.querySelector('.edit-overlap-warning');
-    const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+    const matchesReviewedOverlap = getReviewedOverlap(overlapEl);
 
     const updateResult = await updateTask(originalIndex, taskData);
     const finalResult = await handleRescheduleConfirmation(
         updateResult,
         confirmUpdateTaskAndReschedule,
         () => cancelEdit(originalIndex),
-        { reschedulePreApproved }
+        { matchesReviewedOverlap }
     );
     if (finalResult?.success) {
         onTaskEdited({ task: finalResult.task });

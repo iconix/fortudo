@@ -19,6 +19,7 @@ import {
     initializeCategoryDropdownListener,
     getTaskFormElement,
     focusTaskDescriptionInput,
+    getReviewedOverlap,
     setupEndTimeHint,
     setupOverlapWarning
 } from './tasks/form-utils.js';
@@ -275,9 +276,9 @@ async function bootRoom(roomCode) {
                 return;
             }
             const overlapEl = document.getElementById('overlap-warning');
-            const reschedulePreApproved = !!(overlapEl && overlapEl.textContent.trim());
+            const matchesReviewedOverlap = getReviewedOverlap(overlapEl);
             await handleAddTaskProcess(taskFormElement, taskData, {
-                reschedulePreApproved
+                matchesReviewedOverlap
             });
         }
     });

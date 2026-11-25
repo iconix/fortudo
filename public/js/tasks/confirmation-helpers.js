@@ -47,7 +47,7 @@ export async function handleRescheduleConfirmation(
     cancelCallback,
     options = {}
 ) {
-    const { reschedulePreApproved = false } = options;
+    const { matchesReviewedOverlap } = options;
 
     // Handle UPDATE confirmation (taskIndex + updatedTaskObject)
     if (
@@ -57,7 +57,7 @@ export async function handleRescheduleConfirmation(
         opResult.updatedTaskObject
     ) {
         const userConfirmed =
-            reschedulePreApproved ||
+            matchesReviewedOverlap?.(opResult.updatedTaskObject) ||
             (await askConfirmation(
                 opResult.reason,
                 { ok: 'Yes, reschedule', cancel: 'No, cancel' },
