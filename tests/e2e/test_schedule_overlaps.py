@@ -356,6 +356,9 @@ def test_schedule_overlaps_flow(app_server):
         check("Overlap warning present before submit", len(warning_before_submit) > 0,
              f"Warning: '{warning_before_submit}'")
 
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        assert page.locator("#add-task-btn").inner_text().strip() == "Reschedule"
+
         # Submit the form - should NOT show confirmation dialog
         page.click('#task-form button[type="submit"]')
         page.wait_for_timeout(800)
