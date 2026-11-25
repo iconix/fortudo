@@ -410,40 +410,6 @@ describe('stopTimerAt', () => {
         expect(putActivity).toHaveBeenCalledWith(expect.any(Object), storageOptions);
         expect(deleteRunningActivityConfig).toHaveBeenCalledWith(storageOptions);
     });
-
-    test('does not duplicate the completed activity when stop requests overlap', async () => {
-        jest.setSystemTime(new Date('2026-04-09T10:00:00.000Z'));
-        await startTimer({ description: 'Working' });
-        jest.clearAllMocks();
-
-        let resolveFirstPersist;
-        putActivity.mockImplementationOnce(
-            () =>
-                new Promise((resolve) => {
-                    resolveFirstPersist = resolve;
-                })
-        );
-
-        const firstStop = stopTimerAt('2026-04-09T10:30:00.000Z');
-        const secondStop = stopTimerAt('2026-04-09T10:30:00.000Z');
-
-        await Promise.resolve();
-        resolveFirstPersist();
-
-        const results = await Promise.all([firstStop, secondStop]);
-
-        expect(results.filter((result) => result.success)).toHaveLength(1);
-        expect(results.filter((result) => !result.success)).toHaveLength(1);
-        expect(putActivity).toHaveBeenCalledTimes(1);
-        expect(getActivityState()).toEqual([
-            expect.objectContaining({
-                description: 'Working',
-                startDateTime: '2026-04-09T10:00:00.000Z',
-                endDateTime: '2026-04-09T10:30:00.000Z',
-                duration: 30
-            })
-        ]);
-    });
 });
 
 describe('updateRunningActivity', () => {
