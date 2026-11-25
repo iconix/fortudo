@@ -17,8 +17,6 @@ import {
     validateCategoryKey
 } from '../category-form-utils.js';
 
-// --- Inline Edit Functions for Unscheduled Tasks ---
-
 /**
  * Populates the inline edit form for an unscheduled task with existing task data
  * @param {string} taskId - The task ID
@@ -175,8 +173,6 @@ export function toggleUnscheduledTaskInlineEdit(taskId, showEditForm, taskData) 
     }
 }
 
-// --- Main Task Form Functions ---
-
 /**
  * Extracts task data from the main task form.
  * Handles both scheduled and unscheduled task types.
@@ -272,8 +268,6 @@ export function initializeCategoryDropdownListener() {
     syncCategoryColorDot(select, dot);
 }
 
-// --- End Time Preview Functions ---
-
 /**
  * Computes a 12-hour formatted end time from raw form input values.
  * @param {string} startTimeValue - Start time in HH:MM format
@@ -327,8 +321,6 @@ export function setupEndTimeHint(startTimeInput, hoursInput, minutesInput, hintE
     hoursInput.addEventListener('input', update);
     minutesInput.addEventListener('input', update);
 }
-
-// --- Overlap Preview Functions ---
 
 /**
  * Computes overlap preview for a task being created/edited.
