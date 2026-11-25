@@ -190,9 +190,10 @@ export async function handleStopTimer() {
             if (currentTimerIdentity !== requestedTimerIdentity) {
                 return { success: false, timerChanged: true };
             }
-            return storageOptions.allowDuringPreparation
-                ? stopTimerAt(requestedEndDateTime, storageOptions)
-                : stopTimerAt(requestedEndDateTime);
+            return stopTimerAt(requestedEndDateTime, {
+                ...storageOptions,
+                consumeSourceTask: true
+            });
         });
     } catch {
         showAlert('Could not stop timer.', 'sky');

@@ -814,6 +814,10 @@ export async function loadTasks() {
  * Load all activity documents.
  * @returns {Promise<Object[]>}
  */
+export function loadActivityById(id) {
+    return loadTypedDocById(id, isActivityDoc, DOC_TYPES.ACTIVITY);
+}
+
 export async function loadActivities() {
     return loadDocsByPredicate(isActivityDoc, DOC_TYPES.ACTIVITY);
 }

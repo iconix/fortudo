@@ -9,6 +9,7 @@ function normalizeRunningActivityConfig(config) {
 
     return {
         ...(config.activityId ? { id: config.activityId } : {}),
+        ...(config.sourceCleanupPending === true ? { sourceCleanupPending: true } : {}),
         description: config.description,
         category: config.category || null,
         ...(config.categoryId ? { categoryId: config.categoryId } : {}),
@@ -30,6 +31,7 @@ export async function saveRunningActivityConfig(runningActivity, storageOptions 
     const config = {
         id: RUNNING_ACTIVITY_CONFIG_ID,
         ...(runningActivity.id ? { activityId: runningActivity.id } : {}),
+        ...(runningActivity.sourceCleanupPending === true ? { sourceCleanupPending: true } : {}),
         description: runningActivity.description,
         category: runningActivity.category || null,
         ...(runningActivity.categoryId ? { categoryId: runningActivity.categoryId } : {}),

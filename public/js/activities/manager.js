@@ -1,6 +1,7 @@
 import {
     putActivity,
     deleteTimerSourceTask,
+    loadActivityById,
     loadActivities as loadActivitiesFromStorage,
     deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
@@ -762,7 +763,10 @@ export async function startTimerReplacingCurrentAt(
     const safeTransitionDateTime = toSafeIsoDateTime(transitionDateTime);
 
     if (runningActivity) {
-        const stopResult = await stopTimerAt(safeTransitionDateTime, storageOptions);
+        const stopResult = await stopTimerAt(safeTransitionDateTime, {
+            ...storageOptions,
+            consumeSourceTask: true
+        });
         if (!stopResult?.success) {
             return stopResult;
         }
@@ -790,7 +794,10 @@ export async function stopTimer() {
     return stopTimerAt(new Date().toISOString());
 }
 
-export async function stopTimerAt(endDateTime, storageOptions = {}) {
+export async function stopTimerAt(
+    endDateTime,
+    { consumeSourceTask = false, ...storageOptions } = {}
+) {
     if (timerStopInFlight) {
         return { success: false, reason: 'Timer stop is already in progress.' };
     }
@@ -807,12 +814,21 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
     );
 
     try {
-        if (!timerToStop.id) {
-            timerToStop = { ...timerToStop, id: createActivityId() };
+        const resumingCleanup = timerToStop.sourceCleanupPending;
+        const requestCleanup = consumeSourceTask && timerToStop.sourceTaskId;
+        if (!timerToStop.id || (requestCleanup && !timerToStop.sourceCleanupPending)) {
+            timerToStop = {
+                ...timerToStop,
+                id: timerToStop.id || createActivityId(),
+                ...(requestCleanup ? { sourceCleanupPending: true } : {})
+            };
             await saveRunningActivityConfig(timerToStop, storageOptions);
             runningActivity = timerToStop;
         }
         let completed = getActivityById(timerToStop.id);
+        if (!completed && resumingCleanup) {
+            completed = await loadActivityById(timerToStop.id);
+        }
         if (!completed) {
             const result = await addActivity(
                 {
@@ -831,7 +847,7 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
             completed = result.activity;
         }
 
-        if (completed.sourceTaskId) {
+        if (timerToStop.sourceCleanupPending && completed.sourceTaskId) {
             try {
                 await deleteTimerSourceTask(completed.sourceTaskId, storageOptions);
             } catch {

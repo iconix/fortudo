@@ -47,6 +47,11 @@ def test_retry_source_cleanup_after_reload(app_server, interrupt_id):
             page.reload()
             expect(page.locator("#main-app")).to_be_visible()
             expect(page.locator("#timer-stop-btn")).to_be_visible()
+            page.evaluate("""async () => {
+                const manager = await import('/js/activities/manager.js');
+                manager.resetActivityState();
+                await manager.loadRunningActivity();
+            }""")
             page.locator("#timer-stop-btn").click()
             expect(page.locator("#timer-display")).to_be_hidden()
             assert page.evaluate(read) == [activities, False]

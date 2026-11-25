@@ -463,7 +463,10 @@ describe('activity handlers', () => {
 
         const result = await handleStopTimer();
 
-        expect(stopTimerAt).toHaveBeenCalledWith(expect.any(String));
+        expect(stopTimerAt).toHaveBeenCalledWith(expect.any(String), {
+            allowDuringPreparation: false,
+            consumeSourceTask: true
+        });
         expect(result.success).toBe(true);
         expect(onActivityCreated).toHaveBeenCalledWith({
             activity: {
@@ -512,6 +515,7 @@ describe('activity handlers', () => {
         await resultPromise;
 
         expect(stopTimerAt).toHaveBeenCalledWith('2026-08-17T14:03:04.000Z', {
+            consumeSourceTask: true,
             allowDuringPreparation: true
         });
     });
