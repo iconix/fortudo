@@ -28,6 +28,7 @@ The `docs/` root contains this index only.
 
 ### Architecture
 
+- [Regression history audit through PR #141](architecture/2026-11-history-audit/README.md)
 - [Architecture Assessment](architecture/ARCHITECTURE-ASSESSMENT.md)
 - [Offline Client Migration Safety](architecture/OFFLINE-CLIENT-MIGRATION-SAFETY.md)
 - [Room Identity and Access Risk](architecture/ROOM-IDENTITY-AND-ACCESS-RISK.md)

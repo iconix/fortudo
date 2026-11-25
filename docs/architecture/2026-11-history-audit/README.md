@@ -1,0 +1,60 @@
+# Fortudo regression audit
+
+Fortudo repeatedly lost state at a handoff. A second sync could join a push whose filter excluded a newly recreated task. Completing a timer could commit its activity before clearing the timer record. Switching rooms could attach another handler to a control that survived the switch. These failures left observable evidence in a database, a rendered control, or a deployment result. The checks below use those outcomes.
+
+The inventory ends at PR #141 on November 24, 2026 (New York time), with main at `7a9a7c7`. It includes 113 merged PRs, 21 closed without merge, and seven guard PRs open at capture. The 657 PR commit memberships represent 653 distinct commits. Main contributed 117 more, the initial local-ref comparison added 13, and force-push history added another 75, for **858 distinct commits**. Follow-up review branches are listed below and excluded from those counts. The [PR index](PR-INDEX.md) gives the disposition of each branch. The [commit index](COMMITS.md) links individual changes, the pre-PR history, and archived patches. The [evidence register](EVIDENCE.md) maps the broader history to current checks.
+
+## Historical replays
+
+A replay means the check observed the old failure on original code, original inert source, or an identified historical behavior restored in an isolated fixture. The source column distinguishes those cases. An inspected guard has a current implementation and named check. Its presence alone does not establish that it would have caught every earlier variant.
+
+| Failure | Replay and resulting check | Delivery |
+| --- | --- | --- |
+| Long text widened task cards or recovery dialogs. | Restoring the earlier wrapping behavior from `9d22062` made a 320 px scheduled card require 1,270 px in a 283 px box. A browser geometry check now shares coverage across three widths. | [#135](https://github.com/iconix/fortudo/pull/135) |
+| Room controls sent saved text through an HTML parser. | ESLint rejected the original room-handler file at `3808118`. Its error identifies the DOM APIs to use. | [#136](https://github.com/iconix/fortudo/pull/136) |
+| Rebinding room entry retained the previous callback. | At `3817655` the obsolete callback fired. Giving each control one handler slot makes rebinding replace the callback. | [#137](https://github.com/iconix/fortudo/pull/137) |
+| A queued sync lost a local recreation. | At `693b424` the debounce joined a push excluding the old deletion. The remote stayed empty. The slot owner now handles the attempt result. A bounded browser model checks all three causal orders plus an interrupted retry against two IndexedDB replicas. | [#138](https://github.com/iconix/fortudo/pull/138) |
+| Clearing the schedule retained its old suggested time. | At `c795890` confirmed deletion left 11:30 in the form. With the clock fixed at 09:02, the corrected UI shows 09:05 and deletion survives reload. | [#139](https://github.com/iconix/fortudo/pull/139) |
+| An auxiliary hosted page embedded script that hosting policy would block. | The guard parsed the archived page from `be656235` as inert HTML and found its inline classic script. The check enforces hosting policy on auxiliary pages as well as the main page. | [#140](https://github.com/iconix/fortudo/pull/140) |
+| Retrying a checkpoint confused an applied write with a rejected write. | The production transport from `79855f8` failed a committed-write/lost-acknowledgement case. The bounded verifier covers 80 traces of throttling, write outcomes and confirmation reads. | [#141](https://github.com/iconix/fortudo/pull/141) |
+
+## Additional changes from the full history
+
+The source inventory ends at PR #141. Each of the following 13 PRs addresses a gap identified in that inventory or its verification.
+
+| Source | Root cause and change | Review step |
+| --- | --- | --- |
+| #12/#40 reviews; `7a9a7c7` | User-authored task text could cross an HTML parsing boundary in other controls. Task templates preserve literal identifiers, and the picker constructs DOM nodes for its controls. Tests use inert punctuation and entity-like text. | [#147](https://github.com/iconix/fortudo/pull/147) |
+| #40; `53fd389` | Room initialization repeatedly installed page-lifetime Clear handlers. After a room switch, one click could toggle the menu twice. Install the page controls once and exercise a real switch. | [#153](https://github.com/iconix/fortudo/pull/153) |
+| #39/#43; `433ffc4`, `6b5ca26` | A wall-clock-dependent suite could skip near midnight. A separate UTC/local date conversion persisted the wrong day east of UTC. The browser fixture fixes the clock and timezone and checks the persisted instant. | [#150](https://github.com/iconix/fortudo/pull/150) |
+| #62/#71; `ca904ca`, `7a9a7c7` | Overlapping stops, or reloading after activity persistence succeeded and timer deletion failed, could produce two activities. Bind the durable activity identity before retrying. A real-PouchDB model checks 14 bounded traces, including legacy timers. | [#144](https://github.com/iconix/fortudo/pull/144) |
+| #79/#80/#95/#106/#120; `07a3fdf^`, `7a9a7c7` | Deploy and cleanup constructed incompatible channel IDs. Reporting could pick the first URL and expiry in an account-wide list. One channel identity now binds generation, cleanup and result selection. A local CLI-step fixture exercises active channels, successful deploys and failures. | [#143](https://github.com/iconix/fortudo/pull/143) |
+| #98/#101; `7aa85fb` | A copied action-version assertion rejected a legitimate runtime update. CI uses the repository's Node version file and checks agreement between jobs. | [#142](https://github.com/iconix/fortudo/pull/142) |
+| #109/#110; `3f4f8da` | Preflight could publish the pre-start revision fingerprint with the post-start timer flag. A bounded model drives the read-only CLI through every inter-read boundary for one timer start. The old implementation failed after the first graph read. | [#151](https://github.com/iconix/fortudo/pull/151) |
+| #40/#104; parent of `50ee4a8` and `18b0739` | UI controls requested icons absent from the provisioned icon set. Validate application icon references against the actual shipped stylesheet. | [#145](https://github.com/iconix/fortudo/pull/145) |
+| Direct history, parent of `56d8c00` | A visually disabled completion control still changed the wrong task. Native controls and an active-task check make pointer and keyboard completion follow the same eligibility rule. The browser check reads the resulting task documents. | [#148](https://github.com/iconix/fortudo/pull/148) |
+| #60, `cb90a82`, and `7a9a7c7` | Browser refocus could reset the visible action while a scheduling conflict remained. Verify the action after focus and submit through the same UI. | [#146](https://github.com/iconix/fortudo/pull/146) |
+| #85; parent of `90460a3` | A timeline label extended 39 px beyond its own block while the full page stayed within the viewport. Chromium now measures the actual visible label against its block and row. | [#149](https://github.com/iconix/fortudo/pull/149) |
+| #35, `9aa4ea2`, `4c6dba7` | A synthetic Enter submission bypassed native validation and persisted 1.5 minutes as 1. Native `requestSubmit()` rejects the invalid value, then saves a corrected duration of 15. Two Chromium cases exercise the form. | [#152](https://github.com/iconix/fortudo/pull/152) |
+| #124, `f5fab0d` | A late startup observer missed app and dependency load errors, leaving the screen on Loading. The real browser matrix held the observer until after each network failure and reproduced both cases. Ordered deferred scripts preserve the static Reload shell and concurrent downloads. App evaluation now waits for the observer download to settle. | [#154](https://github.com/iconix/fortudo/pull/154) |
+
+The archived PWA branch had one more concrete defect. `b302b8c` committed unresolved merge markers in the service worker. The existing registration E2E timed out against those exact bytes on a dedicated local server. Replacing only the worker with the current file restored registration and populated the shell cache. The unchanged normal test also passed on rerun. A separate normal-fixture timeout in the concurrently edited workspace was excluded from the historical comparison.
+
+## Remaining evidence gaps
+
+Existing checks listed as **inspected** have no new historical red/green run in this audit. The models cover their stated bounds, and the deployed preview checks were assessed from source and history. The closing evidence for a release is the result of its CI and designated acceptance jobs at its actual head. No live migration or production acceptance was part of these historical replays.
+
+## Known operating risks
+
+- Fortudo's design records browser-visible shared Cloudant credentials as an accepted **personal/household** tradeoff. A room code serves as both the UI label and database locator. The recorded design leaves room-scoped authorization, independently revocable sharing and collision-resistant room identity unresolved. The audit changed no permissions or credentials. [Room identity and access risk](https://github.com/iconix/fortudo/blob/7a9a7c7/docs/architecture/ROOM-IDENTITY-AND-ACCESS-RISK.md)
+- A room with a missing remote validator is explicitly permitted under the compatibility policy. Restore decisions can check the active local revision. Unreplicated remote edits and device-wide storage loss remain outside that guarantee. [Sync and safety states](https://github.com/iconix/fortudo/blob/7a9a7c7/docs/reference/SYNC-STATES.md)
+- The operator explicitly deferred repo-wide development-tool advisory cleanup in #56. CI audits production dependencies separately and publishes development dependency findings. The audit did not reassess the live advisory inventory. [PR #56](https://github.com/iconix/fortudo/pull/56), [security workflow](https://github.com/iconix/fortudo/blob/7a9a7c7/.github/workflows/security.yml)
+- The schedule models explore the named bounds. The replay matrix used local fixtures. It did not run a live Cloudant migration, certify a live deployment, reconstruct deleted refs, or establish global race freedom. Open and unmerged checks protect a release only after integration and execution in that release's CI.
+
+## Reviews and provenance
+
+All returned review and discussion connection counts matched the reported totals. Seven submitted reviews comprised five comments and two approvals. The snapshot contains no review marked dismissed. Four inline threads hold five comments. Both human threads on #4 are resolved and outdated. The two security findings on #12 and #40 remain unresolved and outdated in the snapshot. Thread state records whether the location has changed and whether GitHub considers the discussion resolved. It is separate from a historical replay. The review-state and force-push timeline exports contain zero dismissal events. They record 68 head force pushes and four base force pushes. Both commit endpoints of every event resolved. The 67 additional fetched refs exposed 75 previously uncounted commit ancestors.
+
+Of the 75 extra historical commits, 52 changed dependency manifests, lockfiles or action references. Nine onboarding/modal patches match the submitted source changes; six persistence E2E variants differ in fixture onboarding setup; four variants change documentation; and four completed-task cleanup/overlap variants share the submitted product changes with roadmap-only differences. Comparison against the recorded submitted patches found no additional unguarded failure in those 75 commits. The [force-push index](PR-INDEX.md#force-push-events) records both endpoints.
+
+The 105 discussion comments comprised 63 preview notices, 23 dependency-bot responses, one code-scanning setup notice, and 18 operator comments. Fourteen operator comments requested dependency-bot actions, three explained supersession, and one documented the #56 deferral. Closed experiments and superseded dependency PRs are retained in the index.
