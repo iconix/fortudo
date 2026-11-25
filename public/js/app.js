@@ -383,7 +383,6 @@ async function bootRoom(roomCode) {
         isActivitiesEnabled: () => isActivitiesEnabled(),
         renderInsights
     });
-    startRealTimeClock();
     mountUnscheduledList({
         readView: getUnscheduledView,
         moveTask: moveUnscheduledTask,
@@ -392,7 +391,6 @@ async function bootRoom(roomCode) {
         showError: showToast
     });
     initializeModalEventListeners(unscheduledActions);
-    initializeClearTasksHandlers();
     roomSessionLifecycle.start({ signal });
     if (!deferredStoragePreparation) {
         await roomSessionLifecycle.stopStaleRunningTimerIfNeeded();
@@ -494,6 +492,8 @@ function initAndBootApp(roomCode) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     renderCopyrightYear();
+    startRealTimeClock();
+    initializeClearTasksHandlers();
 
     registerServiceWorker({
         onUpdateAvailable: (activate) => {
