@@ -1,11 +1,9 @@
 """E2E tests for visual gap indicators between scheduled tasks."""
 from playwright.sync_api import sync_playwright
-from datetime import datetime, timedelta
 import os
 
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
-
-import pytest
+from scripts.e2e_helpers import wait_for_task_doc
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_morning_schedule_page
 
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -33,70 +31,6 @@ def clear_and_setup(page):
 passed = 0
 failed = 0
 results = []
-
-STANDARD_SPAN = 240
-COMPACT_SPAN = 21
-
-
-def duration_label(minutes):
-    """Return duration text matching the app's calculateHoursAndMinutes."""
-    h, m = divmod(minutes, 60)
-    parts = []
-    if h:
-        parts.append(f"{h}h")
-    if m:
-        parts.append(f"{m}m")
-    return " ".join(parts) or "0m"
-
-
-def build_schedule():
-    """Build future task times at test runtime."""
-    now = datetime.now()
-
-    def fmt_time(minutes_from_now):
-        t = now + timedelta(minutes=minutes_from_now)
-        return f"{t.hour:02d}:{t.minute:02d}"
-
-    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
-    if minutes_to_midnight >= STANDARD_SPAN + 5:
-        offset = 60
-        d1, d2, d3, d4 = 15, 30, 30, 30
-        gap1 = 45
-        gap2 = 30
-    elif minutes_to_midnight >= COMPACT_SPAN + 5:
-        offset = 5
-        d1, d2, d3, d4 = 2, 2, 2, 2
-        gap1 = 5
-        gap2 = 3
-    else:
-        pytest.skip(
-            f"Only {minutes_to_midnight}m to midnight, need at least {COMPACT_SPAN + 5}m"
-        )
-
-    t1_off = offset
-    t2_off = t1_off + d1
-    t3_off = t2_off + d2 + gap1
-    t4_off = t3_off + d3 + gap2
-    schedule = {
-        "T1_TIME": fmt_time(t1_off),
-        "T2_TIME": fmt_time(t2_off),
-        "T3_TIME": fmt_time(t3_off),
-        "T4_TIME": fmt_time(t4_off),
-        "EXPECTED_GAP_LABEL": duration_label(gap1),
-        "D1": d1,
-        "D2": d2,
-        "D3": d3,
-        "D4": d4,
-    }
-    print(
-        f"Schedule: T1={schedule['T1_TIME']} ({d1}m), "
-        f"T2={schedule['T2_TIME']} ({d2}m), "
-        f"T3={schedule['T3_TIME']} ({d3}m), "
-        f"T4={schedule['T4_TIME']} ({d4}m)",
-        flush=True,
-    )
-    print(f"Expected first gap: {schedule['EXPECTED_GAP_LABEL']} free", flush=True)
-    return schedule
 
 def check(name, condition, detail=""):
     global passed, failed
@@ -137,22 +71,8 @@ def add_scheduled_task(page, description, start_time, hours, minutes):
 
 
 def test_schedule_gaps_flow(app_server):
-    schedule = build_schedule()
-    T1_TIME = schedule["T1_TIME"]
-    T2_TIME = schedule["T2_TIME"]
-    T3_TIME = schedule["T3_TIME"]
-    T4_TIME = schedule["T4_TIME"]
-    EXPECTED_GAP_LABEL = schedule["EXPECTED_GAP_LABEL"]
-    D1 = schedule["D1"]
-    D2 = schedule["D2"]
-    D3 = schedule["D3"]
-    D4 = schedule["D4"]
-
     with sync_playwright() as p:
-        browser, _context, page = launch_e2e_page(
-            p,
-            viewport={"width": 1280, "height": 900},
-        )
+        browser, _context, page = launch_morning_schedule_page(p)
         page.goto(BASE_URL)
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
@@ -167,8 +87,10 @@ def test_schedule_gaps_flow(app_server):
         # TEST 1: No gap indicator for back-to-back tasks
         # =========================================================================
         print("\nTEST 1: No gap indicator for back-to-back tasks", flush=True)
-        add_scheduled_task(page, "Morning standup", T1_TIME, D1 // 60, D1 % 60)
-        add_scheduled_task(page, "Code review", T2_TIME, D2 // 60, D2 % 60)
+        add_scheduled_task(page, "Morning standup", "09:00", 0, 15)
+        morning_task = wait_for_task_doc(page, ROOM_CODE, "Morning standup")
+        assert morning_task["startDateTime"] == "2025-05-20T21:00:00.000Z"
+        add_scheduled_task(page, "Code review", "09:15", 0, 30)
 
         gap_elements = page.locator("#scheduled-task-list .schedule-gap")
         gap_count = gap_elements.count()
@@ -181,7 +103,7 @@ def test_schedule_gaps_flow(app_server):
         # TEST 2: Gap indicator appears between tasks with free time
         # =========================================================================
         print("\nTEST 2: Gap indicator appears between tasks with free time", flush=True)
-        add_scheduled_task(page, "Lunch break", T3_TIME, D3 // 60, D3 % 60)
+        add_scheduled_task(page, "Lunch break", "10:30", 0, 30)
 
         gap_elements = page.locator("#scheduled-task-list .schedule-gap")
         gap_count = gap_elements.count()
@@ -198,12 +120,12 @@ def test_schedule_gaps_flow(app_server):
             gap_text = gap_elements.nth(0).text_content()
             check("Gap shows duration with 'free' label", "free" in gap_text,
                  f"Gap text: {gap_text}")
-            check(f"Gap shows correct duration ({EXPECTED_GAP_LABEL})",
-                 EXPECTED_GAP_LABEL in gap_text,
+            check("Gap shows correct duration (45m)",
+                 "45m" in gap_text,
                  f"Gap text: {gap_text}")
         else:
             check("Gap shows duration with 'free' label", False, "No gap elements found")
-            check(f"Gap shows correct duration ({EXPECTED_GAP_LABEL})", False,
+            check("Gap shows correct duration (45m)", False,
                  "No gap elements found")
 
         # =========================================================================
@@ -236,7 +158,7 @@ def test_schedule_gaps_flow(app_server):
         # TEST 6: Multiple gaps between multiple tasks
         # =========================================================================
         print("\nTEST 6: Multiple gaps between multiple tasks", flush=True)
-        add_scheduled_task(page, "Afternoon focus", T4_TIME, D4 // 60, D4 % 60)
+        add_scheduled_task(page, "Afternoon focus", "11:30", 0, 30)
 
         gap_elements = page.locator("#scheduled-task-list .schedule-gap")
         gap_count = gap_elements.count()
@@ -293,7 +215,7 @@ def test_schedule_gaps_flow(app_server):
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
 
-        add_scheduled_task(page, "Solo task", T1_TIME, D1 // 60, D1 % 60)
+        add_scheduled_task(page, "Solo task", "09:00", 0, 15)
 
         gap_elements = page.locator("#scheduled-task-list .schedule-gap")
         check("No gaps with single task", gap_elements.count() == 0,
@@ -310,7 +232,7 @@ def test_schedule_gaps_flow(app_server):
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
 
-        add_scheduled_task(page, "Future task", T1_TIME, 0, D1)
+        add_scheduled_task(page, "Future task", "09:00", 0, 15)
 
         # Wait for the 1-second refreshCurrentGapHighlight() interval to fire
         page.wait_for_timeout(1500)

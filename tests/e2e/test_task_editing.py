@@ -1,6 +1,5 @@
 """UI interaction tests for Fortudo app - form toggling, modals, editing, etc."""
 from playwright.sync_api import sync_playwright
-from datetime import datetime, timedelta
 import os
 
 from scripts.e2e_helpers import (
@@ -12,7 +11,7 @@ from scripts.e2e_helpers import (
     seed_docs,
     wait_for_main_app,
 )
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config, launch_e2e_page
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, activities_config, launch_e2e_page, launch_morning_schedule_page
 
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -36,55 +35,6 @@ def clear_and_setup(page):
     }}""")
     page.evaluate("localStorage.clear()")
     setup_room(page)
-
-def build_schedule():
-    """Build future task times at test runtime."""
-    now = datetime.now()
-
-    def fmt_time(minutes_from_now):
-        t = now + timedelta(minutes=minutes_from_now)
-        return f"{t.hour:02d}:{t.minute:02d}"
-
-    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
-    if minutes_to_midnight >= 300:
-        offset = 60
-        d_val = 60
-        d1, d2, d3 = 60, 30, 60
-        d_modal = 30
-        modal_gap = 30
-    else:
-        offset = min(10, max(5, minutes_to_midnight - 50))
-        d_val = 10
-        d1, d2, d3 = 10, 5, 10
-        d_modal = 5
-        modal_gap = 10
-
-    t_val_off = offset
-    t1_off = offset
-    t2_off = t1_off + d1
-    t3_off = t2_off + d2
-    t_modal_off = t3_off + d3 + modal_gap
-
-    schedule = {
-        "T_VAL_TIME": fmt_time(t_val_off),
-        "T1_TIME": fmt_time(t1_off),
-        "T2_TIME": fmt_time(t2_off),
-        "T3_TIME": fmt_time(t3_off),
-        "T_MODAL_TIME": fmt_time(t_modal_off),
-        "D_VAL": d_val,
-        "D1": d1,
-        "D2": d2,
-        "D3": d3,
-        "D_MODAL": d_modal,
-    }
-    print(
-        f"Schedule: T1={schedule['T1_TIME']} ({d1}m), "
-        f"T2={schedule['T2_TIME']} ({d2}m), "
-        f"T3={schedule['T3_TIME']} ({d3}m), "
-        f"T_MODAL={schedule['T_MODAL_TIME']} ({d_modal}m)",
-        flush=True,
-    )
-    return schedule
 
 passed = 0
 failed = 0
@@ -157,23 +107,8 @@ def open_unscheduled_action_menu_for_text(page, text):
 
 
 def test_task_editing_flow(app_server):
-    schedule = build_schedule()
-    T_VAL_TIME = schedule["T_VAL_TIME"]
-    T1_TIME = schedule["T1_TIME"]
-    T2_TIME = schedule["T2_TIME"]
-    T3_TIME = schedule["T3_TIME"]
-    T_MODAL_TIME = schedule["T_MODAL_TIME"]
-    D_VAL = schedule["D_VAL"]
-    D1 = schedule["D1"]
-    D2 = schedule["D2"]
-    D3 = schedule["D3"]
-    D_MODAL = schedule["D_MODAL"]
-
     with sync_playwright() as p:
-        browser, _context, page = launch_e2e_page(
-            p,
-            viewport={"width": 1280, "height": 900},
-        )
+        browser, _context, page = launch_morning_schedule_page(p)
 
         console_messages = []
         http_404_urls = []
@@ -227,9 +162,9 @@ def test_task_editing_flow(app_server):
         # =========================================================================
         print("\nTEST 2: Form validation", flush=True)
         page.fill('input[name="description"]', "")
-        page.fill('input[name="start-time"]', T_VAL_TIME)
-        page.fill('input[name="duration-hours"]', str(D_VAL // 60))
-        page.fill('input[name="duration-minutes"]', str(D_VAL % 60))
+        page.fill('input[name="start-time"]', "09:00")
+        page.fill('input[name="duration-hours"]', "1")
+        page.fill('input[name="duration-minutes"]', "0")
         page.click('#task-form button[type="submit"]')
         page.wait_for_timeout(500)
 
@@ -244,9 +179,9 @@ def test_task_editing_flow(app_server):
         # =========================================================================
         print("\nTEST 3: Setup - adding tasks", flush=True)
         tasks_to_add = [
-            ("Morning workout", T1_TIME, str(D1 // 60), str(D1 % 60)),
-            ("Breakfast", T2_TIME, str(D2 // 60), str(D2 % 60)),
-            ("Team meeting", T3_TIME, str(D3 // 60), str(D3 % 60)),
+            ("Morning workout", "09:00", "1", "0"),
+            ("Breakfast", "10:00", "0", "30"),
+            ("Team meeting", "10:30", "1", "0"),
         ]
         for desc, start, hrs, mins in tasks_to_add:
             page.fill('input[name="description"]', desc)
@@ -404,9 +339,9 @@ def test_task_editing_flow(app_server):
             if schedule_modal.is_visible():
                 screenshot(page, "08a_schedule_modal")
 
-                page.fill('input[name="modal-start-time"]', T_MODAL_TIME)
-                page.fill('input[name="modal-duration-hours"]', str(D_MODAL // 60))
-                page.fill('input[name="modal-duration-minutes"]', str(D_MODAL % 60))
+                page.fill('input[name="modal-start-time"]', "12:00")
+                page.fill('input[name="modal-duration-hours"]', "0")
+                page.fill('input[name="modal-duration-minutes"]', "30")
 
                 page.locator('#schedule-modal-form button[type="submit"]').click()
                 page.wait_for_timeout(500)

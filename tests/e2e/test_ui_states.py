@@ -1,9 +1,8 @@
 """Visual inspection of the Fortudo app - takes screenshots in various states."""
 from playwright.sync_api import sync_playwright
-from datetime import datetime, timedelta
 import os
 
-from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
+from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_morning_schedule_page
 
 SCREENSHOTS_DIR = os.path.join(str(REPO_ROOT), "test_screenshots")
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -28,27 +27,6 @@ def clear_and_setup(page):
     page.evaluate("localStorage.clear()")
     setup_room(page)
 
-def build_schedule():
-    """Build future task times at test runtime."""
-    now = datetime.now()
-
-    def fmt_time(minutes_from_now):
-        t = now + timedelta(minutes=minutes_from_now)
-        return f"{t.hour:02d}:{t.minute:02d}"
-
-    minutes_to_midnight = (23 - now.hour) * 60 + (59 - now.minute) + 1
-    if minutes_to_midnight >= 150:
-        offset = 60
-        d1, d2 = 30, 60
-    else:
-        offset = min(10, max(5, minutes_to_midnight - 20))
-        d1, d2 = 5, 10
-
-    t1_time = fmt_time(offset)
-    t2_time = fmt_time(offset + d1)
-    print(f"Schedule: T1={t1_time} ({d1}m), T2={t2_time} ({d2}m)", flush=True)
-    return t1_time, t2_time, d1, d2
-
 def screenshot(page, name):
     path = os.path.join(SCREENSHOTS_DIR, f"{name}.png")
     page.screenshot(path=path, full_page=True)
@@ -68,13 +46,8 @@ def dismiss_modals(page):
 
 
 def test_ui_states_flow(app_server):
-    T1_TIME, T2_TIME, D1, D2 = build_schedule()
-
     with sync_playwright() as p:
-        browser, _context, page = launch_e2e_page(
-            p,
-            viewport={"width": 1280, "height": 900},
-        )
+        browser, _context, page = launch_morning_schedule_page(p)
         page.goto(BASE_URL)
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)  # Let JS initialize and CDNs settle
@@ -112,9 +85,9 @@ def test_ui_states_flow(app_server):
         page.locator("#scheduled + span").click()
         page.wait_for_timeout(300)
         page.fill('input[name="description"]', "Morning standup meeting")
-        page.fill('input[name="start-time"]', T1_TIME)
-        page.fill('input[name="duration-hours"]', str(D1 // 60))
-        page.fill('input[name="duration-minutes"]', str(D1 % 60))
+        page.fill('input[name="start-time"]', "09:00")
+        page.fill('input[name="duration-hours"]', "0")
+        page.fill('input[name="duration-minutes"]', "30")
         screenshot(page, "04_filled_scheduled_form")
 
         page.click('#task-form button[type="submit"]')
@@ -125,9 +98,9 @@ def test_ui_states_flow(app_server):
         # 5. Add a second scheduled task
         print("5. Adding a second scheduled task", flush=True)
         page.fill('input[name="description"]', "Code review session")
-        page.fill('input[name="start-time"]', T2_TIME)
-        page.fill('input[name="duration-hours"]', str(D2 // 60))
-        page.fill('input[name="duration-minutes"]', str(D2 % 60))
+        page.fill('input[name="start-time"]', "09:30")
+        page.fill('input[name="duration-hours"]', "1")
+        page.fill('input[name="duration-minutes"]', "0")
         page.click('#task-form button[type="submit"]')
         page.wait_for_timeout(500)
         dismiss_modals(page)
