@@ -1,5 +1,7 @@
 import {
     putActivity,
+    deleteTimerSourceTask,
+    loadActivityById,
     loadActivities as loadActivitiesFromStorage,
     deleteActivity as deleteActivityFromStorage
 } from '../storage.js';
@@ -10,6 +12,7 @@ import {
     deleteRunningActivityConfig
 } from './running-activity-repository.js';
 import { getDayInterval, itemOverlapsInterval } from './insights-intervals.js';
+import { forgetConsumedBacklogTask } from '../tasks/manager.js';
 import { createActivityId } from '../entity-id.js';
 import { getCategoryReferenceFields } from '../taxonomy/taxonomy-selectors.js';
 import {
@@ -760,7 +763,10 @@ export async function startTimerReplacingCurrentAt(
     const safeTransitionDateTime = toSafeIsoDateTime(transitionDateTime);
 
     if (runningActivity) {
-        const stopResult = await stopTimerAt(safeTransitionDateTime, storageOptions);
+        const stopResult = await stopTimerAt(safeTransitionDateTime, {
+            ...storageOptions,
+            consumeSourceTask: true
+        });
         if (!stopResult?.success) {
             return stopResult;
         }
@@ -788,7 +794,10 @@ export async function stopTimer() {
     return stopTimerAt(new Date().toISOString());
 }
 
-export async function stopTimerAt(endDateTime, storageOptions = {}) {
+export async function stopTimerAt(
+    endDateTime,
+    { consumeSourceTask = false, ...storageOptions } = {}
+) {
     if (timerStopInFlight) {
         return { success: false, reason: 'Timer stop is already in progress.' };
     }
@@ -798,31 +807,57 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
     }
 
     timerStopInFlight = true;
-    const timerToStop = runningActivity;
+    let timerToStop = runningActivity;
     const safeEndDateTime = clampTimerEndDateTime(
         timerToStop.startDateTime,
         toSafeIsoDateTime(endDateTime)
     );
 
     try {
-        const activityResult = await addActivity(
-            {
+        const resumingCleanup = timerToStop.sourceCleanupPending;
+        const requestCleanup = consumeSourceTask && timerToStop.sourceTaskId;
+        if (!timerToStop.id || (requestCleanup && !timerToStop.sourceCleanupPending)) {
+            timerToStop = {
+                ...timerToStop,
                 id: timerToStop.id || createActivityId(),
-                description: timerToStop.description,
-                ...getCategoryReferenceFields(timerToStop),
-                startDateTime: timerToStop.startDateTime,
-                endDateTime: safeEndDateTime,
-                duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
-                source: timerToStop.source || 'timer',
-                sourceTaskId: timerToStop.sourceTaskId || null
-            },
-            storageOptions
-        );
-
-        if (!activityResult?.success) {
-            return activityResult;
+                ...(requestCleanup ? { sourceCleanupPending: true } : {})
+            };
+            await saveRunningActivityConfig(timerToStop, storageOptions);
+            runningActivity = timerToStop;
+        }
+        let completed = getActivityById(timerToStop.id);
+        if (!completed && resumingCleanup) {
+            completed = await loadActivityById(timerToStop.id);
+        }
+        if (!completed) {
+            const result = await addActivity(
+                {
+                    id: timerToStop.id,
+                    description: timerToStop.description,
+                    ...getCategoryReferenceFields(timerToStop),
+                    startDateTime: timerToStop.startDateTime,
+                    endDateTime: safeEndDateTime,
+                    duration: calculateDurationMinutes(timerToStop.startDateTime, safeEndDateTime),
+                    source: timerToStop.source || 'timer',
+                    sourceTaskId: timerToStop.sourceTaskId || null
+                },
+                storageOptions
+            );
+            if (!result.success) return result;
+            completed = result.activity;
         }
 
+        if (timerToStop.sourceCleanupPending && completed.sourceTaskId) {
+            try {
+                await deleteTimerSourceTask(completed.sourceTaskId, storageOptions);
+            } catch {
+                return {
+                    success: false,
+                    reason: 'Activity saved. Stop the timer again to finish removing its backlog task.'
+                };
+            }
+            forgetConsumedBacklogTask(completed.sourceTaskId);
+        }
         if (storageOptions.allowDuringPreparation) {
             await deleteRunningActivityConfig(storageOptions);
         } else {
@@ -830,7 +865,7 @@ export async function stopTimerAt(endDateTime, storageOptions = {}) {
         }
         runningActivity = null;
 
-        return { success: true, activity: cloneActivity(activityResult.activity) };
+        return { success: true, activity: cloneActivity(completed) };
     } finally {
         timerStopInFlight = false;
     }

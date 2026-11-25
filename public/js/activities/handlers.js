@@ -15,23 +15,9 @@ import {
     runTimerStopWhenReady,
     waitForStoragePreparation
 } from '../storage.js';
-import { consumeUnscheduledTask } from '../tasks/manager.js';
 import { consumeActivitySmokeFailure } from './smoke-hooks.js';
 import { onActivityCreated, onActivityEdited, onActivityDeleted } from '../app-coordinator.js';
 import { logger } from '../utils.js';
-
-async function consumeSourceTaskIfPresent(activity) {
-    if (!activity?.sourceTaskId) return null;
-
-    const result = await consumeUnscheduledTask(activity.sourceTaskId);
-    if (!result.success) {
-        showAlert(
-            result.reason || 'Activity saved, but its source task could not be removed.',
-            'teal'
-        );
-    }
-    return result;
-}
 
 function resolveActivityPayload(activityDataOrForm) {
     if (!(activityDataOrForm instanceof HTMLFormElement)) {
@@ -165,7 +151,6 @@ export async function handleStartTimer(timerData) {
             if (queuedDuringPreparation) {
                 await waitForStoragePreparation();
             }
-            await consumeSourceTaskIfPresent(result.stoppedActivity);
             onActivityCreated({ activity: result.stoppedActivity });
         }
 
@@ -205,9 +190,10 @@ export async function handleStopTimer() {
             if (currentTimerIdentity !== requestedTimerIdentity) {
                 return { success: false, timerChanged: true };
             }
-            return storageOptions.allowDuringPreparation
-                ? stopTimerAt(requestedEndDateTime, storageOptions)
-                : stopTimerAt(requestedEndDateTime);
+            return stopTimerAt(requestedEndDateTime, {
+                ...storageOptions,
+                consumeSourceTask: true
+            });
         });
     } catch {
         showAlert('Could not stop timer.', 'sky');
@@ -230,7 +216,6 @@ export async function handleStopTimer() {
 
     if (result.activity) {
         await waitForStoragePreparation();
-        await consumeSourceTaskIfPresent(result.activity);
         onActivityCreated({ activity: result.activity });
     }
     showToast('Timer stopped.', { theme: 'sky' });
