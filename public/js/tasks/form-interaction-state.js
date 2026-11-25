@@ -1,6 +1,5 @@
 /**
  * Capture the active named form control and its text selection, if any.
- * This state is intentionally DOM-only and must never be persisted with task data.
  * @param {HTMLFormElement} form
  * @returns {{name: string, value: string|null, selectionStart: number|null, selectionEnd: number|null, selectionDirection: string|null}|null}
  */
@@ -20,7 +19,6 @@ export function captureFormInteractionState(form) {
 
 /**
  * Restore focus and text selection after a form has been recreated.
- * Matching by name and value handles grouped controls such as radio buttons.
  * @param {HTMLFormElement} form
  * @param {{name: string, value: string|null, selectionStart: number|null, selectionEnd: number|null, selectionDirection: string|null}|null} state
  * @returns {HTMLElement|null}

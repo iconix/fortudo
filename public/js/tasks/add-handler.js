@@ -23,7 +23,6 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
 
     let operationResult = await addTask(initialTaskData);
 
-    // Handle adjust running task confirmation (truncate or extend)
     if (
         operationResult.requiresConfirmation &&
         operationResult.confirmationType === 'ADJUST_RUNNING_TASK'
@@ -70,7 +69,6 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         }
     }
 
-    // Handle truncate completed task confirmation
     if (
         operationResult.requiresConfirmation &&
         operationResult.confirmationType === 'TRUNCATE_COMPLETED_TASK'
@@ -108,7 +106,6 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         }
     }
 
-    // First confirmation stage: locked task shift
     if (
         operationResult.requiresConfirmation &&
         operationResult.confirmationType === 'RESCHEDULE_NEEDS_SHIFT_DUE_TO_LOCKED'
@@ -126,7 +123,6 @@ export async function handleAddTaskProcess(formElement, initialTaskData, options
         }
     }
 
-    // Second confirmation stage: unlocked task overlap
     if (
         operationResult.requiresConfirmation &&
         operationResult.confirmationType === 'RESCHEDULE_OVERLAPS_UNLOCKED_OTHERS'

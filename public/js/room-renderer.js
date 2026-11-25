@@ -1,20 +1,10 @@
 import { setActiveRoom, addRoom, generateRoomCode, getSavedRooms } from './room-manager.js';
 
-/** @type {AbortController|null} Tracks listeners for cleanup on re-show */
-let roomScreenAbortController = null;
-
 /**
  * Show the room entry screen and populate saved rooms.
  * @param {Function} onEnterRoom - Callback invoked with room code when user enters a room
  */
 export function showRoomEntryScreen(onEnterRoom) {
-    // Abort previous listeners to prevent accumulation
-    if (roomScreenAbortController) {
-        roomScreenAbortController.abort();
-    }
-    roomScreenAbortController = new AbortController();
-    const { signal } = roomScreenAbortController;
-
     const roomEntryScreen = document.getElementById('room-entry-screen');
     const mainApp = document.getElementById('main-app');
     if (roomEntryScreen) {
@@ -23,7 +13,6 @@ export function showRoomEntryScreen(onEnterRoom) {
     }
     if (mainApp) mainApp.classList.add('hidden');
 
-    // Populate saved rooms
     const savedRooms = getSavedRooms();
     const savedRoomsList = document.getElementById('saved-rooms-list');
     const savedRoomsButtons = document.getElementById('saved-rooms-buttons');
@@ -41,58 +30,36 @@ export function showRoomEntryScreen(onEnterRoom) {
         }
     }
 
-    // Wire up room entry form
     const roomEntryForm = document.getElementById('room-entry-form');
     const roomCodeInput = document.getElementById('room-code-input');
     const generateBtn = document.getElementById('generate-room-btn');
 
     if (generateBtn && roomCodeInput) {
-        generateBtn.addEventListener(
-            'click',
-            () => {
-                roomCodeInput.value = generateRoomCode();
-            },
-            { signal }
-        );
+        generateBtn.onclick = () => {
+            roomCodeInput.value = generateRoomCode();
+        };
     }
 
     if (roomEntryForm && roomCodeInput) {
-        roomEntryForm.addEventListener(
-            'submit',
-            async (e) => {
-                e.preventDefault();
-                const code = roomCodeInput.value.trim().toLowerCase();
-                if (code) {
-                    await enterRoom(code, onEnterRoom);
-                }
-            },
-            { signal }
-        );
+        roomEntryForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const code = roomCodeInput.value.trim().toLowerCase();
+            if (code) {
+                await enterRoom(code, onEnterRoom);
+            }
+        };
     }
 
-    // Wire up saved room buttons
     if (savedRoomsButtons) {
-        savedRoomsButtons.addEventListener(
-            'click',
-            async (e) => {
-                const btn = e.target.closest('.saved-room-btn');
-                if (btn) {
-                    const code = btn.getAttribute('data-room');
-                    if (code) {
-                        await enterRoom(code, onEnterRoom);
-                    }
-                }
-            },
-            { signal }
-        );
+        savedRoomsButtons.onclick = async (e) => {
+            const code = e.target.closest('.saved-room-btn')?.dataset.room;
+            if (code) {
+                await enterRoom(code, onEnterRoom);
+            }
+        };
     }
 }
 
-/**
- * Enter a room: set active, save to list, and invoke callback.
- * @param {string} roomCode
- * @param {Function} onEnterRoom - Callback to boot the app with the room code
- */
 async function enterRoom(roomCode, onEnterRoom) {
     setActiveRoom(roomCode);
     addRoom(roomCode);
@@ -202,7 +169,6 @@ export function updateSyncStatusUI(status) {
         }
     };
 
-    // Preparation and audit retries emit intermediate statuses before the request finishes.
     const displayedStatus = indicator.getAttribute('aria-busy') === 'true' ? 'syncing' : status;
     const config = configs[displayedStatus] || configs.idle;
     icon.className = `${config.icon} ${config.color}`;

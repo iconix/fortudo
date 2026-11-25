@@ -88,32 +88,36 @@ describe('Room Renderer', () => {
             expect(input.value).toBe('fox-123');
         });
 
-        test('form submission calls onEnterRoom with room code', async () => {
-            const onEnterRoom = jest.fn(() => Promise.resolve());
-            showRoomEntryScreen(onEnterRoom);
+        test('reopening the room picker submits once to the current callback', () => {
+            const previous = jest.fn();
+            const current = jest.fn();
+            showRoomEntryScreen(previous);
+            showRoomEntryScreen(current);
 
             const input = document.getElementById('room-code-input');
             input.value = 'Test-Room';
 
             const form = document.getElementById('room-entry-form');
             form.dispatchEvent(new Event('submit', { cancelable: true }));
-            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(setActiveRoom).toHaveBeenCalledWith('test-room');
             expect(addRoom).toHaveBeenCalledWith('test-room');
-            expect(onEnterRoom).toHaveBeenCalledWith('test-room');
+            expect(previous).not.toHaveBeenCalled();
+            expect(current.mock.calls).toEqual([['test-room']]);
         });
 
-        test('clicking saved room button calls onEnterRoom', async () => {
+        test('reopening the room picker selects a saved room once', () => {
             getSavedRooms.mockReturnValue(['fox-123']);
-            const onEnterRoom = jest.fn(() => Promise.resolve());
-            showRoomEntryScreen(onEnterRoom);
+            const previous = jest.fn();
+            const current = jest.fn();
+            showRoomEntryScreen(previous);
+            showRoomEntryScreen(current);
 
             const btn = document.querySelector('.saved-room-btn');
             btn.dispatchEvent(new Event('click', { bubbles: true }));
-            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(onEnterRoom).toHaveBeenCalledWith('fox-123');
+            expect(previous).not.toHaveBeenCalled();
+            expect(current.mock.calls).toEqual([['fox-123']]);
         });
     });
 
