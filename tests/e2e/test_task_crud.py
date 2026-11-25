@@ -1,5 +1,5 @@
 """Functional tests for Fortudo app - task CRUD operations."""
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 import os
 
 from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
@@ -102,7 +102,9 @@ def test_task_crud_flow(app_server):
         browser, _context, page = launch_e2e_page(
             p,
             viewport={"width": 1280, "height": 900},
+            context_options={"timezone_id": "UTC"},
         )
+        page.clock.set_fixed_time("2025-05-21T08:00:00Z")
         page.goto(BASE_URL)
         page.wait_for_load_state("load")
         page.wait_for_timeout(2000)
@@ -276,19 +278,11 @@ def test_task_crud_flow(app_server):
         # TEST 7: Complete a scheduled task
         # =========================================================================
         print("\nTEST 7: Complete a scheduled task", flush=True)
-        checkboxes = page.locator("#scheduled-task-list .checkbox")
-        if checkboxes.count() >= 1:
-            checkboxes.nth(0).click()
-            page.wait_for_timeout(1000)
-            dismiss_modals(page)
-
-            task_item = page.locator("#scheduled-task-list > [data-task-id]").nth(0)
-            task_html = task_item.inner_html()
-            check("Task marked as completed",
-                 "completed" in task_html.lower() or "line-through" in task_html or "check" in task_html.lower(),
-                 f"Task HTML snippet: {task_html[:150]}")
-        else:
-            check("Checkbox found for completion", False, "No checkboxes found")
+        standup = page.get_by_role("checkbox", name="Complete Team standup", exact=True)
+        expect(standup).to_be_enabled()
+        expect(standup).not_to_be_checked()
+        standup.click()
+        expect(standup).to_be_checked()
 
         screenshot(page, "07_task_completed")
 
