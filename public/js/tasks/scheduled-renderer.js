@@ -118,13 +118,14 @@ export function renderEditTaskHTML(task, index) {
  * Renders the HTML for a task in view mode
  * @param {Object} task - The task object
  * @param {number} index - The task index
- * @param {boolean} isActiveTask - Whether this is the active task
+ * @param {boolean} isFirstIncomplete - Whether this task can be completed next
  * @param {boolean} canDoNow - Whether to show the do-now action
  * @returns {string} HTML string for the task view
  */
-export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) {
+export function renderViewTaskHTML(task, index, isFirstIncomplete, canDoNow = false) {
     const isCompleted = task.status === 'completed';
-    const checkboxDisabled = isCompleted || !isActiveTask;
+    const checkboxDisabled = isCompleted || !isFirstIncomplete;
+    const isActiveTask = isFirstIncomplete && isTaskCurrentlyActive(task);
     let activeTaskColorClass = 'text-slate-200';
     if (isActiveTask && !isCompleted && task.type === 'scheduled') {
         const isLate = isTaskRunningLate(task);
@@ -167,10 +168,9 @@ export function renderViewTaskHTML(task, index, isActiveTask, canDoNow = false) 
             <span class="celebration-emoji">💪🏾</span>
         </div>
         <div class="flex items-start space-x-3">
-            <label for="task-checkbox-${task.id}" class="checkbox mt-0.5 ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Only the active task can be completed') : 'Mark as complete'}">
-                <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-lg sm:text-xl"></i>
-            </label>
-            <input type="checkbox" id="task-checkbox-${task.id}" class="hidden">
+            <button type="button" role="checkbox" id="task-checkbox-${task.id}" aria-checked="${isCompleted}" aria-label="Complete ${escapeHtml(task.description)}" ${checkboxDisabled ? 'disabled' : ''} class="checkbox mt-0.5 ${checkboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}" title="${checkboxDisabled ? (isCompleted ? 'Task already completed' : 'Complete earlier tasks first') : 'Mark as complete'}">
+                <i class="fa-regular ${isCompleted ? 'fa-check-square text-teal-700' : 'fa-square text-slate-500'} text-lg sm:text-xl" aria-hidden="true"></i>
+            </button>
             <div class="${isCompleted ? 'line-through opacity-70' : ''} ${isActiveTask && !isCompleted && task.type === 'scheduled' ? '' : isCompleted ? '' : 'opacity-60'} min-w-0 flex-1">
                 <div class="${isCompleted ? 'text-white font-medium' : `${activeTaskColorClass} font-medium`} text-sm sm:text-base flex items-center gap-2 flex-wrap"><span class="task-description">${escapeHtml(task.description)}</span> ${renderCategoryBadge(task)} ${lockedBadge}</div>
                 <div class="${isCompleted ? 'text-white' : activeTaskColorClass} text-xs sm:text-sm mt-0.5">${convertTo12HourTime(displayStartTime)} &ndash; ${convertTo12HourTime(displayEndTime)} (${durationText})</div>
@@ -393,7 +393,6 @@ export function renderTasks(
         updatedCallbacks = eventCallbacks;
     }
 
-    let activeTaskFound = false;
     const scheduledTasks = tasksToRender.filter((task) => task.type === 'scheduled');
 
     if (scheduledTasks.length === 0) {
@@ -405,18 +404,19 @@ export function renderTasks(
     const gaps = findScheduleGaps(tasksToRender);
     const gapAfterTask = new Map(gaps.map((g) => [g.afterTaskId, g]));
     const editDrafts = captureScheduledEditDrafts(taskListElement);
+    const firstIncomplete = scheduledTasks.find((task) => task.status !== 'completed');
 
     let html = '';
     scheduledTasks.forEach((task) => {
         const originalIndex = tasksToRender.findIndex((t) => t.id === task.id);
-        let isActiveTask = false;
-        if (!activeTaskFound && task.status !== 'completed' && isTaskCurrentlyActive(task)) {
-            activeTaskFound = true;
-            isActiveTask = true;
-        }
         html += task.editing
             ? renderEditTaskHTML(task, originalIndex)
-            : renderViewTaskHTML(task, originalIndex, isActiveTask, task.status !== 'completed');
+            : renderViewTaskHTML(
+                  task,
+                  originalIndex,
+                  task === firstIncomplete,
+                  task.status !== 'completed'
+              );
 
         const gap = gapAfterTask.get(task.id);
         if (gap) {

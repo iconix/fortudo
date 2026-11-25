@@ -346,9 +346,7 @@ function getRenderedTasksDOM() {
             if (checkbox instanceof HTMLInputElement) {
                 isCompleted = checkbox.checked;
             } else {
-                // It's a div.checkbox, check for fa-check-square icon
-                const icon = checkbox.querySelector('i');
-                isCompleted = icon?.classList.contains('fa-check-square') || false;
+                isCompleted = checkbox.getAttribute('aria-checked') === 'true';
             }
         }
 
@@ -410,14 +408,10 @@ function setCurrentTimeInDOM(time12h) {
 }
 
 async function clickCompleteCheckbox(taskIndex) {
-    // The actual app uses div.checkbox elements that trigger completion
-    const checkboxLabels = document.querySelectorAll('#scheduled-task-list .checkbox');
-    if (taskIndex < 0 || taskIndex >= checkboxLabels.length)
+    const checkboxes = document.querySelectorAll('#scheduled-task-list .checkbox');
+    if (taskIndex < 0 || taskIndex >= checkboxes.length)
         throw new Error(`Checkbox for task index ${taskIndex} not found or out of bounds.`);
-    const checkboxLabel = checkboxLabels[taskIndex];
-    if (checkboxLabel instanceof HTMLElement) {
-        checkboxLabel.dispatchEvent(new Event('click', { bubbles: true }));
-    }
+    checkboxes[taskIndex].click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
