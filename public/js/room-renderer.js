@@ -176,7 +176,7 @@ export function updateSyncStatusUI(status) {
             label: 'Sync setup error'
         },
         unprovisioned: {
-            icon: 'fa-solid fa-cloud-slash',
+            icon: 'fa-solid fa-cloud',
             color: 'text-slate-400',
             label: 'Sync not provisioned'
         },

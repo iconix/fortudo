@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -22,6 +23,17 @@ def test_fontawesome_vendor_snapshot_is_fresh():
     result = run_vendor("--check")
     assert result.returncode == 0, result.stderr
     assert "Font Awesome vendor snapshot is up to date" in result.stdout
+
+
+def test_app_uses_icon_classes_available_in_the_shipped_stylesheet():
+    public = REPO_ROOT / "public"
+    css = (VENDOR_ROOT / "css" / "all.min.css").read_text(encoding="utf-8")
+    available = set(re.findall(r"\.(fa-[\w-]+)", css))
+    missing = []
+    for source in [*public.glob("*.html"), *(public / "js").rglob("*.js")]:
+        used = set(re.findall(r"(?<![\w-])(fa-[\w-]+)", source.read_text(encoding="utf-8")))
+        missing.extend(f"{source.relative_to(public)}: {icon}" for icon in sorted(used - available))
+    assert not missing, "Use classes from the shipped Font Awesome Free CSS: " + ", ".join(missing)
 
 
 def test_check_rejects_an_unexpected_stale_file():
