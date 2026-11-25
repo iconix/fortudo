@@ -6,8 +6,9 @@ from playwright.sync_api import expect, sync_playwright
 from tests.e2e.helpers import BASE_URL, REPO_ROOT, launch_e2e_page
 
 
-@pytest.mark.parametrize("failure", ["app", "dependency", "guard"])
-def test_failed_boot_can_reload_without_losing_local_data(app_server, failure):
+@pytest.mark.parametrize("failure", ["app", "dependency"])
+@pytest.mark.parametrize("helper", ["early", "late", "missing"])
+def test_failed_boot_can_reload_without_losing_local_data(app_server, failure, helper):
     with sync_playwright() as p:
         browser, context, page = launch_e2e_page(
             p, viewport={"width": 390, "height": 844},
@@ -18,14 +19,37 @@ def test_failed_boot_can_reload_without_losing_local_data(app_server, failure):
                 content_type="application/javascript", body="export const COUCHDB_URL = null;"
             ))
             path = "utils.js" if failure == "dependency" else "app.js"
-            page.route(f"**/js/{path}", lambda route: route.abort("connectionreset"))
-            if failure == "guard":
+            held = []
+            if helper == "early":
+                page.add_init_script("""window.guardLoaded = new Promise(resolve => {
+                    document.addEventListener('load', event => {
+                        if (event.target.src?.endsWith('/js/startup-fallback.js')) resolve();
+                    }, true);
+                });""")
+                page.route(f"**/js/{path}", lambda route: held.append(route))
+            else:
+                page.route(f"**/js/{path}", lambda route: route.abort("connectionreset"))
+            if helper == "missing":
                 page.route("**/js/startup-fallback.js", lambda route: route.abort("connectionreset"))
+            elif helper == "late":
+                page.route("**/js/startup-fallback.js", lambda route: held.append(route), times=1)
             url = BASE_URL + "/?startup-example=preserve"
-            page.goto(url)
             fallback = page.locator("#startup-fallback")
+            if helper == "late":
+                with page.expect_event("requestfailed", predicate=lambda req: req.url.endswith("/" + path)):
+                    page.goto(url, wait_until="commit")
+                expect(fallback).to_be_visible()
+                held[0].continue_()
+            elif helper == "early":
+                with page.expect_request(f"**/js/{path}"):
+                    page.goto(url, wait_until="commit")
+                page.evaluate("window.guardLoaded")
+                held[0].abort("connectionreset")
+            else:
+                page.goto(url)
+            page.wait_for_load_state("load")
             expect(fallback).to_be_visible()
-            if failure != "guard":
+            if helper != "missing":
                 expect(fallback).to_contain_text("Fortudo couldn’t load")
                 expect(fallback).to_have_attribute("data-visible", "true")
             expect(fallback.get_by_role("link", name="Reload", exact=True)).to_be_visible()
@@ -35,13 +59,11 @@ def test_failed_boot_can_reload_without_losing_local_data(app_server, failure):
                 await db.put({_id:'example',description:'Preserved task'});
                 await db.close();
             }""")
-            if failure == "app":
+            if failure == "app" and helper == "late":
                 directory = REPO_ROOT / "test_screenshots"
                 directory.mkdir(exist_ok=True)
                 page.screenshot(path=str(directory / "startup-fallback-mobile.png"))
             page.unroute(f"**/js/{path}")
-            if failure == "guard":
-                page.unroute("**/js/startup-fallback.js")
             with page.expect_navigation():
                 fallback.get_by_role("link", name="Reload", exact=True).click()
             expect(page.locator("#room-entry-screen")).to_be_visible()
